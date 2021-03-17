@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import pydantic
 from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.utils import logger
 
 
 def _callable_accepts_batch(backend_def):
@@ -88,6 +89,15 @@ class BackendConfig(BaseModel):
                 "@serve.accept_batch to explicitly mark that the function or "
                 "method accepts a list of requests as an argument.")
 
+        if self.max_batch_size is not None:
+            logger.warning(
+                "Setting max_batch_size and batch_wait_timeout in the "
+                "BackendConfig are deprecated in favor of using the "
+                "@serve.batch decorator in the application level. Please see "
+                "the documentation for details: "
+                "https://docs.ray.io/en/master/serve/ml-models.html#request-batching."  # noqa:E501
+            )
+
     # This is not a pydantic validator, so that we may skip this method when
     # creating partially filled BackendConfig objects to pass as updates--for
     # example, BackendConfig(max_batch_size=5).
@@ -154,6 +164,10 @@ class ReplicaConfig:
             raise TypeError(
                 "Backend must be a function or class, it is {}.".format(
                     type(self.backend_def)))
+
+        if "placement_group" in self.ray_actor_options:
+            raise ValueError("Providing placement_group for backend actors "
+                             "is not currently supported.")
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")

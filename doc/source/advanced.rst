@@ -206,6 +206,66 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
 See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
 
 
+Overloaded Functions
+--------------------
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
+
+Overloaded normal task call:
+
+.. code:: java
+
+    public static class MyRayApp {
+
+      public static int overloadFunction() {
+        return 1;
+      }
+
+      public static int overloadFunction(int x) {
+        return x;
+      }
+    }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+
+Overloaded actor task call:
+
+.. code:: java
+
+    public static class Counter {
+      protected int value = 0;
+
+      public int increment() {
+        this.value += 1;
+        return this.value;
+      }
+    }
+
+    public static class CounterOverloaded extends Counter {
+      public int increment(int diff) {
+        super.value += diff;
+        return super.value;
+      }
+
+      public int increment(int diff1, int diff2) {
+        super.value += diff1 + diff2;
+        return super.value;
+      }
+    }
+
+.. code:: java
+
+    ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+    // Call an overloaded actor method by super class method reference.
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an overloaded actor method, cast method reference first.
+    a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+    a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+    a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
+
+
 Nested Remote Functions
 -----------------------
 
@@ -362,3 +422,34 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+.. _conda-environments-for-tasks-and-actors:
+
+Conda Environments for Tasks and Actors
+-----------------------------------------
+
+Starting with Ray 1.3.0, Ray supports starting tasks and actors in `conda environments <https://docs.conda.io/en/latest/>`_.
+This allows you to use tasks and actors with different (possibly conflicting) package dependencies within a single Ray runtime.
+You will need to have the desired conda environments installed beforehand on all nodes in your Ray cluster, and they
+must all use the same Python minor version (e.g., Python 3.8).
+
+To start a specific task or an actor in an existing conda environment, pass in the environment name to your task or 
+actor via the ``runtime_env`` parameter as follows:
+
+.. code-block:: python
+
+    result = ray.get(my_task.options(runtime_env={"conda_env": "my_env"}).remote())
+
+.. code-block:: python
+
+    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"}).remote()
+
+Nested tasks and actors will inherit the conda environment of their parent by default.
+
+To have Ray start all tasks and actors in a specific conda environment by default, you may
+pass in the desired conda environment name into ``ray.init()``:
+
+.. code-block:: python
+
+    from ray.job_config import JobConfig
+    ray.init(job_config=JobConfig(runtime_env={"conda_env": "my_env"}))

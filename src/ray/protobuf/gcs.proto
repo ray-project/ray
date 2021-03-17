@@ -268,6 +268,8 @@ message JobConfig {
   // code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH` in
   // Python.
   repeated string code_search_path = 4;
+  // Runtime environment to run the code
+  RuntimeEnv runtime_env = 5;
 }
 
 message JobTableData {
@@ -311,7 +313,7 @@ message ResourceMap {
 }
 
 message StoredConfig {
-  map<string, string> config = 1;
+  string config = 1;
 }
 
 message ObjectLocationInfo {

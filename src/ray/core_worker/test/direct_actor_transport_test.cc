@@ -14,6 +14,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -484,9 +485,8 @@ class DirectActorReceiverTest : public ::testing::Test {
     auto execute_task =
         std::bind(&DirectActorReceiverTest::MockExecuteTask, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
-        new CoreWorkerDirectTaskReceiver(worker_context_, main_io_service_, execute_task,
-                                         [] { return Status::OK(); }));
+    receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+        worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_, dependency_waiter_);
@@ -513,7 +513,7 @@ class DirectActorReceiverTest : public ::testing::Test {
  private:
   rpc::Address rpc_address_;
   MockWorkerContext worker_context_;
-  boost::asio::io_service main_io_service_;
+  instrumented_io_context main_io_service_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };

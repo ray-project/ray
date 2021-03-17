@@ -1,39 +1,43 @@
 # yapf: disable
 # __doc_import_begin__
-import ray
-from ray import serve
-
-from typing import List
+from typing import List, Union
 import time
 
 import numpy as np
 import requests
+from starlette.requests import Request
+
+import ray
+from ray import serve
+from ray.serve import ServeRequest
 # __doc_import_end__
 # yapf: enable
 
 
-# __doc_define_servable_v0_begin__
-@serve.accept_batch
-def batch_adder_v0(starlette_requests: List):
-    numbers = [
-        int(request.query_params["number"]) for request in starlette_requests
-    ]
+# __doc_define_servable_begin__
+class BatchAdder:
+    @serve.batch(max_batch_size=4)
+    async def handle_batch(self, requests: List[Union[Request, ServeRequest]]):
+        numbers = [int(request.query_params["number"]) for request in requests]
 
-    input_array = np.array(numbers)
-    print("Our input array has shape:", input_array.shape)
-    # Sleep for 200ms, this could be performing CPU intensive computation
-    # in real models
-    time.sleep(0.2)
-    output_array = input_array + 1
-    return output_array.astype(int).tolist()
+        input_array = np.array(numbers)
+        print("Our input array has shape:", input_array.shape)
+        # Sleep for 200ms, this could be performing CPU intensive computation
+        # in real models
+        time.sleep(0.2)
+        output_array = input_array + 1
+        return output_array.astype(int).tolist()
+
+    async def __call__(self, request: Union[Request, ServeRequest]):
+        return await self.handle_batch(request)
 
 
-# __doc_define_servable_v0_end__
+# __doc_define_servable_end__
 
-ray.init(num_cpus=8)
 # __doc_deploy_begin__
+ray.init(num_cpus=8)
 client = serve.start()
-client.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
+client.create_backend("adder:v0", BatchAdder)
 client.create_endpoint(
     "adder", backend="adder:v0", route="/adder", methods=["GET"])
 # __doc_deploy_end__
@@ -56,34 +60,13 @@ print("Result returned:", results)
 # Result returned: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 # __doc_query_end__
 
-
-# __doc_define_servable_v1_begin__
-@serve.accept_batch
-def batch_adder_v1(requests: List):
-    numbers = [int(request.query_params["number"]) for request in requests]
-    input_array = np.array(numbers)
-    print("Our input array has shape:", input_array.shape)
-    # Sleep for 200ms, this could be performing CPU intensive computation
-    # in real models
-    time.sleep(0.2)
-    output_array = input_array + 1
-    return output_array.astype(int).tolist()
-
-
-# __doc_define_servable_v1_end__
-
-# __doc_deploy_v1_begin__
-client.create_backend("adder:v1", batch_adder_v1, config={"max_batch_size": 4})
-client.set_traffic("adder", {"adder:v1": 1})
-# __doc_deploy_v1_end__
-
 # __doc_query_handle_begin__
 handle = client.get_handle("adder")
 print(handle)
 # Output
 # RayServeHandle(
 #    Endpoint="adder",
-#    Traffic={'adder:v1': 1}
+#    Traffic={'adder:v0': 1}
 # )
 
 input_batch = list(range(9))

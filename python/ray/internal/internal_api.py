@@ -1,6 +1,9 @@
 import ray
+import ray._private.services as services
 import ray.worker
 from ray import profiling
+from ray import ray_constants
+from ray.state import GlobalState
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -13,9 +16,24 @@ def global_gc():
     worker.core_worker.global_gc()
 
 
-def memory_summary(node_manager_address=None,
-                   node_manager_port=None,
+def memory_summary(address=None,
+                   redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+                   group_by="NODE_ADDRESS",
+                   sort_by="OBJECT_SIZE",
+                   line_wrap=True,
                    stats_only=False):
+    from ray.new_dashboard.memory_utils import memory_summary
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    state = GlobalState()
+    state._initialize_global_state(address, redis_password)
+    if stats_only:
+        return get_store_stats(state)
+    return (memory_summary(state, group_by, sort_by, line_wrap) +
+            get_store_stats(state))
+
+
+def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
     import grpc
@@ -25,7 +43,7 @@ def memory_summary(node_manager_address=None,
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
     if (node_manager_address is None or node_manager_port is None):
-        raylet = ray.nodes()[0]
+        raylet = state.node_table()[0]
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         raylet["NodeManagerPort"])
     else:
@@ -40,7 +58,41 @@ def memory_summary(node_manager_address=None,
     )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
-        node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(
+            include_memory_info=False),
+        timeout=30.0)
+    return store_stats_summary(reply)
+
+
+def node_stats(node_manager_address=None,
+               node_manager_port=None,
+               include_memory_info=True):
+    """Returns NodeStats object describing memory usage in the cluster."""
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    # We can ask any Raylet for the global memory info.
+    assert (node_manager_address is not None and node_manager_port is not None)
+    raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
+    channel = grpc.insecure_channel(
+        raylet_address,
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    node_stats = stub.GetNodeStats(
+        node_manager_pb2.GetNodeStatsRequest(
+            include_memory_info=include_memory_info),
+        timeout=30.0)
+    return node_stats
+
+
+def store_stats_summary(reply):
+    """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
     store_summary += (
         "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
@@ -68,9 +120,7 @@ def memory_summary(node_manager_address=None,
     if reply.store_stats.consumed_bytes > 0:
         store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
-    if stats_only:
-        return store_summary
-    return reply.memory_summary + "\n" + store_summary
+    return store_summary
 
 
 def free(object_refs, local_only=False):

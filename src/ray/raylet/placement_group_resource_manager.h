@@ -31,13 +31,6 @@ enum CommitState {
   COMMITTED
 };
 
-struct BundleState {
-  /// Leasing state for 2PC protocol.
-  CommitState state;
-  /// Resources that are acquired at preparation stage.
-  ResourceIdSet acquired_resources;
-};
-
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -85,53 +78,6 @@ class PlacementGroupResourceManager {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
-};
-
-/// Associated with old scheduler.
-class OldPlacementGroupResourceManager : public PlacementGroupResourceManager {
- public:
-  /// Create a old placement group resource manager.
-  ///
-  /// \param local_available_resources_: The resources (IDs specificed) that are currently
-  /// available.
-  /// \param cluster_resource_map_: The resources (without IDs specificed) that
-  /// are currently available.
-  /// \param self_node_id_: The related raylet with current
-  /// placement group manager.
-  OldPlacementGroupResourceManager(
-      ResourceIdSet &local_available_resources_,
-      std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
-      const NodeID &self_node_id_);
-
-  virtual ~OldPlacementGroupResourceManager() = default;
-
-  bool PrepareBundle(const BundleSpecification &bundle_spec);
-
-  void CommitBundle(const BundleSpecification &bundle_spec);
-
-  void ReturnBundle(const BundleSpecification &bundle_spec);
-
-  /// Get all local available resource(IDs specificed).
-  const ResourceIdSet &GetAllResourceIdSet() const { return local_available_resources_; };
-
-  /// Get all local available resource(without IDs specificed).
-  const SchedulingResources &GetAllResourceSetWithoutId() const {
-    return cluster_resource_map_[self_node_id_];
-  }
-
- private:
-  /// The resources (and specific resource IDs) that are currently available.
-  /// These two resource container is shared with `NodeManager`.
-  ResourceIdSet &local_available_resources_;
-  std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_;
-
-  /// Related raylet with current placement group manager.
-  NodeID self_node_id_;
-
-  /// This map represents the commit state of 2PC protocol for atomic placement group
-  /// creation.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
-      bundle_state_map_;
 };
 
 /// Associated with new scheduler.

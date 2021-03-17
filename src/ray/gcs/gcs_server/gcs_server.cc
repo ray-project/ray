@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
@@ -24,13 +26,12 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
-#include "ray/util/asio_util.h"
 
 namespace ray {
 namespace gcs {
 
 GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
-                     boost::asio::io_service &main_service)
+                     instrumented_io_context &main_service)
     : config_(config),
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
@@ -44,7 +45,8 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password, config_.is_test);
+                                          config_.redis_password,
+                                          config_.enable_sharding_conn);
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
@@ -152,7 +154,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
       heartbeat_manager_io_service_, /*on_node_death_callback=*/
       [this](const NodeID &node_id) {
         main_service_.post(
-            [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); });
+            [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+            "GcsServer.NodeDeathCallback");
       });
   // Initialize by gcs tables data.
   gcs_heartbeat_manager_->Initialize(gcs_init_data);
@@ -290,8 +293,8 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ = std::unique_ptr<GcsWorkerManager>(
-      new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));

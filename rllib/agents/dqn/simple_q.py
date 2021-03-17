@@ -22,7 +22,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+    UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -57,10 +58,14 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
+
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # Whether to LZ4 compress observations
     "compress_observations": False,
 
@@ -135,9 +140,21 @@ def execution_plan(workers: WorkerSet,
     store_op = rollouts.for_each(
         StoreToReplayBuffer(local_buffer=local_replay_buffer))
 
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = TrainTFMultiGPU(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
     # (2) Read and train on experiences from the replay buffer.
     replay_op = Replay(local_buffer=local_replay_buffer) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_step_op) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 

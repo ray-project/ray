@@ -10,7 +10,7 @@ import time
 
 import ray
 import ray.test_utils
-import ray.cluster_utils
+import ray._private.cluster_utils
 
 
 def test_actor_deletion_with_gpus(shutdown_only):

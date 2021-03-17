@@ -82,6 +82,8 @@ jfieldID java_base_task_options_resources;
 
 jclass java_call_options_class;
 jfieldID java_call_options_name;
+jfieldID java_task_creation_options_group;
+jfieldID java_task_creation_options_bundle_index;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
@@ -91,6 +93,14 @@ jfieldID java_actor_creation_options_jvm_options;
 jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
+
+jclass java_placement_group_creation_options_class;
+jclass java_placement_group_creation_options_strategy_class;
+jfieldID java_placement_group_creation_options_global;
+jfieldID java_placement_group_creation_options_name;
+jfieldID java_placement_group_creation_options_bundles;
+jfieldID java_placement_group_creation_options_strategy;
+jmethodID java_placement_group_creation_options_strategy_value;
 
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
@@ -222,11 +232,31 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
   java_call_options_name =
       env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
+  java_task_creation_options_group = env->GetFieldID(
+      java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
+  java_task_creation_options_bundle_index =
+      env->GetFieldID(java_call_options_class, "bundleIndex", "I");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
   java_placement_group_id = env->GetFieldID(java_placement_group_class, "id",
                                             "Lio/ray/api/id/PlacementGroupId;");
+
+  java_placement_group_creation_options_class =
+      LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
+  java_placement_group_creation_options_strategy_class =
+      LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
+  java_placement_group_creation_options_global =
+      env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
+  java_placement_group_creation_options_name = env->GetFieldID(
+      java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
+  java_placement_group_creation_options_bundles = env->GetFieldID(
+      java_placement_group_creation_options_class, "bundles", "Ljava/util/List;");
+  java_placement_group_creation_options_strategy =
+      env->GetFieldID(java_placement_group_creation_options_class, "strategy",
+                      "Lio/ray/api/placementgroup/PlacementStrategy;");
+  java_placement_group_creation_options_strategy_value = env->GetMethodID(
+      java_placement_group_creation_options_strategy_class, "value", "()I");
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
@@ -302,6 +332,8 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_function_arg_class);
   env->DeleteGlobalRef(java_base_task_options_class);
   env->DeleteGlobalRef(java_actor_creation_options_class);
+  env->DeleteGlobalRef(java_placement_group_creation_options_class);
+  env->DeleteGlobalRef(java_placement_group_creation_options_strategy_class);
   env->DeleteGlobalRef(java_native_ray_object_class);
   env->DeleteGlobalRef(java_task_executor_class);
   env->DeleteGlobalRef(java_native_task_executor_class);

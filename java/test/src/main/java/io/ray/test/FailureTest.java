@@ -14,7 +14,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -29,11 +28,6 @@ public class FailureTest extends BaseTest {
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
     System.setProperty("ray.job.num-java-workers-per-process", "1");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.job.num-java-workers-per-process");
   }
 
   public static int badFunc() {

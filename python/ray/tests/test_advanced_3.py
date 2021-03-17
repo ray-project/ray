@@ -1,5 +1,4 @@
 # coding: utf-8
-import collections
 import glob
 import logging
 import os
@@ -7,190 +6,26 @@ import sys
 import socket
 import tempfile
 import time
+from unittest import mock
 
 import numpy as np
 import pickle
 import pytest
 
 import ray
+from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
-import ray.cluster_utils
+import ray._private.utils
+import ray._private.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
-import subprocess
 
 from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors, new_scheduler_enabled)
+                            wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
-
-
-def attempt_to_load_balance(remote_function,
-                            args,
-                            total_tasks,
-                            num_nodes,
-                            minimum_count,
-                            num_attempts=100):
-    attempts = 0
-    while attempts < num_attempts:
-        locations = ray.get(
-            [remote_function.remote(*args) for _ in range(total_tasks)])
-        counts = collections.Counter(locations)
-        logger.info(f"Counts are {counts}")
-        if (len(counts) == num_nodes
-                and counts.most_common()[-1][1] >= minimum_count):
-            break
-        attempts += 1
-    assert attempts < num_attempts
-
-
-def test_load_balancing(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets
-    # in a roughly equal manner.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    num_cpus = 7
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_cpus)
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f():
-        time.sleep(0.01)
-        return ray.worker.global_worker.node.unique_id
-
-    attempt_to_load_balance(f, [], 100, num_nodes, 10)
-    attempt_to_load_balance(f, [], 1000, num_nodes, 100)
-
-
-def test_local_scheduling_first(ray_start_cluster):
-    cluster = ray_start_cluster
-    num_cpus = 8
-    # Disable worker caching.
-    cluster.add_node(
-        num_cpus=num_cpus,
-        _system_config={
-            "worker_lease_timeout_milliseconds": 0,
-        })
-    cluster.add_node(num_cpus=num_cpus)
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f():
-        time.sleep(0.01)
-        return ray.worker.global_worker.node.unique_id
-
-    def local():
-        return ray.get(f.remote()) == ray.worker.global_worker.node.unique_id
-
-    # Wait for a worker to get started.
-    wait_for_condition(local)
-
-    # Check that we are scheduling locally while there are resources available.
-    for i in range(20):
-        assert local()
-
-
-@pytest.mark.parametrize("fast", [True, False])
-def test_load_balancing_with_dependencies(ray_start_cluster, fast):
-    if fast and new_scheduler_enabled:
-        # Load-balancing on new scheduler can be inefficient if (task
-        # duration:heartbeat interval) is small enough.
-        pytest.skip()
-
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(x):
-        if fast:
-            time.sleep(0.010)
-        else:
-            time.sleep(0.1)
-        return ray.worker.global_worker.node.unique_id
-
-    # This object will be local to one of the raylets. Make sure
-    # this doesn't prevent tasks from being scheduled on other raylets.
-    x = ray.put(np.zeros(1000000))
-
-    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
-
-
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    num_cpus = 4
-    object_size = 4e7
-    num_tasks = 100
-    for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus,
-            memory=(num_cpus - 2) * object_size,
-            object_store_memory=(num_cpus - 2) * object_size)
-    cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        memory=(num_tasks + 1) * object_size,
-        object_store_memory=(num_tasks + 1) * object_size)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0, resources={"custom": 1})
-    def create_object():
-        return np.zeros(int(object_size), dtype=np.uint8)
-
-    @ray.remote
-    def f(i, x):
-        time.sleep(0.1)
-        print(i, ray.worker.global_worker.node.unique_id)
-        return ray.worker.global_worker.node.unique_id
-
-    # TODO(swang): Actually test load balancing.
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-    ray.get(tasks)
-
-
-def test_locality_aware_leasing(ray_start_cluster):
-    # This test ensures that a task will run where its task dependencies are
-    # located. We run an initial non_local() task that is pinned to a
-    # non-local node via a custom resource constraint, and then we run an
-    # unpinned task f() that depends on the output of non_local(), ensuring
-    # that f() runs on the same node as non_local().
-    cluster = ray_start_cluster
-
-    # Disable worker caching so worker leases are not reused, and disable
-    # inlining of return objects so return objects are always put into Plasma.
-    cluster.add_node(
-        num_cpus=1,
-        _system_config={
-            "worker_lease_timeout_milliseconds": 0,
-            "max_direct_call_object_size": 0,
-        })
-    # Use a custom resource for pinning tasks to a node.
-    non_local_node = cluster.add_node(num_cpus=1, resources={"pin": 1})
-    ray.init(address=cluster.address)
-
-    @ray.remote(resources={"pin": 1})
-    def non_local():
-        return ray.worker.global_worker.node.unique_id
-
-    @ray.remote
-    def f(x):
-        return ray.worker.global_worker.node.unique_id
-
-    # Test that task f() runs on the same node as non_local().
-    assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
 def test_global_state_api(shutdown_only):
@@ -210,7 +45,7 @@ def test_global_state_api(shutdown_only):
     # make sure `ray.objects()` succeeds.
     assert len(ray.objects()) >= 0
 
-    job_id = ray.utils.compute_job_id_from_driver(
+    job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
 
     client_table = ray.nodes()
@@ -361,26 +196,6 @@ def test_object_ref_properties():
     assert id_from_dumps == object_ref
 
 
-@pytest.fixture
-def shutdown_only_with_initialization_check():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    assert not ray.is_initialized()
-
-
-def test_initialized(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0)
-    assert ray.is_initialized()
-
-
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
-    assert ray.is_initialized()
-
-
 def test_wait_reconstruction(shutdown_only):
     ray.init(num_cpus=1, object_store_memory=int(10**8))
 
@@ -458,7 +273,7 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(
+        output = ray._private.utils.decode(
             check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
@@ -581,12 +396,6 @@ def test_export_after_shutdown(ray_start_regular):
     ray.get(export_definitions_from_worker.remote(f, Actor))
 
 
-def test_ray_start_and_stop():
-    for i in range(10):
-        subprocess.check_call(["ray", "start", "--head"])
-        subprocess.check_call(["ray", "stop"])
-
-
 def test_invalid_unicode_in_worker_log(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -646,37 +455,6 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray._private.services.remaining_processes_alive()
-
-
-def test_lease_request_leak(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            # This test uses ray.objects(), which only works with the GCS-based
-            # object directory
-            "ownership_based_object_directory_enabled": False,
-            "object_timeout_milliseconds": 200
-        })
-    assert len(ray.objects()) == 0
-
-    @ray.remote
-    def f(x):
-        time.sleep(0.1)
-        return
-
-    # Submit pairs of tasks. Tasks in a pair can reuse the same worker leased
-    # from the raylet.
-    tasks = []
-    for _ in range(10):
-        obj_ref = ray.put(1)
-        for _ in range(2):
-            tasks.append(f.remote(obj_ref))
-        del obj_ref
-    ray.get(tasks)
-
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.objects()) == 0, ray.objects()
 
 
 @pytest.mark.parametrize(
@@ -824,9 +602,9 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 64
 
     # No cpuset used
@@ -840,9 +618,9 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 26
 
     # Quota set
@@ -856,10 +634,103 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 0.42
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="No need to test on Windows.")
+def test_k8s_cpu():
+    """Test all the functions in dashboard/k8s_utils.py.
+    Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
+    Files were obtained from within a K8s pod with 2 CPU request, CPU limit
+    unset, with 1 CPU of stress applied.
+    """
+
+    # Some experimentally-obtained K8S CPU usage files for use in test_k8s_cpu.
+    PROCSTAT1 = \
+    """cpu  2945022 98 3329420 148744854 39522 0 118587 0 0 0
+    cpu0 370299 14 413841 18589778 5304 0 15288 0 0 0
+    cpu1 378637 10 414414 18589275 5283 0 14731 0 0 0
+    cpu2 367328 8 420914 18590974 4844 0 14416 0 0 0
+    cpu3 368378 11 423720 18572899 4948 0 14394 0 0 0
+    cpu4 369051 13 414615 18607285 4736 0 14383 0 0 0
+    cpu5 362958 10 415984 18576655 4590 0 16614 0 0 0
+    cpu6 362536 13 414430 18605197 4785 0 14353 0 0 0
+    cpu7 365833 15 411499 18612787 5028 0 14405 0 0 0
+    intr 1000694027 125 0 0 39 154 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1028 0 2160913 0 2779605 8 0 3981333 3665198 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    ctxt 1574979439
+    btime 1615208601
+    processes 857411
+    procs_running 6
+    procs_blocked 0
+    softirq 524311775 0 230142964 27143 63542182 0 0 171 74042767 0 156556548
+    """ # noqa
+
+    PROCSTAT2 = \
+    """cpu  2945152 98 3329436 148745483 39522 0 118587 0 0 0
+    cpu0 370399 14 413841 18589778 5304 0 15288 0 0 0
+    cpu1 378647 10 414415 18589362 5283 0 14731 0 0 0
+    cpu2 367329 8 420916 18591067 4844 0 14416 0 0 0
+    cpu3 368381 11 423724 18572989 4948 0 14395 0 0 0
+    cpu4 369052 13 414618 18607374 4736 0 14383 0 0 0
+    cpu5 362968 10 415986 18576741 4590 0 16614 0 0 0
+    cpu6 362537 13 414432 18605290 4785 0 14353 0 0 0
+    cpu7 365836 15 411502 18612878 5028 0 14405 0 0 0
+    intr 1000700905 125 0 0 39 154 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1028 0 2160923 0 2779605 8 0 3981353 3665218 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    ctxt 1574988760
+    btime 1615208601
+    processes 857411
+    procs_running 4
+    procs_blocked 0
+    softirq 524317451 0 230145523 27143 63542930 0 0 171 74043232 0 156558452
+    """ # noqa
+
+    CPUACCTUSAGE1 = "2268980984108"
+
+    CPUACCTUSAGE2 = "2270120061999"
+
+    CPUSHARES = "2048"
+
+    shares_file, cpu_file, proc_stat_file = [
+        tempfile.NamedTemporaryFile("w+") for _ in range(3)
+    ]
+    shares_file.write(CPUSHARES)
+    cpu_file.write(CPUACCTUSAGE1)
+    proc_stat_file.write(PROCSTAT1)
+    for file in shares_file, cpu_file, proc_stat_file:
+        file.flush()
+    with mock.patch("ray._private.utils.os.environ",
+                    {"KUBERNETES_SERVICE_HOST"}),\
+            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
+                       cpu_file.name),\
+            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
+                       proc_stat_file.name),\
+            mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
+                       (shares_file.name,)):
+
+        # Test helpers
+        assert ray._private.utils.get_num_cpus() == 2
+        assert k8s_utils._cpu_usage() == 2268980984108
+        assert k8s_utils._system_usage() == 1551775030000000
+        assert k8s_utils._host_num_cpus() == 8
+
+        # No delta for first computation, return 0.
+        assert k8s_utils.cpu_percent() == 0.0
+
+        # Write new usage info obtained after 1 sec wait.
+        for file in cpu_file, proc_stat_file:
+            file.truncate(0)
+            file.seek(0)
+        cpu_file.write(CPUACCTUSAGE2)
+        proc_stat_file.write(PROCSTAT2)
+        for file in cpu_file, proc_stat_file:
+            file.flush()
+
+        # Files were extracted under 1 CPU of load on a 2 CPU pod
+        assert 50 < k8s_utils.cpu_percent() < 60
 
 
 def test_override_environment_variables_task(ray_start_regular):
@@ -981,6 +852,80 @@ def test_override_environment_variables_complex(shutdown_only):
         get_env.options(override_environment_variables={
             "a": "b",
         }).remote("z")) == "job_z")
+
+
+def test_sync_job_config(shutdown_only):
+    num_java_workers_per_process = 8
+    worker_env = {
+        "key": "value",
+    }
+
+    ray.init(
+        job_config=ray.job_config.JobConfig(
+            num_java_workers_per_process=num_java_workers_per_process,
+            worker_env=worker_env))
+
+    # Check that the job config is synchronized at the driver side.
+    job_config = ray.worker.global_worker.core_worker.get_job_config()
+    assert (job_config.num_java_workers_per_process ==
+            num_java_workers_per_process)
+    assert (job_config.worker_env == worker_env)
+
+    @ray.remote
+    def get_job_config():
+        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        return job_config.SerializeToString()
+
+    # Check that the job config is synchronized at the worker side.
+    job_config = ray.gcs_utils.JobConfig()
+    job_config.ParseFromString(ray.get(get_job_config.remote()))
+    assert (job_config.num_java_workers_per_process ==
+            num_java_workers_per_process)
+    assert (job_config.worker_env == worker_env)
+
+
+def test_duplicated_arg(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def task_with_dup_arg(*args):
+        return sum(args)
+
+    # Basic verification.
+    arr = np.ones(1 * 1024 * 1024, dtype=np.uint8)  # 1MB
+    ref = ray.put(arr)
+    assert np.array_equal(
+        ray.get(task_with_dup_arg.remote(ref, ref, ref)), sum([arr, arr, arr]))
+
+    # Make sure it works when it is mixed with other args.
+    ref2 = ray.put(arr)
+    assert np.array_equal(
+        ray.get(task_with_dup_arg.remote(ref, ref2, ref)), sum([arr, arr,
+                                                                arr]))
+
+    # Test complicated scenario with multi nodes.
+    cluster.add_node(num_cpus=1, resources={"worker_1": 1})
+    cluster.add_node(num_cpus=1, resources={"worker_2": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def create_remote_ref(arr):
+        return ray.put(arr)
+
+    @ray.remote
+    def task_with_dup_arg_ref(*args):
+        args = ray.get(list(args))
+        return sum(args)
+
+    ref1 = create_remote_ref.options(resources={"worker_1": 1}).remote(arr)
+    ref2 = create_remote_ref.options(resources={"worker_2": 1}).remote(arr)
+    ref3 = create_remote_ref.remote(arr)
+    np.array_equal(
+        ray.get(
+            task_with_dup_arg_ref.remote(ref1, ref2, ref3, ref1, ref2, ref3)),
+        sum([arr] * 6))
 
 
 if __name__ == "__main__":
