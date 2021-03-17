@@ -58,6 +58,11 @@ class ActorReplicaWrapper:
         self._stopped = False
         self._actor_resources = None
 
+        # Storing the handles is necessary to keep the actor and PG alive in
+        # the non-detached case.
+        self._actor_handle = None
+        self._placement_group = None
+
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_startup_obj_ref"]
@@ -77,32 +82,33 @@ class ActorReplicaWrapper:
         self._actor_resources = backend_info.replica_config.resource_dict
 
         try:
-            pg = ray.util.get_placement_group(self._placement_group_name)
+            self._placement_group = ray.util.get_placement_group(
+                self._placement_group_name)
         except ValueError:
             logger.debug(
                 "Creating placement group '{}' for backend '{}'".format(
                     self._placement_group_name, self._backend_tag))
-            pg = ray.util.placement_group(
+            self._placement_group = ray.util.placement_group(
                 [self._actor_resources],
                 lifetime="detached",
                 name=self._placement_group_name)
 
         try:
-            actor_handle = ray.get_actor(self._actor_name)
+            self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
             logger.debug("Starting replica '{}' for backend '{}'.".format(
                 self._replica_tag, self._backend_tag))
-            actor_handle = ray.remote(backend_info.worker_class).options(
+            self._actor_handle = ray.remote(backend_info.worker_class).options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                placement_group=pg,
+                placement_group=self._placement_group,
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name)
-        self._startup_obj_ref = actor_handle.ready.remote()
+        self._startup_obj_ref = self._actor_handle.ready.remote()
 
     def check_ready(self) -> bool:
         ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
@@ -230,6 +236,7 @@ class BackendReplica:
             f"State must be {ReplicaState.STARTING}, *not* {self._state}")
 
         if self._actor.check_ready():
+            self._state = ReplicaState.RUNNING
             return True
 
         time_since_start = time.time() - self._start_time
