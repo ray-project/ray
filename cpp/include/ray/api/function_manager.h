@@ -233,7 +233,8 @@ struct Invoker {
       std::tuple<Args...> tup) {
     (void)tup;
     using Self = boost::callable_traits::class_of_t<F>;
-    auto self = ray::api::Serializer::Deserialize<Self>(ptr->data(), ptr->size());
+    Self self{};
+    self = ray::api::Serializer::Deserialize<Self>(ptr->data(), ptr->size());
     return (self.*f)(std::move(std::get<I>(tup))...);
   }
 };
