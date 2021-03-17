@@ -28,7 +28,7 @@ class DeserializationError(Exception):
 
 def _object_ref_deserializer(binary, owner_address):
     # NOTE(suquark): This function should be a global function so
-    # cloudpickle can access it directly. Otherwise couldpickle
+    # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
 
     # NOTE(swang): Must deserialize the object first before asking
@@ -237,7 +237,6 @@ class SerializationContext:
                                                 data_metadata_pairs):
             assert self.get_outer_object_ref() is None
             self.set_outer_object_ref(object_ref)
-            obj = None
             try:
                 obj = self._deserialize_object(data, metadata, object_ref)
             except Exception as e:

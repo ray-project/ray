@@ -85,7 +85,6 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        connected (bool): True if Ray has been started and False otherwise.
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
@@ -125,6 +124,7 @@ class Worker:
 
     @property
     def connected(self):
+        """bool: True if Ray has been started and False otherwise."""
         return self.node is not None
 
     @property

@@ -1934,6 +1934,7 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["p2.xlarge"]["docker"] = {
             "worker_image": "p2x_image:nightly"
         }
+        config["docker"]["run_options"] = ["head-and-worker-run-options"]
         config["docker"]["worker_run_options"] = ["standard-run-options"]
         config["docker"]["image"] = "default-image:nightly"
         config["docker"]["worker_image"] = "default-image:nightly"
@@ -1989,6 +1990,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
                                "p2.8x-run-options")
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
+                               "head-and-worker-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
                                "p2.8x_image:latest")
         runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
                                    "default-image:nightly")
@@ -1999,6 +2002,8 @@ class AutoscalingTest(unittest.TestCase):
                                "p2x_image:nightly")
         runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
                                "standard-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
+                               "head-and-worker-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[3].internal_ip,
                                    "p2.8x-run-options")
 
@@ -2006,6 +2011,8 @@ class AutoscalingTest(unittest.TestCase):
                                "default-image:nightly")
         runner.assert_has_call(self.provider.mock_nodes[4].internal_ip,
                                "standard-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[4].internal_ip,
+                               "head-and-worker-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[4].internal_ip,
                                    "p2.8x-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[4].internal_ip,
