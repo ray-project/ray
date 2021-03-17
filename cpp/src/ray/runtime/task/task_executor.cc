@@ -39,10 +39,6 @@ Status TaskExecutor::ExecuteTask(
   std::string lib_name = typed_descriptor->LibName();
   std::string func_offset = typed_descriptor->FunctionOffset();
   std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
-  uintptr_t base_addr = 0;
-  if (!func_offset.empty()) {
-    base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
-  }
 
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (func_offset.empty()) {
@@ -51,7 +47,8 @@ Status TaskExecutor::ExecuteTask(
       return ray::Status::NotFound(lib_name + " not found");
     }
 
-    RAY_LOG(DEBUG) << "Get execute function ok";
+    RAY_LOG(DEBUG) << "Get execute function ok"
+                   << ", task_type: " << task_type;
     if (task_type == TaskType::ACTOR_TASK) {
       RAY_CHECK(current_actor_ != nullptr);
       auto result = execute_func(args_buffer, current_actor_.get());
@@ -65,6 +62,7 @@ Status TaskExecutor::ExecuteTask(
     }
     RAY_LOG(DEBUG) << "Execute function ok";
   } else {
+    uintptr_t base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
     if (task_type == TaskType::ACTOR_CREATION_TASK) {
       typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
           uintptr_t base_addr, size_t func_offset,

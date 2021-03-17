@@ -13,6 +13,23 @@ RAY_REMOTE(Return1);
 RAY_REMOTE(Plus1);
 RAY_REMOTE(Plus);
 
+class Counter {
+ public:
+  int count;
+  Counter() = default;
+  Counter(int init) { count = init; }
+  static Counter *FactoryCreate(int init) { return new Counter(init); }
+
+  int Add(int x) {
+    count += x;
+    return count;
+  }
+
+  MSGPACK_DEFINE(count);
+};
+RAY_REMOTE(Counter::FactoryCreate);
+RAY_REMOTE(&Counter::Add);
+
 std::string lib_name = "";
 
 std::string redis_ip = "";
@@ -63,6 +80,14 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result4, 2);
   EXPECT_EQ(result5, 3);
   EXPECT_EQ(result6, 12);
+
+  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote(1);
+  auto r7 = actor.Task(&Counter::Add).Remote(1);
+  EXPECT_EQ(2, *(r7.Get()));
+
+  auto r8 = actor.Task(&Counter::Add).Remote(2);
+  EXPECT_EQ(3, *(r8.Get()));
+
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
   Ray::Shutdown();
 }
