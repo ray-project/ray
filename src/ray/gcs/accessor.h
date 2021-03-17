@@ -783,6 +783,12 @@ class KVAccessor {
                              const OptionalItemCallback<bool> &callback) = 0;
   virtual Status AsyncDel(const std::string &key, const StatusCallback &callback) = 0;
 
+  // These are sync functions of the async above
+  Status Put(const std::string &key, const std::string &value);
+  Status Get(const std::string &key, std::string &value);
+  Status Del(const std::string &key);
+  Status Exists(const std::string &key, bool &exist);
+
  protected:
   KVAccessor() = default;
 };

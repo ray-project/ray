@@ -1573,51 +1573,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   return status;
 }
 
-Status CoreWorker::KVPut(const std::string &key, const std::string &value) {
-  std::promise<Status> ret_promise;
-  gcs_client_->KV().AsyncPut(
-      key, value, [&ret_promise](Status status) { ret_promise.set_value(status); });
-  return ret_promise.get_future().get();
-}
-
-Status CoreWorker::KVGet(const std::string &key, std::string &value) {
-  std::promise<std::pair<Status, std::string>> ret_promise;
-  gcs_client_->KV().AsyncGet(
-      key, [&ret_promise](Status status, const boost::optional<std::string> &value) {
-        if (!status.ok()) {
-          ret_promise.set_value(std::make_pair(status, ""));
-        } else {
-          if (value) {
-            ret_promise.set_value(std::make_pair(status, *value));
-          } else {
-            ret_promise.set_value(
-                std::make_pair(Status::NotFound("Failed to find the key."), ""));
-          }
-        }
-      });
-  auto ret = ret_promise.get_future().get();
-  value = std::move(ret.second);
-  return ret.first;
-}
-
-Status CoreWorker::KVDel(const std::string &key) {
-  std::promise<Status> ret_promise;
-  gcs_client_->KV().AsyncDel(
-      key, [&ret_promise](Status status) { ret_promise.set_value(status); });
-  return ret_promise.get_future().get();
-}
-
-Status CoreWorker::KVExists(const std::string &key, bool &exist) {
-  std::promise<std::pair<Status, bool>> ret_promise;
-  gcs_client_->KV().AsyncExists(
-      key, [&ret_promise](Status status, const boost::optional<bool> &value) {
-        ret_promise.set_value(std::make_pair(status, value.value_or(false)));
-      });
-  auto ret = ret_promise.get_future().get();
-  exist = ret.second;
-  return ret.first;
-}
-
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
@@ -2810,6 +2765,8 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+
+std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 

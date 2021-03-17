@@ -72,6 +72,7 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    check_status,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -90,6 +91,8 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
+
+from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
@@ -127,6 +130,7 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
+include "includes/gcs_client.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
@@ -134,24 +138,6 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
-
-cdef int check_status(const CRayStatus& status) nogil except -1:
-    if status.ok():
-        return 0
-
-    with gil:
-        message = status.message().decode()
-
-    if status.IsObjectStoreFull():
-        raise ObjectStoreFullError(message)
-    elif status.IsInterrupted():
-        raise KeyboardInterrupt()
-    elif status.IsTimedOut():
-        raise GetTimeoutError(message)
-    elif status.IsNotFound():
-        raise ValueError(message)
-    else:
-        raise RaySystemError(message)
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -883,6 +869,10 @@ cdef class CoreWorker:
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
 
+    def get_gcs_client(self):
+        return GcsClient.make_from_existing(
+            CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
+
     def run_task_loop(self):
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
@@ -934,34 +924,6 @@ cdef class CoreWorker:
                 c_object_ids, timeout_ms, &results, _plasma_objects_only))
 
         return RayObjectsToDataMetadataPairs(results)
-
-    def kv_put(self, c_string key, c_string value):
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KVPut(key, value))
-
-    def kv_del(self, c_string key):
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().KVDel(key))
-
-    def kv_get(self, c_string key):
-        cdef:
-            c_string value
-            c_bool exists = True
-        with nogil:
-            status = CCoreWorkerProcess.GetCoreWorker().KVGet(key, value)
-            if status.IsNotFound():
-                exists = False
-            else:
-                check_status(status)
-        return value if exists else None
-
-    def kv_exists(self, c_string key):
-        cdef:
-            c_bool exist
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker().KVExists(key, exist))
-        return exist
 
     def get_if_local(self, object_refs):
         """Get objects from local plasma store directly

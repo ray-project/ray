@@ -20,6 +20,10 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
     CWorkerID,
 )
+
+from ray.includes.gcs_client cimport CGcsClient
+
+
 from ray.includes.common cimport (
     CAddress,
     CActorCreationOptions,
@@ -197,11 +201,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
-        CRayStatus KVPut(const c_string& key, const c_string& value)
-        CRayStatus KVGet(const c_string& key, c_string& value)
-        CRayStatus KVDel(const c_string& key)
-        CRayStatus KVExists(const c_string& key, c_bool& exist)
-
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
 
@@ -219,6 +218,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
         CJobConfig GetJobConfig()
+
+        shared_ptr[CGcsClient] GetGcsClient() const
 
         c_bool IsExiting() const
 
