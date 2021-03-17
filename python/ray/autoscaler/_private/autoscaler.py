@@ -195,9 +195,6 @@ class StandardAutoscaler:
 
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
-                # TODO (Alex): The node tracker will think idle nodes have
-                # failed. This is because this clause also terminated nodes
-                # that have missed heartbeats/crashed.
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node.".format(node_id))
                 self.event_summarizer.add(
