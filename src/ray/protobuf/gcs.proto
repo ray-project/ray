@@ -146,6 +146,9 @@ message ActorTableData {
   repeated ResourceMapEntry resource_mapping = 15;
   // The process id of this actor.
   uint32 pid = 16;
+  // The exception thrown in creation task. This field is set if this actor died because
+  // of exception thrown in creation task. Only applies when state=DEAD.
+  RayException creation_task_exception = 18;
 }
 
 message ErrorTableData {
@@ -301,6 +304,9 @@ message WorkerTableData {
   WorkerType worker_type = 5;
   // This is for AddWorker.
   map<string, bytes> worker_info = 6;
+  // The exception thrown in creation task. This field is set if this worker died because
+  // of exception thrown in actor's creation task. Only applies when is_alive=false.
+  RayException creation_task_exception = 18;
 }
 
 // Fields to publish when worker fails.

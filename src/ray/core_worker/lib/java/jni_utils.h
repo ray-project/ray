@@ -97,6 +97,12 @@ extern jclass java_ray_exception_class;
 /// RayIntentionalSystemExitException class
 extern jclass java_ray_intentional_system_exit_exception_class;
 
+/// RayActorCreationTaskException class
+extern jclass java_ray_actor_exception_class;
+
+/// toBytes method of RayException
+extern jmethodID java_ray_exception_to_bytes;
+
 /// JniExceptionUtil class
 extern jclass java_jni_exception_util_class;
 /// getStackTrace method of JniExceptionUtil class
@@ -589,4 +595,15 @@ inline std::string GetFullName(bool global, std::string name) {
   return global ? name
                 : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
                       "-" + name;
+}
+
+inline std::shared_ptr<ray::LocalMemoryBuffer> SerializeActorCreationException(
+    JNIEnv *env, jthrowable creation_exception) {
+  jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
+      env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
+  int len = env->GetArrayLength(exception_jbyte_array);
+  auto buf = std::make_shared<ray::LocalMemoryBuffer>(len);
+  env->GetByteArrayRegion(exception_jbyte_array, 0, len,
+                          reinterpret_cast<jbyte *>(buf->Data()));
+  return buf;
 }

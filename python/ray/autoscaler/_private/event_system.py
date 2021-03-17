@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.autoscaler._private.cli_logger import cli_logger
 
@@ -72,7 +72,9 @@ class _EventSystem:
             event,
             []).extend([callback] if type(callback) is not list else callback)
 
-    def execute_callback(self, event: str, event_data: Dict[str, Any] = {}):
+    def execute_callback(self,
+                         event: str,
+                         event_data: Optional[Dict[str, Any]] = None):
         """Executes all callbacks for event.
 
         Args:
@@ -81,6 +83,9 @@ class _EventSystem:
             event_data (Dict[str, Any]): Argument that is passed to each
                 callable object stored for this particular event.
         """
+        if event_data is None:
+            event_data = {}
+
         event_data["event_name"] = event
         if event in self.callback_map:
             for callback in self.callback_map[event]:

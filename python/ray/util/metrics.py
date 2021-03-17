@@ -1,6 +1,6 @@
 import logging
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 
 from ray._raylet import (
     Count as CythonCount,
@@ -69,7 +69,10 @@ class Metric:
         self._default_tags = default_tags
         return self
 
-    def record(self, value: float, tags: Dict[str, str] = None) -> None:
+    def record(self,
+               value: Union[int, float],
+               tags: Dict[str, str] = None,
+               _internal=False) -> None:
         """Record the metric point of the metric.
 
         Tags passed in will take precedence over the metric's default tags.
@@ -78,6 +81,22 @@ class Metric:
             value(float): The value to be recorded as a metric point.
         """
         assert self._metric is not None
+        if isinstance(self._metric, CythonCount) and not _internal:
+            logger.warning("Counter.record() is deprecated in favor of "
+                           "Counter.inc() and will be removed in a future "
+                           "release. Please use Counter.inc() instead.")
+
+        if isinstance(self._metric, CythonGauge) and not _internal:
+            logger.warning("Gauge.record() is deprecated in favor of "
+                           "Gauge.set() and will be removed in a future "
+                           "release. Please use Gauge.set() instead.")
+
+        if isinstance(self._metric, CythonHistogram) and not _internal:
+            logger.warning("Histogram.record() is deprecated in favor of "
+                           "Histogram.observe() and will be removed in a "
+                           "future release. Please use Histogram.observe() "
+                           "instead.")
+
         if tags is not None:
             for val in tags.values():
                 if not isinstance(val, str):
@@ -150,8 +169,10 @@ class Counter(Metric):
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 
-    def inc(self, value: float = 1.0, tags: Dict[str, str] = None):
+    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
         """Increment the counter by `value` (defaults to 1).
+
+        Tags passed in will take precedence over the metric's default tags.
 
         Args:
             value(int, float): Value to increment the counter by (default=1).
@@ -162,7 +183,7 @@ class Counter(Metric):
         if value <= 0:
             raise ValueError(f"value must be >0, got {value}")
 
-        self.record(value, tags)
+        self.record(value, tags=tags, _internal=True)
 
 
 class Count(Counter):
@@ -189,11 +210,13 @@ class Count(Counter):
 
 
 class Histogram(Metric):
-    """Histogram distribution of metric points.
+    """Tracks the size and number of events in buckets.
 
-    This is corresponding to Prometheus' Histogram metric.
-    Recording metrics with histogram will enable you to import
-    min, mean, max, 25, 50, 95, 99 percentile latency.
+    Histograms allow you to calculate aggregate quantiles
+    such as 25, 50, 95, 99 percentile latency for an RPC.
+
+    This corresponds to Prometheus' histogram metric:
+    https://prometheus.io/docs/concepts/metric_types/#histogram
 
     Args:
         name(str): Name of the metric.
@@ -216,6 +239,20 @@ class Histogram(Metric):
         self._metric = CythonHistogram(self._name, self._description,
                                        self.boundaries, self._tag_keys)
 
+    def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
+        """Observe a given `value` and add it to the appropriate bucket.
+
+        Tags passed in will take precedence over the metric's default tags.
+
+        Args:
+            value(int, float): Value to set the gauge to.
+            tags(Dict[str, str]): Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        self.record(value, tags, _internal=True)
+
     def __reduce__(self):
         deserializer = Histogram
         serialized_data = (self._name, self._description, self.boundaries,
@@ -231,9 +268,12 @@ class Histogram(Metric):
 
 
 class Gauge(Metric):
-    """Gauge Keeps the last recorded value, drops everything before.
+    """Gauges keep the last recorded value and drop everything before.
 
-    This is corresponding to Prometheus' Gauge metric.
+    Unlike counters, gauges can go up or down over time.
+
+    This corresponds to Prometheus' gauge metric:
+    https://prometheus.io/docs/concepts/metric_types/#gauge
 
     Args:
         name(str): Name of the metric.
@@ -249,6 +289,20 @@ class Gauge(Metric):
         self._metric = CythonGauge(self._name, self._description,
                                    self._tag_keys)
 
+    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+        """Set the gauge to the given `value`.
+
+        Tags passed in will take precedence over the metric's default tags.
+
+        Args:
+            value(int, float): Value to set the gauge to.
+            tags(Dict[str, str]): Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        self.record(value, tags, _internal=True)
+
     def __reduce__(self):
         deserializer = Gauge
         serialized_data = (self._name, self._description, self._tag_keys)
@@ -256,7 +310,7 @@ class Gauge(Metric):
 
 
 __all__ = [
-    "Count",
+    "Counter",
     "Histogram",
     "Gauge",
 ]

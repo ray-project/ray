@@ -49,6 +49,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+# py_test(
+    # name = "test_ray_client",
+    # size = "small",
+    # srcs = serve_tests_srcs,
+    # tags = ["exclusive"],
+    # deps = [":serve_lib"],
+# )
+
 py_test(
     name = "test_async_goal_manager",
     size = "small",

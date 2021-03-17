@@ -45,7 +45,8 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                          config_.redis_password, config_.is_test);
+                                          config_.redis_password,
+                                          config_.enable_sharding_conn);
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
@@ -302,8 +303,8 @@ void GcsServer::InitKVManager() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ = std::unique_ptr<GcsWorkerManager>(
-      new GcsWorkerManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_worker_manager_ =
+      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
   // Register service.
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
@@ -337,8 +338,14 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+        if (worker_failure_data->has_creation_task_exception()) {
+          creation_task_exception = std::make_shared<rpc::RayException>(
+              worker_failure_data->creation_task_exception());
+        }
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->exit_type());
+                                         worker_failure_data->exit_type(),
+                                         creation_task_exception);
       });
 
   // Install job event listeners.

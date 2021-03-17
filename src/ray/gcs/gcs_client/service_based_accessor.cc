@@ -1312,10 +1312,17 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const StatusCallback &callback) {
   auto job_id = JobID::FromBinary(data_ptr->job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
-  Status status = client_impl_->GetGcsPubSub().Publish(
-      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
-  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
-  return status;
+  rpc::ReportJobErrorRequest request;
+  request.mutable_job_error()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportJobError(
+      request,
+      [job_id, callback](const Status &status, const rpc::ReportJobErrorReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+      });
+  return Status::OK();
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(

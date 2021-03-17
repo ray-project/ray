@@ -375,6 +375,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds());
   }
+  last_resource_report_at_ms_ = current_time_ms();
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
                                        report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
@@ -468,6 +469,18 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
 }
 
 void NodeManager::ReportResourceUsage() {
+  uint64_t now_ms = current_time_ms();
+  uint64_t interval = now_ms - last_resource_report_at_ms_;
+  if (interval >
+      RayConfig::instance().num_resource_report_periods_warning() *
+          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
+    RAY_LOG(WARNING)
+        << "Last resource report was sent " << interval
+        << " ms ago. There might be resource pressure on this node. If "
+           "resource reports keep lagging, scheduling decisions of other nodes "
+           "may become stale";
+  }
+  last_resource_report_at_ms_ = now_ms;
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   FillResourceReport(*resources_data);
 
@@ -989,7 +1002,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
           }
         });
   };
-
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
@@ -1075,8 +1087,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                                   rpc::WorkerExitType disconnect_type) {
+void NodeManager::DisconnectClient(
+    const std::shared_ptr<ClientConnection> &client, rpc::WorkerExitType disconnect_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+  RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
+                << ", has creation task exception = "
+                << (creation_task_exception != nullptr);
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1111,10 +1127,15 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   // Erase any lease metadata.
   leased_workers_.erase(worker->WorkerId());
 
+  if (creation_task_exception != nullptr) {
+    RAY_LOG(INFO) << "Formatted creation task exception: "
+                  << creation_task_exception->formatted_exception_string()
+                  << ", worker_id: " << worker->WorkerId();
+  }
   // Publish the worker failure.
-  auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
-                                   worker->Port(), time(nullptr), disconnect_type);
+  auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
+      self_node_id_, worker->WorkerId(), worker->IpAddress(), worker->Port(),
+      time(nullptr), disconnect_type, creation_task_exception);
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
@@ -1176,7 +1197,16 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
-  DisconnectClient(client, disconnect_type);
+  const flatbuffers::Vector<uint8_t> *exception_pb =
+      message->creation_task_exception_pb();
+
+  std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+  if (exception_pb != nullptr) {
+    creation_task_exception = std::make_shared<rpc::RayException>();
+    creation_task_exception->ParseFromString(std::string(
+        reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
+  }
+  DisconnectClient(client, disconnect_type, creation_task_exception);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -2096,8 +2126,8 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_addresses_) {
-    std::unique_ptr<rpc::NodeManagerClient> client(new rpc::NodeManagerClient(
-        entry.second.first, entry.second.second, client_call_manager_));
+    auto client = std::make_unique<rpc::NodeManagerClient>(
+        entry.second.first, entry.second.second, client_call_manager_);
     client->GetNodeStats(
         stats_req, [replies, store_reply](const ray::Status &status,
                                           const rpc::GetNodeStatsReply &r) {

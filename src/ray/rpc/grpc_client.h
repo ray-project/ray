@@ -30,7 +30,8 @@ namespace rpc {
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
   (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
-      &SERVICE::Stub::PrepareAsync##METHOD, request, callback, #SERVICE "." #METHOD))
+      &SERVICE::Stub::PrepareAsync##METHOD, request, callback,          \
+      #SERVICE ".grpc_client." #METHOD))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)   \

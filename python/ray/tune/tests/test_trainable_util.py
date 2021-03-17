@@ -8,7 +8,7 @@ from unittest.mock import patch
 import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import unflatten_dict, unflatten_list_dict
 from ray.tune.utils.trainable import TrainableUtil
 
 
@@ -82,6 +82,41 @@ class UnflattenDictTest(unittest.TestCase):
             },
             "e": 4,
         }
+
+    def test_unflatten_list_dict_output_type(self):
+        in_ = OrderedDict({"a/0": 0, "a/1": 1, "c/d": 2, "e": 3})
+        out = unflatten_list_dict(in_)
+        assert type(out) is OrderedDict
+
+        in_ = OrderedDict({"0/a": 0, "1/b": 1, "2/c": 2, "3/d": 3})
+        out = unflatten_list_dict(in_)
+        assert type(out) is list
+
+    def test_unflatten_list_dict_one_level_nested(self):
+        result = unflatten_list_dict({"a/0": 0, "a/1": 1, "c/d": 2, "e": 3})
+        assert result == {"a": [0, 1], "c": {"d": 2}, "e": 3}
+
+        result = unflatten_list_dict({"0/a": 0, "1/b": 1, "2/c": 2, "3": 3})
+        assert result == [{"a": 0}, {"b": 1}, {"c": 2}, 3]
+
+    def test_unflatten_list_dict_multi_level_nested(self):
+        result = unflatten_list_dict({
+            "a/0/c/d": 1,
+            "a/1/c": 2,
+            "a/2": 3,
+            "e": 4
+        })
+        assert result == {"a": [{"c": {"d": 1}}, {"c": 2}, 3], "e": 4}
+
+        result = unflatten_list_dict({
+            "0/a/0/b": 1,
+            "0/a/1": 2,
+            "1/0": 3,
+            "1/1": 4,
+            "1/2/c": 5,
+            "2": 6
+        })
+        assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
 
 
 class GPUUtilMock:

@@ -12,7 +12,7 @@ serve_handle = None
 @app.on_event("startup")  # Code to be run when the server starts.
 async def startup_event():
     ray.init(address="auto")  # Connect to the running Ray cluster.
-    client = serve.start(http_host=None)  # Start the Ray Serve client.
+    serve.start(http_host=None)  # Start the Ray Serve instance.
 
     # Define a callable class to use for our Ray Serve backend.
     class GPT2:
@@ -24,12 +24,12 @@ async def startup_event():
 
     # Set up a Ray Serve backend with the desired number of replicas.
     backend_config = serve.BackendConfig(num_replicas=2)
-    client.create_backend("gpt-2", GPT2, config=backend_config)
-    client.create_endpoint("generate", backend="gpt-2")
+    serve.create_backend("gpt-2", GPT2, config=backend_config)
+    serve.create_endpoint("generate", backend="gpt-2")
 
     # Get a handle to our Ray Serve endpoint so we can query it in Python.
     global serve_handle
-    serve_handle = client.get_handle("generate")
+    serve_handle = serve.get_handle("generate")
 
 
 @app.get("/generate")
