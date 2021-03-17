@@ -258,8 +258,9 @@ class InboundRequest {
                  std::function<void(rpc::SendReplyCallback)> reject_callback,
                  rpc::SendReplyCallback send_reply_callback, TaskID task_id,
                  bool has_dependencies)
-      : accept_callback_(accept_callback),
-        reject_callback_(reject_callback),
+      : accept_callback_(std::move(accept_callback)),
+        reject_callback_(std::move(reject_callback)),
+        send_reply_callback_(std::move(send_reply_callback)),
         task_id(task_id),
         has_pending_dependencies_(has_dependencies) {}
 
