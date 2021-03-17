@@ -35,7 +35,6 @@ def ray_cluster():
     cluster.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_shutdown(ray_shutdown):
     def f():
         pass
@@ -79,7 +78,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -123,7 +121,6 @@ def test_connect(detached, ray_shutdown):
     assert "backend-ception" in serve.list_backends().keys()
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 @pytest.mark.skipif(
     not hasattr(socket, "SO_REUSEPORT"),
     reason=("Port sharing only works on newer verion of Linux. "
@@ -201,7 +198,6 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -231,14 +227,12 @@ def test_middleware(ray_shutdown):
     assert resp.headers["access-control-allow-origin"] == "*"
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
@@ -287,7 +281,6 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
-@pytest.mark.skipif(sys.platform == "win32")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
