@@ -7,8 +7,7 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     uint64_t max_concurrent_pulls,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
-    :
-      ticker_(polling_service_),
+    : ticker_(polling_service_),
       max_concurrent_pulls_(max_concurrent_pulls),
       inflight_pulls_(0),
       gcs_resource_manager_(gcs_resource_manager),
@@ -26,7 +25,7 @@ void GcsResourceReportPoller::Start() {
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
-  ticker_.RunFnPeriodically([this]{ Tick();}, 100);
+  ticker_.RunFnPeriodically([this] { Tick(); }, 100);
 }
 
 void GcsResourceReportPoller::Stop() {
@@ -69,9 +68,7 @@ void GcsResourceReportPoller::HandleNodeRemoved(
   }
 }
 
-void GcsResourceReportPoller::Tick() {
-  TryPullResourceReport();
-}
+void GcsResourceReportPoller::Tick() { TryPullResourceReport(); }
 
 void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);

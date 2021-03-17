@@ -292,7 +292,7 @@ void GcsServer::InitTaskInfoHandler() {
 void GcsServer::InitResourceReportPolling() {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(
-                                      new GcsResourceReportPoller(100, gcs_resource_manager_, raylet_client_pool_));
+        new GcsResourceReportPoller(100, gcs_resource_manager_, raylet_client_pool_));
     gcs_resource_report_poller_->Start();
   }
 }
@@ -323,7 +323,9 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    gcs_resource_report_poller_->HandleNodeAdded(node);
+    if (config_.pull_based_resource_reporting) {
+      gcs_resource_report_poller_->HandleNodeAdded(node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -334,7 +336,9 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        gcs_resource_report_poller_->HandleNodeRemoved(node);
+        if (config_.pull_based_resource_reporting) {
+          gcs_resource_report_poller_->HandleNodeRemoved(node);
+        }
       });
 
   // Install worker event listener.
