@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from uuid import uuid4
 
 from ray.serve.common import GoalId
@@ -10,9 +10,6 @@ from ray.serve.utils import logger
 class AsyncGoalManager:
     def __init__(self):
         self._pending_goals: Dict[GoalId, asyncio.Event] = dict()
-
-    def get_pending_goal_ids(self) -> List[GoalId]:
-        return list(self._pending_goals.keys())
 
     def num_pending_goals(self) -> int:
         return len(self._pending_goals)

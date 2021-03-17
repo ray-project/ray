@@ -1,4 +1,3 @@
-import asyncio
 from collections import defaultdict
 from enum import Enum
 import time
@@ -326,17 +325,14 @@ class BackendState:
             BackendReplica]]] = defaultdict(lambda: defaultdict(list))
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
-        self.backend_goals: Dict[BackendTag, GoalId] = dict()
-
-        # Un-checkpointed state.
-        self.pending_goals: Dict[GoalId, asyncio.Event] = dict()
+        self._backend_goals: Dict[BackendTag, GoalId] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata, self._target_replicas,
-             self.backend_goals, pending_goal_ids) = pickle.loads(checkpoint)
+             self._backend_goals) = pickle.loads(checkpoint)
 
-            for goal_id in pending_goal_ids:
+            for goal_id in self._backend_goals.values():
                 self._goal_manager.create_goal(goal_id)
 
         self._notify_backend_configs_changed()
@@ -346,8 +342,7 @@ class BackendState:
         self._kv_store.put(
             CHECKPOINT_KEY,
             pickle.dumps((self._replicas, self._backend_metadata,
-                          self._target_replicas, self.backend_goals,
-                          self._goal_manager.get_pending_goal_ids())))
+                          self._target_replicas, self._backend_goals)))
 
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
@@ -383,7 +378,7 @@ class BackendState:
 
     def _set_backend_goal(self, backend_tag: BackendTag,
                           backend_info: BackendInfo) -> None:
-        existing_goal_id = self.backend_goals.get(backend_tag)
+        existing_goal_id = self._backend_goals.get(backend_tag)
         new_goal_id = self._goal_manager.create_goal()
 
         if backend_info is not None:
@@ -393,7 +388,7 @@ class BackendState:
         else:
             self._target_replicas[backend_tag] = 0
 
-        self.backend_goals[backend_tag] = new_goal_id
+        self._backend_goals[backend_tag] = new_goal_id
 
         return new_goal_id, existing_goal_id
 
@@ -405,7 +400,7 @@ class BackendState:
         if backend_info is not None:
             if (backend_info.backend_config == backend_config
                     and backend_info.replica_config == replica_config):
-                return None
+                return self._backend_goals.get(backend_tag, None)
 
         backend_replica_class = create_backend_replica(
             replica_config.backend_def)
@@ -587,15 +582,14 @@ class BackendState:
             if (not desired_num_replicas or
                     desired_num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                print("CASE 1")
                 completed_goals.append(
-                    self.backend_goals.pop(backend_tag, None))
+                    self._backend_goals.pop(backend_tag, None))
 
             # Check for a non-zero number of backends.
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
                 completed_goals.append(
-                    self.backend_goals.pop(backend_tag, None))
+                    self._backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
 
     def update(self) -> bool:

@@ -128,6 +128,30 @@ def replica_count(backend_state, backend=None, states=None):
     return total
 
 
+def test_override_goals(mock_backend_state):
+    backend_state, _, _, goal_manager = mock_backend_state
+
+    b_config_1, r_config_1 = generate_configs()
+    initial_goal = backend_state.create_backend("tag1", b_config_1, r_config_1)
+    assert not goal_manager.check_complete(initial_goal)
+
+    b_config_2, r_config_2 = generate_configs(num_replicas=2)
+    new_goal = backend_state.create_backend("tag1", b_config_2, r_config_2)
+    assert goal_manager.check_complete(initial_goal)
+    assert not goal_manager.check_complete(new_goal)
+
+
+def test_return_existing_goal(mock_backend_state):
+    backend_state, _, _, goal_manager = mock_backend_state
+
+    b_config_1, r_config_1 = generate_configs()
+    initial_goal = backend_state.create_backend("tag1", b_config_1, r_config_1)
+    assert not goal_manager.check_complete(initial_goal)
+
+    new_goal = backend_state.create_backend("tag1", b_config_1, r_config_1)
+    assert initial_goal == new_goal
+
+
 def test_create_delete_single_replica(mock_backend_state):
     backend_state, timer, mock_replicas, goal_manager = mock_backend_state
 
