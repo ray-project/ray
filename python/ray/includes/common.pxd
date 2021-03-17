@@ -277,8 +277,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
-                          const c_string &password,
-                          c_bool is_test_client)
+                          const c_string &password)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":

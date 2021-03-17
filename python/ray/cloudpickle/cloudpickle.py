@@ -88,7 +88,7 @@ else:
 DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 # Track the provenance of reconstructed dynamic classes to make it possible to
-# recontruct instances from the matching singleton class definition when
+# reconstruct instances from the matching singleton class definition when
 # appropriate and preserve the usual "isinstance" semantics of Python objects.
 _DYNAMIC_CLASS_TRACKER_BY_CLASS = weakref.WeakKeyDictionary()
 _DYNAMIC_CLASS_TRACKER_BY_ID = weakref.WeakValueDictionary()
@@ -136,11 +136,14 @@ def _whichmodule(obj, name):
         # Workaround bug in old Python versions: prior to Python 3.7,
         # T.__module__ would always be set to "typing" even when the TypeVar T
         # would be defined in a different module.
-        #
-        # For such older Python versions, we ignore the __module__ attribute of
-        # TypeVar instances and instead exhaustively lookup those instances in
-        # all currently imported modules.
-        module_name = None
+        if name is not None and getattr(typing, name, None) is obj:
+            # Built-in TypeVar defined in typing such as AnyStr
+            return 'typing'
+        else:
+            # User defined or third-party TypeVar: __module__ attribute is
+            # irrelevant, thus trigger a exhaustive search for obj in all
+            # modules.
+            module_name = None
     else:
         module_name = getattr(obj, '__module__', None)
 
@@ -236,7 +239,7 @@ def _extract_code_globals(co):
         out_names = {names[oparg] for _, oparg in _walk_global_ops(co)}
 
         # Declaring a function inside another one using the "def ..."
-        # syntax generates a constant code object corresonding to the one
+        # syntax generates a constant code object corresponding to the one
         # of the nested function's As the nested function may itself need
         # global variables, we need to introspect its code, extract its
         # globals, (look for code object in it's co_consts attribute..) and
@@ -452,15 +455,31 @@ def _extract_class_dict(cls):
 
 if sys.version_info[:2] < (3, 7):  # pragma: no branch
     def _is_parametrized_type_hint(obj):
-        # This is very cheap but might generate false positives.
+        # This is very cheap but might generate false positives. So try to
+        # narrow it down is good as possible.
+        type_module = getattr(type(obj), '__module__', None)
+        from_typing_extensions = type_module == 'typing_extensions'
+        from_typing = type_module == 'typing'
+
         # general typing Constructs
         is_typing = getattr(obj, '__origin__', None) is not None
 
         # typing_extensions.Literal
-        is_litteral = getattr(obj, '__values__', None) is not None
+        is_literal = (
+            (getattr(obj, '__values__', None) is not None)
+            and from_typing_extensions
+        )
 
         # typing_extensions.Final
-        is_final = getattr(obj, '__type__', None) is not None
+        is_final = (
+            (getattr(obj, '__type__', None) is not None)
+            and from_typing_extensions
+        )
+
+        # typing.ClassVar
+        is_classvar = (
+            (getattr(obj, '__type__', None) is not None) and from_typing
+        )
 
         # typing.Union/Tuple for old Python 3.5
         is_union = getattr(obj, '__union_params__', None) is not None
@@ -469,8 +488,8 @@ if sys.version_info[:2] < (3, 7):  # pragma: no branch
             getattr(obj, '__result__', None) is not None and
             getattr(obj, '__args__', None) is not None
         )
-        return any((is_typing, is_litteral, is_final, is_union, is_tuple,
-                    is_callable))
+        return any((is_typing, is_literal, is_final, is_classvar, is_union,
+                    is_tuple, is_callable))
 
     def _create_parametrized_type_hint(origin, args):
         return origin[args]
@@ -557,8 +576,11 @@ load = pickle.load
 loads = pickle.loads
 
 
-# hack for __import__ not working as desired
 def subimport(name):
+    # We cannot do simply: `return __import__(name)`: Indeed, if ``name`` is
+    # the name of a submodule, __import__ will return the top-level root module
+    # of this submodule. For instance, __import__('os.path') returns the `os`
+    # module.
     __import__(name)
     return sys.modules[name]
 
@@ -699,7 +721,7 @@ def _make_skel_func(code, cell_count, base_globals=None):
     """
     # This function is deprecated and should be removed in cloudpickle 1.7
     warnings.warn(
-        "A pickle file created using an old (<=1.4.1) version of cloudpicke "
+        "A pickle file created using an old (<=1.4.1) version of cloudpickle "
         "is currently being loaded. This is not supported by cloudpickle and "
         "will break in cloudpickle 1.7", category=UserWarning
     )

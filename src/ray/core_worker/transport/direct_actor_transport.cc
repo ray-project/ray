@@ -276,7 +276,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest());
+  auto request = std::make_unique<rpc::PushTaskRequest>();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.

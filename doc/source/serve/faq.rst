@@ -51,7 +51,7 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
     handle.options(method_name="other_method").remote(5)
 
 The call is the same as a regular query except a different method is called
-within the replica. It is compatible with batching as well.
+within the replica.
 
 How do I use custom status codes in my response?
 ---------------------------------------------------------
@@ -99,8 +99,7 @@ get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
 reach an endpoint through HTTP via a specific route. When you issue a request
 to an endpoint through ``ServeHandle``, the request goes through the same code
 path as an HTTP request would: choosing backends through :ref:`traffic
-policies <serve-split-traffic>`, finding the next available replica, and
-batching requests together.
+policies <serve-split-traffic>` and load balancing across available replicas.
 
 When the request arrives in the model, you can access the data similarly to how
 you would with HTTP request. Here are some examples how ServeRequest mirrors Starlette.Request:

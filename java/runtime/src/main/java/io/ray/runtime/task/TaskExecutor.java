@@ -161,31 +161,29 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       LOGGER.error("Error executing task " + taskId, e);
 
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if (rayFunction != null) {
-          boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
-          boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
-          if (hasReturn || isCrossLanguage) {
-            NativeRayObject serializedException;
-            try {
-              serializedException =
-                  ObjectSerializer.serialize(
-                      new RayTaskException("Error executing task " + taskId, e));
-            } catch (Exception unserializable) {
-              // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
-              // application-level exception is not serializable. `ObjectSerializer.serialize`
-              // will throw an exception and crash the worker.
-              // Refer to the case `TaskExceptionTest.java` for more details.
-              LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
-              serializedException =
-                  ObjectSerializer.serialize(
-                      new RayTaskException(
-                          String.format(
-                              "Error executing task %s with the exception: %s",
-                              taskId, ExceptionUtils.getStackTrace(e))));
-            }
-            Preconditions.checkNotNull(serializedException);
-            returnObjects.add(serializedException);
+        boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
+        boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
+        if (hasReturn || isCrossLanguage) {
+          NativeRayObject serializedException;
+          try {
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException("Error executing task " + taskId, e));
+          } catch (Exception unserializable) {
+            // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
+            // application-level exception is not serializable. `ObjectSerializer.serialize`
+            // will throw an exception and crash the worker.
+            // Refer to the case `TaskExceptionTest.java` for more details.
+            LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException(
+                        String.format(
+                            "Error executing task %s with the exception: %s",
+                            taskId, ExceptionUtils.getStackTrace(e))));
           }
+          Preconditions.checkNotNull(serializedException);
+          returnObjects.add(serializedException);
         } else {
           returnObjects.add(
               ObjectSerializer.serialize(

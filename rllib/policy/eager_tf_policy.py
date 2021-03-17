@@ -17,9 +17,7 @@ from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -733,15 +731,12 @@ def build_eager_tf_policy(
                 })
             return fetches
 
-        def _lazy_tensor_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(_convert_to_tf)
-            return train_batch
-
-        def _lazy_numpy_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(convert_to_non_tf_type)
-            return train_batch
+        def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+            # TODO: (sven): Keep for a while to ensure backward compatibility.
+            if not isinstance(postprocessed_batch, SampleBatch):
+                postprocessed_batch = SampleBatch(postprocessed_batch)
+            postprocessed_batch.set_get_interceptor(_convert_to_tf)
+            return postprocessed_batch
 
         @classmethod
         def with_tracing(cls):
