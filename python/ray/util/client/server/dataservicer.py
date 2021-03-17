@@ -45,11 +45,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     if self._num_clients == 0 and not ray.is_initialized():
                         self.ray_connect_handler()
 
-                if self._num_clients >= CLIENT_SERVER_MAX_THREADS / 2:
+                threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
+                if self._num_clients >= threshold:
                     context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                     logger.warning(
-                        f"Datapath: Num clients {self._num_clients} has reached "
-                        f"the threshold. Rejecting client: {metadata['client_id']}")
+                        f"[Data Servicer]: Num clients {self._num_clients} "
+                        f"has reached the threshold {threshold}. "
+                        f"Rejecting client: {metadata['client_id']}")
                     return
 
                 self._num_clients += 1

@@ -300,7 +300,8 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise # decode_exception(e.details())
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -358,8 +359,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
-            print("DETAILS OF EXCEPTION", e.details())
-            raise # decode_exception(e.details())
+            raise decode_exception(e.details())
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
@@ -376,7 +376,7 @@ class Worker:
             term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
-            raise # decode_exception(e.details())
+            raise decode_exception(e.details())
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
