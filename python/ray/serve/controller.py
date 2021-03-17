@@ -15,6 +15,7 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -249,6 +250,16 @@ class ServeController:
                      version: Optional[str]) -> Optional[GoalId]:
         """TODO."""
         async with self.write_lock:
+            if version is None:
+                version = RESERVED_VERSION_TAG
+            else:
+                if version == RESERVED_VERSION_TAG:
+                    # TODO(edoakes): this is unlikely to ever be hit, but it's
+                    # still ugly and should be removed once the old codepath
+                    # can be deleted.
+                    raise ValueError(
+                        f"Version {RESERVED_VERSION_TAG} is reserved and "
+                        "cannot be used by applications.")
             goal_id = self.backend_state.create_backend(
                 name, backend_config, replica_config, version)
 

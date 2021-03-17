@@ -318,9 +318,7 @@ class BackendState:
         else:
             self._target_replicas[backend_tag] = 0
 
-        if version is not None:
-            self._target_versions[backend_tag] = version
-
+        self._target_versions[backend_tag] = version
         self.backend_goals[backend_tag] = new_goal_id
 
         return new_goal_id, existing_goal_id
@@ -540,7 +538,6 @@ class BackendState:
         return replicas
 
     def _completed_goals(self) -> List[GoalId]:
-        # XXX: check for wrong version
         completed_goals = []
         all_tags = set(self._replicas.keys()).union(
             set(self._backend_metadata.keys()))
@@ -567,8 +564,11 @@ class BackendState:
             # Check for a non-zero number of backends.
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
-                completed_goals.append(
-                    self.backend_goals.pop(backend_tag, None))
+                # Check that all running replicas are the target version.
+                target_version = self._target_versions[backend_tag]
+                if all([r.version == target_version for r in existing_info]):
+                    completed_goals.append(
+                        self.backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
 
     def update(self) -> bool:
