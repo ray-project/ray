@@ -16,21 +16,35 @@ import re
 import hashlib
 import subprocess
 import tempfile
+from typing import Union, Dict
 import yaml
 
 import ray
 import ray._private.runtime_env as runtime_support
 
 
-def load_package(config_path: str) -> "_RuntimePackage":
-    """Load the code package given its config path.
+def load_package(package_def: Union[str, Dict[str, str]]) -> "_RuntimePackage":
+    """Load the code package given a config.
+
+    The config can be a Python dictionary, a local path to a configuration
+    YAML file, or a remote URI pointing to a config file (currently this only
+    supports GitHub).
 
     Args:
-        config_path (str): The path to the configuration YAML that defines
-            the package. For documentation on the packaging format, see the
-            example YAML in ``example_pkg/ray_pkg.yaml``.
+        package_def (Union[str, Dict[str, str]]): A Python dictionary or path
+            to the configuration YAML that defines the package. For
+            documentation on the packaging format, see the example YAML in
+            ``example_pkg/ray_pkg.yaml``.
 
     Examples:
+        >>> # Load from Python dict.
+        >>> my_pkg = load_package({
+            "name": example_package,
+            "description": "This is my example package!",
+            "stub_file": "/path/to/stub/file.py",
+            "runtime_env": {"docker": "anyscale-ml/ray-ml:nightly-py38-cpu"}
+        })
+
         >>> # Load from local.
         >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
 
@@ -56,14 +70,23 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> def f(): ...
     """
 
-    config_path = _download_from_github_if_needed(config_path)
+    if isinstance(package_def, dict):
+        config = package_def
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+    elif isinstance(package_def, str):
+        config_path = _download_from_github_if_needed(package_def)
 
-    if not os.path.exists(config_path):
-        raise ValueError("Config file does not exist: {}".format(config_path))
+        if not os.path.exists(config_path):
+            raise ValueError(
+                "Config file does not exist: {}".format(config_path))
 
-    # TODO(ekl) validate schema?
-    config = yaml.safe_load(open(config_path).read())
-    base_dir = os.path.abspath(os.path.dirname(config_path))
+        # TODO(ekl) validate schema?
+        with open(config_path) as f:
+            config = yaml.safe_load(f.read())
+        base_dir = os.path.abspath(os.path.dirname(config_path))
+    else:
+        raise TypeError("package_def must be str or dict.")
+
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
