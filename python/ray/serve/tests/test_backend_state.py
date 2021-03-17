@@ -62,7 +62,7 @@ def mock_replica_factory(mock_replicas):
         def resource_requirements(
                 self) -> Tuple[Dict[str, float], Dict[str, float]]:
             assert self.started
-            return {"AVAILABLE_RESOURCE": 1.0}, {"REQUIRED_RESOURCE": 1.0}
+            return {"REQUIRED_RESOURCE": 1.0}, {"AVAILABLE_RESOURCE": 1.0}
 
         def graceful_stop(self) -> None:
             assert self.started
