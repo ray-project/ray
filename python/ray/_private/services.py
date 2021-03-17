@@ -1338,7 +1338,6 @@ def start_raylet(redis_address,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
-                 head_node=False,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0):
@@ -1653,7 +1652,7 @@ def determine_plasma_store_config(object_store_memory,
     values will be preserved.
 
     Args:
-        object_store_memory (int): The objec store memory to use.
+        object_store_memory (int): The object store memory to use.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
 
