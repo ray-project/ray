@@ -298,7 +298,7 @@ public final class Ray extends RayCall {
    * for the resource to be updated and rescheduled.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
+   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.
    */
@@ -323,7 +323,7 @@ public final class Ray extends RayCall {
    * Get a placement group by placement group Id.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#getPlacementGroup(PlacementGroupId)} instead.
+   *     PlacementGroups#getPlacementGroup(PlacementGroupId)} instead.
    * @param id placement group id.
    * @return The placement group.
    */
@@ -336,7 +336,7 @@ public final class Ray extends RayCall {
    * Get a placement group by placement group name from current job.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#getPlacementGroup(String)} instead.
+   *     PlacementGroups#getPlacementGroup(String)} instead.
    * @param name The placement group name.
    * @return The placement group.
    */
@@ -349,7 +349,7 @@ public final class Ray extends RayCall {
    * Get a placement group by placement group name from all jobs.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#getGlobalPlacementGroup(String)} instead.
+   *     PlacementGroups#getGlobalPlacementGroup(String)} instead.
    * @param name The placement group name.
    * @return The placement group.
    */
@@ -362,7 +362,7 @@ public final class Ray extends RayCall {
    * Get all placement groups in this cluster.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#getAllPlacementGroups()} instead.
+   *     PlacementGroups#getAllPlacementGroups()} instead.
    * @return All placement groups.
    */
   @Deprecated
@@ -374,7 +374,7 @@ public final class Ray extends RayCall {
    * Remove a placement group by id. Throw RayException if remove failed.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *    PlacementGroups#removePlacementGroup(PlacementGroupId)} instead.
+   *     PlacementGroups#removePlacementGroup(PlacementGroupId)} instead.
    * @param id Id of the placement group.
    */
   public static void removePlacementGroup(PlacementGroupId id) {

@@ -72,8 +72,10 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertTrue(firstPlacementGroup.wait(60));
     Assert.assertTrue(secondPlacementGroup.wait(60));
 
-    PlacementGroup firstPlacementGroupRes = PlacementGroups.getPlacementGroup((firstPlacementGroup).getId());
-    PlacementGroup secondPlacementGroupRes = PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup firstPlacementGroupRes =
+        PlacementGroups.getPlacementGroup((firstPlacementGroup).getId());
+    PlacementGroup secondPlacementGroupRes =
+        PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
 
     Assert.assertNotNull(firstPlacementGroupRes);
     Assert.assertNotNull(secondPlacementGroupRes);
@@ -114,7 +116,8 @@ public class PlacementGroupTest extends BaseTest {
 
     PlacementGroups.removePlacementGroup(secondPlacementGroup.getId());
 
-    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
+    PlacementGroup removedPlacementGroup =
+        PlacementGroups.getPlacementGroup((secondPlacementGroup).getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
     // Wait for placement group after it is removed.
