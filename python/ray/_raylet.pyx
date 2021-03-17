@@ -138,6 +138,23 @@ OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
 
+cdef int check_status(const CRayStatus& status) nogil except -1:
+    if status.ok():
+        return 0
+
+    with gil:
+        message = status.message().decode()
+
+    if status.IsObjectStoreFull():
+        raise ObjectStoreFullError(message)
+    elif status.IsInterrupted():
+        raise KeyboardInterrupt()
+    elif status.IsTimedOut():
+        raise GetTimeoutError(message)
+    elif status.IsNotFound():
+        raise ValueError(message)
+    else:
+        raise RaySystemError(message)
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
