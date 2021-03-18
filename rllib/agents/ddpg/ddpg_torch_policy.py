@@ -224,16 +224,14 @@ class ComputeTDErrorMixin:
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
             input_dict = self._lazy_tensor_dict(
-                SampleBatch(
-                    {
-                        SampleBatch.CUR_OBS: obs_t,
-                        SampleBatch.ACTIONS: act_t,
-                        SampleBatch.REWARDS: rew_t,
-                        SampleBatch.NEXT_OBS: obs_tp1,
-                        SampleBatch.DONES: done_mask,
-                        PRIO_WEIGHTS: importance_weights,
-                    },
-                    _dont_check_lens=True))
+                SampleBatch({
+                    SampleBatch.CUR_OBS: obs_t,
+                    SampleBatch.ACTIONS: act_t,
+                    SampleBatch.REWARDS: rew_t,
+                    SampleBatch.NEXT_OBS: obs_tp1,
+                    SampleBatch.DONES: done_mask,
+                    PRIO_WEIGHTS: importance_weights,
+                }))
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
             loss_fn(self, self.model, None, input_dict)

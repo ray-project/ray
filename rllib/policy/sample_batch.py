@@ -634,7 +634,7 @@ class SampleBatch(dict):
                     input_dict[view_col] = self[data_col][
                         index:index + 1 if index != -1 else None]
 
-        return SampleBatch(input_dict, _seq_lens=[1])
+        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @PublicAPI

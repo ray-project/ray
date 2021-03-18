@@ -340,12 +340,34 @@ class TorchPolicy(Policy):
 
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
-                dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    policy=self,
-                    model=self.model,
-                    obs_batch=input_dict[SampleBatch.CUR_OBS],
-                    explore=False,
-                    is_training=False)
+
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                try:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=input_dict,
+                            state_batches=state_batches,
+                            seq_lens=seq_lens,
+                            explore=False,
+                            is_training=False)
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, _ = \
+                            self.action_distribution_fn(
+                                policy=self,
+                                model=self.model,
+                                obs_batch=input_dict[SampleBatch.CUR_OBS],
+                                explore=False,
+                                is_training=False)
+                    else:
+                        raise e
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
