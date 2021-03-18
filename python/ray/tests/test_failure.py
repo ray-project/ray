@@ -1246,9 +1246,11 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
 
     ray.state.state._check_connected()
     if node_failure:
-        wait_for_condition(lambda: len(ray.state.state.dead_workers()) == 1)
+        wait_for_condition(
+            lambda: len(ray.state.state.dead_workers()) == 1, timeout=30)
     else:
-        wait_for_condition(lambda: len(ray.state.state.dead_workers()) == 2)
+        wait_for_condition(
+            lambda: len(ray.state.state.dead_workers()) == 2, timeout=30)
 
 
 @pytest.mark.parametrize(
