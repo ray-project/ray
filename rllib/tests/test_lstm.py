@@ -105,7 +105,7 @@ class TestLSTMUtils(unittest.TestCase):
 
 class TestRNNSequencing(unittest.TestCase):
     def setUp(self) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     def tearDown(self) -> None:
         ray.shutdown()
