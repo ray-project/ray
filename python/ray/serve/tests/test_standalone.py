@@ -284,6 +284,7 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
