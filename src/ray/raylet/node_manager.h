@@ -94,12 +94,15 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
-  // The time between record metrics in milliseconds, or 0 to disable.
+  /// The time between record metrics in milliseconds, or 0 to disable.
   uint64_t record_metrics_period_ms;
-  // The number if max io workers.
+  /// The number if max io workers.
   int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
+  /// The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  /// The maximum number of in-flight restoration requests received by a node before a
+  /// warning is logged.
+  int64_t max_in_flight_remote_restoration_requests;
 };
 
 class HeartbeatSender {
@@ -681,6 +684,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map from node ids to addresses of the remote node managers.
   absl::flat_hash_map<NodeID, std::pair<std::string, int32_t>>
       remote_node_manager_addresses_;
+
+  /// Number of currently in-flight spilled object remote restoration requests; used
+  /// to log a warning when this gets too high.
+  int64_t num_in_flight_remote_restoration_requests_ = 0;
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;

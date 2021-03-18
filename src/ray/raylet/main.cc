@@ -194,6 +194,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.session_dir = session_dir;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
         node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
+        node_manager_config.max_in_flight_remote_restoration_requests =
+            RayConfig::instance().max_in_flight_remote_restoration_requests();
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;

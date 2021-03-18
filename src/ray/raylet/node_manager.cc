@@ -550,9 +550,18 @@ void NodeManager::HandleRestoreSpilledObject(
   RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
                  << " spilled_node_id: " << self_node_id_
                  << " object url: " << object_url;
+  num_in_flight_remote_restoration_requests_++;
+  if (num_in_flight_remote_restoration_requests_ >
+      initial_config_.max_in_flight_remote_restoration_requests) {
+    RAY_LOG(WARNING) << num_in_flight_remote_restoration_requests_
+                     << " spilled object restoration requests in flight, which is over "
+                        "the configured soft maximum of "
+                     << initial_config_.max_in_flight_remote_restoration_requests;
+  }
   local_object_manager_.AsyncRestoreSpilledObject(
       object_id, object_url, spilled_node_id,
-      [send_reply_callback](const ray::Status &status) {
+      [this, send_reply_callback](const ray::Status &status) {
+        num_in_flight_remote_restoration_requests_--;
         send_reply_callback(status, nullptr, nullptr);
       });
 }

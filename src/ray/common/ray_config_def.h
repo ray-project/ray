@@ -357,6 +357,10 @@ RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 /// This is configured based on object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
+/// The maximum number of in-flight restoration requests received by a node before a
+/// warning is logged.
+RAY_CONFIG(int64_t, max_in_flight_remote_restoration_requests, 10000)
+
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
 /// dependency locality when choosing a worker for leasing.
