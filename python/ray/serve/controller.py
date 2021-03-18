@@ -263,9 +263,22 @@ class ServeController:
             goal_id = self.backend_state.create_backend(
                 name, backend_config, replica_config, version)
 
-            self.endpoint_state.create_endpoint(name, f"/{name}",
-                                                ["GET", "POST"],
-                                                TrafficPolicy({
-                                                    name: 1.0
-                                                }))
+            route = f"/{name}"
+            methods = ["GET", "POST"]
+            if replica_config.is_asgi_app:
+                route += "/{wildcard:path}"
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+                methods = [
+                    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT",
+                    "OPTIONS", "TRACE", "PATCH"
+                ]
+
+            self.endpoint_state.create_endpoint(
+                name,
+                route,
+                methods,
+                TrafficPolicy({
+                    name: 1.0
+                }),
+            )
             return goal_id

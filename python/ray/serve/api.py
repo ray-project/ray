@@ -14,9 +14,9 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
 from ray.serve.controller import ServeController, BackendTag, ReplicaTag
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger,
-                             get_current_node_resource_key)
+from ray.serve.utils import (
+    block_until_http_ready, format_actor_name, get_random_letters, logger,
+    get_current_node_resource_key, register_custom_serializers)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
                               HTTPOptions)
@@ -461,7 +461,9 @@ class Client:
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+            is_blocking=replica_config.is_blocking,
+            is_asgi_app=replica_config.is_asgi_app,
+        )
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -653,6 +655,8 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
+    register_custom_serializers()
+
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
@@ -718,6 +722,8 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
+
+    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -1008,3 +1014,21 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
+
+
+from fastapi import FastAPI, APIRouter
+from typing import Union
+from functools import wraps
+
+
+def deployment(app: Union[FastAPI, APIRouter]):
+    def decorator(f):
+        f._serve_asgi_app = app
+
+        @wraps(f)
+        def inner(*args, **kwargs):
+            return f(*args, **kwargs)
+
+        return inner
+
+    return decorator

@@ -365,3 +365,37 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def register_custom_serializers():
+    import starlette.datastructures
+    import pydantic.fields
+
+    assert ray.is_initialized(
+    ), "This functional must be ran with Ray initialized."
+
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            pydantic.fields.ModelField,
+            serializer=lambda o: {
+                "name": o.name,
+                "type_": o.type_,
+                "class_validators": o.class_validators,
+                "model_config":o.model_config,
+                "default": o.default,
+                "default_factory": o.default_factory,
+                "required": o.required,
+                "alias": o.alias,
+                "field_info": o.field_info,
+            },
+            deserializer=lambda kwargs:pydantic.fields.ModelField(**kwargs),
+        )
+    )
+
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            starlette.datastructures.State,
+            serializer=lambda s: s._state,
+            deserializer=lambda s: starlette.datastructures.State(s),
+        )
+    )

@@ -4,10 +4,11 @@ import traceback
 import inspect
 from collections.abc import Iterable
 from itertools import groupby
-from typing import Union, List, Any, Callable, Type
+from typing import Dict, Optional, Union, List, Any, Callable, Type
 import time
 
 import starlette.responses
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
@@ -256,7 +257,39 @@ class RayServeReplica:
 
         start = time.time()
         try:
-            result = await method_to_call(arg)
+            if self.config.internal_metadata.is_asgi_app:
+                app = self.callable._serve_asgi_app
+                req: Request = arg
+
+                class MockSender:
+                    def __init__(self) -> None:
+                        self.status_code: Optional[int] = 200
+                        self.header: Dict[str, str] = {}
+                        self.buffer: List[bytes] = []
+
+                    async def __call__(self, message):
+                        if (message["type"] == "http.response.body"):
+                            self.buffer.append(message["body"])
+                        if (message["type"] == "http.response.start"):
+                            self.status_code = message["status"]
+                            for key, value in message["headers"]:
+                                self.header[key.decode()] = value.decode()
+
+                    def build_starlette_response(
+                            self) -> starlette.responses.Response:
+                        return starlette.responses.Response(
+                            b''.join(self.buffer),
+                            status_code=self.status_code,
+                            headers=dict(self.header))
+
+                sender = MockSender()
+                path_params = req.scope.pop("path_params")
+                matched_path = path_params["wildcard"]
+                req.scope["path"] = f"/{matched_path}"
+                await app(req.scope, req._receive, sender)
+                result = sender.build_starlette_response()
+            else:
+                result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
