@@ -34,7 +34,7 @@ class DataClient:
         self.data_thread = self._start_datathread()
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
-        self.lock = thread.RLock()
+        self.lock = threading.RLock()
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
