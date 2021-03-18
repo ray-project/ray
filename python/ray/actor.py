@@ -37,10 +37,7 @@ from typing import (
     Type,
     Union,
 )
-import wrapt
-
-from backend.server.telemetry import dict_propagator
-from backend.server.telemetry.util import use_context
+import ray.dict_propagator as dict_propagator
 
 _nameable = Union[str, Callable[..., Any]]
 
@@ -103,109 +100,6 @@ def _span_consumer_name(class_: _nameable, method: _nameable) -> str:
     name = args["ray.function"]
 
     return f"{name} ray.remote_worker"
-
-
-def make_tracing_actor(
-        wrapped: Callable[..., Any],
-        instance: Any,
-        args: Sequence[Any],
-        kwargs: MutableMapping[Any, Any],
-) -> Any:
-    def span_wrapper(method: Callable[..., Any]) -> Any:
-        def _resume_span(
-                self: Any,
-                *_args: Any,
-                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-                **_kwargs: Any,
-        ) -> Any:
-            """
-                Wrap whatever the user's function is with with a function that will
-                extract the trace context
-                """
-            tracer: trace.Tracer = trace.get_tracer(__name__)
-
-            # Set a new context if given a _ray_trace_ctx, or default to current_context
-            # Retrieves the context from the _ray_trace_ctx dictionary we injected
-            if _ray_trace_ctx:
-                with use_context(dict_propagator.extract(
-                        _ray_trace_ctx)), tracer.start_as_current_span(
-                            _span_consumer_name(self._wrapped, method),
-                            kind=trace.SpanKind.CONSUMER,
-                            attributes=_hydrate_span_args(
-                                self._wrapped, method),
-                        ):
-                    return method(self, *_args, **_kwargs)
-            else:
-                with tracer.start_as_current_span(
-                        _span_consumer_name(self._wrapped, method),
-                        kind=trace.SpanKind.CONSUMER,
-                        attributes=_hydrate_span_args(self._wrapped, method),
-                ):
-                    return method(self, *_args, **_kwargs)
-
-        return _resume_span
-
-    def async_span_wrapper(method: Callable[..., Any]) -> Any:
-        async def _resume_span(
-                self: Any,
-                *_args: Any,
-                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-                **_kwargs: Any,
-        ) -> Any:
-            """
-                Wrap whatever the user's function is with with a function that will
-                extract the trace context
-                """
-            tracer = trace.get_tracer(__name__)
-
-            # Set a new context if given a _ray_trace_ctx, or default to current_context
-            # Retrieves the context from the _ray_trace_ctx dictionary we injected
-            if _ray_trace_ctx:
-                with use_context(dict_propagator.extract(
-                        _ray_trace_ctx)), tracer.start_as_current_span(
-                            _span_consumer_name(self._wrapped.__name__,
-                                                method.__name__),
-                            kind=trace.SpanKind.CONSUMER,
-                            attributes=_hydrate_span_args(
-                                self._wrapped.__name__, method.__name__),
-                        ):
-                    return await method(self, *_args, **_kwargs)
-            else:
-                with tracer.start_as_current_span(
-                        _span_consumer_name(self._wrapped.__name__,
-                                            method.__name__),
-                        kind=trace.SpanKind.CONSUMER,
-                        attributes=_hydrate_span_args(self._wrapped.__name__,
-                                                      method.__name__),
-                ):
-                    return await method(self, *_args, **_kwargs)
-
-        return _resume_span
-
-    def _make_actor(_cls: Type[Any], *_args: Any, **_kwargs: Any) -> Any:
-        class TracingWrapper(
-                _cls
-        ):  # type: ignore # I can't figure out how to annotate _cls appropriately to make mypy happy
-            _wrapped = _cls
-
-        # This is here to make it so that when Ray's internals inspect
-        # TracingWrapper they capture the right `class_name`.
-        TracingWrapper.__name__ = _cls.__name__
-
-        methods = inspect.getmembers(TracingWrapper, is_function_or_method)
-        for name, method in methods:
-            if inspect.iscoroutinefunction(method):
-                # If the method was async, convert out sync wrapper into async
-                wrapped_method = async_span_wrapper(method)
-            else:
-                wrapped_method = span_wrapper(method)
-
-            setattr(TracingWrapper, name, wrapped_method)
-
-        return wrapped(TracingWrapper, *_args, **_kwargs)
-
-    return _make_actor(*args, **kwargs)
-
 
 @client_mode_hook
 def method(*args, **kwargs):
@@ -329,20 +223,17 @@ class ActorMethod:
 
         # Add tracing here
         # instance is an argument?
-        class_name = instance._wrapped
         method_name = "__init__"
-        assert "_ray_trace_ctx" not in _kwargs
+        assert "_ray_trace_ctx" not in kwargs
 
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 name=_span_producer_name(class_name, method_name),
                 kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(class_name, method_name),
+                attributes=_hydrate_span_args(),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
             kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
-
-            result = wrapped(args, kwargs, *_args, **_kwargs)
 
             span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
 
@@ -791,6 +682,20 @@ class ActorClass:
         worker = ray.worker.global_worker
         worker.check_connected()
 
+        #TODO: 
+        # class_name = instance._wrapped
+        method_name = "__init__"
+        tracer = trace.get_tracer(__name__)
+
+        span = tracer.start_as_current_span(
+                name=_span_producer_name(class_name, method_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(class_name, method_name),
+            )
+        kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+        # span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
+
+
         if name is not None:
             if not isinstance(name, str):
                 raise TypeError(
@@ -1220,6 +1125,17 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries):
+    #TODO: what is the point of TracingWrapper?
+    methods = inspect.getmembers(TracingWrapper, is_function_or_method)
+    for name, method in methods:
+                if inspect.iscoroutinefunction(method):
+                    # If the method was async, convert out sync wrapper into async
+                    wrapped_method = async_span_wrapper(method)
+                else:
+                    wrapped_method = span_wrapper(method)
+
+                setattr(TracingWrapper, name, wrapped_method)
+    
     Class = modify_class(cls)
 
     if max_restarts is None:

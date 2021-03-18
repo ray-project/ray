@@ -17,9 +17,10 @@ import ray._private.runtime_env as runtime_support
 from opentelemetry import trace
 from opentelemetry.util.types import Attributes
 from opentelemetry.context.context import Context
+import os
 from typing import Any, Callable, Dict, List, MutableMapping, Optional
 from ray.runtime_context import get_runtime_context
-import ray.dict_propagator
+import ray.dict_propagator as dict_propagator
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
@@ -80,13 +81,13 @@ def _resume_trace(
         **kwargs: MutableMapping[Any, Any],
 ) -> Any:
     tracer = trace.get_tracer(__name__)
-    tracer.start_as_current_span(
+    with tracer.start_as_current_span(
         _span_consumer_name(function),
         kind=trace.SpanKind.CONSUMER,
         attributes=_hydrate_span_args(function),
         context=dict_propagator.extract(_ray_trace_ctx) if _ray_trace_ctx else Context(),
-    )
-    return function(*args, **kwargs)
+    ):
+        return function
 
 
 class RemoteFunction:
