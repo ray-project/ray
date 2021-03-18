@@ -31,9 +31,25 @@ class GcsResourceReportPoller {
    */
 
  public:
-  GcsResourceReportPoller(uint64_t max_concurrent_pulls,
-                          std::shared_ptr<GcsResourceManager> gcs_resource_manager,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsResourceReportPoller(
+      std::shared_ptr<GcsResourceManager> gcs_resource_manager,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      std::function<void(const rpc::ResourcesData &)> handle_resource_report,
+      /* Default values should only be changed for testing. */
+      std::function<int64_t(void)> get_current_time_milli =
+          []() { return absl::GetCurrentTimeNanos() / (1000 * 1000); },
+      std::function<void(
+          const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
+          request_report =
+              [](const rpc::Address &address,
+                 std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
+                 std::function<void(const Status &,
+                                    const rpc::RequestResourceReportReply &)>
+                     callback) {
+                auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
+                raylet_client->RequestResourceReport(callback);
+              });
 
   ~GcsResourceReportPoller();
 
@@ -68,6 +84,16 @@ class GcsResourceReportPoller {
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  // Handle receiving a resource report (e.g. update the resource manager).
+  std::function<void(const rpc::ResourcesData &)> handle_resource_report_;
+
+  // Return the current time in miliseconds
+  std::function<int64_t(void)> get_current_time_milli_;
+  // Send the `RequestResourceReport` RPC.
+  std::function<void(
+      const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
+      request_report_;
   // The minimum delay between two pull requests to the same thread.
   int64_t poll_period_ms_;
 
@@ -76,7 +102,10 @@ class GcsResourceReportPoller {
     rpc::Address address;
     int64_t last_pull_time;
     int64_t next_pull_time;
-    /* std::unique_ptr<boost::asio::deadline_timer> next_pull_timer; */
+
+    ~PullState() {
+      RAY_LOG(ERROR) << "Destroying state: " << node_id;
+    }
   };
 
   // A global lock for internal operations. This lock is shared between the main thread
@@ -93,11 +122,13 @@ class GcsResourceReportPoller {
   /// pulls. This method is thread safe.
   void TryPullResourceReport() LOCKS_EXCLUDED(mutex_);
   /// Pull resource report without validation.
-  void PullResourceReport(const std::shared_ptr<PullState> &state);
+  void PullResourceReport(const std::shared_ptr<PullState> state);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
   void NodeResourceReportReceived(const std::shared_ptr<PullState> &state)
       LOCKS_EXCLUDED(mutex_);
+
+  friend class GcsResourceReportPollerTest;
 };
 
 }  // namespace gcs
