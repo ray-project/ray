@@ -226,9 +226,10 @@ class LocalObjectManager {
       objects_pending_spill_;
 
   /// Objects that were spilled on this node but that are being restored.
-  /// The field is used to dedup the same restore request while restoration is in
-  /// progress.
-  absl::flat_hash_set<ObjectID> objects_pending_restore_;
+  /// Each callback corresponds to a node wishing to pull the object once it is
+  /// restored.
+  absl::flat_hash_map<ObjectID, std::vector<std::function<void(const ray::Status &)>>>
+      objects_pending_restore_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.

@@ -428,27 +428,26 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   const auto url = urls[0];
   int num_times_fired = 0;
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
-  // Subsequent calls should be deduped, so that only one callback should be fired.
+  // All calls should register their callbacks.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(
-        object_id, url, manager_node_id_, [&](const Status &status) {
-          if (num_times_fired > 0) {
-            FAIL() << "Callbacks for duplicate restoration requests shouldn't be invoked";
-          }
-          ASSERT_TRUE(status.ok());
-          num_times_fired++;
-        });
+    manager.AsyncRestoreSpilledObject(object_id, url, manager_node_id_,
+                                      [&](const Status &status) {
+                                        ASSERT_TRUE(status.ok());
+                                        num_times_fired++;
+                                      });
   }
   ASSERT_EQ(num_times_fired, 0);
 
-  // When restore workers are pushed, the request should be dedupped.
-  for (int i = 0; i < 10; i++) {
-    worker_pool.RestoreWorkerPushed();
+  // Only one restore should have been started.
+  ASSERT_TRUE(worker_pool.RestoreWorkerPushed());
+  ASSERT_EQ(num_times_fired, 0);
+  for (int i = 1; i < 10; i++) {
+    ASSERT_FALSE(worker_pool.RestoreWorkerPushed());
     ASSERT_EQ(num_times_fired, 0);
   }
   worker_pool.io_worker_client->ReplyRestoreObjects(10);
-  // The restore should've been invoked.
-  ASSERT_EQ(num_times_fired, 1);
+  // The restore should've invoked all registered callbacks.
+  ASSERT_EQ(num_times_fired, 10);
 
   // If the object wasn't spilled on the current node, it should request restoration to
   // remote nodes.
@@ -456,6 +455,8 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   const auto remote_object_url = BuildURL("remote_url");
   NodeID remote_node_id = NodeID::FromRandom();
   ASSERT_FALSE(ReplyRemoteRestoreObjects(remote_node_id, remote_object_id));
+  // Reset the callback counter.
+  num_times_fired = 0;
   manager.AsyncRestoreSpilledObject(remote_object_id, remote_object_url, remote_node_id,
                                     [&](const Status &status) {
                                       ASSERT_TRUE(status.ok());
@@ -469,7 +470,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                 return pair.first == remote_object_id;
               }) > 0);
   ASSERT_TRUE(ReplyRemoteRestoreObjects(remote_node_id, remote_object_id));
-  ASSERT_EQ(num_times_fired, 2);
+  ASSERT_EQ(num_times_fired, 1);
   ASSERT_FALSE(ReplyRemoteRestoreObjects(remote_node_id, remote_object_id));
 }
 

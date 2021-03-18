@@ -345,13 +345,6 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
     std::function<void(const ray::Status &)> callback) {
-  if (objects_pending_restore_.count(object_id) > 0) {
-    // If the same object is restoring, we dedup here. We don't invoke the callback in
-    // this case, since the callback for this object's restoration will be invoked by
-    // the pending restore.
-    return;
-  }
-
   if (is_external_storage_type_fs_ && node_id != self_node_id_) {
     RAY_CHECK(!node_id.IsNil());
     // If we know where this object was spilled, and the current node is not that one,
@@ -371,10 +364,19 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     return;
   }
 
-  RAY_CHECK(objects_pending_restore_.emplace(object_id).second)
-      << "Object dedupe wasn't done properly. Please report if you see this issue.";
-  io_worker_pool_.PopRestoreWorker([this, object_id, object_url,
-                                    callback = std::move(callback)](
+  auto it = objects_pending_restore_.find(object_id);
+  if (it != objects_pending_restore_.end()) {
+    // Restoration is already in progress, join that restoration by adding this request
+    // to the set of callbacks for that restoration.
+    it->second.push_back(callback);
+    return;
+  }
+  // Restoration is not yet in progress, so we proceed with starting a restoration.
+  it = objects_pending_restore_
+           .emplace(typename decltype(objects_pending_restore_)::value_type(object_id,
+                                                                            {callback}))
+           .first;
+  io_worker_pool_.PopRestoreWorker([this, object_id, object_url](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request for object " << object_id
@@ -384,11 +386,10 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     request.add_spilled_objects_url(std::move(object_url));
     request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
-        request, [this, start_time, object_id, callback = std::move(callback), io_worker,
-                  object_url](const ray::Status &status,
-                              const rpc::RestoreSpilledObjectsReply &r) {
+        request,
+        [this, start_time, object_id, io_worker, object_url](
+            const ray::Status &status, const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushRestoreWorker(io_worker);
-          objects_pending_restore_.erase(object_id);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request for object "
                            << object_id << " to IO worker " << io_worker->WorkerId()
@@ -401,7 +402,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                            << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
             restored_bytes_total_ += restored_bytes;
             restored_objects_total_ += 1;
-            // Adjust throughput timing to account for concurrent restore operations.
+            // Adjust throughput timing to account for concurrent restore
+            // operations.
             restore_time_total_s_ +=
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
             if (now - last_restore_log_ns_ > 1e9) {
@@ -416,7 +418,12 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             }
             last_restore_finish_ns_ = now;
           }
-          callback(status);
+          auto it = objects_pending_restore_.find(object_id);
+          RAY_CHECK(it != objects_pending_restore_.end());
+          for (const auto &callback : it->second) {
+            callback(status);
+          }
+          objects_pending_restore_.erase(it);
         });
   });
 }
