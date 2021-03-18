@@ -66,7 +66,8 @@ class ClientCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback, std::string call_name)
-      : callback_(std::move(callback)), call_name_(std::move(call_name)) {}
+      : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
+        call_name_(std::move(call_name)) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
