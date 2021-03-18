@@ -137,7 +137,6 @@ def summarize_episodes(
         for k, v in episode.hist_data.items():
             hist_stats[k] += v
         for k, v in episode.media.items():
-            print(f'Adding episode media {k}:{v}')
             episode_media[k].append(v)
     if episode_rewards:
         min_reward = min(episode_rewards)
