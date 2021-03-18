@@ -187,11 +187,9 @@ void LocalObjectManager::SpillObjectsInternal(
     // We should not spill an object that we are not the primary copy for, or
     // objects that are already being spilled.
     if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
-      if (callback) {
-        callback(
-            Status::Invalid("Requested spill for object that is not marked as "
-                            "the primary copy."));
-      }
+      callback(
+          Status::Invalid("Requested spill for object that is not marked as "
+                          "the primary copy."));
       return;
     }
 
@@ -208,9 +206,7 @@ void LocalObjectManager::SpillObjectsInternal(
   }
 
   if (objects_to_spill.empty()) {
-    if (callback) {
-      callback(Status::Invalid("All objects are already being spilled."));
-    }
+    callback(Status::Invalid("All objects are already being spilled."));
     return;
   }
   io_worker_pool_.PopSpillWorker(
@@ -247,9 +243,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 RAY_LOG(ERROR) << "Failed to send object spilling request for objects "
                                << object_id_stream.str() << " to IO worker "
                                << io_worker->WorkerId() << ": " << status.ToString();
-                if (callback) {
-                  callback(status);
-                }
+                callback(status);
               } else {
                 AddSpilledUrls(objects_to_spill, r, callback);
               }
@@ -291,7 +285,7 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   }
 
   (*num_remaining)--;
-  if (*num_remaining == 0 && callback) {
+  if (*num_remaining == 0) {
     callback(status);
   }
 }
@@ -373,9 +367,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                  << object_url;
   if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
     RAY_CHECK(!node_id.IsNil());
-    if (callback) {
-      callback(Status::PendingRequiredData("Object hasn't been spilled yet."));
-    }
+    callback(Status::PendingRequiredData("Object hasn't been spilled yet."));
     return;
   }
 
@@ -424,9 +416,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             }
             last_restore_finish_ns_ = now;
           }
-          if (callback) {
-            callback(status);
-          }
+          callback(status);
         });
   });
 }

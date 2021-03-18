@@ -2225,10 +2225,8 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
   if (!remote_node_manager_addresses_.contains(node_id)) {
     // It is possible the new node information is not received at this point. The caller
     // should retry at a later time.
-    if (callback) {
-      callback(ray::Status::PendingRequiredData(
-          "Waiting to get node manager address of remote node."));
-    }
+    callback(ray::Status::PendingRequiredData(
+        "Waiting to get node manager address of remote node."));
     return;
   }
   const auto &entry = remote_node_manager_addresses_.find(node_id);
@@ -2240,9 +2238,7 @@ void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
       object_id, spilled_url, node_id,
       [callback = std::move(callback)](const ray::Status &status,
                                        const rpc::RestoreSpilledObjectReply &r) {
-        if (callback) {
-          callback(status);
-        }
+        callback(status);
       });
 }
 
