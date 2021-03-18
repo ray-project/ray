@@ -17,6 +17,8 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
+    STEPS_TRAINED_COUNTER
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
     SampleBatch
@@ -170,10 +172,10 @@ class TestRolloutWorker(unittest.TestCase):
             policy = agent.get_policy()
             for i in range(3):
                 result = agent.train()
-                print("num_steps_trained={}".format(
-                    result["info"]["num_steps_trained"]))
-                print("num_steps_sampled={}".format(
-                    result["info"]["num_steps_sampled"]))
+                print("{}={}".format(STEPS_TRAINED_COUNTER,
+                                     result["info"][STEPS_TRAINED_COUNTER]))
+                print("{}={}".format(STEPS_SAMPLED_COUNTER,
+                                     result["info"][STEPS_SAMPLED_COUNTER]))
                 global_timesteps = policy.global_timestep
                 print("global_timesteps={}".format(global_timesteps))
                 expected_lr = \
