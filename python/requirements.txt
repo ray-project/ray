@@ -73,5 +73,6 @@ testfixtures
 werkzeug
 xlrd
 starlette
+fastapi
 smart_open[s3]
 tqdm
