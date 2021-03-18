@@ -105,8 +105,8 @@ class TestMARWIL(unittest.TestCase):
                 batch, 0.0, config["gamma"], 1.0, False, False)["advantages"]
             if fw == "torch":
                 cummulative_rewards = torch.tensor(cummulative_rewards)
-            tensor_batch = policy._lazy_tensor_dict(batch)
-            model_out, _ = model.from_batch(tensor_batch)
+            batch = policy._lazy_tensor_dict(batch)
+            model_out, _ = model.from_batch(batch)
             vf_estimates = model.value_function()
             adv = cummulative_rewards - vf_estimates
             if fw == "torch":
@@ -115,8 +115,7 @@ class TestMARWIL(unittest.TestCase):
             c_2 = 100.0 + 1e-8 * (adv_squared - 100.0)
             c = np.sqrt(c_2)
             exp_advs = np.exp(config["beta"] * (adv / c))
-            logp = policy.dist_class(model_out,
-                                     model).logp(tensor_batch["actions"])
+            logp = policy.dist_class(model_out, model).logp(batch["actions"])
             if fw == "torch":
                 logp = logp.detach().cpu().numpy()
             # Calculate all expected loss components.
@@ -127,6 +126,7 @@ class TestMARWIL(unittest.TestCase):
 
             # Calculate the algorithm's loss (to check against our own
             # calculation above).
+            batch.set_get_interceptor(None)
             postprocessed_batch = policy.postprocess_trajectory(batch)
             loss_func = marwil.marwil_tf_policy.marwil_loss if fw != "torch" \
                 else marwil.marwil_torch_policy.marwil_loss
