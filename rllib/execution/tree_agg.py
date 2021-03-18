@@ -3,15 +3,16 @@ import platform
 from typing import List, Dict, Any
 
 import ray
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.typing import SampleBatchType, ModelWeights
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
     from_actors, LocalIterator
-from ray.rllib.utils.typing import SampleBatchType, ModelWeights
-from ray.rllib.evaluation.worker_set import WorkerSet
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,11 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     def record_steps_sampled(batch):
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
-        metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.agent_steps()
+        if isinstance(batch, MultiAgentBatch):
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
+                batch.agent_steps()
+        else:
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
     return train_batches.gather_async().for_each(record_steps_sampled)
