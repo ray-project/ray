@@ -14,6 +14,7 @@ import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler._private import constants
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
@@ -438,6 +439,10 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
+        failure_lines.append(line)
+    failure_lines = failure_lines[:
+                                  -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:
+                                  -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

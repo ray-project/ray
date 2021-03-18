@@ -30,6 +30,10 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.server_ip_ = address[0];
   options.server_port_ = std::stoi(address[1]);
   options.password_ = redis_password;
+  // Only synchronous connection is needed.
+  options.enable_sync_conn_ = true;
+  options.enable_async_conn_ = false;
+  options.enable_subscribe_conn_ = false;
   gcs_client_.reset(new ServiceBasedGcsClient(options));
 
   io_service_.reset(new instrumented_io_context());

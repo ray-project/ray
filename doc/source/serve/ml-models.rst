@@ -32,8 +32,8 @@ You can also have Ray Serve batch requests for performance, which is especially 
       async def __call__(self, request):
           return await self.handle_batch(request)
 
-  client.create_backend("counter1", BatchingExample)
-  client.create_endpoint("counter1", backend="counter1", route="/increment")
+  serve.create_backend("counter1", BatchingExample)
+  serve.create_endpoint("counter1", backend="counter1", route="/increment")
 
 Please take a look at :ref:`Batching Tutorial<serve-batch-tutorial>` for a deep
 dive.

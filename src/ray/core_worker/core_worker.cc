@@ -422,6 +422,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Initialize gcs client.
+  // As asynchronous context of redis client is not used in this gcs client. We would not
+  // open connection for it by setting `enable_async_conn` as false.
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
+      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
+      options_.gcs_options.password_,
+      /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
+      /*enable_subscribe_conn=*/true);
   gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
@@ -679,38 +686,46 @@ void CoreWorker::Shutdown() {
   }
 }
 
-void CoreWorker::Disconnect() {
+void CoreWorker::Disconnect(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   if (connected_) {
     connected_ = false;
     if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+      RAY_IGNORE_EXPR(
+          local_raylet_client_->Disconnect(exit_type, creation_task_exception_pb_bytes));
     }
   }
 }
 
-void CoreWorker::Exit(bool intentional) {
-  RAY_LOG(INFO)
-      << "Exit signal " << (intentional ? "(intentional)" : "")
-      << " received, this process will exit after all outstanding tasks have finished";
+void CoreWorker::Exit(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  RAY_LOG(INFO) << "Exit signal received, this process will exit after all outstanding "
+                   "tasks have finished"
+                << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
-  auto shutdown = [this, intentional]() {
+  auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
     // event loop each time.
     task_execution_service_.post(
-        [this, intentional]() {
-          if (intentional) {
-            Disconnect();  // Notify the raylet this is an intentional exit.
+        [this, exit_type, creation_task_exception_pb_bytes]() {
+          if (exit_type == rpc::WorkerExitType::CREATION_TASK_ERROR ||
+              exit_type == rpc::WorkerExitType::INTENDED_EXIT) {
+            // Notify the raylet about this exit.
+            // Only CREATION_TASK_ERROR and INTENDED_EXIT needs to disconnect
+            // manually.
+            Disconnect(exit_type, creation_task_exception_pb_bytes);
           }
           Shutdown();
         },
         "CoreWorker.Shutdown");
   };
-
   // Callback to drain objects once all pending tasks have been drained.
   auto drain_references_callback = [this, shutdown]() {
     // Post to the event loop to avoid a deadlock between the TaskManager and
@@ -728,10 +743,10 @@ void CoreWorker::Exit(bool intentional) {
           if (not_actor_task) {
             // If we are a task, then we cannot hold any object references in the
             // heap. Therefore, any active object references are being held by other
-            // processes. Wait for these processes to release their references before
-            // we shutdown.
-            // NOTE(swang): This could still cause this worker process to stay alive
-            // forever if another process holds a reference forever.
+            // processes. Wait for these processes to release their references
+            // before we shutdown. NOTE(swang): This could still cause this worker
+            // process to stay alive forever if another process holds a reference
+            // forever.
             reference_counter_->DrainAndShutdown(shutdown);
           } else {
             // If we are an actor, then we may be holding object references in the
@@ -745,7 +760,6 @@ void CoreWorker::Exit(bool intentional) {
 
   task_manager_->DrainAndShutdown(drain_references_callback);
 }
-
 void CoreWorker::RunIOService() {
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -850,6 +864,7 @@ void CoreWorker::CheckForRayletFailure() {
 void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
 
+  // retry tasks
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -858,6 +873,10 @@ void CoreWorker::InternalHeartbeat() {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
     to_resubmit_.pop_front();
+  }
+  // check timeout tasks that are waiting for Death info
+  if (direct_actor_submitter_ != nullptr) {
+    direct_actor_submitter_->CheckTimeoutTasks();
   }
 }
 
@@ -1028,7 +1047,8 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   std::shared_ptr<Buffer> *data) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
-        "Creating an object with a pre-existing ObjectID is not supported in local mode");
+        "Creating an object with a pre-existing ObjectID is not supported in local "
+        "mode");
   } else {
     return plasma_store_provider_->Create(metadata, data_size, object_id, owner_address,
                                           data);
@@ -1668,8 +1688,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
                       override_environment_variables);
-  // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
-  // ignored in the actor because we should always follow the actor's option.
+  // NOTE: placement_group_capture_child_tasks and override_environment_variables will
+  // be ignored in the actor because we should always follow the actor's option.
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, new_cursor);
@@ -1964,10 +1984,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // worker ID for the current thread.
   CoreWorkerProcess::SetCurrentThreadWorkerId(GetWorkerID());
 
+  std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
+
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects);
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
+      creation_task_exception_pb_bytes);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
@@ -2025,10 +2048,16 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       resource_ids_.reset(new ResourceMappingType());
     }
   }
-  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
-
-  if (status.IsSystemExit()) {
-    Exit(status.IsIntentionalSystemExit());
+  RAY_LOG(INFO) << "Finished executing task " << task_spec.TaskId()
+                << ", status=" << status;
+  if (status.IsCreationTaskError()) {
+    Exit(rpc::WorkerExitType::CREATION_TASK_ERROR, creation_task_exception_pb_bytes);
+  } else if (status.IsIntentionalSystemExit()) {
+    Exit(rpc::WorkerExitType::INTENDED_EXIT, creation_task_exception_pb_bytes);
+  } else if (status.IsUnexpectedSystemExit()) {
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, creation_task_exception_pb_bytes);
+  } else if (!status.ok()) {
+    RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }
 
   return status;
@@ -2497,7 +2526,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // core dumps.
     _Exit(1);
   } else {
-    Exit(/*intentional=*/true);
+    Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }
 }
 
@@ -2659,7 +2688,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
     reply->set_success(false);
   } else {
     reply->set_success(true);
-    Exit(/*intentional=*/true);
+    Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
