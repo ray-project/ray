@@ -12,6 +12,7 @@ from typing import List
 from typing import Dict
 from typing import Optional
 from typing import Union
+from ray._private.client_mode_hook import client_mode_should_convert
 
 # TODO: Instead of just making the max message size large, the right thing to
 # do is to split up the bytes representation of serialized data into multiple
@@ -48,7 +49,12 @@ class ClientBaseRef:
         return hash(self.id)
 
     def __del__(self):
-        if ray.is_connected() and self.id is not None:
+        # NOTE: though this type of reference shouldn't end up on the server
+        # side, in unit test mode this can still happen. Hence we also guard
+        # with client_mode_should_convert() to avoid test flakiness:
+        # https://github.com/ray-project/ray/issues/14756
+        if ray.is_connected() and self.id is not None and \
+                client_mode_should_convert():
             ray.call_release(self.id)
 
 
@@ -212,7 +218,7 @@ class ClientActorHandle(ClientStub):
         self.actor_ref = actor_ref
 
     def __del__(self) -> None:
-        if ray.is_connected():
+        if ray.is_connected() and client_mode_should_convert():
             ray.call_release(self.actor_ref.id)
 
     @property
