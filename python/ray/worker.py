@@ -62,6 +62,7 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
+GENERAL_IO_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -1228,11 +1229,10 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        runtime_env.ensure_runtime_env_setup(
-            os.environ.get(
-                "RAY_RUNTIME_ENV_FILES",
-                worker.core_worker.get_job_config()
-                .runtime_env.working_dir_uri))
+        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        job_config = [job_config] if job_config else \
+            worker.core_worker.get_job_config().runtime_env.uris
+        runtime_env.ensure_runtime_env_setup(job_config)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
