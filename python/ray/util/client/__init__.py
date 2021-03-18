@@ -70,15 +70,9 @@ class RayAPIStub:
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
             return conn_info
-        except Exception as e:
+        except Exception:
             self.disconnect()
-            if logger.getEffectiveLevel() == logging.DEBUG:
-                raise e
-            else:
-                msg = str(e)
-                msg += ("Set the Ray logging level to DEBUG to see "
-                        "a full stack trace.")
-                raise type(e)(msg) from None
+            raise
 
     def _check_versions(self, conn_info: Dict[str, Any],
                         ignore_version: bool) -> None:
