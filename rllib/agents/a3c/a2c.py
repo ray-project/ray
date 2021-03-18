@@ -30,7 +30,8 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict) -> Optional[Type[Policy]]:
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 

@@ -65,7 +65,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return A3CTFPolicy
 
 
-def validate_config(config;: TrainerConfigDict) -> None:
+def validate_config(config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -76,7 +76,8 @@ def validate_config(config;: TrainerConfigDict) -> None:
         raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 

@@ -20,10 +20,11 @@ from ray.rllib.evaluation import MultiAgentEpisode
 torch, nn = try_import_torch()
 
 
-def add_advantages(policy: Policy,
-                   sample_batch: SampleBatch,
-                   other_agent_batches: Optional[Dict[PolicyID, SampleBatch]]=None,
-                   episode: Optional[MultiAgentEpisode]=None) -> SampleBatch:
+def add_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
 
     # Stub serving backward compatibility.
     deprecation_warning(
@@ -35,7 +36,9 @@ def add_advantages(policy: Policy,
                                         other_agent_batches, episode)
 
 
-def actor_critic_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch) -> TensorType:
+def actor_critic_loss(policy: Policy, model: ModelV2,
+                      dist_class: ActionDistribution,
+                      train_batch: SampleBatch) -> TensorType:
     logits, _ = model.from_batch(train_batch)
     values = model.value_function()
     dist = dist_class(logits, model)
@@ -55,7 +58,8 @@ def actor_critic_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribu
     return overall_err
 
 
-def loss_and_entropy_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+def loss_and_entropy_stats(policy: Policy,
+                           train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "policy_entropy": policy.entropy.item(),
         "policy_loss": policy.pi_err.item(),
@@ -63,12 +67,15 @@ def loss_and_entropy_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str
     }
 
 
-def model_value_predictions(policy: Policy, input_dict: Dict[str, TensorType], state_batches, model: ModelV2,
-                            action_dist; ActionDistribution) -> Dict[str, TensorType]:
+def model_value_predictions(
+        policy: Policy, input_dict: Dict[str, TensorType], state_batches,
+        model: ModelV2,
+        action_dist: ActionDistribution) -> Dict[str, TensorType]:
     return {SampleBatch.VF_PREDS: model.value_function()}
 
 
-def torch_optimizer(policy: Policy, config: TrainerConfigDict) -> LocalOptimizer:
+def torch_optimizer(policy: Policy,
+                    config: TrainerConfigDict) -> LocalOptimizer:
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 

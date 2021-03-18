@@ -1,5 +1,5 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
-from typing import Optional, Type
+from typing import Optional, Dict
 import gym
 
 import ray
@@ -22,10 +22,11 @@ from ray.rllib.evaluation import MultiAgentEpisode
 tf1, tf, tfv = try_import_tf()
 
 
-def postprocess_advantages(policy: Policy,
-                   sample_batch: SampleBatch,
-                   other_agent_batches: Optional[Dict[PolicyID, SampleBatch]]=None,
-                   episode: Optional[MultiAgentEpisode]=None) -> SampleBatch:
+def postprocess_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
 
     # Stub serving backward compatibility.
     deprecation_warning(
@@ -39,13 +40,13 @@ def postprocess_advantages(policy: Policy,
 
 class A3CLoss:
     def __init__(self,
-                 action_dist; ActionDistribution,
+                 action_dist: ActionDistribution,
                  actions: TensorType,
                  advantages: TensorType,
                  v_target: TensorType,
                  vf: TensorType,
-                 vf_loss_coeff: float =0.5,
-                 entropy_coeff: float =0.01):
+                 vf_loss_coeff: float = 0.5,
+                 entropy_coeff: float = 0.01):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
@@ -58,7 +59,9 @@ class A3CLoss:
                            self.entropy * entropy_coeff)
 
 
-def actor_critic_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution, train_batch: SampleBatch) -> TensorType:
+def actor_critic_loss(policy: Policy, model: ModelV2,
+                      dist_class: ActionDistribution,
+                      train_batch: SampleBatch) -> TensorType:
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     policy.loss = A3CLoss(action_dist, train_batch[SampleBatch.ACTIONS],
@@ -85,7 +88,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     }
 
 
-def grad_stats(policy: Policy, train_batch: SampleBatch, grads: ModelGradients) -> Dict[str, TensorType]:
+def grad_stats(policy: Policy, train_batch: SampleBatch,
+               grads: ModelGradients) -> Dict[str, TensorType]:
     return {
         "grad_gnorm": tf.linalg.global_norm(grads),
         "vf_explained_var": explained_variance(
@@ -94,7 +98,8 @@ def grad_stats(policy: Policy, train_batch: SampleBatch, grads: ModelGradients) 
     }
 
 
-def clip_gradients(policy: Policy, optimizer: LocalOptimizer, loss: TensorType) -> ModelGradients:
+def clip_gradients(policy: Policy, optimizer: LocalOptimizer,
+                   loss: TensorType) -> ModelGradients:
     grads_and_vars = optimizer.compute_gradients(
         loss, policy.model.trainable_variables())
     grads = [g for (g, v) in grads_and_vars]
@@ -103,7 +108,9 @@ def clip_gradients(policy: Policy, optimizer: LocalOptimizer, loss: TensorType) 
     return clipped_grads
 
 
-def setup_mixins(policy: Policy, obs_space: gym.spaces.Space, action_space: gym.spaces.Space, config: TrainerConfigDict) -> None:
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
