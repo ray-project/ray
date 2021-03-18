@@ -14,6 +14,12 @@ from ray.util.placement_group import (
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
 
+from opentelemetry import trace
+from opentelemetry.util.types import Attributes
+from opentelemetry.context.context import Context
+from typing import Any, Callable, Dict, List, MutableMapping, Optional
+from ray.runtime_context import get_runtime_context
+import ray.dict_propagator
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
@@ -23,6 +29,64 @@ DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
 DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
 
 logger = logging.getLogger(__name__)
+
+
+def _hydrate_span_args(func: Callable[..., Any]) -> Attributes:
+    # TODO: once ray 1.2.0 is released, we can just use get_runtime_context().get() to get all runtime context information
+    runtime_context = get_runtime_context()
+
+    span_args = {
+        "ray.remote": "function",
+        "ray.function": func.__name__,
+        "ray.pid": str(os.getpid()),
+        "ray.job_id": runtime_context.job_id.hex(),
+        "ray.node_id": runtime_context.node_id.hex(),
+    }
+
+    # We only get task ID for workers
+    if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
+        task_id = runtime_context.task_id.hex(
+        ) if runtime_context.task_id else None
+        if task_id:
+            span_args["ray.task_id"] = task_id
+
+    worker_id = getattr(ray.worker.global_worker, "worker_id", None)
+    if worker_id:
+        span_args["ray.worker_id"] = worker_id.hex()
+
+    return span_args
+
+
+def _span_producer_name(func: Callable[..., Any]) -> str:
+    args = _hydrate_span_args(func)
+    assert args is not None
+    name = args["ray.function"]
+
+    return f"{name} ray.remote"
+
+
+def _span_consumer_name(func: Callable[..., Any]) -> str:
+    args = _hydrate_span_args(func)
+    assert args is not None
+    name = args["ray.function"]
+
+    return f"{name} ray.remote_worker"
+
+
+def _resume_trace(
+        function: Callable[..., Any],
+        _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+        *args: List[Any],
+        **kwargs: MutableMapping[Any, Any],
+) -> Any:
+    tracer = trace.get_tracer(__name__)
+    tracer.start_as_current_span(
+        _span_consumer_name(function),
+        kind=trace.SpanKind.CONSUMER,
+        attributes=_hydrate_span_args(function),
+        context=dict_propagator.extract(_ray_trace_ctx) if _ray_trace_ctx else Context(),
+    )
+    return function(*args, **kwargs)
 
 
 class RemoteFunction:
@@ -70,7 +134,7 @@ class RemoteFunction:
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
-        self._function = function
+        self._function = _resume_trace(function=function)
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._function_descriptor = function_descriptor
@@ -210,6 +274,15 @@ class RemoteFunction:
 
         worker = ray.worker.global_worker
         worker.check_connected()
+
+        assert "_ray_trace_ctx" not in kwargs
+
+        tracer = trace.get_tracer(__name__)
+        tracer.start_as_current_span(
+            _span_producer_name(__name__),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_hydrate_span_args())
+        kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
