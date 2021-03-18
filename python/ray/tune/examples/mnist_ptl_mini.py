@@ -70,7 +70,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         progress_bar_refresh_rate=0,
         callbacks=[TuneReportCallback(metrics, on="validation_end")])
     trainer.fit(model, dm)
@@ -92,8 +93,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         train_mnist_tune,
         data_dir=data_dir,
         num_epochs=num_epochs,
-        # Handle fractional GPU case. Training func should still take int.
-        num_gpus=math.ceil(gpus_per_trial))
+        num_gpus=gpus_per_trial)
     analysis = tune.run(
         trainable,
         resources_per_trial={

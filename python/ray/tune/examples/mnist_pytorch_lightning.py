@@ -133,7 +133,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     model = LightningMNISTClassifier(config, data_dir)
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -157,7 +158,8 @@ def train_mnist_tune_checkpoint(config,
                                 num_gpus=0):
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -214,8 +216,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
             train_mnist_tune,
             data_dir=data_dir,
             num_epochs=num_epochs,
-            # Handle fractional GPU case. Training func should still take int.
-            num_gpus=math.ceil(gpus_per_trial)),
+            num_gpus=gpus_per_trial),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
@@ -262,8 +263,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
             train_mnist_tune_checkpoint,
             data_dir=data_dir,
             num_epochs=num_epochs,
-            # Handle fractional GPU case. Training func should still take int.
-            num_gpus=math.ceil(gpus_per_trial)),
+            num_gpus=gpus_per_trial),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
