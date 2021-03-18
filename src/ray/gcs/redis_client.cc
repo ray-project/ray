@@ -161,8 +161,6 @@ void RedisClient::Attach() {
     instrumented_io_context &io_service = context->io_service();
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));
-    shard_asio_subscribe_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->subscribe_context()));
   }
 
   instrumented_io_context &io_service = primary_context_->io_service();
