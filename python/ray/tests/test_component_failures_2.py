@@ -176,7 +176,7 @@ def test_get_address_info_after_raylet_died(ray_start_cluster_head):
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
-        lambda: not cluster.global_state.node_table()[0]["Alive"])
+        lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30)
     with pytest.raises(RuntimeError):
         get_address_info()
 
