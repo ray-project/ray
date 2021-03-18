@@ -103,8 +103,8 @@ class CollectMetrics:
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
             "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
-            "agent_timesteps_total": metrics.counters[
-                AGENT_STEPS_SAMPLED_COUNTER],
+            "agent_timesteps_total": metrics.counters.get(
+                AGENT_STEPS_SAMPLED_COUNTER, 0),
         })
         res["timers"] = timers
         res["info"] = info

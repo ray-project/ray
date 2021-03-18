@@ -61,8 +61,10 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
-            metrics.counters[
-                AGENT_STEPS_SAMPLED_COUNTER] += batch.agent_steps()
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
+                batch.agent_steps()
+        else:
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
     if not workers.remote_workers():
