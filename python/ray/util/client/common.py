@@ -49,8 +49,9 @@ class ClientBaseRef:
         return hash(self.id)
 
     def __del__(self):
-        # NOTE: though this type of reference shouldn't end up on the server
-        # side, in unit test mode this can still happen. Hence we also guard
+        # NOTE: though this type of reference shouldn't end up deleted on the
+        # server side, in unit test mode this can still happen since both
+        # client and server are in the same process. Hence we also guard
         # with client_mode_should_convert() to avoid test flakiness:
         # https://github.com/ray-project/ray/issues/14756
         if ray.is_connected() and self.id is not None and \
