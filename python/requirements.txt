@@ -43,6 +43,8 @@ starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
+azure-common
+azure-mgmt-resource
 boto3
 cython==0.29.0
 dataclasses; python_version < '3.7'
