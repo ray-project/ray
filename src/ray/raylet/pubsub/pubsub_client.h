@@ -26,7 +26,7 @@ using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 /// Interface for the pubsub client.
 class PubsubClientInterface {
  public:
-  /// Subscribe the object.
+  /// Subscribe to the object.
   ///
   /// \param owner_address Address of the owner to subscribe the object.
   /// \param object_id The object id to subscribe from the owner.
@@ -48,8 +48,9 @@ class PubsubClientInterface {
   /// from the server.
   ///
   /// TODO(sang): Once it starts sending RPCs to unsubscribe, we should start handling
-  /// message ordering. \param owner_address The owner address that it will unsubscribe
-  /// to. \param object_id The object id to unsubscribe.
+  /// message ordering.
+  /// \param owner_address The owner address that it will unsubscribe to.
+  /// \param object_id The object id to unsubscribe.
   virtual bool UnsubscribeObject(const rpc::Address &owner_address,
                                  const ObjectID &object_id) = 0;
 

@@ -30,11 +30,11 @@ const absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId
   return it->second;
 }
 
-bool SubscriptionIndex::IsObjectIdExist(const ObjectID &object_id) const {
+bool SubscriptionIndex::HasObjectId(const ObjectID &object_id) const {
   return objects_to_subscribers_.count(object_id) > 0;
 }
 
-bool SubscriptionIndex::IsSubscriberExist(const NodeID &subscriber_id) const {
+bool SubscriptionIndex::HasSubscriber(const NodeID &subscriber_id) const {
   return subscribers_to_objects_.count(subscriber_id) > 0;
 }
 
@@ -45,10 +45,7 @@ int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
   }
 
   auto &subscribing_objects = subscribing_objects_it->second;
-  for (auto object_id_it = subscribing_objects.begin();
-       object_id_it != subscribing_objects.end();) {
-    auto current = object_id_it++;
-    const auto &object_id = *current;
+  for (const auto &object_id : subscribing_objects) {
     // Erase the subscriber from the object map.
     auto subscribers_it = objects_to_subscribers_.find(object_id);
     if (subscribers_it == objects_to_subscribers_.end()) {
@@ -128,7 +125,7 @@ bool Subscriber::PublishIfPossible(bool force) {
 void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
                                 LongPollConnectCallback long_poll_connect_callback) {
   absl::MutexLock lock(&mutex_);
-  RAY_LOG(DEBUG) << "Long polling connection is initiated by " << subscriber_node_id;
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
   if (is_node_dead_(subscriber_node_id)) {
@@ -138,10 +135,11 @@ void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
     return;
   }
 
-  if (subscribers_.count(subscriber_node_id) == 0) {
-    subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
+  auto it = subscribers_.find(subscriber_node_id);
+  if (it == subscribers_.end()) {
+    it = subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>()).first;
   }
-  auto subscriber = subscribers_[subscriber_node_id];
+  auto &subscriber = it->second;
 
   // Since the long polling connection is synchronous between the client and coordinator,
   // when it connects, the connection shouldn't have existed.
@@ -170,7 +168,7 @@ void PubsubCoordinator::Publish(const ObjectID &object_id) {
        subscription_index_.GetSubscriberIdsByObjectId(object_id)) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
-    auto subscriber = it->second;
+    auto &subscriber = it->second;
     subscriber->QueueMessage(object_id);
   }
 }
@@ -183,7 +181,7 @@ int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   if (it == subscribers_.end()) {
     return erased;
   }
-  auto subscriber = it->second;
+  auto &subscriber = it->second;
   // Remove the long polling connection because otherwise, there's memory leak.
   subscriber->PublishIfPossible(/*force=*/true);
   subscribers_.erase(it);

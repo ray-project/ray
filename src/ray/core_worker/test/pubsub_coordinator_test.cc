@@ -151,7 +151,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexErase) {
     oid_subscribers.erase(current);
     subscription_index.EraseEntry(oid, node_id);
   }
-  ASSERT_FALSE(subscription_index.IsObjectIdExist(oid));
+  ASSERT_FALSE(subscription_index.HasObjectId(oid));
 }
 
 TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
@@ -171,7 +171,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
     subscription_index.AddEntry(oid, node_id);
   }
   subscription_index.EraseSubscriber(node_ids[0]);
-  ASSERT_FALSE(subscription_index.IsSubscriberExist(node_ids[0]));
+  ASSERT_FALSE(subscription_index.HasSubscriber(node_ids[0]));
   const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
 }

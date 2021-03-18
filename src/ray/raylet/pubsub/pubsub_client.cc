@@ -27,11 +27,11 @@ void PubsubClient::SubcribeObject(
   // Make a long polling connection if we never made the one with this owner for pubsub
   // operations.
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  if (subscription_map_.count(owner_worker_id) == 0) {
-    subscription_map_.emplace(owner_worker_id, SubscriptionInfo(owner_address));
+  auto subscription_it = subscription_map_.find(owner_worker_id);
+  if (subscription_it == subscription_map_.end()) {
+    subscription_it = subscription_map_.emplace(owner_worker_id, SubscriptionInfo(owner_address)).first;
     MakeLongPollingPubsubConnection(owner_address, subscriber_address);
   }
-  auto subscription_it = subscription_map_.find(owner_worker_id);
   RAY_CHECK(subscription_it != subscription_map_.end());
   RAY_CHECK(
       subscription_it->second.subscription_callback_map_

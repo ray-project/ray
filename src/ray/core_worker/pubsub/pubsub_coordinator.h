@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -34,7 +35,7 @@ class SubscriptionIndex {
   /// NOTE: If the entry already exists, it raises assert failure.
   void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
 
-  /// Return the set of subscriber ids that are subscribing the given object ids.
+  /// Return the set of subscriber ids that are subscribing to the given object ids.
   const absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(
       const ObjectID &object_id);
 
@@ -42,15 +43,18 @@ class SubscriptionIndex {
   /// NOTE: It cannot erase subscribers that were never added.
   int EraseSubscriber(const NodeID &subscriber_id);
 
-  /// Erase the object id and subscsriber id from the index. Return the number of erased
+  /// Erase the object id and subscriber id from the index. Return the number of erased
   /// entries. NOTE: It cannot erase subscribers that were never added.
   int EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
 
-  /// Test only. Returns true if object id or subscriber id exists in the index.
-  bool IsObjectIdExist(const ObjectID &object_id) const;
-  bool IsSubscriberExist(const NodeID &subscriber_id) const;
-
  private:
+  FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexErase);
+  FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber);
+
+  /// Test only. Returns true if object id or subscriber id exists in the index.
+  bool HasObjectId(const ObjectID &object_id) const;
+  bool HasSubscriber(const NodeID &subscriber_id) const;
+
   /// Mapping from objects -> subscribers.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> objects_to_subscribers_;
   // Mapping from subscribers -> objects. Reverse index of objects_to_subscribers_.
@@ -92,12 +96,15 @@ class Subscriber {
 };
 
 /// Pubsub server.
-///
-/// \param is_node_dead A callback that returns true if the given node id is dead.
 class PubsubCoordinator {
  public:
+
+  /// Pubsub coordinator constructor.
+  ///
+  /// \param is_node_dead A callback that returns true if the given node id is dead.
   explicit PubsubCoordinator(std::function<bool(const NodeID &)> is_node_dead)
       : is_node_dead_(is_node_dead) {}
+
   ~PubsubCoordinator() = default;
 
   ///
@@ -139,7 +146,7 @@ class PubsubCoordinator {
   /// thread safe.
   mutable absl::Mutex mutex_;
 
-  /// Callback that returns true if the given node of node id is dead.
+  /// Callback that returns true if the given node is dead.
   std::function<bool(const NodeID &)> is_node_dead_;
 
   /// Mapping of node id -> subscribers.

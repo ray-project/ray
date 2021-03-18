@@ -571,8 +571,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           return node_info->state() ==
                  rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD;
         }
-        // If the node info is not available yet, node information is probably not
-        // subscribed yet. Just mark that the node is alive.
+        // Node information is probably not
+        // subscribed yet, so report that the node is alive.
         return true;
       }));
 
@@ -2339,9 +2339,10 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
-    RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
-    send_reply_callback(Status::NotFound("Object ID reference is already gone."), nullptr,
-                        nullptr);
+    std::ostringstream stream;
+    stream << "Reference for object " << object_id << " has already been freed.";
+    RAY_LOG(DEBUG) << stream.str();
+    send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
     pubsub_coordinator_->RegisterSubscription(subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2364,7 +2365,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
-  RAY_LOG(DEBUG) << "Get long polling request from a node: " << subscriber_id;
+  RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
   pubsub_coordinator_->Connect(subscriber_id, std::move(long_polling_reply_callback));
 }
 
