@@ -295,7 +295,7 @@ def _get_gpu_info_string():
 
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
-GPU_NAME_PATTERN = re.compile("\w+\s+([A-Z0-9]+)")
+GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
 def _pretty_gpu_name(name):

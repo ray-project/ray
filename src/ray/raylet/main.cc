@@ -105,7 +105,11 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
+  // `enable_async_conn` as false.
+  ray::gcs::GcsClientOptions client_options(
+      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);

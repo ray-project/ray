@@ -20,7 +20,6 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
 
@@ -162,10 +161,10 @@ class TorchPolicy(Policy):
 
         with torch.no_grad():
             seq_lens = torch.ones(len(obs_batch), dtype=torch.int32)
-            input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: np.asarray(obs_batch),
-                "is_training": False,
-            })
+            input_dict = self._lazy_tensor_dict(
+                SampleBatch({
+                    SampleBatch.CUR_OBS: np.asarray(obs_batch),
+                }))
             if prev_action_batch is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = \
                     np.asarray(prev_action_batch)
@@ -341,12 +340,34 @@ class TorchPolicy(Policy):
 
             # Action dist class and inputs are generated via custom function.
             if self.action_distribution_fn:
-                dist_inputs, dist_class, _ = self.action_distribution_fn(
-                    policy=self,
-                    model=self.model,
-                    obs_batch=input_dict[SampleBatch.CUR_OBS],
-                    explore=False,
-                    is_training=False)
+
+                # Try new action_distribution_fn signature, supporting
+                # state_batches and seq_lens.
+                try:
+                    dist_inputs, dist_class, state_out = \
+                        self.action_distribution_fn(
+                            self,
+                            self.model,
+                            input_dict=input_dict,
+                            state_batches=state_batches,
+                            seq_lens=seq_lens,
+                            explore=False,
+                            is_training=False)
+                # Trying the old way (to stay backward compatible).
+                # TODO: Remove in future.
+                except TypeError as e:
+                    if "positional argument" in e.args[0] or \
+                            "unexpected keyword argument" in e.args[0]:
+                        dist_inputs, dist_class, _ = \
+                            self.action_distribution_fn(
+                                policy=self,
+                                model=self.model,
+                                obs_batch=input_dict[SampleBatch.CUR_OBS],
+                                explore=False,
+                                is_training=False)
+                    else:
+                        raise e
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -406,7 +427,7 @@ class TorchPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        postprocessed_batch["is_training"] = True
+        postprocessed_batch.is_training = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         # Calculate the actual policy loss.
@@ -663,18 +684,13 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
-    def _lazy_tensor_dict(self, batch):
-        if not isinstance(batch, UsageTrackingDict):
-            batch = UsageTrackingDict(batch)
-        batch.set_get_interceptor(
+    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+        # TODO: (sven): Keep for a while to ensure backward compatibility.
+        if not isinstance(postprocessed_batch, SampleBatch):
+            postprocessed_batch = SampleBatch(postprocessed_batch)
+        postprocessed_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
-        return batch
-
-    def _lazy_numpy_dict(self, postprocessed_batch):
-        train_batch = UsageTrackingDict(postprocessed_batch)
-        train_batch.set_get_interceptor(
-            functools.partial(convert_to_non_torch_type))
-        return train_batch
+        return postprocessed_batch
 
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)

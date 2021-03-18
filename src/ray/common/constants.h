@@ -48,3 +48,6 @@ constexpr double kMaxResourceCapacity = 512.0;
 constexpr char JOB_RESOURCE_PREFIX[] = "RAY_JOB_RESOURCE_";
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
+
+/// for cross-langueage serialization
+constexpr int kMessagePackOffset = 9;

@@ -66,8 +66,8 @@ class SampleBatchBuilder:
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
-        if SampleBatch.UNROLL_ID not in batch.data:
-            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+        if SampleBatch.UNROLL_ID not in batch:
+            batch[SampleBatch.UNROLL_ID] = np.repeat(
                 SampleBatchBuilder._next_unroll_id, batch.count)
             SampleBatchBuilder._next_unroll_id += 1
         self.buffers.clear()
