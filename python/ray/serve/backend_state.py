@@ -421,7 +421,7 @@ class BackendState:
 
         return new_goal_id, existing_goal_id
 
-    def create_backend(self,
+    def deploy_backend(self,
                        backend_tag: BackendTag,
                        backend_config: BackendConfig,
                        replica_config: ReplicaConfig,
@@ -480,36 +480,6 @@ class BackendState:
         self._checkpoint()
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id
-
-    def update_backend_config(self, backend_tag: BackendTag,
-                              config_options: BackendConfig):
-        if backend_tag not in self._backend_metadata:
-            raise ValueError(f"Backend {backend_tag} is not registered")
-
-        stored_backend_config = self._backend_metadata[
-            backend_tag].backend_config
-        updated_config = stored_backend_config.copy(
-            update=config_options.dict(exclude_unset=True))
-        updated_config._validate_complete()
-        self._backend_metadata[backend_tag].backend_config = updated_config
-
-        new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, self._backend_metadata[backend_tag],
-            self._target_versions[backend_tag])
-
-        # NOTE(edoakes): we must write a checkpoint before pushing the
-        # update to avoid inconsistent state if we crash after pushing the
-        # update.
-        self._checkpoint()
-        if existing_goal_id is not None:
-            self._goal_manager.complete_goal(existing_goal_id)
-
-        # Inform the routers and backend replicas about config changes.
-        # TODO(edoakes): this should only happen if we change something other
-        # than num_replicas.
-        self._notify_backend_configs_changed()
-
         return new_goal_id
 
     def _stop_wrong_version_replicas(
