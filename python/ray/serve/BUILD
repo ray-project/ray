@@ -110,7 +110,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
