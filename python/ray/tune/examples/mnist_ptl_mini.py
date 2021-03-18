@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch.nn import functional as F
 import pytorch_lightning as pl
@@ -90,7 +92,8 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
         train_mnist_tune,
         data_dir=data_dir,
         num_epochs=num_epochs,
-        num_gpus=gpus_per_trial)
+        # Handle fractional GPU case. Training func should still take int.
+        num_gpus=math.ceil(gpus_per_trial))
     analysis = tune.run(
         trainable,
         resources_per_trial={

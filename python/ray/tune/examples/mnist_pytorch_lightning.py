@@ -2,6 +2,8 @@
 # yapf: disable
 
 # __import_lightning_begin__
+import math
+
 import torch
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
@@ -212,7 +214,8 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
             train_mnist_tune,
             data_dir=data_dir,
             num_epochs=num_epochs,
-            num_gpus=gpus_per_trial),
+            # Handle fractional GPU case. Training func should still take int.
+            num_gpus=math.ceil(gpus_per_trial)),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
@@ -259,7 +262,8 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
             train_mnist_tune_checkpoint,
             data_dir=data_dir,
             num_epochs=num_epochs,
-            num_gpus=gpus_per_trial),
+            # Handle fractional GPU case. Training func should still take int.
+            num_gpus=math.ceil(gpus_per_trial)),
         resources_per_trial={
             "cpu": 1,
             "gpu": gpus_per_trial
