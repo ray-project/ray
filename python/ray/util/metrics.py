@@ -91,6 +91,12 @@ class Metric:
                            "Gauge.set() and will be removed in a future "
                            "release. Please use Gauge.set() instead.")
 
+        if isinstance(self._metric, CythonHistogram) and not _internal:
+            logger.warning("Histogram.record() is deprecated in favor of "
+                           "Histogram.observe() and will be removed in a "
+                           "future release. Please use Histogram.observe() "
+                           "instead.")
+
         if tags is not None:
             for val in tags.values():
                 if not isinstance(val, str):
@@ -204,11 +210,13 @@ class Count(Counter):
 
 
 class Histogram(Metric):
-    """Histogram distribution of metric points.
+    """Tracks the size and number of events in buckets.
 
-    This is corresponding to Prometheus' Histogram metric.
-    Recording metrics with histogram will enable you to import
-    min, mean, max, 25, 50, 95, 99 percentile latency.
+    Histograms allow you to calculate aggregate quantiles
+    such as 25, 50, 95, 99 percentile latency for an RPC.
+
+    This corresponds to Prometheus' histogram metric:
+    https://prometheus.io/docs/concepts/metric_types/#histogram
 
     Args:
         name(str): Name of the metric.
@@ -230,6 +238,20 @@ class Histogram(Metric):
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
                                        self.boundaries, self._tag_keys)
+
+    def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
+        """Observe a given `value` and add it to the appropriate bucket.
+
+        Tags passed in will take precedence over the metric's default tags.
+
+        Args:
+            value(int, float): Value to set the gauge to.
+            tags(Dict[str, str]): Tags to set or override for this gauge.
+        """
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"value must be int or float, got {type(value)}.")
+
+        self.record(value, tags, _internal=True)
 
     def __reduce__(self):
         deserializer = Histogram

@@ -38,7 +38,8 @@ class ReplicaState(Enum):
 
 class BackendReplica:
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+                 version: str):
         self._actor_name = format_actor_name(replica_tag, controller_name)
         self._placement_group_name = self._actor_name + "_placement_group"
         self._controller_name = controller_name
@@ -52,6 +53,8 @@ class BackendReplica:
         self._startup_obj_ref = None
         self._drain_obj_ref = None
         self._state = ReplicaState.SHOULD_START
+        self._actor_resources = None
+        self._version = version
 
     def __get_state__(self):
         clean_dict = self.__dict__.copy()
@@ -67,6 +70,10 @@ class BackendReplica:
         self._startup_obj_ref = None
         self._drain_obj_ref = None
         self._recover_from_checkpoint()
+
+    @property
+    def version(self):
+        return self._version
 
     def _recover_from_checkpoint(self):
         if self._state == ReplicaState.STARTING:
@@ -90,6 +97,9 @@ class BackendReplica:
         }, (f"State must be {ReplicaState.SHOULD_START} or "
             f"{ReplicaState.STARTING}, *not* {self._state}")
 
+        if self._actor_resources is None:
+            self._actor_resources = backend_info.replica_config.resource_dict
+
         try:
             self._placement_group = ray.util.get_placement_group(
                 self._placement_group_name)
@@ -98,7 +108,7 @@ class BackendReplica:
                 "Creating placement group '{}' for backend '{}'".format(
                     self._placement_group_name, self._backend_tag))
             self._placement_group = ray.util.placement_group(
-                [backend_info.replica_config.resource_dict],
+                [self._actor_resources],
                 lifetime="detached",
                 name=self._placement_group_name)
 
@@ -136,12 +146,22 @@ class BackendReplica:
         if (time_since_start > SLOW_STARTUP_WARNING_S
                 and time.time() - self._prev_slow_startup_warning_time >
                 SLOW_STARTUP_WARNING_PERIOD_S):
+            # Filter to relevant resources.
+            required = {
+                k: v
+                for k, v in self._actor_resources.items() if v > 0
+            }
+            available = {
+                k: v
+                for k, v in ray.available_resources().items() if k in required
+            }
             logger.warning(
                 f"Replica '{self._replica_tag}' for backend "
                 f"'{self._backend_tag}' has taken more than "
                 f"{time_since_start:.0f}s to start up. This may be "
                 "caused by waiting for the cluster to auto-scale or "
-                "because the backend constructor is slow.")
+                "because the backend constructor is slow. Resources required: "
+                f"{required}, resources available: {available}.")
             self._prev_slow_startup_warning_time = time.time()
 
         return False
@@ -228,6 +248,7 @@ class BackendState:
             BackendReplica]]] = defaultdict(lambda: defaultdict(list))
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
+        self._target_versions: Dict[BackendTag, str] = dict()
         self.backend_goals: Dict[BackendTag, GoalId] = dict()
 
         # Un-checkpointed state.
@@ -236,7 +257,8 @@ class BackendState:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata, self._target_replicas,
-             self.backend_goals, pending_goal_ids) = pickle.loads(checkpoint)
+             self._target_versions, self.backend_goals,
+             pending_goal_ids) = pickle.loads(checkpoint)
 
             for goal_id in pending_goal_ids:
                 self._goal_manager.create_goal(goal_id)
@@ -247,9 +269,10 @@ class BackendState:
     def _checkpoint(self) -> None:
         self._kv_store.put(
             CHECKPOINT_KEY,
-            pickle.dumps((self._replicas, self._backend_metadata,
-                          self._target_replicas, self.backend_goals,
-                          self._goal_manager.get_pending_goal_ids())))
+            pickle.dumps(
+                (self._replicas, self._backend_metadata, self._target_replicas,
+                 self._target_versions, self.backend_goals,
+                 self._goal_manager.get_pending_goal_ids())))
 
     def _notify_backend_configs_changed(self) -> None:
         self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
@@ -285,7 +308,8 @@ class BackendState:
         return self._backend_metadata.get(backend_tag)
 
     def _set_backend_goal(self, backend_tag: BackendTag,
-                          backend_info: BackendInfo) -> None:
+                          backend_info: Optional[BackendInfo],
+                          version: Optional[str]) -> None:
         existing_goal_id = self.backend_goals.get(backend_tag)
         new_goal_id = self._goal_manager.create_goal()
 
@@ -296,19 +320,29 @@ class BackendState:
         else:
             self._target_replicas[backend_tag] = 0
 
+        self._target_versions[backend_tag] = version
         self.backend_goals[backend_tag] = new_goal_id
 
         return new_goal_id, existing_goal_id
 
-    def create_backend(self, backend_tag: BackendTag,
+    def create_backend(self,
+                       backend_tag: BackendTag,
                        backend_config: BackendConfig,
-                       replica_config: ReplicaConfig) -> Optional[GoalId]:
+                       replica_config: ReplicaConfig,
+                       version: Optional[str] = None) -> Optional[GoalId]:
         # Ensures this method is idempotent.
         backend_info = self._backend_metadata.get(backend_tag)
         if backend_info is not None:
-            if (backend_info.backend_config == backend_config
-                    and backend_info.replica_config == replica_config):
-                return None
+            # Old codepath.
+            if version is None:
+                if (backend_info.backend_config == backend_config
+                        and backend_info.replica_config == replica_config):
+                    return None
+            # New codepath: treat version as ground truth for implementation.
+            else:
+                if (backend_info.backend_config == backend_config
+                        and self._target_versions[backend_tag] == version):
+                    return None
 
         backend_replica_class = create_backend_replica(
             replica_config.backend_def)
@@ -321,7 +355,7 @@ class BackendState:
             replica_config=replica_config)
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, backend_info)
+            backend_tag, backend_info, version)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -341,7 +375,7 @@ class BackendState:
             return None
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, None)
+            backend_tag, None, None)
         if force_kill:
             self._backend_metadata[
                 backend_tag].backend_config.\
@@ -365,7 +399,8 @@ class BackendState:
         self._backend_metadata[backend_tag].backend_config = updated_config
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, self._backend_metadata[backend_tag])
+            backend_tag, self._backend_metadata[backend_tag],
+            self._target_versions[backend_tag])
 
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
@@ -381,10 +416,40 @@ class BackendState:
 
         return new_goal_id
 
+    def _stop_wrong_version_replicas(
+            self, backend_tag: BackendTag, version: str,
+            graceful_shutdown_timeout_s: float) -> int:
+        # TODO(edoakes): to implement rolling upgrade, all we should need to
+        # do is cap the number of old version replicas that are stopped here.
+        num_stopped = 0
+        for target_state in [
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
+        ]:
+            target_version = []
+            wrong_version = []
+            for replica in self._replicas[backend_tag][target_state]:
+                if replica.version == version:
+                    target_version.append(replica)
+                else:
+                    wrong_version.append(replica)
+
+            self._replicas[backend_tag][target_state] = target_version
+            for replica in wrong_version:
+                replica.set_should_stop(graceful_shutdown_timeout_s)
+                self._replicas[backend_tag][ReplicaState.SHOULD_STOP].append(
+                    replica)
+                num_stopped += 1
+
+        if num_stopped > 0:
+            logger.info(f"Stopping {num_stopped} replicas of backend "
+                        f"'{backend_tag}' with outdated versions.")
+
     def _scale_backend_replicas(
             self,
             backend_tag: BackendTag,
             num_replicas: int,
+            version: str,
     ) -> bool:
         """Scale the given backend to the number of replicas.
 
@@ -402,6 +467,14 @@ class BackendState:
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
 
+        backend_info: BackendInfo = self._backend_metadata[backend_tag]
+        graceful_shutdown_timeout_s = (
+            backend_info.backend_config.
+            experimental_graceful_shutdown_timeout_s)
+
+        self._stop_wrong_version_replicas(backend_tag, version,
+                                          graceful_shutdown_timeout_s)
+
         current_num_replicas = sum([
             len(self._replicas[backend_tag][ReplicaState.SHOULD_START]),
             len(self._replicas[backend_tag][ReplicaState.STARTING]),
@@ -410,7 +483,6 @@ class BackendState:
 
         delta_num_replicas = num_replicas - current_num_replicas
 
-        backend_info: BackendInfo = self._backend_metadata[backend_tag]
         if delta_num_replicas == 0:
             return False
 
@@ -421,7 +493,7 @@ class BackendState:
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag][ReplicaState.SHOULD_START].append(
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag))
+                                   replica_tag, backend_tag, version))
 
         elif delta_num_replicas < 0:
             logger.debug("Removing {} replicas from backend '{}'".format(
@@ -437,10 +509,7 @@ class BackendState:
                 assert len(list_to_use), replica_state_dict
                 replica_to_stop = list_to_use.pop()
 
-                graceful_timeout_s = (backend_info.backend_config.
-                                      experimental_graceful_shutdown_timeout_s)
-
-                replica_to_stop.set_should_stop(graceful_timeout_s)
+                replica_to_stop.set_should_stop(graceful_shutdown_timeout_s)
                 self._replicas[backend_tag][ReplicaState.SHOULD_STOP].append(
                     replica_to_stop)
 
@@ -450,10 +519,11 @@ class BackendState:
         checkpoint_needed = False
         for backend_tag, num_replicas in list(self._target_replicas.items()):
             checkpoint_needed |= self._scale_backend_replicas(
-                backend_tag, num_replicas)
+                backend_tag, num_replicas, self._target_versions[backend_tag])
             if num_replicas == 0:
                 del self._backend_metadata[backend_tag]
                 del self._target_replicas[backend_tag]
+                del self._target_versions[backend_tag]
 
         if checkpoint_needed:
             self._checkpoint()
@@ -496,8 +566,11 @@ class BackendState:
             # Check for a non-zero number of backends.
             if (desired_num_replicas and existing_info) \
                     and desired_num_replicas == len(existing_info):
-                completed_goals.append(
-                    self.backend_goals.pop(backend_tag, None))
+                # Check that all running replicas are the target version.
+                target_version = self._target_versions[backend_tag]
+                if all(r.version == target_version for r in existing_info):
+                    completed_goals.append(
+                        self.backend_goals.pop(backend_tag, None))
         return [goal for goal in completed_goals if goal]
 
     def update(self) -> bool:
