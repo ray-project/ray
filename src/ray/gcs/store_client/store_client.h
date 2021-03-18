@@ -43,6 +43,14 @@ class StoreClient {
   virtual Status AsyncExists(const std::string &table_name, const std::string &key,
                              const OptionalItemCallback<bool> &callback) = 0;
 
+  /// List all the keys in tables with given pattern.
+  /// \param table_name The name of the table to be scanned.
+  /// \param pattern The pattern of the keys.
+  /// \param callback Callback that will be called after scanning..
+  /// \return Status
+  virtual Status AsyncKeys(const std::string &table_name, const std::string &pattern,
+                           const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
+
   /// Write data to the given table asynchronously.
   ///
   /// \param table_name The name of the table to be written.

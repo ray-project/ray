@@ -33,6 +33,18 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
   return DoPut(GenRedisKey(table_name, key), data, callback);
 }
 
+Status RedisStoreClient::AsyncKeys(const std::string &table_name, const std::string &prefix,
+                                   const OptionalItemCallback<std::vector<std::string>> &callback) {
+  std::string match_pattern = GenRedisKey(table_name, prefix) + "*";
+  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
+  auto on_done = [callback, scanner](
+      const Status &status,
+      const std::vector<std::string> &result) {
+    callback(status, boost::make_optional(result));
+  };
+  return scanner->ScanKeys(match_pattern, on_done);
+}
+
 Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
                                            const std::string &key,
                                            const std::string &index_key,

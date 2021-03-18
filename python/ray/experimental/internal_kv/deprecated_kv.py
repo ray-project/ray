@@ -1,7 +1,6 @@
 from typing import List, Union
 
 import ray
-import os
 from ray._private.client_mode_hook import client_mode_hook
 from collections import namedtuple
 from ray._private.services import create_redis_client
@@ -10,8 +9,9 @@ redis_client = None
 
 Target = namedtuple("Target", ["ip", "port", "password"])
 
+
 @client_mode_hook
-def _internal_kv_initialized(target = None):
+def _internal_kv_initialized(target=None):
     global redis_client
     if redis_client is not None:
         return True
@@ -23,7 +23,8 @@ def _internal_kv_initialized(target = None):
     elif isinstance(target, redis.Redis):
         redis_client = target
     else:
-        redis_client = create_redis_client(target.ip + ":" + str(target.port), target.password)
+        redis_client = create_redis_client(target.ip + ":" + str(target.port),
+                                           target.password)
     return redis_client is not None
 
 

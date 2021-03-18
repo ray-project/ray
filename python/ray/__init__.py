@@ -65,7 +65,7 @@ import ray._raylet  # noqa: E402
 from ray._raylet import (  # noqa: E402
     ActorClassID, ActorID, NodeID, Config as _Config, JobID, WorkerID,
     FunctionID, ObjectID, ObjectRef, TaskID, UniqueID, Language,
-    PlacementGroupID, GcsClient,
+    PlacementGroupID, GcsClient, connect_to_gcs,
 )
 
 _config = _Config()
@@ -104,6 +104,7 @@ __all__ = [
     "available_resources",
     "cancel",
     "cluster_resources",
+    "connect_to_gcs",
     "get",
     "get_actor",
     "get_gpu_ids",
@@ -117,6 +118,7 @@ __all__ = [
     "jobs",
     "kill",
     "Language",
+    "GcsClient",
     "method",
     "nodes",
     "objects",

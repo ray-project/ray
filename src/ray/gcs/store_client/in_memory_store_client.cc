@@ -217,6 +217,30 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
   return Status::OK();
 }
 
+Status InMemoryStoreClient::AsyncKeys(
+    const std::string &table_name,
+    const std::string &prefix,
+    const OptionalItemCallback<std::vector<std::string>> &callback) {
+  auto on_done = [callback](
+      const Status &status,
+      const std::vector<std::string> &result) {
+    callback(status, boost::make_optional(result));
+  };
+  std::vector<std::string> result;
+  auto table = GetOrCreateTable(table_name);
+  absl::MutexLock lock(&(table->mutex_));
+  for(const auto& kv : table->records_) {
+    if(kv.first.find(prefix) == 0) {
+      result.push_back(kv.first);
+    }
+  }
+  main_io_service_.post([callback, std::move(result)]() {
+    callback(boost::make_optional(std::move(result)));
+  },
+    "GcsInMemoryStore.Keys");
+  return Status::OK();
+}
+
 std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCreateTable(
     const std::string &table_name) {
   absl::MutexLock lock(&mutex_);
