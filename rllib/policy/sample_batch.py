@@ -63,9 +63,11 @@ class SampleBatch(dict):
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
-        self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
+        if self.seq_lens is None and len(args) > 0 and isinstance(args[0], dict):
+            self.seq_lens = args[0].pop("_seq_lens", args[0].pop("seq_lens", None))
         if isinstance(self.seq_lens, list):
-            self.seq_lens = np.array(self.seq_lens)
+            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
@@ -79,17 +81,17 @@ class SampleBatch(dict):
         # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
-        if self.is_training is None:
-            self.is_training = self.pop("is_training", False)
-        if self.seq_lens is None:
-            self.seq_lens = self.get("seq_lens", None)
-
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
 
         self.get_interceptor = None
+
+        if self.is_training is None:
+            self.is_training = self.pop("is_training", False)
+        #if self.seq_lens is None:
+        #    self.seq_lens = self.get("seq_lens", None)
 
         lengths = []
         copy_ = {k: v for k, v in self.items()}
@@ -428,6 +430,12 @@ class SampleBatch(dict):
         """
         return sum(sys.getsizeof(d) for d in self.values())
 
+    def get(self, key, default=None):
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
         """Returns one column (by key) from the data.
@@ -438,6 +446,8 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
+        self.accessed_keys.add(key)
+
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":
             if log_once("SampleBatch['is_training']"):
@@ -446,8 +456,14 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
+        elif key == "seq_lens":
+            if self.get_interceptor is not None and self.seq_lens is not None:
+                if "seq_lens" not in self.intercepted_values:
+                    self.intercepted_values["seq_lens"] = self.get_interceptor(
+                        self.seq_lens)
+                return self.intercepted_values["seq_lens"]
+            return self.seq_lens
 
-        self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
             if key not in self.intercepted_values:
