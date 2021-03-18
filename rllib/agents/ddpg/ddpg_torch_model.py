@@ -1,9 +1,12 @@
 import numpy as np
+import gym
+from typing import List, Dict, Optional
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -20,18 +23,20 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
 
-    def __init__(self,
-                 obs_space,
-                 action_space,
-                 num_outputs,
-                 model_config,
-                 name,
-                 actor_hidden_activation="relu",
-                 actor_hiddens=(256, 256),
-                 critic_hidden_activation="relu",
-                 critic_hiddens=(256, 256),
-                 twin_q=False,
-                 add_layer_norm=False):
+    def __init__(
+            self,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            model_config: ModelConfigDict,
+            name: str,
+            # Extra DDPGActionModel args:
+            actor_hiddens: List[int] = [256, 256],
+            actor_hidden_activation: str = "relu",
+            critic_hiddens: List[int] = [256, 256],
+            critic_hidden_activation: str = "relu",
+            twin_q: bool = False,
+            add_layer_norm: bool = False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -137,7 +142,8 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         else:
             self.twin_q_model = None
 
-    def get_q_values(self, model_out, actions):
+    def get_q_values(self, model_out: TensorType,
+                     actions: TensorType) -> TensorType:
         """Return the Q estimates for the most recent forward pass.
 
         This implements Q(s, a).
@@ -153,7 +159,8 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.q_model(torch.cat([model_out, actions], -1))
 
-    def get_twin_q_values(self, model_out, actions):
+    def get_twin_q_values(self, model_out: TensorType,
+                          actions: TensorType) -> TensorType:
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -169,7 +176,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.twin_q_model(torch.cat([model_out, actions], -1))
 
-    def get_policy_output(self, model_out):
+    def get_policy_output(self, model_out: TensorType) -> TensorType:
         """Return the action output for the most recent forward pass.
 
         This outputs the support for pi(s). For continuous action spaces, this
@@ -184,13 +191,15 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.policy_model(model_out)
 
-    def policy_variables(self, as_dict=False):
+    def policy_variables(self, as_dict: bool = False
+                         ) -> Optional[List[TensorType], Dict[TensorType]]:
         """Return the list of variables for the policy net."""
         if as_dict:
             return self.policy_model.state_dict()
         return list(self.policy_model.parameters())
 
-    def q_variables(self, as_dict=False):
+    def q_variables(self, as_dict=False
+                    ) -> Optional[List[TensorType], Dict[TensorType]]:
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
             return {

@@ -3,6 +3,9 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.policy.policy import Policy
+from typing import Optional, Type
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +153,11 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
@@ -170,7 +177,16 @@ def validate_config(config):
             config["batch_mode"] = "complete_episodes"
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy

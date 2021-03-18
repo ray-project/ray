@@ -1,7 +1,10 @@
 import numpy as np
+import gym
+from typing import List
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
 
@@ -20,18 +23,18 @@ class DDPGTFModel(TFModelV2):
 
     def __init__(
             self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
+            obs_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            model_config: ModelConfigDict,
+            name: str,
             # Extra DDPGActionModel args:
-            actor_hiddens=(256, 256),
-            actor_hidden_activation="relu",
-            critic_hiddens=(256, 256),
-            critic_hidden_activation="relu",
-            twin_q=False,
-            add_layer_norm=False):
+            actor_hiddens: List[int] = [256, 256],
+            actor_hidden_activation: str = "relu",
+            critic_hiddens: List[int] = [256, 256],
+            critic_hidden_activation: str = "relu",
+            twin_q: bool = False,
+            add_layer_norm: bool = False):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -122,7 +125,8 @@ class DDPGTFModel(TFModelV2):
         else:
             self.twin_q_model = None
 
-    def get_q_values(self, model_out, actions):
+    def get_q_values(self, model_out: TensorType,
+                     actions: TensorType) -> TensorType:
         """Return the Q estimates for the most recent forward pass.
 
         This implements Q(s, a).
@@ -141,7 +145,8 @@ class DDPGTFModel(TFModelV2):
         else:
             return self.q_model(model_out)
 
-    def get_twin_q_values(self, model_out, actions):
+    def get_twin_q_values(self, model_out: TensorType,
+                          actions: TensorType) -> TensorType:
         """Same as get_q_values but using the twin Q net.
 
         This implements the twin Q(s, a).
@@ -160,7 +165,7 @@ class DDPGTFModel(TFModelV2):
         else:
             return self.twin_q_model(model_out)
 
-    def get_policy_output(self, model_out):
+    def get_policy_output(self, model_out: TensorType) -> TensorType:
         """Return the action output for the most recent forward pass.
 
         This outputs the support for pi(s). For continuous action spaces, this
@@ -175,11 +180,11 @@ class DDPGTFModel(TFModelV2):
         """
         return self.policy_model(model_out)
 
-    def policy_variables(self):
+    def policy_variables(self) -> List[TensorType]:
         """Return the list of variables for the policy net."""
         return list(self.policy_model.variables)
 
-    def q_variables(self):
+    def q_variables(self) -> List[TensorType]:
         """Return the list of variables for Q / twin Q nets."""
 
         return self.q_model.variables + (self.twin_q_model.variables
