@@ -2,6 +2,8 @@ from gym.spaces import Box
 from functools import partial
 import logging
 import numpy as np
+import gym
+from typing import Dict, Tuple, List
 
 import ray
 import ray.experimental.tf_utils
@@ -23,13 +25,20 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    LocalOptimizer, ModelGradients
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.policy import Policy
 
 tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
 
-def build_ddpg_models(policy, observation_space, action_space, config):
+def build_ddpg_models(policy: Policy, observation_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> ModelV2:
     if policy.config["use_state_preprocessor"]:
         default_model = None  # catalog decides
         num_outputs = 256  # arbitrary
@@ -80,13 +89,14 @@ def build_ddpg_models(policy, observation_space, action_space, config):
     return policy.model
 
 
-def get_distribution_inputs_and_class(policy,
-                                      model,
-                                      obs_batch,
-                                      *,
-                                      explore=True,
-                                      is_training=False,
-                                      **kwargs):
+def get_distribution_inputs_and_class(
+        policy: Policy,
+        model: ModelV2,
+        obs_batch: SampleBatch,
+        *,
+        explore: bool = True,
+        is_training: bool = False,
+        **kwargs) -> Tuple[TensorType, ActionDistribution, List[TensorType]]:
     model_out, _ = model({
         "obs": obs_batch,
         "is_training": is_training,
@@ -102,7 +112,8 @@ def get_distribution_inputs_and_class(policy,
     return dist_inputs, distr_class, []  # []=state out
 
 
-def ddpg_actor_critic_loss(policy, model, _, train_batch):
+def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
+                           train_batch: SampleBatch) -> TensorType:
     twin_q = policy.config["twin_q"]
     gamma = policy.config["gamma"]
     n_step = policy.config["n_step"]
@@ -241,7 +252,7 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     return policy.critic_loss + policy.actor_loss
 
 
-def make_ddpg_optimizers(policy, config):
+def make_ddpg_optimizers(policy: Policy, config: TrainerConfigDict) -> None:
     # Create separate optimizers for actor & critic losses.
     if policy.config["framework"] in ["tf2", "tfe"]:
         policy._actor_optimizer = tf.keras.optimizers.Adam(
@@ -258,7 +269,8 @@ def make_ddpg_optimizers(policy, config):
     return None
 
 
-def build_apply_op(policy, optimizer, grads_and_vars):
+def build_apply_op(policy: Policy, optimizer: LocalOptimizer,
+                   grads_and_vars: ModelGradients) -> TensorType:
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     should_apply_actor_opt = tf.equal(
@@ -283,7 +295,8 @@ def build_apply_op(policy, optimizer, grads_and_vars):
             return tf.group(actor_op, critic_op)
 
 
-def gradients_fn(policy, optimizer, loss):
+def gradients_fn(policy: Policy, optimizer: LocalOptimizer,
+                 loss: TensorType) -> ModelGradients:
     if policy.config["framework"] in ["tf2", "tfe"]:
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
@@ -319,7 +332,8 @@ def gradients_fn(policy, optimizer, loss):
     return grads_and_vars
 
 
-def build_ddpg_stats(policy, batch):
+def build_ddpg_stats(policy: Policy,
+                     batch: SampleBatch) -> Dict[str, TensorType]:
     stats = {
         "mean_q": tf.reduce_mean(policy.q_t),
         "max_q": tf.reduce_max(policy.q_t),
@@ -328,7 +342,9 @@ def build_ddpg_stats(policy, batch):
     return stats
 
 
-def before_init_fn(policy, obs_space, action_space, config):
+def before_init_fn(policy: Policy, obs_space: gym.space.Spaces,
+                   action_space: gym.space.Spaces,
+                   config: TrainerConfigDict) -> None:
     # Create global step for counting the number of update operations.
     if config["framework"] in ["tf2", "tfe"]:
         policy.global_step = get_variable(0, tf_name="global_step")
@@ -358,12 +374,14 @@ class ComputeTDErrorMixin:
         self.compute_td_error = compute_td_error
 
 
-def setup_mid_mixins(policy, obs_space, action_space, config):
+def setup_mid_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy, ddpg_actor_critic_loss)
 
 
 class TargetNetworkMixin:
-    def __init__(self, config):
+    def __init__(self, config: TrainerConfigDict):
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):
             tau = tf.convert_to_tensor(tau, dtype=tf.float32)
@@ -383,19 +401,23 @@ class TargetNetworkMixin:
         self.update_target(tau=1.0)
 
     # Support both hard and soft sync.
-    def update_target(self, tau=None):
+    def update_target(self, tau: int = None) -> None:
         self._do_update(np.float32(tau or self.config.get("tau")))
 
     @override(TFPolicy)
-    def variables(self):
+    def variables(self) -> List[TensorType]:
         return self.model.variables() + self.target_model.variables()
 
 
-def setup_late_mixins(policy, obs_space, action_space, config):
+def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                      action_space: gym.spaces.Space,
+                      config: TrainerConfigDict) -> None:
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid, observation_space, action_space, config):
+def validate_spaces(pid: int, observation_space: gym.spaces.Space,
+                    action_space: gym.spaces.Space,
+                    config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
