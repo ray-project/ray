@@ -16,14 +16,14 @@ See :doc:`deployment` for information about how to deploy serve.
 How do I call an endpoint from Python code?
 -------------------------------------------
 
-Use :mod:`client.get_handle <ray.serve.api.Client.get_handle>` to get a handle to the endpoint,
+Use :mod:`serve.get_handle <ray.serve.api.get_handle>` to get a handle to the endpoint,
 then use :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that
 endpoint. This returns a Ray ObjectRef whose result can be waited for or retrieved using
 ``ray.wait`` or ``ray.get``, respectively.
 
 .. code-block:: python
 
-    handle = client.get_handle("api_endpoint")
+    handle = serve.get_handle("api_endpoint")
     ray.get(handle.remote(request))
 
 
@@ -47,7 +47,7 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
             self.count += inc
             return True
 
-    handle = client.get_handle("endpoint_name")
+    handle = serve.get_handle("endpoint_name")
     handle.options(method_name="other_method").remote(5)
 
 The call is the same as a regular query except a different method is called
@@ -65,7 +65,7 @@ You can return a `Starlette Response object <https://www.starlette.io/responses/
     def f(starlette_request):
         return Response('Hello, world!', status_code=123, media_type='text/plain')
     
-    client.create_backend("hello", f)
+    serve.create_backend("hello", f)
 
 How do I enable CORS and other HTTP features?
 ---------------------------------------------

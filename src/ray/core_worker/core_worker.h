@@ -64,7 +64,8 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *results,
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -342,7 +343,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// disconnect.
   ///
   /// \return Void.
-  void Disconnect();
+  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+                  const std::shared_ptr<LocalMemoryBuffer>
+                      &creation_task_exception_pb_bytes = nullptr);
 
   /// Shut down the worker completely.
   ///
@@ -985,7 +988,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
-  void Exit(bool intentional);
+  void Exit(rpc::WorkerExitType exit_type,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();

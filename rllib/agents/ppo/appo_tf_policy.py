@@ -343,7 +343,7 @@ def postprocess_trajectory(
 
     # TODO: (sven) remove this del once we have trajectory view API fully in
     #  place.
-    del sample_batch.data["new_obs"]  # not used, so save some bandwidth
+    del sample_batch["new_obs"]  # not used, so save some bandwidth
 
     return sample_batch
 

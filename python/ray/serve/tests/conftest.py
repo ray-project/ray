@@ -36,12 +36,12 @@ def _shared_serve_instance():
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
-    controller = _shared_serve_instance._controller
+    controller = serve.api._global_client._controller
     # Clear all state between tests to avoid naming collisions.
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
-        _shared_serve_instance.delete_endpoint(endpoint)
+        serve.delete_endpoint(endpoint)
     for backend in ray.get(controller.get_all_backends.remote()).keys():
-        _shared_serve_instance.delete_backend(backend, force=True)
+        serve.delete_backend(backend, force=True)
 
 
 @pytest.fixture
