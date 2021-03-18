@@ -115,17 +115,6 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
         yield backend_state, timer, goal_manager
 
 
-def replicas(backend_state, backend=None, states=None):
-    replicas = []
-    for backend_tag, state_dict in backend_state._replicas.items():
-        if backend is None or backend_tag == backend:
-            for state, replica_list in state_dict.items():
-                if states is None or state in states:
-                    replicas.extend(replica_list)
-
-    return replicas
-
-
 def test_override_goals(mock_backend_state):
     backend_state, _, goal_manager = mock_backend_state
 
@@ -154,22 +143,23 @@ def test_return_existing_goal(mock_backend_state):
 def test_create_delete_single_replica(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    assert len(replicas(backend_state)) == 0
+    assert len(backend_state._replicas) == 0
 
     b_config_1, r_config_1 = generate_configs()
-    create_goal = backend_state.deploy_backend("tag1", b_config_1, r_config_1)
+    tag = "tag1"
+    create_goal = backend_state.deploy_backend(tag, b_config_1, r_config_1)
 
     # Single replica should be created.
     backend_state.update()
-    assert len(replicas(backend_state)) == 1
-    assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
-    assert replicas(backend_state)[0]._actor.started
+    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count(states=[ReplicaState.STARTING]) == 1
+    assert backend_state._replicas[tag].count() == 1
 
     # update() should not transition the state if the replica isn't ready.
     backend_state.update()
-    assert len(replicas(backend_state)) == 1
-    assert len(replicas(backend_state, states=[ReplicaState.STARTING])) == 1
-    replicas(backend_state)[0]._actor.set_ready()
+    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count(states=[ReplicaState.STARTING]) == 1
+    backend_state._replicas[tag].get()[0]._actor.set_ready()
     assert not goal_manager.check_complete(create_goal)
 
     # Now the replica should be marked running.

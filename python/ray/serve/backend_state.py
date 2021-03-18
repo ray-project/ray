@@ -1,5 +1,6 @@
 from collections import defaultdict
 from enum import Enum
+import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,6 +34,9 @@ class ReplicaState(Enum):
     SHOULD_STOP = 4
     STOPPING = 5
     STOPPED = 6
+
+
+ALL_REPLICA_STATES = [s for s in ReplicaState]
 
 
 class ActorReplicaWrapper:
@@ -328,6 +332,68 @@ class BackendReplica:
         return False
 
 
+class ReplicaStateContainer:
+    def __init__(self):
+        self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
+            list)
+
+    def remove(self):
+        assert not any(self._replicas.values())
+        del self._replicas
+
+    def add(self, state: ReplicaState, replica: BackendReplica):
+        assert isinstance(state, ReplicaState)
+        assert isinstance(replica, BackendReplica)
+        self._replicas[state].append(replica)
+
+    def get(self, states: Optional[List[ReplicaState]] = None):
+        if states is None:
+            states = ALL_REPLICA_STATES
+
+        assert isinstance(states, list)
+
+        return sum((self._replicas[state] for state in states), start=[])
+
+    def pop(self,
+            exclude_version: Optional[str] = None,
+            states: Optional[List[ReplicaState]] = None,
+            max_replicas: Optional[int] = math.inf):
+        if states is None:
+            states = ALL_REPLICA_STATES
+
+        assert exclude_version is None or isinstance(exclude_version, str)
+        assert isinstance(states, list)
+
+        replicas = []
+        for state in states:
+            popped = []
+            remaining = []
+            for replica in self._replicas[state]:
+                if len(replicas) + len(popped) == max_replicas:
+                    remaining.append(replica)
+                elif (exclude_version is not None
+                      and replica.version == exclude_version):
+                    remaining.append(replica)
+                else:
+                    popped.append(replica)
+            self._replicas[state] = remaining
+            replicas.extend(popped)
+
+        return replicas
+
+    def count(self, states: Optional[List[ReplicaState]] = None):
+        if states is None:
+            states = ALL_REPLICA_STATES
+        assert isinstance(states, list)
+        return sum(len(self._replicas[state]) for state in states)
+
+    def __str__(self):
+        return str(self._replicas)
+
+    def __repr__(self):
+        return repr(self._replicas)
+
+
 class BackendState:
     """Manages all state for backends in the system.
 
@@ -344,9 +410,7 @@ class BackendState:
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._goal_manager = goal_manager
-
-        self._replicas: Dict[BackendTag, Dict[ReplicaState, List[
-            BackendReplica]]] = defaultdict(lambda: defaultdict(list))
+        self._replicas: Dict[BackendTag, ReplicaStateContainer] = dict()
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._backend_goals: Dict[BackendTag, GoalId] = dict()
@@ -387,11 +451,11 @@ class BackendState:
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
-                backend_replica._replica_tag: backend_replica.actor_handle
-                for backend_replica in state_to_replica_dict[
-                    ReplicaState.RUNNING]
+                r.replica_tag: r.actor_handle
+                for r in replicas.get(
+                    backend_tag, states=[ReplicaState.RUNNING])
             }
-            for backend_tag, state_to_replica_dict in self._replicas.items()
+            for backend_tag, replicas in self._replicas.values()
         }
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -440,6 +504,10 @@ class BackendState:
                         and self._target_versions[backend_tag] == version):
                     return self._backend_goals.get(backend_tag, None)
 
+        if backend_tag not in self._replicas:
+            print("HERERERRERE")
+            self._replicas[backend_tag] = ReplicaStateContainer()
+
         backend_replica_class = create_backend_replica(
             replica_config.backend_def)
 
@@ -487,29 +555,20 @@ class BackendState:
             graceful_shutdown_timeout_s: float) -> int:
         # TODO(edoakes): to implement rolling upgrade, all we should need to
         # do is cap the number of old version replicas that are stopped here.
-        num_stopped = 0
-        for target_state in [
+        replicas_to_stop = self._replicas[backend_tag].pop(
+            exclude_version=version,
+            states=[
                 ReplicaState.SHOULD_START, ReplicaState.STARTING,
                 ReplicaState.RUNNING
-        ]:
-            target_version = []
-            wrong_version = []
-            for replica in self._replicas[backend_tag][target_state]:
-                if replica.version == version:
-                    target_version.append(replica)
-                else:
-                    wrong_version.append(replica)
+            ])
 
-            self._replicas[backend_tag][target_state] = target_version
-            for replica in wrong_version:
-                replica.set_should_stop(graceful_shutdown_timeout_s)
-                self._replicas[backend_tag][ReplicaState.SHOULD_STOP].append(
-                    replica)
-                num_stopped += 1
+        if len(replicas_to_stop) > 0:
+            logger.info(f"Stopping {len(replicas_to_stop)} replicas of "
+                        f"backend '{backend_tag}' with outdated versions.")
 
-        if num_stopped > 0:
-            logger.info(f"Stopping {num_stopped} replicas of backend "
-                        f"'{backend_tag}' with outdated versions.")
+        for replica in replicas_to_stop:
+            replica.set_should_stop(graceful_shutdown_timeout_s)
+            self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP, replica)
 
     def _scale_backend_replicas(
             self,
@@ -541,10 +600,9 @@ class BackendState:
         self._stop_wrong_version_replicas(backend_tag, version,
                                           graceful_shutdown_timeout_s)
 
-        current_num_replicas = sum([
-            len(self._replicas[backend_tag][ReplicaState.SHOULD_START]),
-            len(self._replicas[backend_tag][ReplicaState.STARTING]),
-            len(self._replicas[backend_tag][ReplicaState.RUNNING]),
+        current_num_replicas = self._replicas[backend_tag].count(states=[
+            ReplicaState.SHOULD_START, ReplicaState.STARTING,
+            ReplicaState.RUNNING
         ])
 
         delta_num_replicas = num_replicas - current_num_replicas
@@ -557,7 +615,8 @@ class BackendState:
                 delta_num_replicas, backend_tag))
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
-                self._replicas[backend_tag][ReplicaState.SHOULD_START].append(
+                self._replicas[backend_tag].add(
+                    ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, version))
 
@@ -567,17 +626,19 @@ class BackendState:
             assert self._target_replicas[backend_tag] >= delta_num_replicas
 
             for _ in range(-delta_num_replicas):
-                replica_state_dict = self._replicas[backend_tag]
-                list_to_use = replica_state_dict[ReplicaState.SHOULD_START] \
-                    or replica_state_dict[ReplicaState.STARTING] \
-                    or replica_state_dict[ReplicaState.RUNNING]
+                replicas_to_stop = self._replicas[backend_tag].pop(
+                    states=[
+                        ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                        ReplicaState.RUNNING
+                    ],
+                    max_replicas=-delta_num_replicas)
 
-                assert len(list_to_use), replica_state_dict
-                replica_to_stop = list_to_use.pop()
+                assert len(replicas_to_stop) == -delta_num_replicas
 
-                replica_to_stop.set_should_stop(graceful_shutdown_timeout_s)
-                self._replicas[backend_tag][ReplicaState.SHOULD_STOP].append(
-                    replica_to_stop)
+                for replica in replicas_to_stop:
+                    replica.set_should_stop(graceful_shutdown_timeout_s)
+                    self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
+                                                    replica)
 
         return True
 
@@ -594,49 +655,46 @@ class BackendState:
         if checkpoint_needed:
             self._checkpoint()
 
-    def _pop_replicas_of_state(self, state: ReplicaState
-                               ) -> List[Tuple[ReplicaState, BackendTag]]:
-        replicas = []
-        for backend_tag, state_to_replica_dict in self._replicas.items():
-            if state in state_to_replica_dict:
-                replicas.extend(
-                    (replica, backend_tag)
-                    for replica in state_to_replica_dict.pop(state))
-
-        return replicas
-
     def _completed_goals(self) -> List[GoalId]:
         completed_goals = []
-        all_tags = set(self._replicas.keys()).union(
+        all_backends = set(self._replicas.keys()).union(
             set(self._backend_metadata.keys()))
 
-        for backend_tag in all_tags:
-            desired_num_replicas = self._target_replicas.get(backend_tag)
-            state_dict = self._replicas.get(backend_tag, {})
-            existing_info = state_dict.get(ReplicaState.RUNNING, [])
+        for backend_tag in all_backends:
+            target_count = self._target_replicas.get(backend_tag, 0)
 
             # If we have pending ops, the current goal is *not* ready.
-            if (state_dict.get(ReplicaState.SHOULD_START)
-                    or state_dict.get(ReplicaState.STARTING)
-                    or state_dict.get(ReplicaState.SHOULD_STOP)
-                    or state_dict.get(ReplicaState.STOPPING)):
+            print("CASE -1")
+            if (self._replicas[backend_tag].count(states=[
+                    ReplicaState.SHOULD_START,
+                    ReplicaState.STARTING,
+                    ReplicaState.SHOULD_STOP,
+                    ReplicaState.STOPPING,
+            ]) > 0):
                 continue
 
+            running = self._replicas[backend_tag].get(
+                states=[ReplicaState.RUNNING])
+            running_count = len(running)
+
             # Check for deleting.
-            if (not desired_num_replicas or
-                    desired_num_replicas == 0) and \
-                    (not existing_info or len(existing_info) == 0):
+            print("CASE 0")
+            print("TARGET", target_count)
+            print("RUNNING", running_count)
+            if target_count == 0 and running_count == 0:
+                print("CASE 1")
                 completed_goals.append(
                     self._backend_goals.pop(backend_tag, None))
 
             # Check for a non-zero number of backends.
-            if (desired_num_replicas and existing_info) \
-                    and desired_num_replicas == len(existing_info):
+            elif target_count == running_count:
+                print("CASE 2")
                 # Check that all running replicas are the target version.
                 target_version = self._target_versions[backend_tag]
-                if all(r.version == target_version for r in existing_info):
+                if all(r.version == target_version for r in running):
                     completed_goals.append(
                         self._backend_goals.pop(backend_tag, None))
+
         return [goal for goal in completed_goals if goal]
 
     def update(self) -> bool:
@@ -647,43 +705,39 @@ class BackendState:
         for goal_id in self._completed_goals():
             self._goal_manager.complete_goal(goal_id)
 
-        for replica_state, backend_tag in self._pop_replicas_of_state(
-                ReplicaState.SHOULD_START):
-            replica_state.start(self._backend_metadata[backend_tag])
-            self._replicas[backend_tag][ReplicaState.STARTING].append(
-                replica_state)
-
-        for replica_state, backend_tag in self._pop_replicas_of_state(
-                ReplicaState.SHOULD_STOP):
-            replica_state.stop()
-            self._replicas[backend_tag][ReplicaState.STOPPING].append(
-                replica_state)
-
         transition_triggered = False
+        for backend_tag, replicas in self._replicas.items():
+            for replica in replicas.pop(states=[ReplicaState.SHOULD_START]):
+                print("SHOULD_START", replica)
+                replica.start(self._backend_metadata[backend_tag])
+                replicas.add(ReplicaState.STARTING, replica)
 
-        for replica_state, backend_tag in self._pop_replicas_of_state(
-                ReplicaState.STARTING):
-            if replica_state.check_started():
-                self._replicas[backend_tag][ReplicaState.RUNNING].append(
-                    replica_state)
-                transition_triggered = True
-            else:
-                self._replicas[backend_tag][ReplicaState.STARTING].append(
-                    replica_state)
+            for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
+                print("SHOULD_STOP", replica)
+                replica.stop()
+                replicas.add(ReplicaState.STOPPING, replica)
 
-        for replica_state, backend_tag in self._pop_replicas_of_state(
-                ReplicaState.STOPPING):
-            if replica_state.check_stopped():
-                transition_triggered = True
-            else:
-                self._replicas[backend_tag][ReplicaState.STOPPING].append(
-                    replica_state)
+            for replica in replicas.pop(states=[ReplicaState.STARTING]):
+                print("STARTING", replica)
+                if replica.check_started():
+                    replicas.add(ReplicaState.RUNNING, replica)
+                    transition_triggered = True
+                else:
+                    replicas.add(ReplicaState.STARTING, replica)
 
-        for backend_tag in list(self._replicas.keys()):
-            if not any(self._replicas[backend_tag]):
-                del self._replicas[backend_tag]
-                del self._backend_metadata[backend_tag]
-                del self._target_replicas[backend_tag]
+            for replica in replicas.pop(states=[ReplicaState.STOPPING]):
+                print("STOPPING", replica)
+                if replica.check_stopped():
+                    transition_triggered = True
+                else:
+                    replicas.add(ReplicaState.STOPPING, replica)
+
+        # Remove information about backends that now have zero replicas.
+        self._replicas = {
+            backend_tag: replicas
+            for backend_tag, replicas in self._replicas.items()
+            if replicas.count() != 0
+        }
 
         if transition_triggered:
             self._checkpoint()
