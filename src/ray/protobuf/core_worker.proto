@@ -444,8 +444,7 @@ service CoreWorkerService {
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Run a request on io worker
-  rpc RunOnUtilWorker(RunOnUtilWorkerRequest)
-      returns (RunOnUtilWorkerReply);
+  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
 }
