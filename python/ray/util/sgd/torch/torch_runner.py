@@ -253,7 +253,7 @@ class TorchRunner:
         return self.models
 
     def get_node_ip(self):
-        return ray.services.get_node_ip_address()
+        return ray.util.get_node_ip_address()
 
     @property
     def models(self):
