@@ -74,7 +74,8 @@ class DataClient:
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
-            elif e.code() == grpc.StatusCode.UNAVAILABLE:
+            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                              grpc.StatusCode.RESOURCE_EXHAUSTED):
                 # TODO(barakmich): The server may have
                 # dropped. In theory, we can retry, as per
                 # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
@@ -103,7 +104,8 @@ class DataClient:
                 lambda: req_id in self.ready_data or self._in_shutdown)
             if self._in_shutdown:
                 raise ConnectionError(
-                    f"cannot send request {req}: data channel shutting down")
+                    "Cannot send request due to data channel "
+                    f"shutting down. Request: {req}")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
