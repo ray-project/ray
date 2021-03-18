@@ -538,8 +538,15 @@ def start(node_ip_address, external_addresses, address, port, redis_password,
 
         if external_addresses is not None:
             external_addresses = external_addresses.split(",")
+            ray_params.update_if_absent(external_addresses=external_addresses)
             if len(external_addresses) > 1:
                 num_redis_shards = len(external_addresses) - 1
+            if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if external"
+                    " redis server(s) `{}` points to requires no password.",
+                    cf.bold("--redis-password"),
+                    cf.bold("--external-addresses"))
 
         node_ip_address = services.get_node_ip_address()
 

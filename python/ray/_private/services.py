@@ -918,7 +918,7 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(blacklist=port_blacklist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None:
+        if external_addresses is not None and len(external_addresses) > 1:
             shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
