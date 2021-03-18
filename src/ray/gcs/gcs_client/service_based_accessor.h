@@ -472,8 +472,9 @@ class ServiceBasedKVAccessor : public KVAccessor {
   explicit ServiceBasedKVAccessor(ServiceBasedGcsClient *client_impl);
   ~ServiceBasedKVAccessor() override = default;
 
-  Status AsyncKeys(const std::string &prefix,
-                   const OptionalItemCallback<std::vector<std::string>> &callback) override;
+  Status AsyncKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) override;
   Status AsyncGet(const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
   Status AsyncPut(const std::string &key, const std::string &value,

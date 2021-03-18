@@ -48,10 +48,10 @@ void GcsKVManager::HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *r
                               rpc::SendReplyCallback send_reply_callback) {
   store_client_->AsyncKeys(
       table_name_, request.prefix(),
-      [reply, send_reply_callback](Status status,
-                                   const boost::optional<std::vector<std::string>> &results) {
+      [reply, send_reply_callback](
+          Status status, const boost::optional<std::vector<std::string>> &results) {
         if (results) {
-          for(const auto& r : *results) {
+          for (const auto &r : *results) {
             reply->add_results(r);
           }
         }

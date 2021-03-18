@@ -18,6 +18,7 @@ cdef extern from "ray/gcs/accessor.h" nogil:
         CRayStatus Get(const c_string &key, c_string &value)
         CRayStatus Del(const c_string &key)
         CRayStatus Exists(const c_string &key, c_bool &exist)
+        CRayStatus Keys(const c_string &key, c_vector[c_string]& results)
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
@@ -60,4 +61,5 @@ cdef extern from * namespace "_gcs_maker":
       }
     }
     """
-    shared_ptr[CGcsClient] make_gcs(const c_string &ip, int port, const c_string &password)
+    shared_ptr[CGcsClient] make_gcs(
+        const c_string &ip, int port, const c_string &password)

@@ -12,6 +12,12 @@ def test_gcs_client_core_worker(shutdown_only):
     gcs_client.kv_del(b"TEST_KEY")
     assert not gcs_client.kv_exists(b"TEST_KEY")
     assert gcs_client.kv_get(b"TEST_KEY") is None
+    gcs_client.kv_put(b"TEST_KEY_1", b"TEST_VAL_1")
+    gcs_client.kv_put(b"TEST_KEY_2", b"TEST_VAL_2")
+    gcs_client.kv_put(b"TEST_KEY_3", b"TEST_VAL_3")
+    gcs_client.kv_put(b"TEST_KEY_4", b"TEST_VAL_4")
+    keys = gcs_client.kv_keys(b"TEST_KEY_")
+    assert keys == ["TEST_KEY_1", "TEST_KEY_2", "TEST_KEY_3", "TEST_KEY_4"]
 
 
 def test_gcs_client_address(ray_start_cluster_head):
@@ -25,3 +31,9 @@ def test_gcs_client_address(ray_start_cluster_head):
     gcs_client.kv_del(b"TEST_KEY")
     assert not gcs_client.kv_exists(b"TEST_KEY")
     assert gcs_client.kv_get(b"TEST_KEY") is None
+    gcs_client.kv_put(b"TEST_KEY_1", b"TEST_VAL_1")
+    gcs_client.kv_put(b"TEST_KEY_2", b"TEST_VAL_2")
+    gcs_client.kv_put(b"TEST_KEY_3", b"TEST_VAL_3")
+    gcs_client.kv_put(b"TEST_KEY_4", b"TEST_VAL_4")
+    keys = gcs_client.kv_keys(b"TEST_KEY_")
+    assert keys == ["TEST_KEY_1", "TEST_KEY_2", "TEST_KEY_3", "TEST_KEY_4"]

@@ -25,7 +25,10 @@ cdef class GcsClient:
         shared_ptr[CGcsClient] inner_
 
     @staticmethod
-    cdef make_from_address(const c_string &ip, int port, const c_string &password):
+    cdef make_from_address(
+      const c_string &ip,
+      int port,
+      const c_string &password):
         cdef GcsClient self = GcsClient.__new__(GcsClient)
         self.inner_ = make_gcs(ip, port, password)
         return self
@@ -56,6 +59,14 @@ cdef class GcsClient:
         elif not status.ok():
             raise IOError("Get failed: {}".format(status.ToString()))
         return value if exists else None
+
+    def kv_keys(self, c_string key):
+        cdef:
+            c_vector[c_string] results
+        status = self.inner_.get().KV().Keys(key, results)
+        if not status.ok():
+            raise IOError("Keys failed: {}".format(status.ToString()))
+        return results
 
     def kv_exists(self, c_string key):
         cdef:

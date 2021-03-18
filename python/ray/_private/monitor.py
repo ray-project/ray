@@ -27,7 +27,7 @@ from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
-    _internal_kv_initialized, _internal_kv_get, _internal_kv_del, \
+    _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,6 @@ class Monitor:
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
         worker.mode = 0
-        _internal_kv_init(self.redis)
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None

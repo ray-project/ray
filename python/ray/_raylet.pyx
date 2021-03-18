@@ -829,8 +829,10 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker = ray.worker.global_worker.core_worker
         core_worker.destroy_event_loop_if_exists()
 
+
 def connect_to_gcs(ip, port, password):
     return GcsClient.make_from_address(ip, port, password)
+
 
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:

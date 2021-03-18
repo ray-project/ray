@@ -1590,16 +1590,14 @@ Status ServiceBasedKVAccessor::AsyncKeys(
   rpc::KeysRequest req;
   req.set_prefix(prefix);
   client_impl_->GetGcsRpcClient().Keys(
-      req,
-      [callback](const Status &status, const rpc::KeysReply &reply) {
-        if(!status.ok()) {
+      req, [callback](const Status &status, const rpc::KeysReply &reply) {
+        if (!status.ok()) {
           callback(status, boost::none);
         } else {
           callback(status, VectorFromProtobuf(reply.results()));
         }
       });
   return Status::OK();
-
 }
 
 }  // namespace gcs

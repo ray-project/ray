@@ -776,8 +776,9 @@ class KVAccessor {
  public:
   virtual ~KVAccessor() = default;
 
-  virtual Status AsyncKeys(const std::string &prefix,
-                           const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
+  virtual Status AsyncKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
   virtual Status AsyncGet(const std::string &key,
                           const OptionalItemCallback<std::string> &callback) = 0;
   virtual Status AsyncPut(const std::string &key, const std::string &value,
