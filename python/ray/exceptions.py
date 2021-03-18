@@ -76,6 +76,11 @@ class RayTaskError(RayError):
                  ip=None):
         """Initialize a RayTaskError."""
         import ray
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
@@ -108,6 +113,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
+                # BaseException implements a __reduce__ method that returns
+                # a tuple with the type and the value of self.args.
+                # https://stackoverflow.com/a/49715949/2213289
+                self.args = (cause, )
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
