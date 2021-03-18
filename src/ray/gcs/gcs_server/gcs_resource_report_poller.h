@@ -60,11 +60,11 @@ class GcsResourceReportPoller {
   void Stop();
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(std::shared_ptr<rpc::GcsNodeInfo> node_info)
+  void HandleNodeAdded(const std::shared_ptr<rpc::GcsNodeInfo> &node_info)
       LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(std::shared_ptr<rpc::GcsNodeInfo> node_info)
+  void HandleNodeRemoved(const std::shared_ptr<rpc::GcsNodeInfo> &node_info)
       LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -103,9 +103,7 @@ class GcsResourceReportPoller {
     int64_t last_pull_time;
     int64_t next_pull_time;
 
-    ~PullState() {
-      RAY_LOG(ERROR) << "Destroying state: " << node_id;
-    }
+    ~PullState() {}
   };
 
   // A global lock for internal operations. This lock is shared between the main thread
@@ -125,7 +123,7 @@ class GcsResourceReportPoller {
   void PullResourceReport(const std::shared_ptr<PullState> state);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
-  void NodeResourceReportReceived(const std::shared_ptr<PullState> &state)
+  void NodeResourceReportReceived(const std::shared_ptr<PullState> state)
       LOCKS_EXCLUDED(mutex_);
 
   friend class GcsResourceReportPollerTest;

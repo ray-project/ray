@@ -48,7 +48,7 @@ void GcsResourceReportPoller::Stop() {
 }
 
 void GcsResourceReportPoller::HandleNodeAdded(
-    std::shared_ptr<rpc::GcsNodeInfo> node_info) {
+    const std::shared_ptr<rpc::GcsNodeInfo> &node_info) {
   absl::MutexLock guard(&mutex_);
 
   auto state = std::make_shared<PullState>();
@@ -73,7 +73,7 @@ void GcsResourceReportPoller::HandleNodeAdded(
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(
-    std::shared_ptr<rpc::GcsNodeInfo> node_info) {
+    const std::shared_ptr<rpc::GcsNodeInfo> &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   {
     absl::MutexLock guard(&mutex_);
@@ -86,7 +86,6 @@ void GcsResourceReportPoller::Tick() { TryPullResourceReport(); }
 
 void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
-
   int64_t cur_time = get_current_time_milli_();
 
   RAY_LOG(DEBUG) << "Trying to pull inflight_pulls " << inflight_pulls_ << "/"
@@ -109,20 +108,18 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   }
 }
 
-void GcsResourceReportPoller::PullResourceReport(
-    const std::shared_ptr<PullState> state) {
+void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
   inflight_pulls_++;
 
   request_report_(
       state->address, raylet_client_pool_,
-      [this, &state](const Status &status, const rpc::RequestResourceReportReply &reply) {
+      [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
           // of the work is in the callback we should move this callback's execution to
           // the polling thread. We will need to implement locking once we switch threads.
-          RAY_LOG(ERROR) << "In pull callback. Node id: " << state->node_id;
           handle_resource_report_(reply.resources());
-          polling_service_.post([this, state] { NodeResourceReportReceived(state); });
+          polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
         } else {
           RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
                         << ": " << status.ToString();
@@ -131,18 +128,20 @@ void GcsResourceReportPoller::PullResourceReport(
 }
 
 void GcsResourceReportPoller::NodeResourceReportReceived(
-    const std::shared_ptr<PullState> &state) {
+    const std::shared_ptr<PullState> state) {
   absl::MutexLock guard(&mutex_);
   inflight_pulls_--;
-  const NodeID &node_id = state->node_id;
+  NodeID &node_id = state->node_id;
   if (!nodes_.count(node_id)) {
     RAY_LOG(DEBUG)
-      << "Resource report received, but the node is no longer in the cluster. NodeID: " << node_id;
-    return;
+        << "Resource report received, but the node is no longer in the cluster. NodeID: "
+        << node_id;
+  } else {
+    state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
+    to_pull_queue_.push_back(state);
   }
 
-  state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
-  to_pull_queue_.push_back(state);
+  polling_service_.post([this] { TryPullResourceReport(); });
 }
 
 }  // namespace gcs

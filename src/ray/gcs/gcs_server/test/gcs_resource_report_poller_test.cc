@@ -28,8 +28,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
   GcsResourceReportPollerTest()
       : current_time_(0),
         gcs_resource_report_poller_(
-            nullptr, nullptr, [](const rpc::ResourcesData &) {
-                              },
+            nullptr, nullptr, [](const rpc::ResourcesData &) {},
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
@@ -43,7 +42,12 @@ class GcsResourceReportPollerTest : public ::testing::Test {
 
         ) {}
 
-  void RunPollingService() { gcs_resource_report_poller_.polling_service_.run(); }
+  void RunPollingService() {
+    RAY_LOG(ERROR) << "Running service...";
+    gcs_resource_report_poller_.polling_service_.run();
+    gcs_resource_report_poller_.polling_service_.restart();
+    RAY_LOG(ERROR) << "Done";
+  }
 
   void Tick(int64_t inc) {
     current_time_ += inc;
@@ -67,6 +71,7 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
+        RAY_LOG(ERROR) << "Requesting";
         rpc_sent = true;
         rpc::RequestResourceReportReply temp;
         callback(Status::OK(), temp);
@@ -79,18 +84,110 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
   RunPollingService();
   ASSERT_TRUE(rpc_sent);
 
-  RAY_LOG(ERROR) << "===================";
   // Not enough time has passed to send another tick.
   rpc_sent = false;
   Tick(1);
   RunPollingService();
   ASSERT_FALSE(rpc_sent);
-  RAY_LOG(ERROR) << "===================";
 
   // Now enough time has passed.
   Tick(100);
   RunPollingService();
   ASSERT_TRUE(rpc_sent);
+}
+
+TEST_F(GcsResourceReportPollerTest, TestMaxInFlight) {
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> nodes;
+  for (int i = 0; i < 200; i++) {
+    nodes.emplace_back(Mocker::GenNodeInfo());
+  }
+
+  std::vector<
+      std::function<void(const Status &, const rpc::RequestResourceReportReply &)>>
+      callbacks;
+
+  int num_rpcs_sent = 0;
+  request_report_ =
+      [&](const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
+              callback) {
+        num_rpcs_sent++;
+        callbacks.emplace_back(callback);
+      };
+
+  for (const auto &node : nodes) {
+    gcs_resource_report_poller_.HandleNodeAdded(node);
+  }
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+
+  for (int i = 0; i < 100; i++) {
+    const auto &callback = callbacks[i];
+    rpc::RequestResourceReportReply temp;
+    callback(Status::OK(), temp);
+  }
+  RunPollingService();
+  // Requests are sent as soon as possible (don't wait for the next tick).
+  ASSERT_EQ(num_rpcs_sent, 200);
+}
+
+TEST_F(GcsResourceReportPollerTest, TestPrioritizeNewNodes) {
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> nodes;
+  for (int i = 0; i < 200; i++) {
+    nodes.emplace_back(Mocker::GenNodeInfo());
+  }
+
+  std::vector<
+      std::function<void(const Status &, const rpc::RequestResourceReportReply &)>>
+      callbacks;
+  std::unordered_set<NodeID> nodes_requested;
+
+  int num_rpcs_sent = 0;
+  request_report_ =
+      [&](const rpc::Address &address, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
+              callback) {
+        num_rpcs_sent++;
+        callbacks.emplace_back(callback);
+        auto node_id = NodeID::FromBinary(address.raylet_id());
+        nodes_requested.insert(node_id);
+      };
+
+  for (int i = 0; i < 100; i++) {
+    const auto &node = nodes[i];
+    gcs_resource_report_poller_.HandleNodeAdded(node);
+  }
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+
+  Tick(50);
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+  ASSERT_EQ(nodes_requested.size(), 100);
+
+  for (int i = 0; i < 100; i++) {
+    const auto &callback = callbacks[i];
+    rpc::RequestResourceReportReply temp;
+    callback(Status::OK(), temp);
+  }
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+  ASSERT_EQ(nodes_requested.size(), 100);
+
+  // The first wave of nodes should run at t=150.
+  Tick(50);
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+  ASSERT_EQ(nodes_requested.size(), 100);
+
+  // We shouuld now request from the new nodes before repeating the first wave of nodes.
+  for (int i = 100; i < 200; i++) {
+    const auto &node = nodes[i];
+    gcs_resource_report_poller_.HandleNodeAdded(node);
+  }
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 200);
+  ASSERT_EQ(nodes_requested.size(), 200);
 }
 
 }  // namespace gcs
