@@ -9,6 +9,8 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
 from dataclasses import dataclass
 from warnings import warn
 
+from fastapi import FastAPI, APIRouter
+
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
@@ -1014,11 +1016,6 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
-
-
-from fastapi import FastAPI, APIRouter
-from typing import Union
-from functools import wraps
 
 
 def deployment(app: Union[FastAPI, APIRouter]):

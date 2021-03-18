@@ -278,7 +278,7 @@ class RayServeReplica:
                     def build_starlette_response(
                             self) -> starlette.responses.Response:
                         return starlette.responses.Response(
-                            b''.join(self.buffer),
+                            b"".join(self.buffer),
                             status_code=self.status_code,
                             headers=dict(self.header))
 

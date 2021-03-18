@@ -381,14 +381,14 @@ def register_custom_serializers():
                 "name": o.name,
                 "type_": o.type_,
                 "class_validators": o.class_validators,
-                "model_config":o.model_config,
+                "model_config": o.model_config,
                 "default": o.default,
                 "default_factory": o.default_factory,
                 "required": o.required,
                 "alias": o.alias,
                 "field_info": o.field_info,
             },
-            deserializer=lambda kwargs:pydantic.fields.ModelField(**kwargs),
+            deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
         )
     )
 
