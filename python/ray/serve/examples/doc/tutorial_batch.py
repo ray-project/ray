@@ -36,9 +36,9 @@ class BatchAdder:
 
 # __doc_deploy_begin__
 ray.init(num_cpus=8)
-client = serve.start()
-client.create_backend("adder:v0", BatchAdder)
-client.create_endpoint(
+serve.start()
+serve.create_backend("adder:v0", BatchAdder)
+serve.create_endpoint(
     "adder", backend="adder:v0", route="/adder", methods=["GET"])
 # __doc_deploy_end__
 
@@ -61,7 +61,7 @@ print("Result returned:", results)
 # __doc_query_end__
 
 # __doc_query_handle_begin__
-handle = client.get_handle("adder")
+handle = serve.get_handle("adder")
 print(handle)
 # Output
 # RayServeHandle(

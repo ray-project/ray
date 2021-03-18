@@ -188,7 +188,9 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
       node_manager_.ProcessClientMessage(client, message_type, message.data());
     };
     flatbuffers::FlatBufferBuilder fbb;
-    fbb.Finish(protocol::CreateDisconnectClient(fbb));
+    protocol::DisconnectClientBuilder builder(fbb);
+    builder.add_disconnect_type(static_cast<int>(rpc::WorkerExitType::SYSTEM_ERROR_EXIT));
+    fbb.Finish(builder.Finish());
     std::vector<uint8_t> message_data(fbb.GetBufferPointer(),
                                       fbb.GetBufferPointer() + fbb.GetSize());
     // Accept a new local client and dispatch it to the node manager.
