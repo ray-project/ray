@@ -98,7 +98,6 @@ class Subscriber {
 /// Pubsub server.
 class PubsubCoordinator {
  public:
-
   /// Pubsub coordinator constructor.
   ///
   /// \param is_node_dead A callback that returns true if the given node id is dead.

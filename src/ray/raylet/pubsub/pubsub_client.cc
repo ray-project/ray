@@ -29,7 +29,8 @@ void PubsubClient::SubcribeObject(
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it == subscription_map_.end()) {
-    subscription_it = subscription_map_.emplace(owner_worker_id, SubscriptionInfo(owner_address)).first;
+    subscription_it =
+        subscription_map_.emplace(owner_worker_id, SubscriptionInfo(owner_address)).first;
     MakeLongPollingPubsubConnection(owner_address, subscriber_address);
   }
   RAY_CHECK(subscription_it != subscription_map_.end());
