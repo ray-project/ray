@@ -159,8 +159,8 @@ def _download_from_github_if_needed(config_path: str) -> str:
 class _RuntimePackage:
     """Represents a Ray package loaded via ``load_package()``.
 
-    This class provides access to the symbols defined by the stub file of the
-    package (e.g., remote functions and actor definitions). You can also
+    This class provides access to the symbols defined by the interface file of
+    the package (e.g., remote functions and actor definitions). You can also
     access the raw runtime env defined by the package via ``pkg._runtime_env``.
     """
 
@@ -193,13 +193,13 @@ class _RuntimePackage:
 
 def _validate_interface_file(interface_file: str):
     if not os.path.exists(interface_file):
-        raise ValueError("Stub file does not exist: {}".format(interface_file))
+        raise ValueError("Interface file does not exist: {}".format(interface_file))
     for line in open(interface_file):
         line = line.replace("\n", "")
         if line.startswith("import ") or line.startswith("from "):
             if line != "import ray" and "noqa" not in line:
                 raise ValueError(
-                    "Stub files are only allowed to import `ray` "
+                    "Interface files are only allowed to import `ray` "
                     "at top-level, found `{}`. Please either remove or "
                     "change this into a lazy import. To unsafely allow "
                     "this import, add `# noqa` to the line "
