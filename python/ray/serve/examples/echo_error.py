@@ -38,9 +38,9 @@ def echo(_):
     raise Exception("Something went wrong...")
 
 
-client = serve.start()
+serve.start()
 
-client.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 for _ in range(2):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
@@ -49,6 +49,6 @@ for _ in range(2):
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
 
-handle = client.get_handle("my_endpoint")
+handle = serve.get_handle("my_endpoint")
 print("Invoke from python will raise exception with traceback:")
 ray.get(handle.remote())
