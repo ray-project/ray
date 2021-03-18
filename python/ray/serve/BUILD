@@ -18,6 +18,14 @@ py_test(
 )
 
 py_test(
+    name = "test_deploy",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -49,8 +57,16 @@ py_test(
     deps = [":serve_lib"],
 )
 
+# py_test(
+    # name = "test_ray_client",
+    # size = "small",
+    # srcs = serve_tests_srcs,
+    # tags = ["exclusive"],
+    # deps = [":serve_lib"],
+# )
+
 py_test(
-    name = "test_ray_client",
+    name = "test_async_goal_manager",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -58,7 +74,7 @@ py_test(
 )
 
 py_test(
-    name = "test_async_goal_manager",
+    name = "test_backend_state",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -94,7 +110,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],

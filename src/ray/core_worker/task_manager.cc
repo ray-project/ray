@@ -14,7 +14,11 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "ray/common/buffer.h"
+#include "ray/common/constants.h"
 #include "ray/util/util.h"
+
+#include "msgpack.hpp"
 
 namespace ray {
 
@@ -265,8 +269,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    Status *status) {
+bool TaskManager::PendingTaskFailed(
+    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -330,7 +336,9 @@ bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     // objects.
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
-    MarkPendingTaskFailed(task_id, spec, error_type);
+    if (immediately_mark_object_fail) {
+      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+    }
   }
 
   ShutdownIfNeeded();
@@ -435,15 +443,42 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
-                                        const TaskSpecification &spec,
-                                        rpc::ErrorType error_type) {
+void TaskManager::MarkPendingTaskFailed(
+    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    if (creation_task_exception != nullptr) {
+      // Structure of bytes stored in object store:
+      // rpc::RayException
+      // ->pb-serialized bytes
+      // ->msgpack-serialized bytes
+      // ->[offset][msgpack-serialized bytes]
+      std::string pb_serialized_exception;
+      creation_task_exception->SerializeToString(&pb_serialized_exception);
+      msgpack::sbuffer msgpack_serialized_exception;
+      msgpack::packer<msgpack::sbuffer> packer(msgpack_serialized_exception);
+      packer.pack_bin(pb_serialized_exception.size());
+      packer.pack_bin_body(pb_serialized_exception.data(),
+                           pb_serialized_exception.size());
+      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                          kMessagePackOffset);
+      // copy msgpack-serialized bytes
+      std::memcpy(final_buffer.Data() + kMessagePackOffset,
+                  msgpack_serialized_exception.data(),
+                  msgpack_serialized_exception.size());
+      // copy offset
+      msgpack::sbuffer msgpack_int;
+      msgpack::pack(msgpack_int, msgpack_serialized_exception.size());
+      std::memcpy(final_buffer.Data(), msgpack_int.data(), msgpack_int.size());
+      RAY_UNUSED(in_memory_store_->Put(
+          RayObject(error_type, final_buffer.Data(), final_buffer.Size()), object_id));
+    } else {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+    }
   }
 }
 
