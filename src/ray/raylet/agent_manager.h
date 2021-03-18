@@ -18,13 +18,22 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
+#include "ray/rpc/job/job_client.h"
+#include "ray/rpc/job/job_server.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace raylet {
+
+typedef std::function<std::unique_ptr<rpc::JobClient>(const std::string &ip_address,
+                                                      int port)>
+    JobClientFactoryFn;
 
 typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                                    uint32_t delay_ms)>
@@ -37,8 +46,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     std::vector<std::string> agent_commands;
   };
 
-  explicit AgentManager(Options options, DelayExecutorFn delay_executor)
-      : options_(std::move(options)), delay_executor_(std::move(delay_executor)) {
+  explicit AgentManager(Options options, std::shared_ptr<gcs::GcsClient> gcs_client,
+                        JobClientFactoryFn job_client_factory,
+                        DelayExecutorFn delay_executor)
+      : options_(std::move(options)),
+        gcs_client_(std::move(gcs_client)),
+        job_client_factory_(std::move(job_client_factory)),
+        delay_executor_(std::move(delay_executor)) {
     StartAgent();
   }
 
@@ -46,15 +60,22 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+
+  void InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data, bool start_driver);
+
  private:
   void StartAgent();
 
  private:
   Options options_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  std::unique_ptr<rpc::JobClient> job_client_;
+  JobClientFactoryFn job_client_factory_;
+  DelayExecutorFn delay_executor_;
+
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
   std::string agent_ip_address_;
-  DelayExecutorFn delay_executor_;
 };
 
 class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {

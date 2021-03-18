@@ -179,6 +179,31 @@ cc_library(
     ],
 )
 
+# Job agent.
+
+cc_grpc_library(
+    name = "job_agent_cc_grpc",
+    srcs = ["//src/ray/protobuf:job_agent_proto"],
+    grpc_only = True,
+    deps = ["//src/ray/protobuf:job_agent_cc_proto"],
+)
+
+cc_library(
+    name = "job_rpc",
+    hdrs = glob([
+        "src/ray/rpc/job/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":grpc_common_lib",
+        ":job_agent_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
 # Agent manager.
 cc_grpc_library(
     name = "agent_manager_cc_grpc",
@@ -560,6 +585,7 @@ cc_library(
     deps = [
         ":agent_manager_rpc",
         ":gcs",
+        ":job_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -1812,6 +1838,7 @@ filegroup(
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

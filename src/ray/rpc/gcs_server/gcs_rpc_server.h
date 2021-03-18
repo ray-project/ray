@@ -71,6 +71,9 @@ class JobInfoGcsServiceHandler {
                                    GetAllJobInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleSubmitJob(const SubmitJobRequest &request, SubmitJobReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
+
   virtual void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) = 0;
 
@@ -98,6 +101,7 @@ class JobInfoGrpcService : public GrpcService {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
+    JOB_INFO_SERVICE_RPC_HANDLER(SubmitJob);
     JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);
   }
 

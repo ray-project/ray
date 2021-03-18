@@ -43,6 +43,21 @@ message GetAllJobInfoReply {
   repeated JobTableData job_info_list = 2;
 }
 
+message SubmitJobRequest {
+  // Job id.
+  bytes job_id = 1;
+  // Language the job uses.
+  Language language = 2;
+  // Job payload.
+  string job_payload = 4;
+  // Required resources.
+  map<string, double> required_resources = 5;
+}
+
+message SubmitJobReply {
+  GcsStatus status = 1;
+}
+
 message ReportJobErrorRequest {
   ErrorTableData job_error = 1;
 }
@@ -58,6 +73,8 @@ service JobInfoGcsService {
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
   // Get information of all jobs from GCS Service.
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
+  // Submit job.
+  rpc SubmitJob(SubmitJobRequest) returns (SubmitJobReply);
   // Report job error.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
 }

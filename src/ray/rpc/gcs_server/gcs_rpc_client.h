@@ -124,6 +124,9 @@ class GcsRpcClient {
   /// Get information of all jobs from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, GetAllJobInfo, job_info_grpc_client_, )
 
+  /// Submit a job to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, SubmitJob, job_info_grpc_client_, )
+
   /// Report job error to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService, ReportJobError, job_info_grpc_client_, )
 

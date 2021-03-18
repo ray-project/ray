@@ -1,3 +1,4 @@
+import json
 import logging
 import asyncio
 
@@ -8,6 +9,7 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.job.job_consts as job_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray.core.generated import common_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import (
@@ -30,6 +32,33 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         # JobInfoGcsServiceStub
         self._gcs_job_info_stub = None
+
+    async def _next_job_id(self):
+        counter_str = await self._dashboard_head.aioredis_client.incr(
+            job_consts.REDIS_KEY_JOB_COUNTER)
+        job_id_int = int(counter_str)
+        return ray.JobID.from_int(job_id_int)
+
+    @routes.post("/jobs")
+    async def new_job(self, req) -> aiohttp.web.Response:
+        job_info = dict(await req.json())
+        language = common_pb2.Language.Value(job_info["language"])
+        job_id = await self._next_job_id()
+        request = gcs_service_pb2.SubmitJobRequest(
+            job_id=job_id.binary(),
+            language=language,
+            job_payload=json.dumps(job_info))
+        reply = await self._gcs_job_info_stub.SubmitJob(request)
+        if reply.status.code == 0:
+            logger.info("Succeeded to submit job %s", job_id.hex())
+            return dashboard_utils.rest_response(
+                success=True, message="Job submitted.", job_id=job_id.hex())
+        else:
+            logger.info("Failed to submit job %s", job_id.hex())
+            return dashboard_utils.rest_response(
+                success=False,
+                message=f"Failed to submit job: {reply.status.message}",
+                job_id=job_id.hex())
 
     @routes.get("/jobs")
     @dashboard_utils.aiohttp_cache

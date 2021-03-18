@@ -288,6 +288,9 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// Duration to wait between retries for failed initialization of job env.
+RAY_CONFIG(uint32_t, agent_retry_interval_ms, 1000);
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)

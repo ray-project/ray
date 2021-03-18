@@ -283,7 +283,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
 
   auto options = AgentManager::Options({self_node_id, agent_command_line});
   agent_manager_.reset(
-      new AgentManager(std::move(options),
+      new AgentManager(std::move(options), gcs_client_,
+                       /*job_client_factory=*/
+                       [this](const std::string &ip_address, int port) {
+                         if (ip_address.empty() || port == 0) {
+                           return std::unique_ptr<rpc::JobClient>(nullptr);
+                         }
+                         return std::unique_ptr<rpc::JobClient>(
+                             new rpc::JobClient(ip_address, port, client_call_manager_));
+                       },
                        /*delay_executor=*/
                        [this](std::function<void()> task, uint32_t delay_ms) {
                          return execute_after(io_service_, task, delay_ms);
@@ -353,10 +361,17 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
-    if (!job_data.is_dead()) {
+    if (job_data.state() == JobTableData::SUBMITTED) {
+      HandleJobSubmitted(job_id, job_data);
+    } else if (job_data.state() == JobTableData::RUNNING) {
       HandleJobStarted(job_id, job_data);
-    } else {
+    } else if (job_data.state() == JobTableData::FINISHED ||
+               job_data.state() == JobTableData::FAILED ||
+               job_data.state() == JobTableData::CANCEL) {
       HandleJobFinished(job_id, job_data);
+    } else {
+      RAY_CHECK(job_data.state() == JobTableData::INIT);
+      // The job state should be INIT, just ignore.
     }
   };
   RAY_RETURN_NOT_OK(
@@ -418,9 +433,46 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
   KillWorker(worker);
 }
 
+void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobSubmitted " << job_id;
+  RAY_CHECK(!job_data.is_dead());
+  // Notify job manager that the job is submitted.
+  if (!job_manager_.OnJobSubmitted(std::make_shared<JobTableData>(job_data))) {
+    auto local_job_data = job_manager_.GetJobData(job_id);
+    RAY_CHECK(local_job_data != nullptr);
+    RAY_LOG(WARNING) << "Failed to handle job submitted event, local state is "
+                     << rpc::JobTableData_JobState_Name(local_job_data->state())
+                     << ", received state is "
+                     << rpc::JobTableData_JobState_Name(job_data.state());
+    return;
+  }
+
+  if (job_data.config().is_submitted_from_dashboard()) {
+    auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
+    const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
+    agent_manager_->InitializeJobEnv(job_table_data, start_driver);
+  }
+}
+
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(DEBUG) << "HandleJobStarted " << job_id;
   RAY_CHECK(!job_data.is_dead());
+  if (!job_manager_.OnJobStarted(std::make_shared<JobTableData>(job_data))) {
+    auto local_job_data = job_manager_.GetJobData(job_id);
+    RAY_CHECK(local_job_data != nullptr);
+    RAY_LOG(WARNING) << "Failed to handle job started event, local state is "
+                     << rpc::JobTableData_JobState_Name(local_job_data->state())
+                     << ", received state is "
+                     << rpc::JobTableData_JobState_Name(job_data.state());
+    return;
+  }
+
+  if (job_data.config().is_submitted_from_dashboard()) {
+    // Maybe this is a new node and has missed the `JobSubmitted` event.
+    auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
+    const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
+    agent_manager_->InitializeJobEnv(job_table_data, start_driver);
+  }
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
@@ -1017,16 +1069,42 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(message->serialized_job_config()->str());
+    if (job_config.is_submitted_from_dashboard()) {
+      // Invoke this to avoid agent manager misreporting some errors.
+      auto job_data = job_manager_.GetJobData(job_id);
+      if (job_data == nullptr) {
+        // The job is already marked as dead.
+        std::ostringstream ostr;
+        ostr << "Job " << job_id << "is already marked as dead.";
+        RAY_LOG(WARNING) << ostr.str();
+        send_reply_callback(Status::Invalid(ostr.str()), /*prot=*/0);
+        return;
+      }
+    }
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(message->serialized_job_config()->str());
     Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
     if (status.ok()) {
-      auto job_data_ptr =
-          gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  worker_ip_address, pid, job_config);
+      std::shared_ptr<rpc::JobTableData> job_data_ptr;
+      if (job_config.is_submitted_from_dashboard()) {
+        job_data_ptr = job_manager_.GetJobData(job_id);
+        RAY_CHECK(job_data_ptr != nullptr);
+        job_data_ptr->set_raylet_id(self_node_id_.Binary());
+        job_data_ptr->set_driver_ip_address(initial_config_.node_manager_address);
+        job_data_ptr->set_driver_hostname(boost::asio::ip::host_name());
+        job_data_ptr->set_driver_pid(pid);
+        job_data_ptr->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
+        job_data_ptr->set_language(language);
+        job_data_ptr->set_timestamp(current_time_ms());
+        *job_data_ptr->mutable_config() = job_config;
+      } else {
+        job_data_ptr = gcs::CreateJobTableData(
+            job_id, /*is_dead*/ false, current_time_ms(), worker_ip_address,
+            boost::asio::ip::host_name(), pid, language, self_node_id_, job_config);
+      }
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }

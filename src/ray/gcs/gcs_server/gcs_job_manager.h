@@ -26,9 +26,17 @@ namespace gcs {
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
   explicit GcsJobManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                         std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+        gcs_pub_sub_(std::move(gcs_pub_sub)),
+        gcs_node_manager_(std::move(gcs_node_manager)) {}
+
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
   void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
@@ -45,6 +53,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
                             rpc::ReportJobErrorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleSubmitJob(const rpc::SubmitJobRequest &request, rpc::SubmitJobReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
+
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
@@ -52,10 +63,25 @@ class GcsJobManager : public rpc::JobInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
+  std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+
+  absl::flat_hash_map<JobID, std::shared_ptr<JobTableData>> jobs_;
+
+  /// Map from driver node ID to the IDs of jobs associated with the driver.
+  absl::flat_hash_map<NodeID, absl::flat_hash_set<JobID>> driver_node_to_jobs_;
+
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
   void ClearJobInfos(const JobID &job_id);
+
+  Status SubmitJob(const rpc::SubmitJobRequest &request,
+                   const ray::gcs::StatusCallback &callback);
+
+  NodeID SelectDriver(const rpc::JobTableData &job_data) const;
+
+  Status UpdateJobStateToDead(std::shared_ptr<JobTableData> job_table_data,
+                              const ray::gcs::StatusCallback &callback);
 };
 
 }  // namespace gcs

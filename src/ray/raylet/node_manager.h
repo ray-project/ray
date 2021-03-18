@@ -26,6 +26,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/job_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -367,6 +368,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
+  /// Handles the event that a job is submitted.
+  ///
+  /// \param job_id ID of the submitted job.
+  /// \param job_data Data associated with the started job.
+  /// \return Void
+  void HandleJobSubmitted(const JobID &job_id, const JobTableData &job_data);
+
   /// Handles the event that a job is started.
   ///
   /// \param job_id ID of the started job.
@@ -656,6 +664,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   DependencyManager dependency_manager_;
 
   std::unique_ptr<AgentManager> agent_manager_;
+
+  /// The job manager.
+  JobManager job_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
