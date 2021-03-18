@@ -921,6 +921,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Get metrics from our reward-estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
+
         return out
 
     @DeveloperAPI
