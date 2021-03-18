@@ -4,7 +4,7 @@ Advanced Topics and Configurations
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
 All Ray Serve advanced options and topics are covered on this page aside from the
-fundamentals of :doc:`deployment`. For a more hands on take, please check out the :ref:`serve-tutorials`.
+fundamentals of :doc:`deployment`. For a more hands-on take, please check out the :ref:`serve-tutorials`.
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out, splitting traffic, or batching input for better performance. To do all of this,
@@ -16,14 +16,14 @@ the properties of a particular backend.
 Sync and Async Handles
 ======================
 
-Ray Serve offers two types of ``ServeHandle``. You can use the ``client.get_handle(..., sync=True|False)``
+Ray Serve offers two types of ``ServeHandle``. You can use the ``serve.get_handle(..., sync=True|False)``
 flag to toggle between them.
 
 - When you set ``sync=True`` (the default), a synchronous handle is returned.
   Calling ``handle.remote()`` should return a Ray ObjectRef.
 - When you set ``sync=False``, an asyncio based handle is returned. You need to
   Call it with ``await handle.remote()`` to return a Ray ObjectRef. To use ``await``,
-  you have to run ``client.get_handle`` and ``handle.remote`` in Python asyncio event loop.
+  you have to run ``serve.get_handle`` and ``handle.remote`` in Python asyncio event loop.
 
 The async handle has performance advantage because it uses asyncio directly; as compared
 to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
@@ -54,7 +54,7 @@ Ray Serve supports capturing path parameters.  For example, in a call of the for
 
 .. code-block:: python
 
-    client.create_endpoint("my_endpoint", backend="my_backend", route="/api/{username}")
+    serve.create_endpoint("my_endpoint", backend="my_backend", route="/api/{username}")
 
 the ``username`` parameter will be accessible in your backend code as follows:
 
@@ -70,7 +70,7 @@ For example, suppose this route is used:
 
 .. code-block:: python
     
-    client.create_endpoint(
+    serve.create_endpoint(
         "complex", backend="f", route="/api/{user_id:int}/{number:float}")
 
 Then for a query to the route ``/api/123/3.14``, the ``request.path_params`` dictionary 

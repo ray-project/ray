@@ -1,6 +1,11 @@
+from typing import Callable, Type, Union
+
+import inspect
 import logging
 import os
 
+from ray.tune.function_runner import wrap_function
+from ray.tune.registry import get_trainable_cls
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.syncer import get_cloud_sync_client
 
@@ -99,3 +104,80 @@ class DurableTrainable(Trainable):
     def _storage_path(self, local_path):
         rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
+
+
+def durable(trainable: Union[str, Type[Trainable], Callable]):
+    """Convert trainable into a durable trainable.
+
+    Durable trainables are used to upload trial results and checkpoints
+    to cloud storage, like e.g. AWS S3.
+
+    This function can be used to convert your trainable, i.e. your trainable
+    classes, functions, or string identifiers, to a durable trainable.
+
+    To make durable trainables work, you should pass a valid
+    :class:`SyncConfig <ray.tune.SyncConfig>` object to `tune.run()`.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import tune
+
+        analysis = tune.run(
+            tune.durable("PPO"),
+            config={"env": "CartPole-v0"},
+            checkpoint_freq=1,
+            sync_config=tune.SyncConfig(
+                sync_to_driver=False,
+                upload_dir="s3://your-s3-bucket/durable-ppo/",
+            ))
+
+    You can also convert your trainable functions:
+
+    .. code-block:: python
+
+        tune.run(
+            tune.durable(your_training_fn),
+            # ...
+        )
+
+    And your class functions:
+
+    .. code-block:: python
+
+        tune.run(
+            tune.durable(YourTrainableClass),
+            # ...
+        )
+
+
+    Args:
+        trainable (str|Type[Trainable]|Callable): Trainable. Can be a
+            string identifier, a trainable class, or a trainable function.
+
+    Returns:
+        A durable trainable class wrapped around your trainable.
+
+    """
+    if isinstance(trainable, str):
+        trainable_cls = get_trainable_cls(trainable)
+    else:
+        trainable_cls = trainable
+
+    if not inspect.isclass(trainable_cls):
+        # Function API
+        return wrap_function(trainable_cls, durable=True)
+
+    if not issubclass(trainable_cls, Trainable):
+        raise ValueError(
+            "You can only use `durable()` with valid trainables. The class "
+            "you passed does not inherit from `Trainable`. Please make sure "
+            f"it does. Got: {type(trainable_cls)}")
+
+    # else: Class API
+    class _WrappedDurableTrainable(DurableTrainable, trainable_cls):
+        _name = trainable_cls.__name__ if hasattr(trainable_cls, "__name__") \
+            else "durable_trainable"
+
+    return _WrappedDurableTrainable

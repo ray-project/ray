@@ -45,7 +45,7 @@ def train_ppo_model():
     # Train for one iteration
     trainer.train()
     trainer.save("/tmp/rllib_checkpoint")
-    return "/tmp/rllib_checkpoint/checkpoint_1/checkpoint-1"
+    return "/tmp/rllib_checkpoint/checkpoint_000001/checkpoint-1"
 
 
 checkpoint_path = train_ppo_model()
@@ -53,9 +53,9 @@ checkpoint_path = train_ppo_model()
 
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
-client = serve.start()
-client.create_backend("ppo", ServePPOModel, checkpoint_path)
-client.create_endpoint("ppo-endpoint", backend="ppo", route="/cartpole-ppo")
+serve.start()
+serve.create_backend("ppo", ServePPOModel, checkpoint_path)
+serve.create_endpoint("ppo-endpoint", backend="ppo", route="/cartpole-ppo")
 # __doc_deploy_end__
 
 # __doc_query_begin__

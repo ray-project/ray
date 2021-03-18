@@ -1,4 +1,3 @@
-import math
 from collections import namedtuple
 import logging
 import os
@@ -70,23 +69,8 @@ class ResourceSpec(
 
         memory_units = ray_constants.to_memory_units(
             self.memory, round_up=False)
-        reservable_object_store_memory = (
-            self.object_store_memory *
-            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)
-        if (reservable_object_store_memory <
-                ray_constants.MEMORY_RESOURCE_UNIT_BYTES):
-            raise ValueError(
-                "The minimum amount of object_store_memory that can be "
-                "requested is {}, but you specified {}.".format(
-                    int(
-                        math.ceil(
-                            ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
-                            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
-                    self.object_store_memory))
         object_store_memory_units = ray_constants.to_memory_units(
-            self.object_store_memory *
-            ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
-            round_up=False)
+            self.object_store_memory, round_up=False)
 
         resources = dict(
             self.resources,
@@ -149,10 +133,10 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = ray.utils.get_num_cpus()
+            num_cpus = ray._private.utils.get_num_cpus()
 
         num_gpus = self.num_gpus
-        gpu_ids = ray.utils.get_cuda_visible_devices()
+        gpu_ids = ray._private.utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
         # excede the amount allowed by CUDA_VISIBLE_DEVICES.
         if (num_gpus is not None and gpu_ids is not None
@@ -175,24 +159,29 @@ class ResourceSpec(
             logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
-        system_memory = ray.utils.get_system_memory()
-        avail_memory = ray.utils.estimate_available_memory()
+        system_memory = ray._private.utils.get_system_memory()
+        avail_memory = ray._private.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
                 avail_memory *
                 ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            max_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+            # Cap by shm size by default to avoid low performance, but don't
+            # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+            if sys.platform == "linux" or sys.platform == "linux2":
+                shm_avail = ray._private.utils.get_shared_memory_bytes()
+                max_cap = min(
+                    max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail),
+                    max_cap)
             # Cap memory to avoid memory waste and perf issues on large nodes
-            if (object_store_memory >
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
+            if object_store_memory > max_cap:
                 logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
-                        ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
-                        1e9) +
+                        max_cap // 1e9) +
                     "To increase this further, specify `object_store_memory` "
                     "when calling ray.init() or ray start.")
-                object_store_memory = (
-                    ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+                object_store_memory = max_cap
 
         redis_max_memory = self.redis_max_memory
         if redis_max_memory is None:
@@ -250,7 +239,7 @@ def _autodetect_num_gpus():
         props = "AdapterCompatibility"
         cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
-        result = len([l.rstrip() for l in lines if l.startswith(b"NVIDIA")])
+        result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
     return result
 
 
@@ -306,7 +295,7 @@ def _get_gpu_info_string():
 
 # TODO(Alex): This pattern may not work for non NVIDIA Tesla GPUs (which have
 # the form "Tesla V100-SXM2-16GB" or "Tesla K80").
-GPU_NAME_PATTERN = re.compile("\w+\s+([A-Z0-9]+)")
+GPU_NAME_PATTERN = re.compile(r"\w+\s+([A-Z0-9]+)")
 
 
 def _pretty_gpu_name(name):

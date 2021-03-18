@@ -19,7 +19,7 @@ TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   abstract_ray_tuntime_.GetWorkerContext();
-  return std::unique_ptr<ObjectID>(new ObjectID());
+  return std::make_unique<ObjectID>();
 };
 
 Status TaskExecutor::ExecuteTask(
@@ -28,7 +28,8 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     const std::vector<ObjectID> &arg_reference_ids,
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-    std::vector<std::shared_ptr<RayObject>> *results) {
+    std::vector<std::shared_ptr<RayObject>> *results,
+    std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();

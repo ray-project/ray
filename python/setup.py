@@ -95,14 +95,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "serve": [
-        "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'", "starlette"
-    ],
-    "tune": [
-        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
-        "tensorboardX"
-    ],
+    "serve": ["uvicorn", "flask", "requests", "pydantic<1.7", "starlette"],
+    "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
@@ -129,16 +123,16 @@ install_requires = [
     "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
-    "cloudpickle",
     "colorama",
     "colorful",
+    "dataclasses; python_version < '3.7'",
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
     "numpy >= 1.16",
-    "protobuf >= 3.8.0",
+    "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",

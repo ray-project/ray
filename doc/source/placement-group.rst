@@ -148,19 +148,25 @@ Let's create a placement group. Recall that each bundle is a collection of resou
     # Will be scheduled because 2 cpus are reserved by the placement group.
     f.options(placement_group=pg).remote()
 
-.. code-block:: python
+.. note::
 
-  gpu_bundle = {"GPU": 2}
-  extra_resource_bundle = {"extra_resource": 2}
+  When using placement groups, users should ensure that their placement groups are ready (by calling ``ray.get(pg.ready())``)
+  and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
+  print a warning about infeasible tasks.
 
-  # Reserve bundles with strict pack strategy.
-  # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-  # Using this placement group for scheduling actors or tasks will guarantee that they will
-  # be colocated on the same node.
-  pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+  .. code-block:: python
 
-  # Wait until placement group is created.
-  ray.get(pg.ready())
+    gpu_bundle = {"GPU": 2}
+    extra_resource_bundle = {"extra_resource": 2}
+
+    # Reserve bundles with strict pack strategy.
+    # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+    # Using this placement group for scheduling actors or tasks will guarantee that they will
+    # be colocated on the same node.
+    pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+
+    # Wait until placement group is created.
+    ray.get(pg.ready())
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
@@ -229,7 +235,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # scheduled with the parent's placement group.
         ray.get(child.options(placement_group=None).remote())
 
-Note that you can anytime remove the placement group to clean up resources.
+You can remove a placement group at any time to free its allocated resources.
 
 .. code-block:: python
 
