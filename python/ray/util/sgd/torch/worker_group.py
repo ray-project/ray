@@ -468,7 +468,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
                 remote_pgs = self.remote_worker_group._setup_process_group(
                     address=address, world_size=num_workers, starting_rank=1)
-                # Use the local worker as rank 0. This will help with debugging.
+                # Use the local worker as rank 0. Helps with debugging.
                 self.local_worker.setup_process_group(
                     url=address,
                     world_rank=0,
