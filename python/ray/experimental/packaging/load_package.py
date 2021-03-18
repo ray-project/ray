@@ -193,7 +193,8 @@ class _RuntimePackage:
 
 def _validate_interface_file(interface_file: str):
     if not os.path.exists(interface_file):
-        raise ValueError("Interface file does not exist: {}".format(interface_file))
+        raise ValueError(
+            "Interface file does not exist: {}".format(interface_file))
     for line in open(interface_file):
         line = line.replace("\n", "")
         if line.startswith("import ") or line.startswith("from "):
