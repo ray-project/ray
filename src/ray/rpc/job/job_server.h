@@ -23,8 +23,7 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_JOB_RPC_HANDLERS                             \
-  RPC_SERVICE_HANDLER(JobAgentService, InitializeJobEnv)
+#define RAY_JOB_RPC_HANDLERS RPC_SERVICE_HANDLER(JobAgentService, InitializeJobEnv)
 
 /// Implementations of the `JobGrpcService`, check interface in
 /// `src/ray/protobuf/job.proto`.

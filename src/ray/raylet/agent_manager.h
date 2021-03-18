@@ -60,7 +60,6 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
                            rpc::RegisterAgentReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-
   void InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data, bool start_driver);
 
  private:
