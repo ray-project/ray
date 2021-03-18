@@ -88,6 +88,10 @@ provider:
                   protocol: TCP
                   port: 8265
                   targetPort: 8265
+                - name: ray-serve
+                  protocol: TCP
+                  port: 8000
+                  targetPort: 8000
 
 # Specify the pod type for the ray head node (as configured below).
 head_node_type: head_node

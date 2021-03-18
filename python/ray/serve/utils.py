@@ -11,7 +11,6 @@ from typing import Iterable, List, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
-from pathlib import Path
 
 import starlette.requests
 import requests
@@ -177,47 +176,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
-
-
-def get_conda_env_dir(env_name):
-    """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory. Untested on Windows.
-    """
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix is None:
-        # The caller is neither in a conda env or in (base).  This is rare
-        # because by default, new terminals start in (base), but we can still
-        # support this case.
-        conda_exe = os.environ.get("CONDA_EXE")
-        if conda_exe is None:
-            raise RayServeException(
-                "Ray Serve cannot find environment variables set by conda. "
-                "Please verify conda is installed.")
-        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
-        # Strip out the /bin/python by going up two parent directories.
-        conda_prefix = str(Path(conda_exe).parent.parent)
-
-    # There are two cases:
-    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
-    #    CONDA_PREFIX=$HOME/anaconda3
-    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
-    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
-        # Not recommended by conda, but we can still try to support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
-    else:
-        # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
-        conda_envs_dir = os.path.split(conda_prefix)[0]
-        env_dir = os.path.join(conda_envs_dir, env_name)
-    if not os.path.isdir(env_dir):
-        raise ValueError(
-            "conda env " + env_name +
-            " not found in conda envs directory. Run `conda env list` to " +
-            "verify the name is correct.")
-    return env_dir
 
 
 @singledispatch

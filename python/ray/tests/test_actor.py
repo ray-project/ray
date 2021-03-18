@@ -955,5 +955,24 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         wait_for_condition(check_file_written)
 
 
+def test_return_actor_handle_from_actor(ray_start_regular_shared):
+    @ray.remote
+    class Inner:
+        def ping(self):
+            return "pong"
+
+    @ray.remote
+    class Outer:
+        def __init__(self):
+            self.inner = Inner.remote()
+
+        def get_ref(self):
+            return self.inner
+
+    outer = Outer.remote()
+    inner = ray.get(outer.get_ref.remote())
+    assert ray.get(inner.ping.remote()) == "pong"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

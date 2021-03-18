@@ -6,6 +6,7 @@ import _thread
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
+import ray._private.runtime_env as runtime_support
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
@@ -66,7 +67,7 @@ class ActorMethod:
     passed to a remote function. This avoids delays in GC of the actor.
 
     Attributes:
-        _actor: A handle to the actor.
+        _actor_ref: A weakref handle to the actor.
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return.
@@ -428,6 +429,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
@@ -469,6 +471,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
+                    runtime_env=runtime_env,
                     override_environment_variables=(
                         override_environment_variables))
 
@@ -491,6 +494,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
+                runtime_env=None,
                 override_environment_variables=None):
         """Create an actor.
 
@@ -528,6 +532,9 @@ class ActorClass:
             placement_group_capture_child_tasks: Whether or not children tasks
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children (see ``runtime_env.py`` for
+                more details).
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
@@ -575,6 +582,7 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
+                runtime_env=runtime_env,
                 override_environment_variables=(
                     override_environment_variables))
 
@@ -686,6 +694,11 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+        if runtime_env:
+            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = parsed.to_worker_env_vars(
+                override_environment_variables)
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

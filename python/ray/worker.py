@@ -85,7 +85,6 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        connected (bool): True if Ray has been started and False otherwise.
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
@@ -98,7 +97,6 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run = []
-        self.actor_init_error = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -125,6 +123,7 @@ class Worker:
 
     @property
     def connected(self):
+        """bool: True if Ray has been started and False otherwise."""
         return self.node is not None
 
     @property
@@ -171,17 +170,6 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
-
-    def mark_actor_init_failed(self, error):
-        """Called to mark this actor as failed during initialization."""
-
-        self.actor_init_error = error
-
-    def reraise_actor_init_error(self):
-        """Raises any previous actor initialization error."""
-
-        if self.actor_init_error is not None:
-            raise self.actor_init_error
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -1238,6 +1226,8 @@ def connect(node,
     if mode == SCRIPT_MODE:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
+        # TODO(ekl) get rid of the env var hack and get runtime env from the
+        # task spec and/or job config only.
         runtime_env.ensure_runtime_env_setup(
             os.environ.get(
                 "RAY_RUNTIME_ENV_FILES",
@@ -1640,8 +1630,8 @@ def cancel(object_ref, *, force=False, recursive=True):
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
     flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing the task will immediately exit. If
-    the task is already finished, nothing will happen.
+    and when ``force=True``, the executing task will immediately exit.
+    If the task is already finished, nothing will happen.
 
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
@@ -1844,6 +1834,9 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
+        runtime_env (Dict[str, Any]): Specifies the runtime environment for
+            this actor or task and its children. See``runtime_env.py`` for
+            detailed documentation.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

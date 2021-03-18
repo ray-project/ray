@@ -15,7 +15,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -622,7 +621,9 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(self._dummy_batch)
+        input_dict = self._lazy_tensor_dict(
+            {k: v
+             for k, v in self._dummy_batch.items()})
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(input_dict, explore=False)
         # Add all extra action outputs to view reqirements (these may be
@@ -632,15 +633,14 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False)
         for key in input_dict.accessed_keys:
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
             self.view_requirements[key].used_for_compute_actions = True
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
-        batch_for_postproc.count = self._dummy_batch.count
-        self.exploration.postprocess_trajectory(self, batch_for_postproc)
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
@@ -654,7 +654,7 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-        # Wrap `train_batch` with a to-tensor UsageTrackingDict.
+        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
@@ -671,15 +671,15 @@ class Policy(metaclass=ABCMeta):
                 auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys | \
-                                batch_for_postproc.added_keys
+                                self._dummy_batch.accessed_keys | \
+                                self._dummy_batch.added_keys
             for key in all_accessed_keys:
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
                 # Tag those only needed for post-processing (with some
                 # exceptions).
-                for key in batch_for_postproc.accessed_keys:
+                for key in self._dummy_batch.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
                             key not in self.model.view_requirements and \
@@ -700,7 +700,7 @@ class Policy(metaclass=ABCMeta):
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
-                        if key in batch_for_postproc.deleted_keys:
+                        if key in self._dummy_batch.deleted_keys:
                             logger.warning(
                                 "SampleBatch key '{}' was deleted manually in "
                                 "postprocessing function! RLlib will "

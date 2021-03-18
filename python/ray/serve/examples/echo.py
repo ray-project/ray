@@ -13,9 +13,9 @@ def echo(starlette_request):
     return ["hello " + starlette_request.query_params.get("name", "serve!")]
 
 
-client = serve.start()
-client.create_backend("echo:v1", echo)
-client.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
+serve.start()
+serve.create_backend("echo:v1", echo)
+serve.create_endpoint("my_endpoint", backend="echo:v1", route="/echo")
 
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo").json()

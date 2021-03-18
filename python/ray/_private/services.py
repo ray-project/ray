@@ -1338,7 +1338,6 @@ def start_raylet(redis_address,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
-                 head_node=False,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0):
@@ -1653,7 +1652,7 @@ def determine_plasma_store_config(object_store_memory,
     values will be preserved.
 
     Args:
-        object_store_memory (int): The objec store memory to use.
+        object_store_memory (int): The object store memory to use.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
 
@@ -1681,14 +1680,17 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
-            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+            elif (not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
+                  and object_store_memory >
+                  ray_constants.REQUIRE_SHM_SIZE_THRESHOLD):
                 raise ValueError(
-                    "The configured object store size exceeds the capacity of "
-                    "/dev/shm. This will harm performance. To proceed "
-                    "regardless of this warning, you can set "
-                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
-                    "files in /dev/shm or increasing its size with "
-                    "--shm-size in Docker.")
+                    "The configured object store size ({} GB) exceeds "
+                    "/dev/shm size ({} GB). This will harm performance. "
+                    "Consider deleting files in /dev/shm or increasing its "
+                    "size with "
+                    "--shm-size in Docker. To ignore this warning, "
+                    "set RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1.".format(
+                        object_store_memory / 1e9, shm_avail / 1e9))
             else:
                 plasma_directory = ray._private.utils.get_user_temp_dir()
                 logger.warning(
