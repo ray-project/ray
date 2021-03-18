@@ -101,7 +101,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
     pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
-        stub_file=os.path.join(base_dir, config["stub_file"]),
+        interface_file=os.path.join(base_dir, config["interface_file"]),
         runtime_env=runtime_env)
     return pkg
 
@@ -164,16 +164,16 @@ class _RuntimePackage:
     access the raw runtime env defined by the package via ``pkg._runtime_env``.
     """
 
-    def __init__(self, name: str, desc: str, stub_file: str,
+    def __init__(self, name: str, desc: str, interface_file: str,
                  runtime_env: dict):
         self._name = name
         self._description = desc
-        self._stub_file = stub_file
+        self._interface_file = interface_file
         self._runtime_env = runtime_env
-        _validate_stub_file(self._stub_file)
+        _validate_interface_file(self._interface_file)
 
         spec = importlib.util.spec_from_file_location(self._name,
-                                                      self._stub_file)
+                                                      self._interface_file)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self._module = module
@@ -191,10 +191,10 @@ class _RuntimePackage:
             self._module, self._runtime_env)
 
 
-def _validate_stub_file(stub_file: str):
-    if not os.path.exists(stub_file):
-        raise ValueError("Stub file does not exist: {}".format(stub_file))
-    for line in open(stub_file):
+def _validate_interface_file(interface_file: str):
+    if not os.path.exists(interface_file):
+        raise ValueError("Stub file does not exist: {}".format(interface_file))
+    for line in open(interface_file):
         line = line.replace("\n", "")
         if line.startswith("import ") or line.startswith("from "):
             if line != "import ray" and "noqa" not in line:
