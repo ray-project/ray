@@ -230,7 +230,7 @@ we would like to use:
 
 You can also specify :doc:`fractional GPUs for Tune </using-ray-with-gpus>`, allowing multiple trials to share GPUs
 and thus increase concurrency under resource constraints. While the ``gpus_per_trial`` passed into
-Tune is a decimal value, the ``num_gpus`` passed into the ``pl.Trainer`` should still be an integer.
+Tune is a decimal value, the ``gpus`` passed into the ``pl.Trainer`` should still be an integer.
 Please note that if using fractional GPUs, it is the user's responsibility to
 make sure multiple trials can share GPUs and there is enough memory to do so.
 Ray does not automatically handle this for you.
