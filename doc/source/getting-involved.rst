@@ -50,8 +50,7 @@ There are a couple steps to merge a contribution.
    .. code:: bash
 
      git remote add upstream https://github.com/ray-project/ray.git
-     git fetch upstream
-     git merge upstream/master
+     git pull upstream master
 
 2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
