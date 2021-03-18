@@ -20,13 +20,15 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - python ./ci/travis/build-docker-images.py PY37
+    - pip install docker
+    - python ./ci/travis/build-docker-images.py --py-versions PY37 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - python ./ci/travis/build-docker-images.py PY36_PY38
+    - pip install docker
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
@@ -75,16 +77,20 @@
     ]
   commands:
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/new_dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      python/ray/serve/...
+    - ./dashboard/tests/run_ui_tests.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests

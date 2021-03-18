@@ -368,7 +368,8 @@
                                 "type": "array",
                                 "description": "analogous to head_run_options, merged with the global docker run_options."
                             }
-                        }
+                        },
+                        "additionalProperties": false
                     }
                     },
                     "additionalProperties": false

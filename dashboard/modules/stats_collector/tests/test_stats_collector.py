@@ -14,7 +14,7 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 from datetime import datetime, timedelta
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (format_web_url, wait_until_server_available,
                             wait_for_condition,
@@ -159,7 +159,9 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         # Workers information should be in the detailed payload
         assert "workers" in node
         assert "logCount" in node
-        assert node["logCount"] == 2
+        # Two lines printed by ActorWithObjs
+        # One line printed by autoscaler: monitor.py:118 -- Monitor: Started
+        assert node["logCount"] > 2
         print(node["workers"])
         assert len(node["workers"]) == 2
         assert node["workers"][0]["logCount"] == 1
@@ -493,7 +495,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
         # be published.
         elif actor_data_dict["state"] in ("ALIVE", "DEAD"):
             assert actor_data_dict.keys() == {
-                "state", "address", "timestamp", "pid"
+                "state", "address", "timestamp", "pid", "creationTaskException"
             }
         else:
             raise Exception("Unknown state: {}".format(

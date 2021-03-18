@@ -133,6 +133,10 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+message RuntimeEnv {
+  string working_dir_uri = 1;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -442,6 +446,8 @@ enum WorkerExitType {
   UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
+  // Worker exit due to exceptions in creation task.
+  CREATION_TASK_ERROR = 4;
 }
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following enum to maintain

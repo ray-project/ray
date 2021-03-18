@@ -89,8 +89,11 @@ void Worker::Connect(int port) {
   rpc::Address addr;
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
-  rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-      new rpc::CoreWorkerClient(addr, client_call_manager_));
+  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
+}
+
+void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
+  rpc_client_ = rpc_client;
 }
 
 void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
