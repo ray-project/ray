@@ -41,7 +41,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     # within this locked context or else Ray could hang.
                     if self.num_clients == 0 and not ray.is_initialized():
                         self.ray_connect_handler()
-
                 threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
                 if self.num_clients >= threshold:
                     context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
