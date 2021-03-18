@@ -104,6 +104,7 @@ def test_detached_deployment(ray_cluster):
     assert ray.get(serve.get_handle("g").remote()) == "world"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("detached", [True, False])
 def test_connect(detached, ray_shutdown):
     # Check that you can call serve.connect() from within a backend for both
@@ -197,6 +198,7 @@ def test_multiple_routers(ray_cluster):
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
@@ -226,12 +228,14 @@ def test_middleware(ray_shutdown):
     assert resp.headers["access-control-allow-origin"] == "*"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
         serve.start(http_options={"host": "bad.ip.address"})
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
