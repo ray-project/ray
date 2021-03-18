@@ -1019,6 +1019,16 @@ def accept_batch(f: Callable) -> Callable:
 
 
 def deployment(app: Union[FastAPI, APIRouter]):
+    """Mark a FastAPI application for Serve.
+
+    Example:
+    >>> app = FastAPI()
+    >>> @serve.deployment(app)
+        @app.get("/")
+        def app():
+            pass
+    """
+
     def decorator(f):
         f._serve_asgi_app = app
 

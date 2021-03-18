@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import requests
+import pytest
 
 from ray import serve
 
@@ -21,3 +22,8 @@ def test_fastapi_function(serve_instance):
     resp = requests.get(f"http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
     assert resp.json()["detail"][0]["type"] == "type_error.integer"
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

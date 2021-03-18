@@ -368,12 +368,15 @@ def get_current_node_resource_key() -> str:
 
 
 def register_custom_serializers():
+    """Install custom serializers needed for Ray Serve."""
     import starlette.datastructures
     import pydantic.fields
 
     assert ray.is_initialized(
     ), "This functional must be ran with Ray initialized."
 
+    # Pydantic's Cython validators are not serializable.
+    # https://github.com/cloudpipe/cloudpickle/issues/408
     ray.worker.global_worker.run_function_on_all_workers(
         lambda _: ray.util.register_serializer(
             pydantic.fields.ModelField,
@@ -392,6 +395,8 @@ def register_custom_serializers():
         )
     )
 
+    # FastAPI's app.state object is not serializable
+    # because it overrides __getattr__
     ray.worker.global_worker.run_function_on_all_workers(
         lambda _: ray.util.register_serializer(
             starlette.datastructures.State,
