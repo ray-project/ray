@@ -91,7 +91,8 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
-        metrics_agent_port(-1) {}
+        metrics_agent_port(-1),
+        notify_automatically(true) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -167,6 +168,9 @@ struct CoreWorkerOptions {
   /// The port number of a metrics agent that imports metrics from core workers.
   /// -1 means there's no such agent.
   int metrics_agent_port;
+  /// If false, the constructor won't start grpc server and notify raylets that it is
+  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
+  bool notify_automatically;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -335,6 +339,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
+
+  /// Notify the raylet that the core worker is ready.
+  /// If the options.notify_automatically is false, it doesn't need to be explicitly
+  /// called.
+  void NotifyRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional

@@ -1233,6 +1233,8 @@ def connect(node,
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
     worker.core_worker_connected = True
+    # Notify raylet that the core worker is ready.
+    worker.core_worker.notify_raylet()
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1253,9 +1255,10 @@ def connect(node,
             f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
-    worker.import_thread = import_thread.ImportThread(worker, mode,
-                                                      worker.threads_stopped)
-    worker.import_thread.start()
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+        worker.import_thread = import_thread.ImportThread(
+            worker, mode, worker.threads_stopped)
+        worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

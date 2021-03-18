@@ -664,7 +664,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  if (options.notify_automatically) {
+    RAY_CHECK_OK(
+        local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  }
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
 }
@@ -677,6 +680,14 @@ void CoreWorker::Shutdown() {
   if (options_.on_worker_shutdown) {
     options_.on_worker_shutdown(GetWorkerID());
   }
+}
+
+void CoreWorker::NotifyRaylet() {
+  RAY_CHECK(!options_.notify_automatically);
+  // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // very end in case there is a problem during construction.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 }
 
 void CoreWorker::Disconnect() {

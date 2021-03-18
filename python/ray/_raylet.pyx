@@ -871,6 +871,7 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
+        options.notify_automatically = False
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -882,6 +883,10 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
+
+    def notify_raylet(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().NotifyRaylet()
 
     def run_task_loop(self):
         with nogil:
