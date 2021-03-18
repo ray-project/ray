@@ -357,6 +357,7 @@ class SampleBatch(dict):
                 {k: v[start:end]
                  for k, v in self.items()},
                 _seq_lens=None,
+                _is_training=self.is_training,
                 _time_major=self.time_major)
 
     @PublicAPI
@@ -447,11 +448,11 @@ class SampleBatch(dict):
                     error=False)
             return self.is_training
         elif key == "seq_lens":
-            if log_once("SampleBatch['seq_lens']"):
-                deprecation_warning(
-                    old="SampleBatch['iseq_lens']",
-                    new="SampleBatch.seq_lens",
-                    error=False)
+            if self.get_interceptor is not None and self.seq_lens is not None:
+                if "seq_lens" not in self.intercepted_values:
+                    self.intercepted_values["seq_lens"] = self.get_interceptor(
+                        self.seq_lens)
+                return self.intercepted_values["seq_lens"]
             return self.seq_lens
 
         self.accessed_keys.add(key)
