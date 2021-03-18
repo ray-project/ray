@@ -50,8 +50,8 @@ class ComplexInputNetwork(TFModelV2):
             if len(component.shape) == 3:
                 config = {
                     "conv_filters": model_config["conv_filters"]
-                    if "conv_filters" in model_config
-                    else get_filter_config(obs_space.shape),
+                    if "conv_filters" in model_config else
+                    get_filter_config(obs_space.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
