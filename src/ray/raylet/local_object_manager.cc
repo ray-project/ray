@@ -241,8 +241,11 @@ void LocalObjectManager::SpillObjectsInternal(
                           std::ostream_iterator<ObjectID>(object_id_stream, ", "));
                 object_id_stream << objects_to_spill.back();
                 RAY_LOG(ERROR) << "Failed to send object spilling request for objects "
-                               << object_id_stream.str() << " to IO worker "
-                               << io_worker->WorkerId() << ": " << status.ToString();
+                               << object_id_stream.str()
+                               << ", please check the logs for IO worker "
+                               << io_worker->WorkerId()
+                               << " and make note of the following failure status: "
+                               << status.ToString();
                 callback(status);
               } else {
                 AddSpilledUrls(objects_to_spill, r, callback);
@@ -392,8 +395,10 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           io_worker_pool_.PushRestoreWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request for object "
-                           << object_id << " to IO worker " << io_worker->WorkerId()
-                           << ", restoring from URL " << object_url << ": "
+                           << object_id << ", restoring from URL " << object_url
+                           << ", please check the logs for the IO worker "
+                           << io_worker->WorkerId()
+                           << " and make note of the following failure status: "
                            << status.ToString();
           } else {
             auto now = absl::GetCurrentTimeNanos();
