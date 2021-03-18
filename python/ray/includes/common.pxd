@@ -285,5 +285,3 @@ cdef extern from "ray/gcs/gcs_client.h" nogil:
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         const c_string &SerializeAsString()
-
-cdef int check_status(const CRayStatus& status) nogil except -1

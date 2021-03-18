@@ -281,6 +281,7 @@ def package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
+    assert internal_kv._internal_kv_initialized()
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         return internal_kv._internal_kv_exists(pkg_uri)
@@ -320,6 +321,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config of driver.
     """
+    assert internal_kv._internal_kv_initialized()
     pkg_uri = job_config.get_package_uri()
     if not pkg_uri:
         return
@@ -346,6 +348,7 @@ def ensure_runtime_env_setup(pkg_uri: str) -> None:
     Args:
         pkg_uri (str): Package of the working dir for the runtime env.
     """
+    assert internal_kv._internal_kv_initialized()
     if not pkg_uri:
         return
     pkg_file = Path(_get_local_path(pkg_uri))

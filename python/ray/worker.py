@@ -1291,7 +1291,6 @@ def connect(node,
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
 
-
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
     # Reset the list of cached remote functions and actors so that if more
