@@ -96,7 +96,7 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 logger.warning(
                     f"Logstream: Num clients {self.num_clients} has reached "
                     f"the threshold {threshold}. Rejecting new connection.")
-                return StopIteration
+                return
             self.num_clients += 1
             initialized = True
             logger.info("New logs connection established. "
