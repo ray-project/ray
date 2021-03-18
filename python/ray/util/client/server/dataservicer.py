@@ -10,6 +10,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 from ray.util.client import CURRENT_PROTOCOL_VERSION
+from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
 
 if TYPE_CHECKING:
@@ -47,7 +48,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     logger.warning(
                         f"[Data Servicer]: Num clients {self.num_clients} "
                         f"has reached the threshold {threshold}. "
-                        f"Rejecting client: {metadata['client_id']}")
+                        f"Rejecting client: {metadata['client_id']}. ")
+                    if log_once("client_threshold"):
+                        logger.warning(
+                            "You can configure the client connection "
+                            "threshold by setting the "
+                            "RAY_CLIENT_SERVER_MAX_THREADS env var "
+                            f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
                     return
 
                 self.num_clients += 1
