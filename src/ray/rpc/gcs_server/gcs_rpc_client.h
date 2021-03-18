@@ -274,6 +274,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Put, kv_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Del, kv_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Exists, kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Keys, kv_grpc_client_, )
 
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;

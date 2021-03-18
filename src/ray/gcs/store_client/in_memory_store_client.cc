@@ -223,8 +223,8 @@ Status InMemoryStoreClient::AsyncKeys(
     const OptionalItemCallback<std::vector<std::string>> &callback) {
   auto on_done = [callback](
       const Status &status,
-      const std::vector<std::string> &result) {
-    callback(status, boost::make_optional(result));
+      std::vector<std::string> result) {
+    callback(status, boost::make_optional(std::move(result)));
   };
   std::vector<std::string> result;
   auto table = GetOrCreateTable(table_name);
@@ -234,10 +234,10 @@ Status InMemoryStoreClient::AsyncKeys(
       result.push_back(kv.first);
     }
   }
-  main_io_service_.post([callback, std::move(result)]() {
-    callback(boost::make_optional(std::move(result)));
-  },
-    "GcsInMemoryStore.Keys");
+  main_io_service_.post(
+      [on_done, result = std::move(result)]() {
+        on_done(Status::OK(), std::move(result));},
+      "GcsInMemoryStore.Keys");
   return Status::OK();
 }
 

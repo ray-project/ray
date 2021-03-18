@@ -537,12 +537,10 @@ message GetReply {
 message PutRequest {
   bytes key = 1;
   bytes value = 2;
-  bool overrite = 3;
 }
 
 message PutReply {
   GcsStatus status = 1;
-  bool updated = 2;
 }
 
 message DelRequest {
@@ -562,12 +560,22 @@ message ExistsReply {
   bool exists = 2;
 }
 
+message KeysRequest {
+  bytes prefix = 1;
+}
+
+message KeysReply {
+  GcsStatus status = 1;
+  repeated bytes results = 2;
+}
+
 // Service for KV storage
 service KVGcsService {
   rpc Get(GetRequest) returns (GetReply);
   rpc Put(PutRequest) returns (PutReply);
   rpc Del(DelRequest) returns (DelReply);
   rpc Exists(ExistsRequest) returns (ExistsReply);
+  rpc Keys(KeysRequest) returns (KeysReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

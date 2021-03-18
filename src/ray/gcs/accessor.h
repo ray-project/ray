@@ -775,6 +775,9 @@ class PlacementGroupInfoAccessor {
 class KVAccessor {
  public:
   virtual ~KVAccessor() = default;
+
+  virtual Status AsyncKeys(const std::string &prefix,
+                           const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
   virtual Status AsyncGet(const std::string &key,
                           const OptionalItemCallback<std::string> &callback) = 0;
   virtual Status AsyncPut(const std::string &key, const std::string &value,
@@ -784,6 +787,7 @@ class KVAccessor {
   virtual Status AsyncDel(const std::string &key, const StatusCallback &callback) = 0;
 
   // These are sync functions of the async above
+  Status Keys(const std::string &prefix, std::vector<std::string> &value);
   Status Put(const std::string &key, const std::string &value);
   Status Get(const std::string &key, std::string &value);
   Status Del(const std::string &key);

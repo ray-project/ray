@@ -40,6 +40,8 @@ class GcsKVManager : public rpc::KVHandler {
   void HandleExists(const rpc::ExistsRequest &request, rpc::ExistsReply *reply,
                     rpc::SendReplyCallback send_reply_callback);
 
+  void HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
+                 rpc::SendReplyCallback send_reply_callback);
  private:
   std::unique_ptr<StoreClient> store_client_;
   std::string table_name_;

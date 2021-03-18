@@ -571,6 +571,9 @@ class PlacementGroupInfoGrpcService : public GrpcService {
 class KVGcsServiceHandler {
  public:
   virtual ~KVGcsServiceHandler() = default;
+  virtual void HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGet(const GetRequest &request, GetReply *reply,
                          SendReplyCallback send_reply_callback) = 0;
 
@@ -599,6 +602,7 @@ class KVGrpcService : public GrpcService {
     KV_SERVICE_RPC_HANDLER(Put);
     KV_SERVICE_RPC_HANDLER(Del);
     KV_SERVICE_RPC_HANDLER(Exists);
+    KV_SERVICE_RPC_HANDLER(Keys);
   }
 
  private:
