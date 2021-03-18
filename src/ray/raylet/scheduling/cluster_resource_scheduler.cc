@@ -215,11 +215,9 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
-                                                         bool actor_creation,
-                                                         bool force_spillback,
-                                                         int64_t *total_violations,
-                                                         bool *is_infeasible) {
+int64_t ClusterResourceScheduler::GetBestSchedulableNodeLegacy(
+    const TaskRequest &task_req, bool actor_creation, bool force_spillback,
+    int64_t *total_violations, bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
   // being set.
   *is_infeasible = false;
@@ -334,6 +332,76 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // it means the task is infeasible.
   *is_infeasible = best_node == -1 && !local_node_feasible;
   return best_node;
+}
+
+int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
+                                                         bool force_spillback,
+                                                         int64_t *total_violations,
+                                                         bool *is_infeasible) {
+  if (!hybrid_spillback_) {
+    return GetBestSchedulableNodeLegacy(task_req, actor_creation, force_spillback,
+                                        total_violations, is_infeasible);
+  }
+
+  std::vector<int64_t> round;
+  {
+    round.push_back(local_node_id_);
+    for (const auto &pair : nodes_) {
+      if (pair.first != local_node_id_) {
+        round.push_back(pair.first);
+      }
+    }
+    auto begin = round.begin();
+    // Make the local node the first item, and skip it when sorting.
+    begin++;
+    std::sort(begin, round.end());
+  }
+
+  int64_t best_node_id = -1;
+  float best_utilization_score = 1.0;
+  bool best_is_available = false;
+
+  for (auto node_id : round) {
+    const auto &it = nodes_.find(node_id);
+    RAY_CHECK(it != nodes_.end());
+    const auto &node = it->second;
+    if (!IsFeasible(task_req, node.GetLocalView())) {
+      continue;
+    }
+
+    int64_t violations = IsSchedulable(task_req, node_id, node.GetLocalView());
+    bool is_available = violations != -1;
+    float critical_resource_utilization =
+        node.GetLocalView().CalculateCriticalResourceUtilization();
+    if (critical_resource_utilization < hybrid_threshold_) {
+      critical_resource_utilization = 0;
+    }
+
+    bool update_best_node = false;
+
+    if (is_available) {
+      // We can schedule on this node.
+      if (!best_is_available) {
+        update_best_node = true;
+      } else if (critical_resource_utilization < best_utilization_score) {
+        update_best_node = true;
+      }
+    } else if (!best_is_available &&
+               critical_resource_utilization < best_utilization_score) {
+      update_best_node = true;
+    }
+
+    if (update_best_node) {
+      best_node_id = node_id;
+      best_utilization_score = critical_resource_utilization;
+      best_is_available = is_available;
+      *total_violations = violations;
+    }
+  }
+
+  *is_infeasible = best_node_id == -1;
+  return best_node_id;
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(

@@ -159,6 +159,8 @@ class NodeResources {
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  /// Calculate the utilization percentage of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);

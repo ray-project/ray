@@ -164,6 +164,27 @@ NodeResources ResourceMapToNodeResources(
   return node_resources;
 }
 
+float NodeResources::CalculateCriticalResourceUtilization() const {
+  float highest = 0;
+
+  for (const auto &capacity : predefined_resources) {
+    float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
+    if (utilization > highest) {
+      highest = utilization;
+    }
+  }
+
+  for (const auto &pair : custom_resources) {
+    const auto &capacity = pair.second;
+    float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
+    if (utilization > highest) {
+      highest = utilization;
+    }
+  }
+
+  return highest;
+}
+
 bool NodeResources::operator==(const NodeResources &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (this->predefined_resources[i].total != other.predefined_resources[i].total) {

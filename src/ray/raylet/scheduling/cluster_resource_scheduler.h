@@ -148,6 +148,27 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
+  int64_t GetBestSchedulableNodeLegacy(const TaskRequest &task_request,
+                                       bool actor_creation, bool force_spillback,
+                                       int64_t *violations, bool *is_infeasible);
+
+  ///  Find a node in the cluster on which we can schedule a given task request.
+  ///  If `hybrid_policy` is False, see GetBestSchedulableNodeLegacy for the policy.
+  ///
+  ///  In the language of https://sre.google/sre-book/load-balancing-datacenter/
+  ///  the policy works as follows:
+  ///    * The subset size is the cluster size.
+  ///    * There is a globally fixed order within the round, with the exception that the
+  ///    local node is always first.
+  ///    * Run a weighted round robin (capability score described below).
+  ///    * Ties are broken by traversal order.
+  ///
+  ///  The capability score is calculated as follows:
+  ///    * Calculate the critical resource utilization.
+  ///    * If the critical resource utilization ratio is less than `hybrid_threshold_`,
+  ///    the score is 0, else the score is the critical utilization ratio.
+  /// The critical resource utilization is the max(used[resource]/total[resource] for all
+  /// resources on the node).
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
                                  bool force_spillback, int64_t *violations,
                                  bool *is_infeasible);
@@ -435,6 +456,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const TaskRequest &task_request);
 
+  /// Use the hybrid spillback policy.
+  bool hybrid_spillback_;
+  /// The threshold at which to switch from packing to spreading.
+  float hybrid_threshold_;
+  /// Feature lag between legacy scheduling algorithms. When loadbalance_spillback_ is
+  /// true, a node is chosen at uniform random from the possible nodes.
   bool loadbalance_spillback_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
