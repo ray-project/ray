@@ -10,20 +10,16 @@ import starlette.responses
 import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
-from ray.serve.constants import SERVE_PROXY_NAME
-from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
-from ray.serve.utils import (format_actor_name, get_random_letters)
+from ray.serve.utils import get_random_letters
 
 
 def test_e2e(serve_instance):
-    client = serve_instance
-
     def function(starlette_request):
         return {"method": starlette_request.method}
 
-    client.create_backend("echo:v1", function)
-    client.create_endpoint(
+    serve.create_backend("echo:v1", function)
+    serve.create_endpoint(
         "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
@@ -34,14 +30,12 @@ def test_e2e(serve_instance):
 
 
 def test_starlette_response(serve_instance):
-    client = serve_instance
-
     def basic_response(_):
         return starlette.responses.Response(
             "Hello, world!", media_type="text/plain")
 
-    client.create_backend("basic_response", basic_response)
-    client.create_endpoint(
+    serve.create_backend("basic_response", basic_response)
+    serve.create_endpoint(
         "basic_response", backend="basic_response", route="/basic_response")
     assert requests.get(
         "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
@@ -50,8 +44,8 @@ def test_starlette_response(serve_instance):
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>")
 
-    client.create_backend("html_response", html_response)
-    client.create_endpoint(
+    serve.create_backend("html_response", html_response)
+    serve.create_endpoint(
         "html_response", backend="html_response", route="/html_response")
     assert requests.get(
         "http://127.0.0.1:8000/html_response"
@@ -60,8 +54,8 @@ def test_starlette_response(serve_instance):
     def plain_text_response(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
-    client.create_backend("plain_text_response", plain_text_response)
-    client.create_endpoint(
+    serve.create_backend("plain_text_response", plain_text_response)
+    serve.create_endpoint(
         "plain_text_response",
         backend="plain_text_response",
         route="/plain_text_response")
@@ -71,8 +65,8 @@ def test_starlette_response(serve_instance):
     def json_response(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
-    client.create_backend("json_response", json_response)
-    client.create_endpoint(
+    serve.create_backend("json_response", json_response)
+    serve.create_endpoint(
         "json_response", backend="json_response", route="/json_response")
     assert requests.get("http://127.0.0.1:8000/json_response").json()[
         "hello"] == "world"
@@ -81,8 +75,8 @@ def test_starlette_response(serve_instance):
         return starlette.responses.RedirectResponse(
             url="http://127.0.0.1:8000/basic_response")
 
-    client.create_backend("redirect_response", redirect_response)
-    client.create_endpoint(
+    serve.create_backend("redirect_response", redirect_response)
+    serve.create_endpoint(
         "redirect_response",
         backend="redirect_response",
         route="/redirect_response")
@@ -98,8 +92,8 @@ def test_starlette_response(serve_instance):
         return starlette.responses.StreamingResponse(
             slow_numbers(), media_type="text/plain")
 
-    client.create_backend("streaming_response", streaming_response)
-    client.create_endpoint(
+    serve.create_backend("streaming_response", streaming_response)
+    serve.create_endpoint(
         "streaming_response",
         backend="streaming_response",
         route="/streaming_response")
@@ -108,8 +102,6 @@ def test_starlette_response(serve_instance):
 
 
 def test_backend_user_config(serve_instance):
-    client = serve_instance
-
     class Counter:
         def __init__(self):
             self.count = 10
@@ -121,9 +113,9 @@ def test_backend_user_config(serve_instance):
             self.count = config["count"]
 
     config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
-    client.create_backend("counter", Counter, config=config)
-    client.create_endpoint("counter", backend="counter")
-    handle = client.get_handle("counter")
+    serve.create_backend("counter", Counter, config=config)
+    serve.create_endpoint("counter", backend="counter")
+    handle = serve.get_handle("counter")
 
     def check(val, num_replicas):
         pids_seen = set()
@@ -136,23 +128,21 @@ def test_backend_user_config(serve_instance):
 
     wait_for_condition(lambda: check("123", 2))
 
-    client.update_backend_config("counter", BackendConfig(num_replicas=3))
+    serve.update_backend_config("counter", BackendConfig(num_replicas=3))
     wait_for_condition(lambda: check("123", 3))
 
     config = BackendConfig(user_config={"count": 456})
-    client.update_backend_config("counter", config)
+    serve.update_backend_config("counter", config)
     wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
-    client = serve_instance
-
     class CallMethod:
         def method(self, request):
             return "hello"
 
-    client.create_backend("backend", CallMethod)
-    client.create_endpoint("endpoint", backend="backend", route="/api")
+    serve.create_backend("backend", CallMethod)
+    serve.create_endpoint("endpoint", backend="backend", route="/api")
 
     # Test HTTP path.
     resp = requests.get(
@@ -162,69 +152,59 @@ def test_call_method(serve_instance):
     assert resp.text == "hello"
 
     # Test serve handle path.
-    handle = client.get_handle("endpoint")
+    handle = serve.get_handle("endpoint")
     assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
-    client = serve_instance
-
     def func(_, i=1):
         return 1
 
-    client.create_backend("backend:1", func)
-    client.create_endpoint("noroute-endpoint", backend="backend:1")
-    service_handle = client.get_handle("noroute-endpoint")
+    serve.create_backend("backend:1", func)
+    serve.create_endpoint("noroute-endpoint", backend="backend:1")
+    service_handle = serve.get_handle("noroute-endpoint")
     result = ray.get(service_handle.remote(i=1))
     assert result == 1
 
 
 def test_reject_duplicate_backend(serve_instance):
-    client = serve_instance
-
     def f():
         pass
 
     def g():
         pass
 
-    client.create_backend("backend", f)
+    serve.create_backend("backend", f)
     with pytest.raises(ValueError):
-        client.create_backend("backend", g)
+        serve.create_backend("backend", g)
 
 
 def test_reject_duplicate_route(serve_instance):
-    client = serve_instance
-
     def f():
         pass
 
-    client.create_backend("backend", f)
+    serve.create_backend("backend", f)
 
     route = "/foo"
-    client.create_endpoint("bar", backend="backend", route=route)
+    serve.create_endpoint("bar", backend="backend", route=route)
     with pytest.raises(ValueError):
-        client.create_endpoint("foo", backend="backend", route=route)
+        serve.create_endpoint("foo", backend="backend", route=route)
 
 
 def test_reject_duplicate_endpoint(serve_instance):
-    client = serve_instance
-
     def f():
         pass
 
-    client.create_backend("backend", f)
+    serve.create_backend("backend", f)
 
     endpoint_name = "foo"
-    client.create_endpoint(endpoint_name, backend="backend", route="/ok")
+    serve.create_endpoint(endpoint_name, backend="backend", route="/ok")
     with pytest.raises(ValueError):
-        client.create_endpoint(
+        serve.create_endpoint(
             endpoint_name, backend="backend", route="/different")
 
 
 def test_reject_duplicate_endpoint_and_route(serve_instance):
-    client = serve_instance
-
     class SimpleBackend(object):
         def __init__(self, message):
             self.message = message
@@ -232,44 +212,26 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
         def __call__(self, *args, **kwargs):
             return {"message": self.message}
 
-    client.create_backend("backend1", SimpleBackend, "First")
-    client.create_backend("backend2", SimpleBackend, "Second")
+    serve.create_backend("backend1", SimpleBackend, "First")
+    serve.create_backend("backend2", SimpleBackend, "Second")
 
-    client.create_endpoint("test", backend="backend1", route="/test")
+    serve.create_endpoint("test", backend="backend1", route="/test")
     with pytest.raises(ValueError):
-        client.create_endpoint("test", backend="backend2", route="/test")
-
-
-def test_no_http(serve_instance):
-    client = serve.start(http_host=None)
-
-    assert len(ray.get(client._controller.get_http_proxies.remote())) == 0
-
-    def hello(*args):
-        return "hello"
-
-    client.create_backend("backend", hello)
-    client.create_endpoint("endpoint", backend="backend")
-
-    assert ray.get(client.get_handle("endpoint").remote()) == "hello"
+        serve.create_endpoint("test", backend="backend2", route="/test")
 
 
 def test_set_traffic_missing_data(serve_instance):
-    client = serve_instance
-
     endpoint_name = "foobar"
     backend_name = "foo_backend"
-    client.create_backend(backend_name, lambda: 5)
-    client.create_endpoint(endpoint_name, backend=backend_name)
+    serve.create_backend(backend_name, lambda: 5)
+    serve.create_endpoint(endpoint_name, backend=backend_name)
     with pytest.raises(ValueError):
-        client.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
+        serve.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
     with pytest.raises(ValueError):
-        client.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
+        serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
 
 def test_scaling_replicas(serve_instance):
-    client = serve_instance
-
     class Counter:
         def __init__(self):
             self.count = 0
@@ -279,9 +241,9 @@ def test_scaling_replicas(serve_instance):
             return self.count
 
     config = BackendConfig(num_replicas=2)
-    client.create_backend("counter:v1", Counter, config=config)
+    serve.create_backend("counter:v1", Counter, config=config)
 
-    client.create_endpoint("counter", backend="counter:v1", route="/increment")
+    serve.create_endpoint("counter", backend="counter:v1", route="/increment")
 
     counter_result = []
     for _ in range(10):
@@ -292,7 +254,7 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) < 10
 
     update_config = BackendConfig(num_replicas=1)
-    client.update_backend_config("counter:v1", update_config)
+    serve.update_backend_config("counter:v1", update_config)
 
     counter_result = []
     for _ in range(10):
@@ -304,8 +266,6 @@ def test_scaling_replicas(serve_instance):
 
 
 def test_updating_config(serve_instance):
-    client = serve_instance
-
     class BatchSimple:
         def __init__(self):
             self.count = 0
@@ -315,15 +275,15 @@ def test_updating_config(serve_instance):
             return [1] * len(request)
 
     config = BackendConfig(max_batch_size=2, num_replicas=3)
-    client.create_backend("bsimple:v1", BatchSimple, config=config)
-    client.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
+    serve.create_backend("bsimple:v1", BatchSimple, config=config)
+    serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
-    controller = client._controller
+    controller = serve.api._global_client._controller
     old_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
     update_config = BackendConfig(max_batch_size=5)
-    client.update_backend_config("bsimple:v1", update_config)
+    serve.update_backend_config("bsimple:v1", update_config)
     new_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
     new_all_tag_list = []
@@ -338,41 +298,39 @@ def test_updating_config(serve_instance):
 
 
 def test_delete_backend(serve_instance):
-    client = serve_instance
-
     def function(_):
         return "hello"
 
-    client.create_backend("delete:v1", function)
-    client.create_endpoint(
+    serve.create_backend("delete:v1", function)
+    serve.create_endpoint(
         "delete_backend", backend="delete:v1", route="/delete-backend")
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
 
     # Check that we can't delete the backend while it's in use.
     with pytest.raises(ValueError):
-        client.delete_backend("delete:v1")
+        serve.delete_backend("delete:v1")
 
-    client.create_backend("delete:v2", function)
-    client.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
+    serve.create_backend("delete:v2", function)
+    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
 
     with pytest.raises(ValueError):
-        client.delete_backend("delete:v1")
+        serve.delete_backend("delete:v1")
 
     # Check that the backend can be deleted once it's no longer in use.
-    client.set_traffic("delete_backend", {"delete:v2": 1.0})
-    client.delete_backend("delete:v1")
+    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
+    serve.delete_backend("delete:v1")
 
     # Check that we can no longer use the previously deleted backend.
     with pytest.raises(ValueError):
-        client.set_traffic("delete_backend", {"delete:v1": 1.0})
+        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
     def function2(_):
         return "olleh"
 
     # Check that we can now reuse the previously delete backend's tag.
-    client.create_backend("delete:v1", function2)
-    client.set_traffic("delete_backend", {"delete:v1": 1.0})
+    serve.create_backend("delete:v1", function2)
+    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
 
     for _ in range(10):
         try:
@@ -388,44 +346,40 @@ def test_delete_backend(serve_instance):
 
 @pytest.mark.parametrize("route", [None, "/delete-endpoint"])
 def test_delete_endpoint(serve_instance, route):
-    client = serve_instance
-
     def function(_):
         return "hello"
 
     backend_name = "delete-endpoint:v1"
-    client.create_backend(backend_name, function)
+    serve.create_backend(backend_name, function)
 
     endpoint_name = "delete_endpoint" + str(route)
-    client.create_endpoint(endpoint_name, backend=backend_name, route=route)
-    client.delete_endpoint(endpoint_name)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
+    serve.delete_endpoint(endpoint_name)
 
     # Check that we can reuse a deleted endpoint name and route.
-    client.create_endpoint(endpoint_name, backend=backend_name, route=route)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
 
     if route is not None:
         assert requests.get(
             "http://127.0.0.1:8000/delete-endpoint").text == "hello"
     else:
-        handle = client.get_handle(endpoint_name)
+        handle = serve.get_handle(endpoint_name)
         assert ray.get(handle.remote()) == "hello"
 
     # Check that deleting the endpoint doesn't delete the backend.
-    client.delete_endpoint(endpoint_name)
-    client.create_endpoint(endpoint_name, backend=backend_name, route=route)
+    serve.delete_endpoint(endpoint_name)
+    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
 
     if route is not None:
         assert requests.get(
             "http://127.0.0.1:8000/delete-endpoint").text == "hello"
     else:
-        handle = client.get_handle(endpoint_name)
+        handle = serve.get_handle(endpoint_name)
         assert ray.get(handle.remote()) == "hello"
 
 
 @pytest.mark.parametrize("route", [None, "/shard"])
 def test_shard_key(serve_instance, route):
-    client = serve_instance
-
     # Create five backends that return different integers.
     num_backends = 5
     traffic_dict = {}
@@ -436,11 +390,11 @@ def test_shard_key(serve_instance, route):
 
         backend_name = "backend-split-" + str(i)
         traffic_dict[backend_name] = 1.0 / num_backends
-        client.create_backend(backend_name, function)
+        serve.create_backend(backend_name, function)
 
-    client.create_endpoint(
+    serve.create_endpoint(
         "endpoint", backend=list(traffic_dict.keys())[0], route=route)
-    client.set_traffic("endpoint", traffic_dict)
+    serve.set_traffic("endpoint", traffic_dict)
 
     def do_request(shard_key):
         if route is not None:
@@ -448,7 +402,7 @@ def test_shard_key(serve_instance, route):
             headers = {"X-SERVE-SHARD-KEY": shard_key}
             result = requests.get(url, headers=headers).text
         else:
-            handle = client.get_handle("endpoint").options(shard_key=shard_key)
+            handle = serve.get_handle("endpoint").options(shard_key=shard_key)
             result = ray.get(handle.options(shard_key=shard_key).remote())
         return result
 
@@ -464,20 +418,18 @@ def test_shard_key(serve_instance, route):
 
 
 def test_list_endpoints(serve_instance):
-    client = serve_instance
-
     def f():
         pass
 
-    client.create_backend("backend", f)
-    client.create_backend("backend2", f)
-    client.create_backend("backend3", f)
-    client.create_endpoint(
+    serve.create_backend("backend", f)
+    serve.create_backend("backend2", f)
+    serve.create_backend("backend3", f)
+    serve.create_endpoint(
         "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
-    client.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
-    client.shadow_traffic("endpoint", "backend3", 0.5)
+    serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
 
-    endpoints = client.list_endpoints()
+    endpoints = serve.list_endpoints()
     assert "endpoint" in endpoints
     assert endpoints["endpoint"] == {
         "route": "/api",
@@ -500,88 +452,55 @@ def test_list_endpoints(serve_instance):
         "shadows": {}
     }
 
-    client.delete_endpoint("endpoint")
-    assert "endpoint2" in client.list_endpoints()
+    serve.delete_endpoint("endpoint")
+    assert "endpoint2" in serve.list_endpoints()
 
-    client.delete_endpoint("endpoint2")
-    assert len(client.list_endpoints()) == 0
+    serve.delete_endpoint("endpoint2")
+    assert len(serve.list_endpoints()) == 0
 
 
 def test_list_backends(serve_instance):
-    client = serve_instance
-
     @serve.accept_batch
     def f():
         pass
 
     config1 = BackendConfig(max_batch_size=10)
-    client.create_backend("backend", f, config=config1)
-    backends = client.list_backends()
+    serve.create_backend("backend", f, config=config1)
+    backends = serve.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
     assert backends["backend"].max_batch_size == 10
 
     config2 = BackendConfig(num_replicas=10)
-    client.create_backend("backend2", f, config=config2)
-    backends = client.list_backends()
+    serve.create_backend("backend2", f, config=config2)
+    backends = serve.list_backends()
     assert len(backends) == 2
     assert backends["backend2"].num_replicas == 10
 
-    client.delete_backend("backend")
-    backends = client.list_backends()
+    serve.delete_backend("backend")
+    backends = serve.list_backends()
     assert len(backends) == 1
     assert "backend2" in backends
 
-    client.delete_backend("backend2")
-    assert len(client.list_backends()) == 0
+    serve.delete_backend("backend2")
+    assert len(serve.list_backends()) == 0
 
 
 def test_endpoint_input_validation(serve_instance):
-    client = serve_instance
-
     def f():
         pass
 
-    client.create_backend("backend", f)
+    serve.create_backend("backend", f)
     with pytest.raises(TypeError):
-        client.create_endpoint("endpoint")
+        serve.create_endpoint("endpoint")
     with pytest.raises(TypeError):
-        client.create_endpoint("endpoint", route="/hello")
+        serve.create_endpoint("endpoint", route="/hello")
     with pytest.raises(TypeError):
-        client.create_endpoint("endpoint", backend=2)
-    client.create_endpoint("endpoint", backend="backend")
-
-
-def test_shutdown():
-    def f():
-        pass
-
-    client = serve.start(http_port=8003)
-    client.create_backend("backend", f)
-    client.create_endpoint("endpoint", backend="backend")
-
-    client.shutdown()
-    with pytest.raises(RayServeException):
-        client.list_backends()
-
-    def check_dead():
-        for actor_name in [
-                client._controller_name,
-                format_actor_name(SERVE_PROXY_NAME, client._controller_name)
-        ]:
-            try:
-                ray.get_actor(actor_name)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
+        serve.create_endpoint("endpoint", backend=2)
+    serve.create_endpoint("endpoint", backend="backend")
 
 
 def test_shadow_traffic(serve_instance):
-    client = serve_instance
-
     @ray.remote
     class RequestCounter:
         def __init__(self):
@@ -611,15 +530,15 @@ def test_shadow_traffic(serve_instance):
         ray.get(counter.record.remote("backend4"))
         return "oops"
 
-    client.create_backend("backend1", f)
-    client.create_backend("backend2", f_shadow_1)
-    client.create_backend("backend3", f_shadow_2)
-    client.create_backend("backend4", f_shadow_3)
+    serve.create_backend("backend1", f)
+    serve.create_backend("backend2", f_shadow_1)
+    serve.create_backend("backend3", f_shadow_2)
+    serve.create_backend("backend4", f_shadow_3)
 
-    client.create_endpoint("endpoint", backend="backend1", route="/api")
-    client.shadow_traffic("endpoint", "backend2", 1.0)
-    client.shadow_traffic("endpoint", "backend3", 0.5)
-    client.shadow_traffic("endpoint", "backend4", 0.1)
+    serve.create_endpoint("endpoint", backend="backend1", route="/api")
+    serve.shadow_traffic("endpoint", "backend2", 1.0)
+    serve.shadow_traffic("endpoint", "backend3", 0.5)
+    serve.shadow_traffic("endpoint", "backend4", 0.1)
 
     start = time.time()
     num_requests = 100
@@ -642,41 +561,7 @@ def test_shadow_traffic(serve_instance):
     wait_for_condition(check_requests)
 
 
-def test_connect(serve_instance):
-    client = serve_instance
-
-    # Check that you can have multiple clients to the same detached instance.
-    client2 = serve.connect()
-    assert client._controller_name == client2._controller_name
-
-    # Check that you can have detached and non-detached instances.
-    client3 = serve.start(http_port=8004)
-    assert client3._controller_name != client._controller_name
-
-    # Check that you can call serve.connect() from within a backend for both
-    # detached and non-detached instances.
-
-    def connect_in_backend(_):
-        client = serve.connect()
-        client.create_backend("backend-ception", connect_in_backend)
-        return client._controller_name
-
-    client.create_backend("connect_in_backend", connect_in_backend)
-    client.create_endpoint("endpoint", backend="connect_in_backend")
-    handle = client.get_handle("endpoint")
-    assert ray.get(handle.remote()) == client._controller_name
-    assert "backend-ception" in client.list_backends().keys()
-
-    client3.create_backend("connect_in_backend", connect_in_backend)
-    client3.create_endpoint("endpoint", backend="connect_in_backend")
-    handle = client3.get_handle("endpoint")
-    assert ray.get(handle.remote()) == client3._controller_name
-    assert "backend-ception" in client3.list_backends().keys()
-
-
 def test_starlette_request(serve_instance):
-    client = serve_instance
-
     async def echo_body(starlette_request):
         data = await starlette_request.body()
         return data
@@ -686,8 +571,8 @@ def test_starlette_request(serve_instance):
     # Long string to test serialization of multiple messages.
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
 
-    client.create_backend("echo:v1", echo_body)
-    client.create_endpoint(
+    serve.create_backend("echo:v1", echo_body)
+    serve.create_endpoint(
         "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
@@ -695,16 +580,14 @@ def test_starlette_request(serve_instance):
 
 
 def test_variable_routes(serve_instance):
-    client = serve_instance
-
     def f(starlette_request):
         return starlette_request.path_params
 
-    client.create_backend("f", f)
-    client.create_endpoint("basic", backend="f", route="/api/{username}")
+    serve.create_backend("f", f)
+    serve.create_endpoint("basic", backend="f", route="/api/{username}")
 
     # Test multiple variables and test type conversion
-    client.create_endpoint(
+    serve.create_endpoint(
         "complex", backend="f", route="/api/{user_id:int}/{number:float}")
 
     assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {

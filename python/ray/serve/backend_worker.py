@@ -432,3 +432,5 @@ class RayServeReplica:
                     f"to shutdown replica {self.replica_tag} because "
                     f"num_queries_waiting {num_queries_waiting} and "
                     f"num_ongoing_requests {self.num_ongoing_requests}")
+
+        ray.actor.exit_actor()

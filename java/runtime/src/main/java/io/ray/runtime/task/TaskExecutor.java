@@ -5,6 +5,7 @@ import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -36,9 +37,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
     /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
-
-    /** The exception that failed the actor creation task, if any. */
-    Throwable actorCreationException = null;
   }
 
   TaskExecutor(RayRuntimeInternal runtime) {
@@ -119,9 +117,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       // Get local actor object and arguments.
       Object actor = null;
       if (taskType == TaskType.ACTOR_TASK) {
-        if (actorContext.actorCreationException != null) {
-          throw actorContext.actorCreationException;
-        }
         actor = actorContext.currentActor;
       }
       Object[] args =
@@ -194,7 +189,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
                       e)));
         }
       } else {
-        actorContext.actorCreationException = e;
+        throw new RayActorException(e);
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);
