@@ -7,12 +7,13 @@ import logging
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict, Optional
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
 import starlette.requests
+import starlette.responses
 import requests
 import numpy as np
 import pydantic
@@ -404,3 +405,29 @@ def register_custom_serializers():
             deserializer=lambda s: starlette.datastructures.State(s),
         )
     )
+
+
+class ASGIHTTPSender:
+    """Implement the interface for ASGI sender, build Starlette Response"""
+
+    def __init__(self) -> None:
+        self.status_code: Optional[int] = 200
+        self.header: Dict[str, str] = {}
+        self.buffer: List[bytes] = []
+
+    async def __call__(self, message):
+        if (message["type"] == "http.response.start"):
+            self.status_code = message["status"]
+            for key, value in message["headers"]:
+                self.header[key.decode()] = value.decode()
+        elif (message["type"] == "http.response.body"):
+            self.buffer.append(message["body"])
+        else:
+            raise ValueError("ASGI type must be one of "
+                             "http.responses.{body,start}.")
+
+    def build_starlette_response(self) -> starlette.responses.Response:
+        return starlette.responses.Response(
+            b"".join(self.buffer),
+            status_code=self.status_code,
+            headers=dict(self.header))

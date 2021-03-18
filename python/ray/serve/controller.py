@@ -249,6 +249,26 @@ class ServeController:
                      replica_config: ReplicaConfig,
                      version: Optional[str]) -> Optional[GoalId]:
         """TODO."""
+
+        # Infer HTTP route and methods based on replica_config.
+        if replica_config.path_prefix is None:
+            replica_config.path_prefix = f"/{name}"
+            # Updated here because it is used by backend worker
+            backend_config.internal_metadata.path_prefix = f"/{name}"
+        route = replica_config.path_prefix
+        methods = ["GET", "POST"]
+        if replica_config.is_asgi_app:
+            # When the backend is asgi application, we want to proxy it
+            # with a prefixed path as well as proxy all HTTP methods.
+            # {wildcard:path} is used so HTTPProxy's Starlette router can match
+            # arbitrary path.
+            route = "/{route}/{wildcard:path}"
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+            methods = [
+                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
+                "TRACE", "PATCH"
+            ]
+
         async with self.write_lock:
             if version is None:
                 version = RESERVED_VERSION_TAG
@@ -262,17 +282,6 @@ class ServeController:
                         "cannot be used by applications.")
             goal_id = self.backend_state.create_backend(
                 name, backend_config, replica_config, version)
-
-            route = f"/{name}"
-            methods = ["GET", "POST"]
-            if replica_config.is_asgi_app:
-                route += "/{wildcard:path}"
-                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-                methods = [
-                    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT",
-                    "OPTIONS", "TRACE", "PATCH"
-                ]
-
             self.endpoint_state.create_endpoint(
                 name,
                 route,

@@ -465,6 +465,7 @@ class Client:
             accepts_batches=replica_config.accepts_batches,
             is_blocking=replica_config.is_blocking,
             is_asgi_app=replica_config.is_asgi_app,
+            path_prefix=replica_config.path_prefix,
         )
 
         if isinstance(config, dict):
@@ -1018,19 +1019,32 @@ def accept_batch(f: Callable) -> Callable:
     return f
 
 
-def deployment(app: Union[FastAPI, APIRouter]):
-    """Mark a FastAPI application for Serve.
+def ingress(
+        app: Union[FastAPI, APIRouter, None] = None,
+        path_prefix: Optional[str] = None,
+):
+    """Mark a FastAPI application ingress for Serve.
+
+    Args:
+        app(FastAPI,APIRouter,None): the app or router object serve as ingress
+            for this backend.
+        path_prefix(str,None): The path prefix for the ingress. For example,
+            `/api`. Serve uses the deployment name as path_prefix by default.
 
     Example:
     >>> app = FastAPI()
-    >>> @serve.deployment(app)
-        @app.get("/")
+    >>> @serve.deployment
+        @serve.ingress(app)
         def app():
             pass
+    >>> app.deploy()
     """
 
     def decorator(f):
-        f._serve_asgi_app = app
+        if app is not None:
+            f._serve_asgi_app = app
+        if path_prefix is not None:
+            f._serve_path_prefix = path_prefix
 
         @wraps(f)
         def inner(*args, **kwargs):

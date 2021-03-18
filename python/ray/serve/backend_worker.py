@@ -4,7 +4,7 @@ import traceback
 import inspect
 from collections.abc import Iterable
 from itertools import groupby
-from typing import Dict, Optional, Union, List, Any, Callable, Type
+from typing import Union, List, Any, Callable, Type
 import time
 
 import starlette.responses
@@ -15,8 +15,8 @@ from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.batching import _BatchQueue
-from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future, import_attr)
+from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
+                             chain_future, unpack_future, import_attr)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
@@ -221,16 +221,6 @@ class RayServeReplica:
 
     async def ensure_serializable_response(self, response: Any) -> Any:
         if isinstance(response, starlette.responses.StreamingResponse):
-            # response contains a generator/iterator which is not serializable.
-            # Exhaust the generator/iterator and store the results in a buffer.
-            body_buffer = []
-
-            async def mock_send(message):
-                assert message["type"] in {
-                    "http.response.start", "http.response.body"
-                }
-                if (message["type"] == "http.response.body"):
-                    body_buffer.append(message["body"])
 
             async def mock_receive():
                 # This is called in a tight loop in response() just to check
@@ -239,15 +229,10 @@ class RayServeReplica:
                 never_set_event = asyncio.Event()
                 await never_set_event.wait()
 
-            await response(scope=None, receive=mock_receive, send=mock_send)
-            content = b"".join(body_buffer)
-            return starlette.responses.Response(
-                content,
-                status_code=response.status_code,
-                headers=response.headers,
-                media_type=response.media_type)
-        else:
-            return response
+            sender = ASGIHTTPSender()
+            await response(scope=None, receive=mock_receive, send=sender)
+            return sender.build_starlette_response()
+        return response
 
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
@@ -258,35 +243,24 @@ class RayServeReplica:
         start = time.time()
         try:
             if self.config.internal_metadata.is_asgi_app:
+                request: Request = arg
+                scope = request.scope
+                root_path = self.config.internal_metadata.path_prefix
+
+                # The incoming scope["path"] contains prefixed path and it
+                # won't be stripped by FastAPI.
+                request.scope["path"] = scope["path"].replace(root_path, "", 1)
+                # root_path is used such that the reverse look up and
+                # redirection works.
+                request.scope["root_path"] = root_path
+
                 app = self.callable._serve_asgi_app
-                req: Request = arg
-
-                class MockSender:
-                    def __init__(self) -> None:
-                        self.status_code: Optional[int] = 200
-                        self.header: Dict[str, str] = {}
-                        self.buffer: List[bytes] = []
-
-                    async def __call__(self, message):
-                        if (message["type"] == "http.response.body"):
-                            self.buffer.append(message["body"])
-                        if (message["type"] == "http.response.start"):
-                            self.status_code = message["status"]
-                            for key, value in message["headers"]:
-                                self.header[key.decode()] = value.decode()
-
-                    def build_starlette_response(
-                            self) -> starlette.responses.Response:
-                        return starlette.responses.Response(
-                            b"".join(self.buffer),
-                            status_code=self.status_code,
-                            headers=dict(self.header))
-
-                sender = MockSender()
-                path_params = req.scope.pop("path_params")
-                matched_path = path_params["wildcard"]
-                req.scope["path"] = f"/{matched_path}"
-                await app(req.scope, req._receive, sender)
+                sender = ASGIHTTPSender()
+                await app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
                 result = sender.build_starlette_response()
             else:
                 result = await method_to_call(arg)
