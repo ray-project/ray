@@ -415,17 +415,29 @@ class ReplicaStateContainer:
 
         return replicas
 
-    def count(self, states: Optional[List[ReplicaState]] = None):
+    def count(self,
+              version: Optional[str] = None,
+              states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
         Args:
+            version(str): version to filter to. If not specified, all versions
+                are considered.
             states (str): states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
-        return sum(len(self._replicas[state]) for state in states)
+        assert version is None or isinstance(version, str)
+        if version is None:
+            return sum(len(self._replicas[state]) for state in states)
+        else:
+            return sum(
+                len(
+                    list(
+                        filter(lambda r: r.version == version, self._replicas[
+                            state]))) for state in states)
 
     def __str__(self):
         return str(self._replicas)
@@ -589,22 +601,30 @@ class BackendState:
         return new_goal_id
 
     def _stop_wrong_version_replicas(
-            self, backend_tag: BackendTag, version: str,
+            self, backend_tag: BackendTag, target_version: str,
             graceful_shutdown_timeout_s: float) -> int:
         # NOTE(edoakes): this short-circuits when using the legacy
         # `create_backend` codepath -- it can be removed once we deprecate
         # that as the version should never be None.
-        if version is None:
+        if target_version is None:
             return
+
+        # Throttle based on the number of correct version replicas starting up.
+        currently_starting_replicas = self._replicas[backend_tag].count(
+            version=target_version,
+            states=[ReplicaState.SHOULD_START, ReplicaState.STARTING])
+        rollout_size = max(int(0.2 * self._target_replicas[backend_tag]), 1)
+        max_to_stop = max(rollout_size - currently_starting_replicas, 0)
 
         # TODO(edoakes): to implement rolling upgrade, all we should need to
         # do is cap the number of old version replicas that are stopped here.
         replicas_to_stop = self._replicas[backend_tag].pop(
-            exclude_version=version,
+            exclude_version=target_version,
             states=[
                 ReplicaState.SHOULD_START, ReplicaState.STARTING,
                 ReplicaState.RUNNING
-            ])
+            ],
+            max_replicas=max_to_stop)
 
         if len(replicas_to_stop) > 0:
             logger.info(f"Stopping {len(replicas_to_stop)} replicas of "
@@ -618,7 +638,7 @@ class BackendState:
             self,
             backend_tag: BackendTag,
             num_replicas: int,
-            version: str,
+            target_version: str,
     ) -> bool:
         """Scale the given backend to the number of replicas.
 
@@ -641,7 +661,7 @@ class BackendState:
             backend_info.backend_config.
             experimental_graceful_shutdown_timeout_s)
 
-        self._stop_wrong_version_replicas(backend_tag, version,
+        self._stop_wrong_version_replicas(backend_tag, target_version,
                                           graceful_shutdown_timeout_s)
 
         current_num_replicas = self._replicas[backend_tag].count(states=[
@@ -655,18 +675,18 @@ class BackendState:
             return False
 
         elif delta_num_replicas > 0:
-            logger.debug("Adding {} replicas to backend {}".format(
-                delta_num_replicas, backend_tag))
+            logger.info(f"Adding {delta_num_replicas} replicas "
+                        f"to backend '{backend_tag}'.")
             for _ in range(delta_num_replicas):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag, version))
+                                   replica_tag, backend_tag, target_version))
 
         elif delta_num_replicas < 0:
-            logger.debug("Removing {} replicas from backend '{}'".format(
-                -delta_num_replicas, backend_tag))
+            logger.info(f"Removing {-delta_num_replicas} replicas "
+                        f"from backend '{backend_tag}'.")
             assert self._target_replicas[backend_tag] >= delta_num_replicas
 
             for _ in range(-delta_num_replicas):

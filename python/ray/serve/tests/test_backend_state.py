@@ -134,16 +134,32 @@ def replica(version: Optional[str] = None) -> VersionedReplica:
 
 def test_replica_state_container_count():
     c = ReplicaStateContainer()
-    r1, r2, r3 = replica(), replica(), replica()
+    r1, r2, r3 = replica("1"), replica("2"), replica("2")
     c.add(ReplicaState.STARTING, r1)
     c.add(ReplicaState.STARTING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert c.count() == 3
-    assert c.count() == c.count([ReplicaState.STARTING, ReplicaState.STOPPING])
-    assert c.count([ReplicaState.STARTING]) == 2
-    assert c.count([ReplicaState.STOPPING]) == 1
-    assert not c.count([ReplicaState.SHOULD_START])
-    assert not c.count([ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
+
+    # Test filtering by state.
+    assert c.count() == c.count(
+        states=[ReplicaState.STARTING, ReplicaState.STOPPING])
+    assert c.count(states=[ReplicaState.STARTING]) == 2
+    assert c.count(states=[ReplicaState.STOPPING]) == 1
+    assert not c.count(states=[ReplicaState.SHOULD_START])
+    assert not c.count(
+        states=[ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
+
+    # Test filtering by version.
+    assert c.count(version="1") == 1
+    assert c.count(version="2") == 2
+    assert c.count(version="3") == 0
+
+    # Test filtering by state and version.
+    assert c.count(version="1", states=[ReplicaState.STARTING]) == 1
+    assert c.count(version="3", states=[ReplicaState.STARTING]) == 0
+    assert c.count(
+        version="2", states=[ReplicaState.STARTING,
+                             ReplicaState.STOPPING]) == 2
 
 
 def test_replica_state_container_get():
