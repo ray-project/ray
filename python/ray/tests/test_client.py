@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 import sys
@@ -417,15 +418,16 @@ def test_basic_named_actor(ray_start_regular_shared):
 
 def test_error_serialization(ray_start_regular_shared):
     """Test that errors will be serialized properly."""
-    with pytest.raises(PermissionError):
+    fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
+    with pytest.raises(FileNotFoundError):
         with ray_start_client_server() as ray:
 
             @ray.remote
             def g():
-                with open("/dev/asdf", "w") as f:
-                    f.write("HI")
+                with open(fake_path, "r") as f:
+                    f.read()
 
-            # Raises a PermissionError
+            # Raises a FileNotFoundError
             ray.get(g.remote())
 
 
