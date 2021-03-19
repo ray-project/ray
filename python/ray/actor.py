@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 import weakref
 import _thread
 
@@ -23,9 +24,6 @@ from ray.util.inspect import (
     is_static_method,
 )
 
-from opentelemetry import trace
-from opentelemetry.util.types import Attributes
-from ray.runtime_context import get_runtime_context
 import os
 from typing import (
     Any,
@@ -37,10 +35,15 @@ from typing import (
     Type,
     Union,
 )
+
+from opentelemetry import trace
+from opentelemetry.util.types import Attributes
+import ray
+from ray.runtime_context import get_runtime_context
+
 import ray.dict_propagator as dict_propagator
 
 _nameable = Union[str, Callable[..., Any]]
-
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +103,7 @@ def _span_consumer_name(class_: _nameable, method: _nameable) -> str:
     name = args["ray.function"]
 
     return f"{name} ray.remote_worker"
+
 
 @client_mode_hook
 def method(*args, **kwargs):
@@ -184,7 +188,17 @@ class ActorMethod:
                         f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
-        return self._remote(args, kwargs)
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                name=_span_producer_name(class_name, method_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(class_name, method_name),
+        ) as span:
+            kwargs[
+                "_ray_trace_ctx"] = dict_propagator.inject_current_context(
+                )
+            span.set_attribute("ray.actor_id", _ray_actor_id.hex())
+            return self._remote(args, kwargs)
 
     def options(self, **options):
         """Convenience method for executing an actor method call with options.
@@ -220,24 +234,6 @@ class ActorMethod:
                 kwargs=kwargs,
                 name=name,
                 num_returns=num_returns)
-
-        # Add tracing here
-        # instance is an argument?
-        method_name = "__init__"
-        assert "_ray_trace_ctx" not in kwargs
-
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-                name=_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(),
-        ) as span:
-            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
-
-            span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
-
-            return result
 
         # Apply the decorator if there is one.
         if self._decorator is not None:
@@ -503,7 +499,16 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
-        return self._remote(args=args, kwargs=kwargs)
+
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                name=_span_producer_name(class_name, method_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(class_name, method_name),
+        ) as span:
+            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+            span.set_attribute("ray.actor_id", _ray_actor_id.hex())
+            return self._remote(args=args, kwargs=kwargs)
 
     def options(self,
                 args=None,
@@ -681,20 +686,6 @@ class ActorClass:
 
         worker = ray.worker.global_worker
         worker.check_connected()
-
-        #TODO: 
-        # class_name = instance._wrapped
-        method_name = "__init__"
-        tracer = trace.get_tracer(__name__)
-
-        span = tracer.start_as_current_span(
-                name=_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(class_name, method_name),
-            )
-        kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
-        # span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
-
 
         if name is not None:
             if not isinstance(name, str):
@@ -1125,17 +1116,6 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries):
-    #TODO: what is the point of TracingWrapper?
-    methods = inspect.getmembers(TracingWrapper, is_function_or_method)
-    for name, method in methods:
-                if inspect.iscoroutinefunction(method):
-                    # If the method was async, convert out sync wrapper into async
-                    wrapped_method = async_span_wrapper(method)
-                else:
-                    wrapped_method = span_wrapper(method)
-
-                setattr(TracingWrapper, name, wrapped_method)
-    
     Class = modify_class(cls)
 
     if max_restarts is None:

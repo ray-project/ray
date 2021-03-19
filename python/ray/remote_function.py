@@ -1,5 +1,5 @@
 import logging
-from functools import wraps
+from functools import partial, wraps
 
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
@@ -21,6 +21,8 @@ import os
 from typing import Any, Callable, Dict, List, MutableMapping, Optional
 from ray.runtime_context import get_runtime_context
 import ray.dict_propagator as dict_propagator
+from ray.util import use_context
+
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
@@ -77,17 +79,24 @@ def _span_consumer_name(func: Callable[..., Any]) -> str:
 def _resume_trace(
         function: Callable[..., Any],
         _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-        *args: List[Any],
-        **kwargs: MutableMapping[Any, Any],
+        *args: Any,
+        **kwargs: Any,
 ) -> Any:
     tracer = trace.get_tracer(__name__)
-    with tracer.start_as_current_span(
+    assert (
+            _ray_trace_ctx is not None
+        ), f"Missing ray_trace_ctx!: {args}, {kwargs}"
+
+    # Set a new context if given a _ray_trace_ctx, or default to current_context
+    # Retrieves the context from the _ray_trace_ctx dictionary we injected
+    with use_context(
+        dict_propagator.extract(_ray_trace_ctx)
+    ), tracer.start_as_current_span(
         _span_consumer_name(function),
         kind=trace.SpanKind.CONSUMER,
         attributes=_hydrate_span_args(function),
-        context=dict_propagator.extract(_ray_trace_ctx) if _ray_trace_ctx else Context(),
     ):
-        return function
+        return function(*args, **kwargs)
 
 
 class RemoteFunction:
@@ -135,7 +144,7 @@ class RemoteFunction:
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
-        self._function = _resume_trace(function=function)
+        self._function = partial(_resume_trace, function=function)
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._function_descriptor = function_descriptor
@@ -234,6 +243,34 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    def remote(self,
+               args=None,
+               kwargs=None,
+               num_returns=None,
+               num_cpus=None,
+               num_gpus=None,
+               memory=None,
+               object_store_memory=None,
+               accelerator_type=None,
+               resources=None,
+               max_retries=None,
+               placement_group=None,
+               placement_group_bundle_index=-1,
+               placement_group_capture_child_tasks=None,
+               runtime_env=None,
+               override_environment_variables=None,
+               name=""):
+        """Wrap the _remote function with tracer."""
+        assert "_ray_trace_ctx" not in kwargs
+
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                _span_producer_name(self._function_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(self._function)):
+            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+            return self._remote(args, kwargs)
+
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -275,15 +312,6 @@ class RemoteFunction:
 
         worker = ray.worker.global_worker
         worker.check_connected()
-
-        assert "_ray_trace_ctx" not in kwargs
-
-        tracer = trace.get_tracer(__name__)
-        tracer.start_as_current_span(
-            _span_producer_name(__name__),
-            kind=trace.SpanKind.PRODUCER,
-            attributes=_hydrate_span_args())
-        kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
