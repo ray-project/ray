@@ -630,8 +630,6 @@ class BackendState:
                     ],
                     max_replicas=-delta_num_replicas)
 
-                assert len(replicas_to_stop) == -delta_num_replicas
-
                 for replica in replicas_to_stop:
                     replica.set_should_stop(graceful_shutdown_timeout_s)
                     self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
