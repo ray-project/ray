@@ -206,7 +206,7 @@ class DownloadPackage(JobProcessor):
         url = self._job_info.url()
         temp_dir = self._job_info.temp_dir()
         job_id = self._job_info.job_id()
-        filename = job_consts.DOWNLOAD_PACKAGE_PATH.format(
+        filename = job_consts.DOWNLOAD_PACKAGE_FILE.format(
             temp_dir=temp_dir, job_id=job_id)
         unzip_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
