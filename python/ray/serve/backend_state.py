@@ -37,7 +37,7 @@ class ReplicaState(Enum):
     STOPPED = 6
 
 
-ALL_REPLICA_STATES = [s for s in ReplicaState]
+ALL_REPLICA_STATES = list(ReplicaState)
 
 
 class ActorReplicaWrapper:
@@ -373,7 +373,7 @@ class ReplicaStateContainer:
 
         assert isinstance(states, list)
 
-        return sum((self._replicas[state] for state in states), start=[])
+        return sum((self._replicas[state] for state in states), [])
 
     def pop(self,
             exclude_version: Optional[str] = None,
