@@ -139,6 +139,27 @@ class TrainableUtil:
         return checkpoint_path
 
     @staticmethod
+    def get_checkpoint_path(checkpoint_dir):
+        """Given a directory of a specific checkpoint, returns the full
+        checkpoint path.
+
+        Args:
+            checkpoint_dir (str): Path pointing to a checkpoint directory.
+        Returns:
+            A string with the full path to the checkpoint within the directory.
+        """
+        if 'checkpoint' not in checkpoint_dir:
+            raise ValueError("The given path does not point to a specific "
+                             f"checkpoint: {checkpoint_dir}")
+        # if it directly points to the checkpoint file, just return it
+        if os.path.isfile(checkpoint_dir):
+            return checkpoint_dir
+
+        # else derive the checkpoint file and return it
+        checkpoint_number = checkpoint_dir.split('_')[-1]
+        return os.path.join(checkpoint_dir, f'checkpoint-{checkpoint_number}')
+
+    @staticmethod
     def get_checkpoints_paths(logdir):
         """ Finds the checkpoints within a specific folder.
 
@@ -169,27 +190,6 @@ class TrainableUtil:
         return chkpt_df
 
     @staticmethod
-    def get_checkpoint_path(checkpoint_dir):
-        """Given a directory of a specific checkpoint, returns the full
-        checkpoint path.
-
-        Args:
-            checkpoint_dir (str): Path pointing to a checkpoint directory.
-        Returns:
-            A string with the full path to the checkpoint within the directory.
-        """
-        if 'checkpoint' not in checkpoint_dir:
-            raise ValueError("The given path does not point to a specific "
-                             f"checkpoint: {checkpoint_dir}")
-        # if it directly points to the checkpoint file, just return it
-        if os.path.isfile(checkpoint_dir):
-            return checkpoint_dir
-
-        # else derive the checkpoint file and return it
-        checkpoint_number = checkpoint_dir.split('_')[-1]
-        return os.path.join(checkpoint_dir, f'checkpoint-{checkpoint_number}')
-
-    @staticmethod
     def get_last_checkpoint(logdir):
         """Finds and returns last checkpoint from given directory.
 
@@ -197,13 +197,13 @@ class TrainableUtil:
             logdir (str): Path pointing to a directory with checkpoints.
 
         Returns:
-            Last checkpoint in given directory.
+            Last checkpoint in given directory (with highest training
+            iteration).
         """
         # if logdir already points to a specific checkpoint load it
         if 'checkpoint' in logdir:
             return TrainableUtil.get_checkpoint_path(logdir)
 
-        # TODO: use TrainableUtil.get_checkpoint_paths(logdir)
         # get all checkpoint paths and their corresponding training iteration
         df = TrainableUtil.get_checkpoints_paths(logdir)
         # retrieve path with highest training iteration
