@@ -388,9 +388,22 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
               // retry at a later time.
               UpdateRetryTimer(it->second);
             }
+          } else {
             // If object restoration succeeded, we don't update the retry timer since the
-            // object should be ready for pulling, which we want to do as soon as
-            // possible.
+            // object should be ready for pulling
+            // We do, however, try to manually add the spilled node ID as an object
+            // location in case the object location subscription is lagging behind this
+            // RPC, and manually trigger an object pull.
+            if (it != object_pull_requests_.end()) {
+              auto &nodes = it->second.client_locations;
+              if (std::find(nodes.begin(), nodes.end(), spilled_node_id) == nodes.end()) {
+                nodes.push_back(spilled_node_id);
+              }
+              {
+                absl::MutexLock lock(&active_objects_mu_);
+                TryToMakeObjectLocal(object_id);
+              }
+            }
           }
         });
   }

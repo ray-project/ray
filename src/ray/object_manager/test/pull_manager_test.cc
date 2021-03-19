@@ -159,16 +159,34 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
+  // If the object location subscription reaches us before the restoration request RPC
+  // returns, we wait for the restoration RPC.
+  client_ids.insert(node_that_object_spilled);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 node_that_object_spilled, 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
   // The restore object call will ask the remote node to restore the object, and the
   // client location is updated accordingly.
   restore_object_callback_(ray::Status::OK());
-  client_ids.insert(node_that_object_spilled);
+  // Now the pull requests are sent.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // Object location subscription notifies us of a new location after the restoration
+  // request finishes, this shouldn't send any extra pull or restoration requests since
+  // the retry time has been reset.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 node_that_object_spilled, 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  // After the retry timeout, another location change will send another pull request.
   fake_time_ += 10.;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
-
-  // Now the pull requests are sent.
-  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   // Don't restore an object if it's local.
@@ -224,15 +242,23 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
 
   restore_object_callback_(ray::Status::OK());
   // Now the remote restoration request succeeds, so we sholud be able to pull the object.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
   client_ids.insert(remote_node_object_spilled);
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 remote_node_object_spilled, 0);
+  // The location change didn't send extra pull or restoration requests.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+  // Now that we've successfully sent a pull request, we need to wait for the retry period
+  // before sending another one.
   // Since it is the second retry, the interval gets doubled.
   fake_time_ += 20.0;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  remote_node_object_spilled, 0);
-
-  // Now that we've successfully sent a pull request, we need to wait for the retry period
-  // before sending another one.
-  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  // After the retry timeout, a location change will send another pull request.
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
   ASSERT_TRUE(num_abort_calls_.empty());
