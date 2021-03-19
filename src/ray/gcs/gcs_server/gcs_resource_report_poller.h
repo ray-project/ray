@@ -121,7 +121,8 @@ class GcsResourceReportPoller {
   // All the state regarding how to and when to send a new pull request to a raylet.
   std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
   // The set of all nodes which we are allowed to pull from. We can't necessarily pull
-  // from this list immediately because we limit the number of concurrent pulls.
+  // from this list immediately because we limit the number of concurrent pulls. This
+  // queue should be sorted by time. The front should contain the first item to pull.
   std::deque<std::shared_ptr<PullState>> to_pull_queue_ GUARDED_BY(mutex_);
 
   void Tick();
