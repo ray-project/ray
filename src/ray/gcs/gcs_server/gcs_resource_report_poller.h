@@ -85,7 +85,8 @@ class GcsResourceReportPoller {
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   // Handle receiving a resource report (e.g. update the resource manager).
-  // This function is guaranteed to be called on the main thread. It is not necessarily safe to call it from the polling thread.
+  // This function is guaranteed to be called on the main thread. It is not necessarily
+  // safe to call it from the polling thread.
   std::function<void(const rpc::ResourcesData &)> handle_resource_report_;
 
   // Return the current time in miliseconds
