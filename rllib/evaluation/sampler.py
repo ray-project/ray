@@ -1,6 +1,5 @@
 from abc import abstractmethod, ABCMeta
 from collections import defaultdict, namedtuple
-from gym.envs.classic_control.rendering import SimpleImageViewer
 import logging
 import numpy as np
 import queue
@@ -521,7 +520,7 @@ def _env_runner(
     """
 
     # May be populated with used for image rendering
-    simple_image_viewer: Optional[SimpleImageViewer] = None
+    simple_image_viewer: Optional["SimpleImageViewer"] = None
 
     # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
     # error and continue with max_episode_steps=None.
@@ -713,9 +712,19 @@ def _env_runner(
             rendered = base_env.try_render()
             # Rendering returned an image -> Display it in a SimpleImageViewer.
             if isinstance(rendered, np.ndarray) and len(rendered.shape) == 3:
-                if not simple_image_viewer:
-                    simple_image_viewer = SimpleImageViewer()
-                simple_image_viewer.imshow(rendered)
+                # ImageViewer not defined yet, try to create one.
+                if simple_image_viewer is None:
+                    try:
+                        from gym.envs.classic_control.rendering import \
+                            SimpleImageViewer
+                        simple_image_viewer = SimpleImageViewer()
+                    except (ImportError, ModuleNotFoundError):
+                        render = False  # disable rendering
+                        logger.warning(
+                            "Could not import gym.envs.classic_control."
+                            "rendering! Try `pip install gym[all]`.")
+                if simple_image_viewer:
+                    simple_image_viewer.imshow(rendered)
             perf_stats.env_render_time += time.time() - t5
 
 
