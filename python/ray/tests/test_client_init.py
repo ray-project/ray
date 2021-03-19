@@ -4,6 +4,7 @@ import pytest
 import time
 import random
 import sys
+from unittest.mock import patch
 
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -176,6 +177,24 @@ def test_protocol_version(init_and_serve):
     info3 = ray.connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
     ray.disconnect()
+
+
+@patch("ray.util.client.server.dataservicer.CLIENT_SERVER_MAX_THREADS", 6)
+@patch("ray.util.client.server.logservicer.CLIENT_SERVER_MAX_THREADS", 6)
+def test_max_clients(init_and_serve):
+    # Tests max clients. Should support up to CLIENT_SERVER_MAX_THREADS / 2.
+    def get_job_id(api):
+        return api.get_runtime_context().worker.current_job_id
+
+    for i in range(3):
+        api1 = RayAPIStub()
+        info1 = api1.connect("localhost:50051")
+
+        assert info1["num_clients"] == i + 1, info1
+
+    with pytest.raises(ConnectionError):
+        api = RayAPIStub()
+        _ = api.connect("localhost:50051")
 
 
 if __name__ == "__main__":
