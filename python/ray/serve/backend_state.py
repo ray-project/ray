@@ -591,9 +591,12 @@ class BackendState:
     def _stop_wrong_version_replicas(
             self, backend_tag: BackendTag, version: str,
             graceful_shutdown_timeout_s: float) -> int:
-        # XXX
+        # NOTE(edoakes): this short-circuits when using the legacy
+        # `create_backend` codepath -- it can be removed once we deprecate
+        # that as the version should never be None.
         if version is None:
             return
+
         # TODO(edoakes): to implement rolling upgrade, all we should need to
         # do is cap the number of old version replicas that are stopped here.
         replicas_to_stop = self._replicas[backend_tag].pop(
