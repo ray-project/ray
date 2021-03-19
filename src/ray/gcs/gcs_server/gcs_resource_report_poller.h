@@ -85,6 +85,7 @@ class GcsResourceReportPoller {
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   // Handle receiving a resource report (e.g. update the resource manager).
+  // This function is guaranteed to be called on the main thread. It is not necessarily safe to call it from the polling thread.
   std::function<void(const rpc::ResourcesData &)> handle_resource_report_;
 
   // Return the current time in miliseconds
@@ -117,10 +118,10 @@ class GcsResourceReportPoller {
   // and polling thread, so we should be mindful about how long we hold it.
   absl::Mutex mutex_;
   // All the state regarding how to and when to send a new pull request to a raylet.
-  std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_;
+  std::unordered_map<NodeID, std::shared_ptr<PullState>> nodes_ GUARDED_BY(mutex_);
   // The set of all nodes which we are allowed to pull from. We can't necessarily pull
   // from this list immediately because we limit the number of concurrent pulls.
-  std::deque<std::shared_ptr<PullState>> to_pull_queue_;
+  std::deque<std::shared_ptr<PullState>> to_pull_queue_ GUARDED_BY(mutex_);
 
   void Tick();
   /// Try to pull from the node. We may not be able to if it violates max concurrent
