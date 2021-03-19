@@ -119,6 +119,7 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
         mock_checkpoint.return_value = None
         yield backend_state, timer, goal_manager
 
+
 def replica(version: Optional[str] = None) -> VersionedReplica:
     class MockVersionedReplica(VersionedReplica):
         def __init__(self, version):
@@ -127,7 +128,9 @@ def replica(version: Optional[str] = None) -> VersionedReplica:
         @property
         def version(self, version):
             return self._version
+
     return MockVersionedReplica(version)
+
 
 def test_replica_state_container_get():
     c = ReplicaStateContainer()

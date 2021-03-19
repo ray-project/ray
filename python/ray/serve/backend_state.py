@@ -179,6 +179,7 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
+
 class VersionedReplica(ABC):
     @property
     def version(self):
