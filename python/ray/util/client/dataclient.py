@@ -34,6 +34,7 @@ class DataClient:
         self.data_thread = self._start_datathread()
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
+        self.lock = threading.RLock()
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
@@ -41,13 +42,14 @@ class DataClient:
         self.data_thread.start()
 
     def _next_id(self) -> int:
-        self._req_id += 1
-        if self._req_id > INT32_MAX:
-            self._req_id = 1
-        # Responses that aren't tracked (like opportunistic releases)
-        # have req_id=0, so make sure we never mint such an id.
-        assert self._req_id != 0
-        return self._req_id
+        with self.lock:
+            self._req_id += 1
+            if self._req_id > INT32_MAX:
+                self._req_id = 1
+            # Responses that aren't tracked (like opportunistic releases)
+            # have req_id=0, so make sure we never mint such an id.
+            assert self._req_id != 0
+            return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
@@ -110,6 +112,11 @@ class DataClient:
             del self.ready_data[req_id]
         return data
 
+    def _async_send(self, req: ray_client_pb2.DataRequest) -> None:
+        req_id = self._next_id()
+        req.req_id = req_id
+        self.request_queue.put(req)
+
     def ConnectionInfo(self,
                        context=None) -> ray_client_pb2.ConnectionInfoResponse:
         datareq = ray_client_pb2.DataRequest(
@@ -133,9 +140,4 @@ class DataClient:
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
-        # TODO: Make this nonblocking. There's a race here for named
-        # actors
-        # a = Actor.options(name="a", lifetime="detached").remote()
-        # del a
-        # b = ray.get_actor("a")
-        self._blocking_send(datareq)
+        self._async_send(datareq)
