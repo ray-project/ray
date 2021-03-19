@@ -428,7 +428,7 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.values())
+        return sum(d.nbytes for d in self.data.values())
 
     def get(self, key, default=None):
         try:
