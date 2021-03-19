@@ -126,13 +126,14 @@ COMMON_CONFIG: TrainerConfigDict = {
     # the first sub-environment will be rendered.
     # In order for this to work, your env will have to implement the
     # `render()` method which either:
-    # a) handles window generation and rendering itself or
-    # b) returns a numpy RGB + uint8 image of shape [w x h x 3 (rgb)].
+    # a) handles window generation and rendering itself (returning True) or
+    # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
     "render_env": False,
-    # If True, store videos of env-rollouts in the output dir.
-    # Alternatively, provide a path (str) to a directory, in which the env
-    # recordings should be stored instead. This can be a relative path
-    # (relative to output dir in ~/ray_results/...) or an absolute path.
+    # If True, stores videos in this relative directory inside the default
+    # output dir (~/ray_results/...). Alternatively, you can specify an
+    # absolute path (str), in which the env recordings should be
+    # stored instead.
+    # Set to False for not recording anything.
     # Note: This setting replaces the deprecated `monitor` key.
     "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
