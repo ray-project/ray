@@ -596,11 +596,10 @@ class DynamicTFPolicy(TFPolicy):
             dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
-        TFPolicy._initialize_loss(
-            self, loss,
-            [(k, v) for k, v in train_batch.items()
-             if k in all_accessed_keys] + [("seq_lens", train_batch.seq_lens)]
-            if "seq_lens" in all_accessed_keys else [])
+        TFPolicy._initialize_loss(self, loss, [
+            (k, v) for k, v in train_batch.items() if k in all_accessed_keys
+        ] + ([("seq_lens", train_batch.seq_lens)]
+             if train_batch.seq_lens is not None else []))
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
