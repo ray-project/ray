@@ -564,7 +564,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
-  pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(new PubsubCoordinator(
+  pubsub_coordinator_ = std::make_shared<PubsubCoordinator>(
       /*is_node_dead=*/[this](const NodeID &node_id) {
         if (auto node_info =
                 gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false)) {
@@ -574,7 +574,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         // Node information is probably not
         // subscribed yet, so report that the node is alive.
         return true;
-      }));
+      });
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;

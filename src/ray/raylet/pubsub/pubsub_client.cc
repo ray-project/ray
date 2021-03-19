@@ -97,7 +97,7 @@ void PubsubClient::MakeLongPollingPubsubConnection(
 
 void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
                                              const rpc::Address &subscriber_address,
-                                             Status &status,
+                                             const Status &status,
                                              const rpc::PubsubLongPollingReply &reply) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << owner_worker_id;

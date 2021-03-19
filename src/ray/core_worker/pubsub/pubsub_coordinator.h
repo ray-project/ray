@@ -41,11 +41,12 @@ class SubscriptionIndex {
 
   /// Erase the subscriber from the index. Returns the number of erased subscribers.
   /// NOTE: It cannot erase subscribers that were never added.
-  int EraseSubscriber(const NodeID &subscriber_id);
+  bool EraseSubscriber(const NodeID &subscriber_id);
 
   /// Erase the object id and subscriber id from the index. Return the number of erased
-  /// entries. NOTE: It cannot erase subscribers that were never added.
-  int EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+  /// entries.
+  /// NOTE: It cannot erase subscribers that were never added.
+  bool EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
 
  private:
   FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexErase);
@@ -129,16 +130,16 @@ class PubsubCoordinator {
   /// TODO(sang): Currently, clients don't send a RPC to unregister themselves.
   ///
   /// \param subscriber_node_id The node id of the subscriber to unsubscribe.
-  /// \return Number of subscribers unregistered.
-  int UnregisterSubscriber(const NodeID &subscriber_node_id);
+  /// \return True if erased. False otherwise.
+  bool UnregisterSubscriber(const NodeID &subscriber_node_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
   /// \param subscriber_node_id The node id of the subscriber.
   /// \param object_id The object id of the subscriber.
-  /// \return Number of removed subscription.
-  int UnregisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
+  /// \return True if erased. False otherwise.
+  bool UnregisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
 
  private:
   /// Protects below fields. Since the coordinator runs in a core worker, it should be

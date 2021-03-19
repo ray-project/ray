@@ -31,17 +31,17 @@ const absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId
 }
 
 bool SubscriptionIndex::HasObjectId(const ObjectID &object_id) const {
-  return objects_to_subscribers_.count(object_id) > 0;
+  return objects_to_subscribers_.count(object_id);
 }
 
 bool SubscriptionIndex::HasSubscriber(const NodeID &subscriber_id) const {
-  return subscribers_to_objects_.count(subscriber_id) > 0;
+  return subscribers_to_objects_.count(subscriber_id);
 }
 
-int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
+bool SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
   auto subscribing_objects_it = subscribers_to_objects_.find(subscriber_id);
   if (subscribing_objects_it == subscribers_to_objects_.end()) {
-    return 0;
+    return false;
   }
 
   auto &subscribing_objects = subscribing_objects_it->second;
@@ -58,21 +58,21 @@ int SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
     }
   }
   subscribers_to_objects_.erase(subscribing_objects_it);
-  return 1;
+  return true;
 }
 
-int SubscriptionIndex::EraseEntry(const ObjectID &object_id,
+bool SubscriptionIndex::EraseEntry(const ObjectID &object_id,
                                   const NodeID &subscriber_id) {
   // Erase from subscribers_to_objects_;
   auto subscribers_to_objects_it = subscribers_to_objects_.find(subscriber_id);
   if (subscribers_to_objects_it == subscribers_to_objects_.end()) {
-    return 0;
+    return false;
   }
   auto &objects = subscribers_to_objects_it->second;
   auto object_it = objects.find(object_id);
   if (object_it == objects.end()) {
     RAY_CHECK(objects_to_subscribers_.count(object_id) == 0);
-    return 0;
+    return false;
   }
   objects.erase(object_it);
   if (objects.size() == 0) {
@@ -91,7 +91,7 @@ int SubscriptionIndex::EraseEntry(const ObjectID &object_id,
   if (subscribers.size() == 0) {
     objects_to_subscribers_.erase(objects_to_subscribers_it);
   }
-  return 1;
+  return true;
 }
 
 bool Subscriber::Connect(LongPollConnectCallback long_polling_reply_callback) {
@@ -173,7 +173,7 @@ void PubsubCoordinator::Publish(const ObjectID &object_id) {
   }
 }
 
-int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
+bool PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   absl::MutexLock lock(&mutex_);
   int erased = subscription_index_.EraseSubscriber(subscriber_node_id);
   // Publish messages before removing the entry. Otherwise, it can have memory leak.
@@ -188,7 +188,7 @@ int PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   return erased;
 }
 
-int PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
+bool PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
                                               const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_.EraseEntry(object_id, subscriber_node_id);

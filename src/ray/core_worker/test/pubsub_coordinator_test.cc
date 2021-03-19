@@ -379,7 +379,7 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
 
   // Connection should be replied (removed) when the subscriber is unregistered.
   int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_EQ(erased, 0);
+  ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
 }
 
@@ -411,7 +411,7 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
   auto erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
   // Since there was no connection, long polling shouldn't have been replied.
   ASSERT_EQ(long_polling_connection_replied, false);
-  ASSERT_EQ(erased, 1);
+  ASSERT_TRUE(erased);
 
   ///
   /// Test the case where there was a connection, but no registration.
@@ -423,7 +423,7 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
   erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_EQ(long_polling_connection_replied, true);
   // Since there was no registration, nothing was erased.
-  ASSERT_EQ(erased, 0);
+  ASSERT_FALSE(erased);
 }
 
 // Unregistration an entry.
@@ -471,7 +471,7 @@ TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
   pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(long_polling_connection_replied, false);
   int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_EQ(erased, 1);
+  ASSERT_TRUE(erased);
   // Make sure the long polling request is replied to avoid memory leak.
   ASSERT_EQ(long_polling_connection_replied, true);
 
@@ -479,14 +479,14 @@ TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
   long_polling_connection_replied = false;
   pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
   erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_EQ(erased, 0);
+  ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // Test when connect wasn't done.
   long_polling_connection_replied = false;
   pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
   erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_EQ(erased, 1);
+  ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
 }
 

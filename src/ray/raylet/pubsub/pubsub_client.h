@@ -106,7 +106,7 @@ class PubsubClient : public PubsubClientInterface {
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &owner_address,
-                                 const rpc::Address &subscriber_address, Status &status,
+                                 const rpc::Address &subscriber_address, const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
 
   /// Private method to handle pubsub server failures.
