@@ -337,10 +337,6 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
             list)
 
-    def remove(self):
-        assert not any(self._replicas.values())
-        del self._replicas
-
     def add(self, state: ReplicaState, replica: BackendReplica):
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, BackendReplica)
@@ -452,10 +448,9 @@ class BackendState:
         return {
             backend_tag: {
                 r.replica_tag: r.actor_handle
-                for r in replicas.get(
-                    backend_tag, states=[ReplicaState.RUNNING])
+                for r in replicas.get(states=[ReplicaState.RUNNING])
             }
-            for backend_tag, replicas in self._replicas.values()
+            for backend_tag, replicas in self._replicas.items()
         }
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
@@ -505,7 +500,6 @@ class BackendState:
                     return self._backend_goals.get(backend_tag, None)
 
         if backend_tag not in self._replicas:
-            print("HERERERRERE")
             self._replicas[backend_tag] = ReplicaStateContainer()
 
         backend_replica_class = create_backend_replica(
@@ -553,6 +547,9 @@ class BackendState:
     def _stop_wrong_version_replicas(
             self, backend_tag: BackendTag, version: str,
             graceful_shutdown_timeout_s: float) -> int:
+        # XXX
+        if version is None:
+            return
         # TODO(edoakes): to implement rolling upgrade, all we should need to
         # do is cap the number of old version replicas that are stopped here.
         replicas_to_stop = self._replicas[backend_tag].pop(
@@ -647,24 +644,17 @@ class BackendState:
         for backend_tag, num_replicas in list(self._target_replicas.items()):
             checkpoint_needed |= self._scale_backend_replicas(
                 backend_tag, num_replicas, self._target_versions[backend_tag])
-            if num_replicas == 0:
-                del self._backend_metadata[backend_tag]
-                del self._target_replicas[backend_tag]
-                del self._target_versions[backend_tag]
 
         if checkpoint_needed:
             self._checkpoint()
 
     def _completed_goals(self) -> List[GoalId]:
         completed_goals = []
-        all_backends = set(self._replicas.keys()).union(
-            set(self._backend_metadata.keys()))
-
-        for backend_tag in all_backends:
+        deleted_backends = []
+        for backend_tag in self._replicas:
             target_count = self._target_replicas.get(backend_tag, 0)
 
             # If we have pending ops, the current goal is *not* ready.
-            print("CASE -1")
             if (self._replicas[backend_tag].count(states=[
                     ReplicaState.SHOULD_START,
                     ReplicaState.STARTING,
@@ -678,22 +668,24 @@ class BackendState:
             running_count = len(running)
 
             # Check for deleting.
-            print("CASE 0")
-            print("TARGET", target_count)
-            print("RUNNING", running_count)
             if target_count == 0 and running_count == 0:
-                print("CASE 1")
+                deleted_backends.append(backend_tag)
                 completed_goals.append(
                     self._backend_goals.pop(backend_tag, None))
 
             # Check for a non-zero number of backends.
             elif target_count == running_count:
-                print("CASE 2")
                 # Check that all running replicas are the target version.
                 target_version = self._target_versions[backend_tag]
                 if all(r.version == target_version for r in running):
                     completed_goals.append(
                         self._backend_goals.pop(backend_tag, None))
+
+        for backend_tag in deleted_backends:
+            del self._replicas[backend_tag]
+            del self._backend_metadata[backend_tag]
+            del self._target_replicas[backend_tag]
+            del self._target_versions[backend_tag]
 
         return [goal for goal in completed_goals if goal]
 
@@ -708,17 +700,14 @@ class BackendState:
         transition_triggered = False
         for backend_tag, replicas in self._replicas.items():
             for replica in replicas.pop(states=[ReplicaState.SHOULD_START]):
-                print("SHOULD_START", replica)
                 replica.start(self._backend_metadata[backend_tag])
                 replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
-                print("SHOULD_STOP", replica)
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STARTING]):
-                print("STARTING", replica)
                 if replica.check_started():
                     replicas.add(ReplicaState.RUNNING, replica)
                     transition_triggered = True
@@ -726,18 +715,10 @@ class BackendState:
                     replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STOPPING]):
-                print("STOPPING", replica)
                 if replica.check_stopped():
                     transition_triggered = True
                 else:
                     replicas.add(ReplicaState.STOPPING, replica)
-
-        # Remove information about backends that now have zero replicas.
-        self._replicas = {
-            backend_tag: replicas
-            for backend_tag, replicas in self._replicas.items()
-            if replicas.count() != 0
-        }
 
         if transition_triggered:
             self._checkpoint()
