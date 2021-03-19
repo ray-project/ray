@@ -896,8 +896,7 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return (ray.resource_spec.NODE_ID_PREFIX +
-            ray._private.services.get_node_ip_address())
+    return (ray.resource_spec.NODE_ID_PREFIX + ray.util.get_node_ip_address())
 
 
 def node_ids():
