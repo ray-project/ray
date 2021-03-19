@@ -45,13 +45,12 @@ Submitting and Merging a Contribution
 
 There are a couple steps to merge a contribution.
 
-1. First rebase your development branch on the most recent version of master.
+1. First merge the most recent version of master into your development branch.
 
    .. code:: bash
 
      git remote add upstream https://github.com/ray-project/ray.git
-     git fetch upstream
-     git rebase upstream/master
+     git pull upstream master
 
 2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
