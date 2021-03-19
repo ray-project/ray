@@ -616,8 +616,6 @@ class BackendState:
         rollout_size = max(int(0.2 * self._target_replicas[backend_tag]), 1)
         max_to_stop = max(rollout_size - currently_starting_replicas, 0)
 
-        # TODO(edoakes): to implement rolling upgrade, all we should need to
-        # do is cap the number of old version replicas that are stopped here.
         replicas_to_stop = self._replicas[backend_tag].pop(
             exclude_version=target_version,
             states=[
