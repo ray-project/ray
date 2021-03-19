@@ -126,20 +126,141 @@ def replica(version: Optional[str] = None) -> VersionedReplica:
             self._version = version
 
         @property
-        def version(self, version):
+        def version(self):
             return self._version
 
     return MockVersionedReplica(version)
 
 
+def test_replica_state_container_count():
+    c = ReplicaStateContainer()
+    r1, r2, r3 = replica(), replica(), replica()
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STOPPING, r3)
+    assert c.count() == 3
+    assert c.count() == c.count([ReplicaState.STARTING, ReplicaState.STOPPING])
+    assert c.count([ReplicaState.STARTING]) == 2
+    assert c.count([ReplicaState.STOPPING]) == 1
+    assert not c.count([ReplicaState.SHOULD_START])
+    assert not c.count([ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
+
+
 def test_replica_state_container_get():
     c = ReplicaStateContainer()
-    r = replica()
-    c.add(ReplicaState.SHOULD_START, r)
-    assert c.count() == 1
-    assert c.pop() == [r]
-
     r1, r2, r3 = replica(), replica(), replica()
+
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STOPPING, r3)
+    assert c.get() == [r1, r2, r3]
+    assert c.get() == c.get([ReplicaState.STARTING, ReplicaState.STOPPING])
+    assert c.get([ReplicaState.STARTING]) == [r1, r2]
+    assert c.get([ReplicaState.STOPPING]) == [r3]
+    assert not c.get([ReplicaState.SHOULD_START])
+    assert not c.get([ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
+
+
+def test_replica_state_container_pop_basic():
+    c = ReplicaStateContainer()
+    r1, r2, r3 = replica(), replica(), replica()
+
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STOPPING, r3)
+    assert c.pop() == [r1, r2, r3]
+    assert not c.pop()
+
+
+def test_replica_state_container_pop_exclude_version():
+    c = ReplicaStateContainer()
+    r1, r2, r3 = replica("1"), replica("1"), replica("2")
+
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING, r3)
+    assert c.pop(exclude_version="1") == [r3]
+    assert not c.pop(exclude_version="1")
+    assert c.pop(exclude_version="2") == [r1, r2]
+    assert not c.pop(exclude_version="2")
+    assert not c.pop()
+
+
+def test_replica_state_container_pop_max_replicas():
+    c = ReplicaStateContainer()
+    r1, r2, r3 = replica(), replica(), replica()
+
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STOPPING, r3)
+    assert not c.pop(max_replicas=0)
+    assert len(c.pop(max_replicas=1)) == 1
+    assert len(c.pop(max_replicas=2)) == 2
+    c.add(ReplicaState.STARTING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STOPPING, r3)
+    assert len(c.pop(max_replicas=10)) == 3
+
+
+def test_replica_state_container_pop_states():
+    c = ReplicaStateContainer()
+    r1, r2, r3, r4 = replica(), replica(), replica(), replica()
+
+    # Check popping single state.
+    c.add(ReplicaState.STOPPING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.SHOULD_STOP, r3)
+    c.add(ReplicaState.SHOULD_STOP, r4)
+    assert c.pop(states=[ReplicaState.STARTING]) == [r2]
+    assert not c.pop(states=[ReplicaState.STARTING])
+    assert c.pop(states=[ReplicaState.STOPPING]) == [r1]
+    assert not c.pop(states=[ReplicaState.STOPPING])
+    assert c.pop(states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
+    assert not c.pop(states=[ReplicaState.SHOULD_STOP])
+
+    # Check popping multiple states. Ordering of states should be preserved.
+    c.add(ReplicaState.STOPPING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.SHOULD_STOP, r3)
+    c.add(ReplicaState.SHOULD_STOP, r4)
+    assert c.pop(states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING]) == [
+        r3, r4, r1
+    ]
+    assert not c.pop(states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
+    assert c.pop(states=[ReplicaState.STARTING]) == [r2]
+    assert not c.pop(states=[ReplicaState.STARTING])
+    assert not c.pop()
+
+
+def test_replica_state_container_pop_integration():
+    c = ReplicaStateContainer()
+    r1, r2, r3, r4 = replica("1"), replica("2"), replica("2"), replica("3")
+
+    c.add(ReplicaState.STOPPING, r1)
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.SHOULD_STOP, r3)
+    c.add(ReplicaState.SHOULD_STOP, r4)
+    assert not c.pop(exclude_version="1", states=[ReplicaState.STOPPING])
+    assert c.pop(
+        exclude_version="1", states=[ReplicaState.SHOULD_STOP],
+        max_replicas=1) == [r3]
+    assert c.pop(
+        exclude_version="1", states=[ReplicaState.SHOULD_STOP],
+        max_replicas=1) == [r4]
+    c.add(ReplicaState.SHOULD_STOP, r3)
+    c.add(ReplicaState.SHOULD_STOP, r4)
+    assert c.pop(
+        exclude_version="1", states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
+    assert c.pop(exclude_version="1", states=[ReplicaState.STARTING]) == [r2]
+    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.SHOULD_STOP, r3)
+    c.add(ReplicaState.SHOULD_STOP, r4)
+    assert c.pop(
+        exclude_version="1",
+        states=[ReplicaState.SHOULD_STOP,
+                ReplicaState.STARTING]) == [r3, r4, r2]
+    assert c.pop(
+        exclude_version="nonsense", states=[ReplicaState.STOPPING]) == [r1]
 
 
 def test_override_goals(mock_backend_state):

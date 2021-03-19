@@ -340,16 +340,34 @@ class BackendReplica(VersionedReplica):
 
 
 class ReplicaStateContainer:
+    """Container for mapping ReplicaStates to lists of BackendReplicas."""
+
     def __init__(self):
         self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
             list)
 
     def add(self, state: ReplicaState, replica: VersionedReplica):
+        """Add the provided replica under the provided state.
+
+        Args:
+            state (ReplicaState): state to add the replica under.
+            replica (VersionedReplica): replica to add.
+        """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
         self._replicas[state].append(replica)
 
-    def get(self, states: Optional[List[ReplicaState]] = None):
+    def get(self, states: Optional[List[ReplicaState]] = None
+            ) -> List[VersionedReplica]:
+        """Get all replicas of the given states.
+
+        This does not remove them from the container. Replicas are returned
+        in order of state as passed in.
+
+        Args:
+            states (str): states to consider. If not specified, all replicas
+                are considered.
+        """
         if states is None:
             states = ALL_REPLICA_STATES
 
@@ -360,7 +378,20 @@ class ReplicaStateContainer:
     def pop(self,
             exclude_version: Optional[str] = None,
             states: Optional[List[ReplicaState]] = None,
-            max_replicas: Optional[int] = math.inf):
+            max_replicas: Optional[int] = math.inf) -> List[VersionedReplica]:
+        """Get and remove all replicas of the given states.
+
+        This removes the replicas from the container. Replicas are returned
+        in order of state as passed in.
+
+        Args:
+            exclude_version (str): if specified, replicas of the provided
+                version will *not* be removed.
+            states (str): states to consider. If not specified, all replicas
+                are considered.
+            max_replicas (int): max number of replicas to return. If not
+                specified, will pop all replicas matching the criteria.
+        """
         if states is None:
             states = ALL_REPLICA_STATES
 
@@ -385,6 +416,12 @@ class ReplicaStateContainer:
         return replicas
 
     def count(self, states: Optional[List[ReplicaState]] = None):
+        """Get the total count of replicas of the given states.
+
+        Args:
+            states (str): states to consider. If not specified, all replicas
+                are considered.
+        """
         if states is None:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
