@@ -51,19 +51,18 @@ void GcsResourceReportPoller::HandleNodeAdded(
     const std::shared_ptr<rpc::GcsNodeInfo> &node_info) {
   absl::MutexLock guard(&mutex_);
 
-  auto state = std::make_shared<PullState>();
-  state->node_id = NodeID::FromBinary(node_info->node_id());
+  rpc::Address address;
+  address.set_raylet_id(node_info->node_id());
+  address.set_ip_address(node_info->node_manager_address());
+  address.set_port(node_info->node_manager_port());
 
-  const NodeID &node_id = state->node_id;
+  auto state =
+      std::make_shared<PullState>(NodeID::FromBinary(node_info->node_id()),
+                                  std::move(address), -1, get_current_time_milli_());
+
+  const auto &node_id = state->node_id;
 
   RAY_CHECK(!nodes_.count(node_id)) << "Node with id: " << node_id << " was added twice!";
-
-  state->address.set_raylet_id(node_info->node_id());
-  state->address.set_ip_address(node_info->node_manager_address());
-  state->address.set_port(node_info->node_manager_port());
-
-  state->last_pull_time = -1;
-  state->next_pull_time = get_current_time_milli_();
 
   nodes_[node_id] = state;
   to_pull_queue_.push_front(state);

@@ -103,6 +103,13 @@ class GcsResourceReportPoller {
     int64_t last_pull_time;
     int64_t next_pull_time;
 
+    PullState(NodeID _node_id, rpc::Address _address, int64_t _last_pull_time,
+              int64_t _next_pull_time)
+        : node_id(_node_id),
+          address(_address),
+          last_pull_time(_last_pull_time),
+          next_pull_time(_next_pull_time) {}
+
     ~PullState() {}
   };
 
