@@ -96,6 +96,38 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
   ASSERT_TRUE(rpc_sent);
 }
 
+TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
+  bool rpc_sent = false;
+  request_report_ =
+      [&rpc_sent](
+          const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
+              callback) {
+        RAY_LOG(ERROR) << "Requesting";
+        rpc_sent = true;
+        rpc::RequestResourceReportReply temp;
+        callback(Status::TimedOut("error"), temp);
+      };
+
+  auto node_info = Mocker::GenNodeInfo();
+  gcs_resource_report_poller_.HandleNodeAdded(node_info);
+  // We try to send the rpc from the polling service.
+  ASSERT_FALSE(rpc_sent);
+  RunPollingService();
+  ASSERT_TRUE(rpc_sent);
+
+  // Not enough time has passed to send another tick.
+  rpc_sent = false;
+  Tick(1);
+  RunPollingService();
+  ASSERT_FALSE(rpc_sent);
+
+  // Now enough time has passed.
+  Tick(100);
+  RunPollingService();
+  ASSERT_TRUE(rpc_sent);
+}
+
 TEST_F(GcsResourceReportPollerTest, TestMaxInFlight) {
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> nodes;
   for (int i = 0; i < 200; i++) {
@@ -125,6 +157,51 @@ TEST_F(GcsResourceReportPollerTest, TestMaxInFlight) {
     const auto &callback = callbacks[i];
     rpc::RequestResourceReportReply temp;
     callback(Status::OK(), temp);
+  }
+  RunPollingService();
+  // Requests are sent as soon as possible (don't wait for the next tick).
+  ASSERT_EQ(num_rpcs_sent, 200);
+}
+
+TEST_F(GcsResourceReportPollerTest, TestNodeRemoval) {
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> nodes;
+  for (int i = 0; i < 200; i++) {
+    nodes.emplace_back(Mocker::GenNodeInfo());
+  }
+
+  std::vector<
+      std::function<void(const Status &, const rpc::RequestResourceReportReply &)>>
+      callbacks;
+
+  int num_rpcs_sent = 0;
+  request_report_ =
+      [&](const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
+              callback) {
+        num_rpcs_sent++;
+        callbacks.emplace_back(callback);
+      };
+
+  for (const auto &node : nodes) {
+    gcs_resource_report_poller_.HandleNodeAdded(node);
+  }
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+
+  Tick(50);
+  RunPollingService();
+  ASSERT_EQ(num_rpcs_sent, 100);
+
+  // Remove the nodes while there are inflight rpcs.
+  // Since we added all the nodes at once, the request order is LIFO.
+  for (int i = 199; i >= 100; i--) {
+    gcs_resource_report_poller_.HandleNodeRemoved(nodes[i]);
+  }
+
+  for (int i = 0; i < 100; i++) {
+    const auto &callback = callbacks[i];
+    rpc::RequestResourceReportReply temp;
+    callback(Status::TimedOut("Timed out"), temp);
   }
   RunPollingService();
   // Requests are sent as soon as possible (don't wait for the next tick).

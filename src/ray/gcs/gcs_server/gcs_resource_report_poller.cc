@@ -76,9 +76,10 @@ void GcsResourceReportPoller::HandleNodeRemoved(
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   {
     absl::MutexLock guard(&mutex_);
-    RAY_CHECK(false);
     nodes_.erase(node_id);
+    RAY_CHECK(!nodes_.count(node_id));
   }
+  RAY_LOG(INFO) << "# of remaining nodes: " << nodes_.size();
 }
 
 void GcsResourceReportPoller::Tick() { TryPullResourceReport(); }
@@ -118,24 +119,27 @@ void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState
           // of the work is in the callback we should move this callback's execution to
           // the polling thread. We will need to implement locking once we switch threads.
           handle_resource_report_(reply.resources());
-          polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
         } else {
           RAY_LOG(INFO) << "Couldn't get resource request from raylet " << state->node_id
                         << ": " << status.ToString();
         }
+        RAY_LOG(INFO) << "Continuation posted";
+        polling_service_.post([this, state]() { NodeResourceReportReceived(state); });
       });
 }
 
 void GcsResourceReportPoller::NodeResourceReportReceived(
     const std::shared_ptr<PullState> state) {
   absl::MutexLock guard(&mutex_);
+  RAY_LOG(INFO) << "In continuation node ide: " << state->node_id;
   inflight_pulls_--;
   NodeID &node_id = state->node_id;
-  if (!nodes_.count(node_id)) {
-    RAY_LOG(DEBUG)
+  if (nodes_.count(node_id) == 0) {
+    RAY_LOG(INFO)
         << "Resource report received, but the node is no longer in the cluster. NodeID: "
         << node_id;
   } else {
+    RAY_LOG(INFO) << "Requeuing node: " << nodes_.find(node_id)->second->node_id;
     state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
     to_pull_queue_.push_back(state);
   }

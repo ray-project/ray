@@ -1,3 +1,4 @@
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
@@ -69,7 +70,7 @@ class GcsResourceReportPoller {
 
  private:
   // An asio service which does the polling work.
-  boost::asio::io_context polling_service_;
+  instrumented_io_context polling_service_;
   // The associated thread it runs on.
   std::unique_ptr<std::thread> polling_thread_;
   // Timer tick to check when we should do another poll.
@@ -97,7 +98,7 @@ class GcsResourceReportPoller {
       std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
       request_report_;
   // The minimum delay between two pull requests to the same thread.
-  int64_t poll_period_ms_;
+  const int64_t poll_period_ms_;
 
   struct PullState {
     NodeID node_id;
