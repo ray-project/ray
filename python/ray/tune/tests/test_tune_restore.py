@@ -76,42 +76,6 @@ class TuneRestoreTest(unittest.TestCase):
             },
         )
 
-    def testTuneRestoreLastCheckpoint(self):
-        """Tests that the last checkpoint in the log dir is restored."""
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        self.assertTrue(os.path.isdir(self.logdir))
-        last_checkpoint = Trainable.get_last_checkpoint(self.logdir)
-        tune.run(
-            "PG",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_freq=1,
-            restore=last_checkpoint,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-    def testTuneRestoreBestCheckpoint(self):
-        """Tests that the best checkpoint in the log dir is restored."""
-        self.assertTrue(os.path.isfile(self.checkpoint_path))
-        self.assertTrue(os.path.isdir(self.logdir))
-        best_checkpoint = \
-            Trainable.get_best_checkpoint(self.logdir,
-                                          metric='episode_reward_mean')
-        tune.run(
-            "PG",
-            name="TuneRestoreTest",
-            stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_freq=1,
-            restore=best_checkpoint,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
     def testPostRestoreCheckpointExistence(self):
         """Tests that checkpoint restored from is not deleted post-restore."""
         self.assertTrue(os.path.isfile(self.checkpoint_path))

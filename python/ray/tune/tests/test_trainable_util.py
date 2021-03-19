@@ -51,6 +51,43 @@ class TrainableUtilTest(unittest.TestCase):
             path = os.path.join(self.checkpoint_dir, str(i))
             self.assertEquals(loaded["data"][str(i)], open(path, "rb").read())
 
+    # TODO: just moved from test_tune_Restore; still needs adjustemnt, fixing, testing
+    def testTuneRestoreLastCheckpoint(self):
+        """Tests that the last checkpoint in the log dir is restored."""
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+        self.assertTrue(os.path.isdir(self.logdir))
+        last_checkpoint = TrainableUtil.get_last_checkpoint(self.logdir)
+        tune.run(
+            "PG",
+            name="TuneRestoreTest",
+            stop={"training_iteration": 2},  # train one more iteration.
+            checkpoint_freq=1,
+            restore=last_checkpoint,  # Restore the checkpoint
+            config={
+                "env": "CartPole-v0",
+                "framework": "tf",
+            },
+        )
+
+    def testTuneRestoreBestCheckpoint(self):
+        """Tests that the best checkpoint in the log dir is restored."""
+        self.assertTrue(os.path.isfile(self.checkpoint_path))
+        self.assertTrue(os.path.isdir(self.logdir))
+        best_checkpoint = \
+            TrainableUtil.get_best_checkpoint(self.logdir,
+                                          metric='episode_reward_mean')
+        tune.run(
+            "PG",
+            name="TuneRestoreTest",
+            stop={"training_iteration": 2},  # train one more iteration.
+            checkpoint_freq=1,
+            restore=best_checkpoint,  # Restore the checkpoint
+            config={
+                "env": "CartPole-v0",
+                "framework": "tf",
+            },
+        )
+
 
 class UnflattenDictTest(unittest.TestCase):
     def test_output_type(self):
