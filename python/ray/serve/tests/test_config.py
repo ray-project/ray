@@ -140,6 +140,8 @@ def test_replica_config_validation():
         ReplicaConfig(Class, ray_actor_options={"lifetime": None})
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"max_restarts": None})
+    with pytest.raises(ValueError):
+        ReplicaConfig(Class, ray_actor_options={"placement_group": None})
 
 
 def test_http_options():

@@ -20,7 +20,7 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),

@@ -27,6 +27,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -36,6 +37,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
@@ -91,6 +93,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The path of this ray resource dir.
+  std::string resource_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.
@@ -124,7 +128,7 @@ class HeartbeatSender {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The io service used in heartbeat loop in case of it being
   /// blocked by main thread.
-  boost::asio::io_service heartbeat_io_service_;
+  instrumented_io_context heartbeat_io_service_;
   /// Heartbeat thread, using with heartbeat_io_service_.
   std::unique_ptr<std::thread> heartbeat_thread_;
   std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
@@ -139,7 +143,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
+  NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_,
@@ -383,12 +387,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Process client message of SubmitTask
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessSubmitTaskMessage(const uint8_t *message_data);
-
   /// Process client message of NotifyDirectCallTaskBlocked
   ///
   /// \param message_data A pointer to the message data.
@@ -611,14 +609,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client that sent the message.
   /// \param disconnect_type The reason to disconnect the specified client.
+  /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+
+  /// Delete URI in local node.
+  ///
+  /// \param uri The URI of the resource.
+  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
 
   /// ID of this node.
   NodeID self_node_id_;
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
   ObjectManager &object_manager_;
@@ -634,6 +639,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
+  /// The time that the last resource report was sent at. Used to make sure we are
+  /// keeping up with resource reports.
+  uint64_t last_resource_report_at_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -744,6 +752,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  /// Manage all runtime env locally
+  RuntimeEnvManager runtime_env_manager_;
 };
 
 }  // namespace raylet

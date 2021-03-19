@@ -10,6 +10,8 @@ import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
 
+from ray.autoscaler._private.azure.config import (_configure_key_pair as
+                                                  _azure_configure_key_pair)
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -106,11 +108,13 @@ class AutoscalingConfigTest(unittest.TestCase):
         }
         expected_available_node_types["cpu_16_spot"]["resources"] = {
             "CPU": 16,
+            "memory": 41231686041,
             "Custom1": 1,
             "is_spot": 1
         }
         expected_available_node_types["gpu_8_ondemand"]["resources"] = {
             "CPU": 32,
+            "memory": 157195803033,
             "GPU": 4,
             "accelerator_type:V100": 1
         }
@@ -120,16 +124,25 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "InstanceType": "m4.xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 4
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 16384
                 }
             }, {
                 "InstanceType": "m4.4xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 16
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 65536
                 }
             }, {
                 "InstanceType": "p3.8xlarge",
                 "VCpuInfo": {
                     "DefaultVCpus": 32
+                },
+                "MemoryInfo": {
+                    "SizeInMiB": 249856
                 },
                 "GpuInfo": {
                     "Gpus": [{
@@ -359,6 +372,29 @@ class AutoscalingConfigTest(unittest.TestCase):
             assert prepared_legacy["available_node_types"][
                 NODE_TYPE_LEGACY_WORKER]["node_config"] == legacy_config[
                     "worker_nodes"]
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testAzureKeyPair(self):
+        azure_config_path = os.path.join(RAY_PATH,
+                                         "autoscaler/azure/example-full.yaml")
+        azure_config = yaml.safe_load(open(azure_config_path))
+        azure_config["auth"]["ssh_user"] = "default_user"
+        with tempfile.NamedTemporaryFile(
+        ) as pub_key, tempfile.NamedTemporaryFile() as priv_key:
+            pub_key.write(b"PUBLICKEY")
+            pub_key.flush()
+            priv_key.write(b"PRIVATEKEY")
+            priv_key.flush()
+            azure_config["auth"]["ssh_private_key"] = priv_key.name
+            azure_config["auth"]["ssh_public_key"] = pub_key.name
+            modified_config = _azure_configure_key_pair(azure_config)
+        for node_type in modified_config["available_node_types"].values():
+            assert node_type["node_config"]["azure_arm_parameters"][
+                "adminUsername"] == "default_user"
+
+            assert node_type["node_config"]["azure_arm_parameters"][
+                "publicKey"] == "PUBLICKEY"
 
 
 if __name__ == "__main__":

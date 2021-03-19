@@ -141,7 +141,7 @@ class ReplicaSet:
         """
         endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.record(
+        self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
@@ -164,7 +164,7 @@ class ReplicaSet:
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.record(
+        self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
         return assigned_ref
 

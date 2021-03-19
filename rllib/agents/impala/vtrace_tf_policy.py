@@ -247,7 +247,7 @@ def postprocess_trajectory(policy,
                            other_agent_batches=None,
                            episode=None):
     # not used, so save some bandwidth
-    del sample_batch.data[SampleBatch.NEXT_OBS]
+    del sample_batch[SampleBatch.NEXT_OBS]
     return sample_batch
 
 

@@ -62,4 +62,4 @@ done
 
 # __doc_script_start__
 # ray/doc/source/cluster/examples/simple-trainer.py
-python -u simple-trainer.py
+python -u simple-trainer.py "$SLURM_CPUS_PER_TASK"

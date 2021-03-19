@@ -20,6 +20,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
@@ -142,7 +143,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  ObjectDirectory(boost::asio::io_service &io_service,
+  ObjectDirectory(instrumented_io_context &io_service,
                   std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
@@ -199,7 +200,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   };
 
   /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.
