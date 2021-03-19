@@ -47,11 +47,10 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       // It is a duplicated message, just reply ok.
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       return;
-    }
-    else if (state != rpc::JobTableData::SUBMITTED) {
+    } else if (state != rpc::JobTableData::SUBMITTED) {
       std::ostringstream ostr;
       ostr << "Failed to add job " << job_id
-           << " as job id is conflicted or state is unexpected.";
+           << " as job id conflict or state is unexpected.";
       RAY_LOG(WARNING) << ostr.str();
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ostr.str()));
       return;
@@ -175,11 +174,11 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
                                 const ray::gcs::StatusCallback &callback) {
   auto job_id = JobID::FromBinary(request.job_id());
 
-  RAY_LOG(INFO) << "Starting register job " << job_id;
+  RAY_LOG(INFO) << "Submitting job " << job_id;
 
   auto it = jobs_.find(job_id);
   if (it != jobs_.end()) {
-    RAY_LOG(ERROR) << "Failed to register job " << job_id << ", job id conflict.";
+    RAY_LOG(ERROR) << "Failed to submit job " << job_id << ", job id conflict.";
     std::ostringstream ss;
     ss << "Job id conflict: " << job_id;
     return Status::Invalid(ss.str());
@@ -196,9 +195,10 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
-    RAY_LOG(ERROR) << "Failed to init job " << job_id;
+    RAY_LOG(ERROR) << "Failed to submit job " << job_id
+                   << ", can't select a node for driver.";
     std::ostringstream ss;
-    ss << "Insufficient resources, job id: " << job_id;
+    ss << "Can't select a node for driver, job id: " << job_id;
     return Status::Invalid(ss.str());
   }
 

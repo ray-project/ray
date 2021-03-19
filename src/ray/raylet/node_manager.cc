@@ -1076,23 +1076,23 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     rpc::JobConfig job_config;
     job_config.ParseFromString(message->serialized_job_config()->str());
 
-    std::shared_ptr<rpc::JobTableData> job_data_ptr;
-    job_data_ptr = job_manager_.GetJobData(job_id);
-    if (job_data_ptr == nullptr) {
-      job_data_ptr = std::make_shared<JobTableData>();
+    std::shared_ptr<rpc::JobTableData> job_table_data;
+    job_table_data = job_manager_.GetJobData(job_id);
+    if (job_table_data == nullptr) {
+      job_table_data = std::make_shared<JobTableData>();
     }
-    job_data_ptr->set_job_id(job_id.Binary());
-    job_data_ptr->set_is_dead(false);
-    job_data_ptr->set_raylet_id(self_node_id_.Binary());
-    job_data_ptr->set_driver_ip_address(worker_ip_address);
-    job_data_ptr->set_driver_hostname(string_from_flatbuf(*message->hostname()));
-    job_data_ptr->set_driver_pid(pid);
-    job_data_ptr->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
-    job_data_ptr->set_language(language);
-    job_data_ptr->set_timestamp(current_time_ms());
-    *job_data_ptr->mutable_config() = job_config;
+    job_table_data->set_job_id(job_id.Binary());
+    job_table_data->set_is_dead(false);
+    job_table_data->set_raylet_id(self_node_id_.Binary());
+    job_table_data->set_driver_ip_address(worker_ip_address);
+    job_table_data->set_driver_hostname(string_from_flatbuf(*message->hostname()));
+    job_table_data->set_driver_pid(pid);
+    job_table_data->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
+    job_table_data->set_language(language);
+    job_table_data->set_timestamp(current_time_ms());
+    *job_table_data->mutable_config() = job_config;
 
-    auto cb_register_driver = [this, send_reply_callback, job_data_ptr](
+    auto cb_register_driver = [this, send_reply_callback, job_table_data](
                                   Status status, int assigned_port) {
       if (!status.ok()) {
         send_reply_callback(status, 0);
@@ -1101,7 +1101,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
       // Register job to GCS.
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
-          job_data_ptr, [send_reply_callback, assigned_port](const Status &status) {
+          job_table_data, [send_reply_callback, assigned_port](const Status &status) {
             if (!status.ok()) {
               // TODO: Clean workers started by RegisterDriver.
               send_reply_callback(status, 0);
