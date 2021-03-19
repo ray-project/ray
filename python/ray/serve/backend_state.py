@@ -1,3 +1,4 @@
+from abc import ABC
 from collections import defaultdict
 from enum import Enum
 import math
@@ -178,8 +179,13 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
+class VersionedReplica(ABC):
+    @property
+    def version(self):
+        return self.version
 
-class BackendReplica:
+
+class BackendReplica(VersionedReplica):
     """Manages state transitions for backend replicas.
 
     This is basically a checkpointable lightweight state machine.
@@ -337,9 +343,9 @@ class ReplicaStateContainer:
         self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
             list)
 
-    def add(self, state: ReplicaState, replica: BackendReplica):
+    def add(self, state: ReplicaState, replica: VersionedReplica):
         assert isinstance(state, ReplicaState)
-        assert isinstance(replica, BackendReplica)
+        assert isinstance(replica, VersionedReplica)
         self._replicas[state].append(replica)
 
     def get(self, states: Optional[List[ReplicaState]] = None):

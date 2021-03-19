@@ -13,7 +13,12 @@ from ray.serve.common import (
     ReplicaConfig,
     ReplicaTag,
 )
-from ray.serve.backend_state import BackendState, ReplicaState
+from ray.serve.backend_state import (
+    BackendState,
+    ReplicaState,
+    ReplicaStateContainer,
+    VersionedReplica,
+)
 
 
 class MockReplicaActorWrapper:
@@ -113,6 +118,25 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
                                      mock_long_poll, goal_manager)
         mock_checkpoint.return_value = None
         yield backend_state, timer, goal_manager
+
+def replica(version: Optional[str] = None) -> VersionedReplica:
+    class MockVersionedReplica(VersionedReplica):
+        def __init__(self, version):
+            self._version = version
+
+        @property
+        def version(self, version):
+            return self._version
+    return MockVersionedReplica(version)
+
+def test_replica_state_container_get():
+    c = ReplicaStateContainer()
+    r = replica()
+    c.add(ReplicaState.SHOULD_START, r)
+    assert c.count() == 1
+    assert c.pop() == [r]
+
+    r1, r2, r3 = replica(), replica(), replica()
 
 
 def test_override_goals(mock_backend_state):
