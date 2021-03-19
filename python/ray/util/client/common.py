@@ -3,6 +3,7 @@ from ray.util.client import ray
 from ray.util.client.options import validate_options
 
 import uuid
+import os
 import inspect
 from ray.util.inspect import is_cython
 import json
@@ -22,6 +23,9 @@ from typing import Union
 #
 # Currently, this is 2GiB, the max for a signed int.
 GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
+
+CLIENT_SERVER_MAX_THREADS = float(
+    os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 
 class ClientBaseRef:

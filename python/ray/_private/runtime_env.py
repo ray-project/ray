@@ -7,7 +7,10 @@ from pathlib import Path
 from zipfile import ZipFile
 from ray.job_config import JobConfig
 from enum import Enum
-from ray.experimental import internal_kv
+
+from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
+                                          _internal_kv_exists)
+
 from typing import List, Tuple
 from types import ModuleType
 from urllib.parse import urlparse
@@ -238,7 +241,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        code = internal_kv._internal_kv_get(pkg_uri)
+        code = _internal_kv_get(pkg_uri)
         code = code or b""
         pkg_file.write_bytes(code)
         return len(code)
@@ -247,7 +250,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    internal_kv._internal_kv_put(gcs_key, data)
+    _internal_kv_put(gcs_key, data)
     return len(data)
 
 
@@ -283,7 +286,7 @@ def package_exists(pkg_uri: str) -> bool:
     """
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        return internal_kv._internal_kv_exists(pkg_uri)
+        return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -320,43 +323,43 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config of driver.
     """
-    pkg_uri = job_config.get_package_uri()
-    if not pkg_uri:
-        return
-    if not package_exists(pkg_uri):
-        file_path = _get_local_path(pkg_uri)
-        pkg_file = Path(file_path)
-        working_dir = job_config.runtime_env.get("working_dir")
-        required_modules = job_config.runtime_env.get("local_modules")
-        logger.info(f"{pkg_uri} doesn't exist. Create new package with"
-                    f" {working_dir} and {required_modules}")
-        if not pkg_file.exists():
-            create_project_package(working_dir, required_modules, file_path)
-        # Push the data to remote storage
-        pkg_size = push_package(pkg_uri, pkg_file)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+    pkg_uris = job_config.get_runtime_env_uris()
+    for pkg_uri in pkg_uris:
+        if not package_exists(pkg_uri):
+            file_path = _get_local_path(pkg_uri)
+            pkg_file = Path(file_path)
+            working_dir = job_config.runtime_env.get("working_dir")
+            required_modules = job_config.runtime_env.get("local_modules")
+            logger.info(f"{pkg_uri} doesn't exist. Create new package with"
+                        f" {working_dir} and {required_modules}")
+            if not pkg_file.exists():
+                create_project_package(working_dir, required_modules,
+                                       file_path)
+            # Push the data to remote storage
+            pkg_size = push_package(pkg_uri, pkg_file)
+            logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uri: str) -> None:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
     into local file system if it doesn't exist.
 
     Args:
-        pkg_uri (str): Package of the working dir for the runtime env.
+        pkg_uri list(str): Package of the working dir for the runtime env.
     """
-    if not pkg_uri:
-        return
-    pkg_file = Path(_get_local_path(pkg_uri))
-    # For each node, the package will only be downloaded one time
-    # Locking to avoid multiple process download concurrently
-    lock = FileLock(str(pkg_file) + ".lock")
-    with lock:
-        # TODO(yic): checksum calculation is required
-        if pkg_file.exists():
-            logger.debug(f"{pkg_uri} has existed locally, skip downloading")
-        else:
-            pkg_size = fetch_package(pkg_uri, pkg_file)
-            logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-    sys.path.insert(0, str(pkg_file))
+    for pkg_uri in pkg_uris:
+        pkg_file = Path(_get_local_path(pkg_uri))
+        # For each node, the package will only be downloaded one time
+        # Locking to avoid multiple process download concurrently
+        lock = FileLock(str(pkg_file) + ".lock")
+        with lock:
+            # TODO(yic): checksum calculation is required
+            if pkg_file.exists():
+                logger.debug(
+                    f"{pkg_uri} has existed locally, skip downloading")
+            else:
+                pkg_size = fetch_package(pkg_uri, pkg_file)
+                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
+        sys.path.insert(0, str(pkg_file))

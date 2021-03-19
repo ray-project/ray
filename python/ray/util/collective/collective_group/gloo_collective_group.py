@@ -40,7 +40,7 @@ class Rendezvous:
         self._redis_ip_address, self._redis_port = \
             ray.worker._global_node.redis_address.split(":")
         self._process_ip_address = \
-            ray._private.services.get_node_ip_address()
+            ray.util.get_node_ip_address()
         logger.debug("Redis address: {}, port: {}, this actor address: {}."
                      .format(self._redis_ip_address, self._redis_port,
                              self._process_ip_address))

@@ -123,11 +123,28 @@ raylet::RayletClient::RayletClient(
   *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
-Status raylet::RayletClient::Disconnect() {
+Status raylet::RayletClient::Disconnect(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
+                << rpc::WorkerExitType_Name(exit_type)
+                << ", has creation_task_exception_pb_bytes="
+                << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateDisconnectClient(
-      fbb, static_cast<int>(rpc::WorkerExitType::INTENDED_EXIT));
-  fbb.Finish(message);
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>>
+      creation_task_exception_pb_bytes_fb_vector;
+  if (creation_task_exception_pb_bytes != nullptr) {
+    creation_task_exception_pb_bytes_fb_vector =
+        fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
+                         creation_task_exception_pb_bytes->Size());
+  }
+  protocol::DisconnectClientBuilder builder(fbb);
+  // Add to table builder here to avoid nested construction of flatbuffers
+  if (creation_task_exception_pb_bytes != nullptr) {
+    builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
+  }
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
