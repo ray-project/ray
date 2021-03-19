@@ -98,10 +98,17 @@ def load_package(config_path: str) -> "_RuntimePackage":
                 "Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
+    if "stub_file" in config:
+        # TODO(ekl) remove this path
+        print("Warning: stub_file is deprecated, use interface_file instead")
+        interface_file = config["stub_file"]
+    else:
+        interface_file = config["interface_file"]
+
     pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
-        interface_file=os.path.join(base_dir, config["interface_file"]),
+        interface_file=os.path.join(base_dir, interface_file),
         runtime_env=runtime_env)
     return pkg
 
