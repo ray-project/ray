@@ -23,9 +23,9 @@
 
 namespace ray {
 
-using LongPollConnectCallback = std::function<void(std::vector<ObjectID> &)>;
+using LongPollConnectCallback = std::function<void(const std::vector<ObjectID> &)>;
 
-/// Index for Object ids and Node ids of subscribers.
+/// Index for object ids and node ids of subscribers.
 class SubscriptionIndex {
  public:
   explicit SubscriptionIndex() {}
@@ -36,8 +36,8 @@ class SubscriptionIndex {
   void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
-  const absl::flat_hash_set<NodeID> &GetSubscriberIdsByObjectId(
-      const ObjectID &object_id);
+  absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>
+  GetSubscriberIdsByObjectId(const ObjectID &object_id) const;
 
   /// Erase the subscriber from the index. Returns the number of erased subscribers.
   /// NOTE: It cannot erase subscribers that were never added.
@@ -48,12 +48,14 @@ class SubscriptionIndex {
   /// NOTE: It cannot erase subscribers that were never added.
   bool EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
 
+  /// Return true if the object id exists in the index.
+  bool HasObjectId(const ObjectID &object_id) const;
+
  private:
   FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexErase);
   FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber);
 
-  /// Test only. Returns true if object id or subscriber id exists in the index.
-  bool HasObjectId(const ObjectID &object_id) const;
+  /// Returns true if object id or subscriber id exists in the index.
   bool HasSubscriber(const NodeID &subscriber_id) const;
 
   /// Mapping from objects -> subscribers.
@@ -139,7 +141,8 @@ class PubsubCoordinator {
   /// \param subscriber_node_id The node id of the subscriber.
   /// \param object_id The object id of the subscriber.
   /// \return True if erased. False otherwise.
-  bool UnregisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
+  bool UnregisterSubscription(const NodeID &subscriber_node_id,
+                              const ObjectID &object_id);
 
  private:
   /// Protects below fields. Since the coordinator runs in a core worker, it should be

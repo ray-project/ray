@@ -23,11 +23,14 @@ void SubscriptionIndex::AddEntry(const ObjectID &object_id, const NodeID &subscr
   RAY_CHECK(subscriber_map.emplace(subscriber_id).second);
 }
 
-const absl::flat_hash_set<NodeID> &SubscriptionIndex::GetSubscriberIdsByObjectId(
-    const ObjectID &object_id) {
+absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>
+SubscriptionIndex::GetSubscriberIdsByObjectId(const ObjectID &object_id) const {
   auto it = objects_to_subscribers_.find(object_id);
-  RAY_CHECK(it != objects_to_subscribers_.end());
-  return it->second;
+  if (it == objects_to_subscribers_.end()) {
+    return absl::nullopt;
+  }
+  return absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>{
+      std::ref(it->second)};
 }
 
 bool SubscriptionIndex::HasObjectId(const ObjectID &object_id) const {
@@ -62,7 +65,7 @@ bool SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
 }
 
 bool SubscriptionIndex::EraseEntry(const ObjectID &object_id,
-                                  const NodeID &subscriber_id) {
+                                   const NodeID &subscriber_id) {
   // Erase from subscribers_to_objects_;
   auto subscribers_to_objects_it = subscribers_to_objects_.find(subscriber_id);
   if (subscribers_to_objects_it == subscribers_to_objects_.end()) {
@@ -164,8 +167,15 @@ void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
 
 void PubsubCoordinator::Publish(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
+  // TODO(sang): Currently messages are lost if publish happens
+  // before there's any subscriber for the object.
+  auto maybe_subscribers = subscription_index_.GetSubscriberIdsByObjectId(object_id);
+  if (!maybe_subscribers.has_value()) {
+    return;
+  }
+
   for (const auto &subscriber_id :
-       subscription_index_.GetSubscriberIdsByObjectId(object_id)) {
+       subscription_index_.GetSubscriberIdsByObjectId(object_id).value().get()) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
@@ -189,7 +199,7 @@ bool PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
 }
 
 bool PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
-                                              const ObjectID &object_id) {
+                                               const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_.EraseEntry(object_id, subscriber_node_id);
 }

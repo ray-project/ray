@@ -2351,7 +2351,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
       NodeID::FromBinary(request.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
-    RAY_LOG(DEBUG) << "Object id: " << object_id << " is deleted. Unpinning the object.";
+    RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
     pubsub_coordinator_->Publish(object_id);
     pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, object_id);
   };
@@ -2377,7 +2377,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   auto long_polling_reply_callback =
       [reply = std::move(reply), send_reply_callback = std::move(send_reply_callback),
-       subscriber_id](std::vector<ObjectID> &object_ids) {
+       subscriber_id](const std::vector<ObjectID> &object_ids) {
         RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
         // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
         // fail if the number of batched objects are more than 50K. Though it is very

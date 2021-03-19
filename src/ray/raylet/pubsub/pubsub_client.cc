@@ -51,10 +51,10 @@ void PubsubClient::SubcribeObject(
       [this, owner_address, object_id](
           Status status, const rpc::SubscribeForObjectEvictionReply &reply) {
         if (!status.ok()) {
-          auto failure_callback_result = GetFailureCallback(owner_address, object_id);
-          auto still_subscribed = failure_callback_result.first;
-          if (still_subscribed) {
-            failure_callback_result.second(object_id);
+          auto maybe_failure_callback = GetFailureCallback(owner_address, object_id);
+          if (maybe_failure_callback.has_value()) {
+            const auto &failure_callback = maybe_failure_callback.value();
+            failure_callback(object_id);
             RAY_CHECK(UnsubscribeObject(owner_address, object_id));
           }
         }
@@ -115,10 +115,10 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     for (const auto &object_id_it : subscription_callback_map) {
       const auto &object_id = object_id_it.first;
       objects_to_unsubscribe.push_back(object_id);
-      auto failure_callback_result = GetFailureCallback(owner_address, object_id);
-      auto still_subscribed = failure_callback_result.first;
-      if (still_subscribed) {
-        failure_callback_result.second(object_id);
+      auto maybe_failiure_callback = GetFailureCallback(owner_address, object_id);
+      if (maybe_failiure_callback.has_value()) {
+        const auto &failure_callback = maybe_failiure_callback.value();
+        failure_callback(object_id);
       }
     }
 
@@ -135,11 +135,11 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       RAY_LOG(DEBUG) << "Object id " << object_id << " information was published from "
                      << owner_worker_id << ". Releasing the object.";
-      auto subscription_callback_result =
+      auto maybe_subscription_callback =
           GetSubscriptionCallback(owner_address, object_id);
-      auto still_subscribed = subscription_callback_result.first;
-      if (still_subscribed) {
-        subscription_callback_result.second(object_id);
+      if (maybe_subscription_callback.has_value()) {
+        const auto &subscription_callback = maybe_subscription_callback.value();
+        subscription_callback(object_id);
       }
     }
   }
@@ -157,6 +157,42 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     // If there are still subscriptions, make another long polling request.
     MakeLongPollingPubsubConnection(owner_address, subscriber_address);
   }
+}
+
+absl::optional<std::reference_wrapper<SubscriptionCallback>>
+PubsubClient::GetSubscriptionCallback(const rpc::Address &owner_address,
+                                      const ObjectID &object_id) const {
+  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  auto subscription_it = subscription_map_.find(owner_worker_id);
+  if (subscription_it == subscription_map_.end()) {
+    return absl::nullopt;
+  }
+  auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
+  bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
+  if (!exist) {
+    return absl::nullopt;
+  }
+  auto subscription_callback = callback_it->second.first;
+  return absl::optional<std::reference_wrapper<SubscriptionCallback>>{
+      std::ref(subscription_callback)};
+}
+
+absl::optional<std::reference_wrapper<SubscriptionCallback>>
+PubsubClient::GetFailureCallback(const rpc::Address &owner_address,
+                                 const ObjectID &object_id) const {
+  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  auto subscription_it = subscription_map_.find(owner_worker_id);
+  if (subscription_it == subscription_map_.end()) {
+    return absl::nullopt;
+  }
+  auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
+  bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
+  if (!exist) {
+    return absl::nullopt;
+  }
+  auto subscription_callback = callback_it->second.second;
+  return absl::optional<std::reference_wrapper<SubscriptionCallback>>{
+      std::ref(subscription_callback)};
 }
 
 }  // namespace ray

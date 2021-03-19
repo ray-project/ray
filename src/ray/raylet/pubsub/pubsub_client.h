@@ -106,7 +106,8 @@ class PubsubClient : public PubsubClientInterface {
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &owner_address,
-                                 const rpc::Address &subscriber_address, const Status &status,
+                                 const rpc::Address &subscriber_address,
+                                 const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
 
   /// Private method to handle pubsub server failures.
@@ -114,39 +115,13 @@ class PubsubClient : public PubsubClientInterface {
 
   /// Returns a subscription callback; The first entry indicates if the subscription
   /// callback exists. The second entry is the callback itself.
-  inline std::pair<bool, SubscriptionCallback> GetSubscriptionCallback(
-      const rpc::Address &owner_address, const ObjectID &object_id) {
-    const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    auto subscription_it = subscription_map_.find(owner_worker_id);
-    if (subscription_it == subscription_map_.end()) {
-      return std::make_pair(false, nullptr);
-    }
-    auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
-    bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
-    if (!exist) {
-      return std::make_pair(false, nullptr);
-    }
-    auto &subscription_callback = callback_it->second.first;
-    return std::make_pair(true, subscription_callback);
-  }
+  absl::optional<std::reference_wrapper<SubscriptionCallback>> GetSubscriptionCallback(
+      const rpc::Address &owner_address, const ObjectID &object_id) const;
 
   /// Returns a owner failure callback; The first entry indicates if the subscription
   /// callback exists. The second entry is the callback itself.
-  inline std::pair<bool, SubscriptionCallback> GetFailureCallback(
-      const rpc::Address &owner_address, const ObjectID &object_id) {
-    const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    auto subscription_it = subscription_map_.find(owner_worker_id);
-    if (subscription_it == subscription_map_.end()) {
-      return std::make_pair(false, nullptr);
-    }
-    auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
-    bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
-    if (!exist) {
-      return std::make_pair(false, nullptr);
-    }
-    auto &subscription_callback = callback_it->second.second;
-    return std::make_pair(true, subscription_callback);
-  }
+  absl::optional<std::reference_wrapper<SubscriptionCallback>> GetFailureCallback(
+      const rpc::Address &owner_address, const ObjectID &object_id) const;
 
   /// Self node's address information.
   const NodeID self_node_id_;

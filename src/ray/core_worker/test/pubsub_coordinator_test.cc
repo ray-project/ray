@@ -54,7 +54,8 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexSingeNodeSingleObject) {
   /// oid1 -> [nid1]
   SubscriptionIndex subscription_index;
   subscription_index.AddEntry(oid, node_id);
-  const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
+  const auto &subscribers_from_index =
+      subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   for (const auto &node_id : subscribers) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -75,7 +76,8 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
     subscribers_map_.at(oid).emplace(node_id);
     subscription_index.AddEntry(oid, node_id);
   }
-  const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
+  const auto &subscribers_from_index =
+      subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -93,14 +95,14 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
     subscription_index.AddEntry(oid2, node_id);
   }
   const auto &subscribers_from_index2 =
-      subscription_index.GetSubscriberIdsByObjectId(oid2);
+      subscription_index.GetSubscriberIdsByObjectId(oid2).value().get();
   for (const auto &node_id : subscribers_map_.at(oid2)) {
     ASSERT_TRUE(subscribers_from_index2.count(node_id) > 0);
   }
 
   // Make sure oid1 entries are not corrupted.
   const auto &subscribers_from_index3 =
-      subscription_index.GetSubscriberIdsByObjectId(oid);
+      subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index3.count(node_id) > 0);
   }
@@ -139,7 +141,8 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexErase) {
     ASSERT_EQ(subscription_index.EraseEntry(oid, node_id), 1);
     i++;
   }
-  const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
+  const auto &subscribers_from_index =
+      subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -172,14 +175,15 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
   }
   subscription_index.EraseSubscriber(node_ids[0]);
   ASSERT_FALSE(subscription_index.HasSubscriber(node_ids[0]));
-  const auto &subscribers_from_index = subscription_index.GetSubscriberIdsByObjectId(oid);
+  const auto &subscribers_from_index =
+      subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
 }
 
 TEST_F(PubsubCoordinatorTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   LongPollConnectCallback reply =
-      [&object_ids_published](std::vector<ObjectID> &object_ids) {
+      [&object_ids_published](const std::vector<ObjectID> &object_ids) {
         for (auto &oid : object_ids) {
           object_ids_published.emplace(oid);
         }
@@ -222,7 +226,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriber) {
 
 TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
-  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+  auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
     batched_ids.insert(it, object_ids.begin(), object_ids.end());
   };
@@ -238,7 +242,7 @@ TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
 
 TEST_F(PubsubCoordinatorTest, TestNoConnectionWhenRegistered) {
   std::vector<ObjectID> batched_ids;
-  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+  auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
     batched_ids.insert(it, object_ids.begin(), object_ids.end());
   };
@@ -257,7 +261,7 @@ TEST_F(PubsubCoordinatorTest, TestNoConnectionWhenRegistered) {
 
 TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
   std::vector<ObjectID> batched_ids;
-  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+  auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
     batched_ids.insert(it, object_ids.begin(), object_ids.end());
   };
@@ -284,7 +288,7 @@ TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
 
 TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromMultiNodes) {
   std::vector<ObjectID> batched_ids;
-  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+  auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.end();
     batched_ids.insert(it, object_ids.begin(), object_ids.end());
   };
@@ -319,7 +323,7 @@ TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromMultiNodes) {
 TEST_F(PubsubCoordinatorTest, TestBatch) {
   // Test if published objects are batched properly.
   std::vector<ObjectID> batched_ids;
-  auto long_polling_connect = [&batched_ids](std::vector<ObjectID> &object_ids) {
+  auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
     batched_ids.insert(it, object_ids.begin(), object_ids.end());
   };
@@ -363,7 +367,7 @@ TEST_F(PubsubCoordinatorTest, TestBatch) {
 TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
-      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+      [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
         long_polling_connection_replied = true;
       };
 
@@ -386,7 +390,7 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
 TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
-      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+      [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
         long_polling_connection_replied = true;
       };
 
@@ -430,7 +434,7 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
 TEST_F(PubsubCoordinatorTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
-      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+      [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
         long_polling_connection_replied = true;
       };
 
@@ -460,7 +464,7 @@ TEST_F(PubsubCoordinatorTest, TestUnregisterSubscription) {
 TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
-      [&long_polling_connection_replied](std::vector<ObjectID> &object_ids) {
+      [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
         long_polling_connection_replied = true;
       };
 

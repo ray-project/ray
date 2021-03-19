@@ -50,6 +50,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     auto owner_dead_callback = [this](const ObjectID &object_id) {
       ReleaseFreedObject(object_id);
     };
+    // TODO(sang): Batch this request.
     core_worker_pubsub_client_->SubcribeObject(
         owner_address, object_id, subscription_callback, owner_dead_callback);
   }
