@@ -948,10 +948,11 @@ def start_redis(node_ip_address,
             processes.append(p)
 
             shard_address = address(node_ip_address, redis_shard_port)
-            redis_shards.append(shard_address)
-            # Store redis shard information in the primary redis shard.
-            primary_redis_client.rpush("RedisShards", shard_address)
             last_shard_port = redis_shard_port
+
+        redis_shards.append(shard_address)
+        # Store redis shard information in the primary redis shard.
+        primary_redis_client.rpush("RedisShards", shard_address)
 
     return redis_address, redis_shards, processes
 
