@@ -447,7 +447,7 @@ void NodeManager::HandleJobSubmitted(const JobID &job_id, const JobTableData &jo
     return;
   }
 
-  if (job_data.config().is_submitted_from_dashboard()) {
+  if (job_data.is_submitted()) {
     auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
     const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
     agent_manager_->InitializeJobEnv(job_table_data, start_driver);
@@ -467,7 +467,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
     return;
   }
 
-  if (job_data.config().is_submitted_from_dashboard()) {
+  if (job_data.is_submitted()) {
     // Maybe this is a new node and has missed the `JobSubmitted` event.
     auto job_table_data = std::make_shared<rpc::JobTableData>(job_data);
     const bool start_driver = job_data.raylet_id() == self_node_id_.Binary();
@@ -1069,43 +1069,52 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new driver.
     RAY_CHECK(pid >= 0);
     worker->SetProcess(Process::FromPid(pid));
-    rpc::JobConfig job_config;
-    job_config.ParseFromString(message->serialized_job_config()->str());
-    if (job_config.is_submitted_from_dashboard()) {
-      // Invoke this to avoid agent manager misreporting some errors.
-      auto job_data = job_manager_.GetJobData(job_id);
-      if (job_data == nullptr) {
-        // The job is already marked as dead.
-        std::ostringstream ostr;
-        ostr << "Job " << job_id << "is already marked as dead.";
-        RAY_LOG(WARNING) << ostr.str();
-        send_reply_callback(Status::Invalid(ostr.str()), /*prot=*/0);
-        return;
-      }
-    }
+
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
-    Status status = worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
-    if (status.ok()) {
-      std::shared_ptr<rpc::JobTableData> job_data_ptr;
-      if (job_config.is_submitted_from_dashboard()) {
-        job_data_ptr = job_manager_.GetJobData(job_id);
-        RAY_CHECK(job_data_ptr != nullptr);
-        job_data_ptr->set_raylet_id(self_node_id_.Binary());
-        job_data_ptr->set_driver_ip_address(initial_config_.node_manager_address);
-        job_data_ptr->set_driver_hostname(boost::asio::ip::host_name());
-        job_data_ptr->set_driver_pid(pid);
-        job_data_ptr->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
-        job_data_ptr->set_language(language);
-        job_data_ptr->set_timestamp(current_time_ms());
-        *job_data_ptr->mutable_config() = job_config;
-      } else {
-        job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, current_time_ms(), worker_ip_address,
-            boost::asio::ip::host_name(), pid, language, self_node_id_, job_config);
+    rpc::JobConfig job_config;
+    job_config.ParseFromString(message->serialized_job_config()->str());
+
+    std::shared_ptr<rpc::JobTableData> job_data_ptr;
+    job_data_ptr = job_manager_.GetJobData(job_id);
+    if (job_data_ptr == nullptr) {
+      job_data_ptr = std::make_shared<JobTableData>();
+    }
+    job_data_ptr->set_job_id(job_id.Binary());
+    job_data_ptr->set_is_dead(false);
+    job_data_ptr->set_raylet_id(self_node_id_.Binary());
+    job_data_ptr->set_driver_ip_address(worker_ip_address);
+    job_data_ptr->set_driver_hostname(string_from_flatbuf(*message->hostname()));
+    job_data_ptr->set_driver_pid(pid);
+    job_data_ptr->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
+    job_data_ptr->set_language(language);
+    job_data_ptr->set_timestamp(current_time_ms());
+    *job_data_ptr->mutable_config() = job_config;
+
+    auto cb_register_driver = [this, send_reply_callback, job_data_ptr](
+                                  Status status, int assigned_port) {
+      if (!status.ok()) {
+        send_reply_callback(status, 0);
+        return;
       }
-      RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
+
+      // Register job to GCS.
+      RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+          job_data_ptr, [send_reply_callback, assigned_port](const Status &status) {
+            if (!status.ok()) {
+              // TODO: Clean workers started by RegisterDriver.
+              send_reply_callback(status, 0);
+              return;
+            }
+
+            send_reply_callback(status, assigned_port);
+          }));
+    };
+
+    Status status = worker_pool_.RegisterDriver(worker, job_config, cb_register_driver);
+    if (!status.ok()) {
+      send_reply_callback(status, 0);
     }
   }
 }

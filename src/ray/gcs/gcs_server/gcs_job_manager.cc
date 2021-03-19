@@ -37,63 +37,43 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                 << request.data().config().DebugString();
 
   std::shared_ptr<JobTableData> job_table_data;
-  if (request.data().config().is_submitted_from_dashboard()) {
-    auto iter = jobs_.find(job_id);
-    if (iter == jobs_.end()) {
-      RAY_LOG(WARNING) << "Failed to add job " << job_id
-                       << " as the job is not submitted.";
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                         Status::Invalid("Job is not submitted."));
+
+  auto iter = jobs_.find(job_id);
+  if (iter != jobs_.end()) {
+    // The job state should be RUNNING or SUBMITTED.
+    const auto state = iter->second->state();
+    if (iter->second->timestamp() == request.data().timestamp() &&
+        state == rpc::JobTableData::RUNNING) {
+      // It is a duplicated message, just reply ok.
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       return;
     }
-
-    if (iter->second->state() != rpc::JobTableData::SUBMITTED) {
-      if (iter->second->timestamp() == request.data().timestamp() &&
-          iter->second->state() == rpc::JobTableData::RUNNING) {
-        // It is a duplicated message, just reply ok.
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      } else {
-        std::ostringstream ostr;
-        ostr << "Failed to add job " << job_id
-             << " as job id is conflicted or state is unexpected.";
-        RAY_LOG(WARNING) << ostr.str();
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ostr.str()));
-      }
+    else if (state != rpc::JobTableData::SUBMITTED) {
+      std::ostringstream ostr;
+      ostr << "Failed to add job " << job_id
+           << " as job id is conflicted or state is unexpected.";
+      RAY_LOG(WARNING) << ostr.str();
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ostr.str()));
       return;
     }
-
+    RAY_CHECK(state == rpc::JobTableData::RUNNING ||
+              state == rpc::JobTableData::SUBMITTED);
     job_table_data = iter->second;
-    job_table_data->set_raylet_id(request.data().raylet_id());
-    job_table_data->set_driver_ip_address(request.data().driver_ip_address());
-    job_table_data->set_driver_hostname(request.data().driver_hostname());
-    job_table_data->set_driver_pid(request.data().driver_pid());
-    job_table_data->set_driver_cmdline(request.data().driver_cmdline());
-    job_table_data->set_language(request.data().language());
-    job_table_data->set_timestamp(request.data().timestamp());
-    job_table_data->mutable_config()->CopyFrom(request.data().config());
-    job_table_data->set_state(rpc::JobTableData::RUNNING);
   } else {
-    auto iter = jobs_.find(job_id);
-    if (iter != jobs_.end()) {
-      if (iter->second->timestamp() == request.data().timestamp() &&
-          iter->second->state() == rpc::JobTableData::RUNNING) {
-        // It is a duplicated message, just reply ok.
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      } else {
-        std::ostringstream ostr;
-        ostr << "Failed to add job " << job_id
-             << " as job id is conflicted or state is unexpected.";
-        RAY_LOG(WARNING) << ostr.str();
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ostr.str()));
-      }
-      return;
-    }
-
-    // Just use the job_table_data come from raylet.
     job_table_data = std::make_shared<JobTableData>();
-    job_table_data->CopyFrom(request.data());
-    job_table_data->set_state(rpc::JobTableData::RUNNING);
   }
+
+  // We should reserve these two fields.
+  auto is_submitted = job_table_data->is_submitted();
+  auto job_payload = job_table_data->job_payload();
+
+  // Just use the job_table_data come from raylet.
+  job_table_data->CopyFrom(request.data());
+  job_table_data->set_state(rpc::JobTableData::RUNNING);
+
+  // Recover reserved fields.
+  job_table_data->set_is_submitted(is_submitted);
+  job_table_data->set_job_payload(job_payload);
 
   auto on_done = [this, job_table_data, driver_pid, reply,
                   send_reply_callback](const Status &status) {
@@ -205,12 +185,14 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     return Status::Invalid(ss.str());
   }
 
+  // We should fill in as much information as possible for dashboard
+  // showing job info.
   auto job_table_data = std::make_shared<rpc::JobTableData>();
   job_table_data->set_job_id(request.job_id());
   job_table_data->set_language(request.language());
   job_table_data->set_job_payload(request.job_payload());
+  job_table_data->set_is_submitted(true);
   job_table_data->set_state(rpc::JobTableData::SUBMITTED);
-  job_table_data->mutable_config()->set_is_submitted_from_dashboard(true);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
@@ -220,13 +202,13 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     return Status::Invalid(ss.str());
   }
 
+  job_table_data->set_raylet_id(driver_client_id.Binary());
   auto maybe_node = gcs_node_manager_->GetAliveNode(driver_client_id);
   if (maybe_node.has_value()) {
     auto node = maybe_node.value();
     job_table_data->set_driver_hostname(node->node_manager_hostname());
     job_table_data->set_driver_ip_address(node->node_manager_address());
   }
-  job_table_data->set_raylet_id(driver_client_id.Binary());
 
   RAY_LOG(INFO) << "Submitting job, job id = " << job_id << ", config is "
                 << job_table_data->config().DebugString();

@@ -273,8 +273,6 @@ message JobConfig {
   repeated string code_search_path = 4;
   // Runtime environment to run the code
   RuntimeEnv runtime_env = 5;
-  // Whether the job is submitted from dashboard.
-  bool is_submitted_from_dashboard = 6;
 }
 
 message JobTableData {
@@ -299,26 +297,28 @@ message JobTableData {
   int64 timestamp = 3;
   // IP address of the driver that started this job.
   string driver_ip_address = 4;
-  // Process ID of the driver running this job.
-  int64 driver_pid = 5;
   // Hostname of the node this job was started on.
-  string driver_hostname = 6;
-  // Raylet which the job's driver belongs to
-  bytes raylet_id = 7;
-  // Language the job uses
-  Language language = 8;
-  // The config of this job.
-  JobConfig config = 9;
-  // Job state.
-  JobState state = 10;
-  // Job payload (The original job request json from dashboard).
-  string job_payload = 11;
-  // The reason for the job failure.
-  string fail_error_message = 12;
+  string driver_hostname = 5;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 6;
   // The driver cmdline.
-  string driver_cmdline = 13;
+  string driver_cmdline = 7;
   // Driver exit state.
-  DriverExitState driver_exit_state = 14;
+  DriverExitState driver_exit_state = 8;
+  // Raylet which the job's driver belongs to
+  bytes raylet_id = 9;
+  // Language the job uses
+  Language language = 10;
+  // The config of this job.
+  JobConfig config = 11;
+  // Job state.
+  JobState state = 12;
+  // Job payload (The original job request json from dashboard).
+  string job_payload = 13;
+  // The reason for the job failure.
+  string fail_error_message = 14;
+  // Whether the job is submitted.
+  bool is_submitted = 15;
 }
 
 message WorkerTableData {

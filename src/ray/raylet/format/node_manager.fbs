@@ -135,6 +135,8 @@ table RegisterClientRequest {
   language: int;
   // IP address of this worker.
   ip_address: string;
+  // Hostname of this worker.
+  hostname: string;
   // Port that this worker is listening on.
   port: int;
   // The config bytes of this job serialized with protobuf.
