@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABCMeta
 from collections import defaultdict, namedtuple
+from gym.envs.classic_control.rendering import SimpleImageViewer
 import logging
 import numpy as np
 import queue
@@ -519,6 +520,9 @@ def _env_runner(
             terminal condition, and other fields as dictated by `policy`.
     """
 
+    # May be populated with used for image rendering
+    simple_image_viewer: Optional[SimpleImageViewer] = None
+
     # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
     # error and continue with max_episode_steps=None.
     max_episode_steps = None
@@ -704,7 +708,14 @@ def _env_runner(
         # Try to render the env, if required.
         if render:
             t5 = time.time()
-            base_env.try_render()
+            # Render can either return an RGB image (uint8 [w x h x 3] numpy
+            # array) or take care of rendering itself (returning True).
+            rendered = base_env.try_render()
+            # Rendering returned an image -> Display it in a SimpleImageViewer.
+            if isinstance(rendered, np.ndarray) and len(rendered.shape) == 3:
+                if not simple_image_viewer:
+                    simple_image_viewer = SimpleImageViewer()
+                simple_image_viewer.imshow(rendered)
             perf_stats.env_render_time += time.time() - t5
 
 
