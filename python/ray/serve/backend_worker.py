@@ -20,12 +20,11 @@ from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    LongPollKey,
 )
 from ray.exceptions import RayTaskError
 
@@ -135,9 +134,15 @@ class RayServeReplica:
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollAsyncClient(controller_handle, {
-            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
-        })
+        self.loop = asyncio.get_event_loop()
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
+                _update_backend_configs,
+            },
+            call_in_event_loop=self.loop,
+        )
 
         self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
@@ -390,13 +395,7 @@ class RayServeReplica:
                                          BACKEND_RECONFIGURE_METHOD)
             reconfigure_method(user_config)
 
-    async def _update_backend_configs(self, backend_configs):
-        # TODO(ilr) remove this loop when we poll per key
-        for backend_tag, config in backend_configs.items():
-            if backend_tag == self.backend_tag:
-                self._update_config(config)
-
-    def _update_config(self, new_config: BackendConfig) -> None:
+    def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
