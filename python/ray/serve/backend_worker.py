@@ -8,14 +8,15 @@ from typing import Union, List, Any, Callable, Type
 import time
 
 import starlette.responses
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.batching import _BatchQueue
-from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future, import_attr)
+from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
+                             chain_future, unpack_future, import_attr)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
@@ -220,16 +221,6 @@ class RayServeReplica:
 
     async def ensure_serializable_response(self, response: Any) -> Any:
         if isinstance(response, starlette.responses.StreamingResponse):
-            # response contains a generator/iterator which is not serializable.
-            # Exhaust the generator/iterator and store the results in a buffer.
-            body_buffer = []
-
-            async def mock_send(message):
-                assert message["type"] in {
-                    "http.response.start", "http.response.body"
-                }
-                if (message["type"] == "http.response.body"):
-                    body_buffer.append(message["body"])
 
             async def mock_receive():
                 # This is called in a tight loop in response() just to check
@@ -238,25 +229,42 @@ class RayServeReplica:
                 never_set_event = asyncio.Event()
                 await never_set_event.wait()
 
-            await response(scope=None, receive=mock_receive, send=mock_send)
-            content = b"".join(body_buffer)
-            return starlette.responses.Response(
-                content,
-                status_code=response.status_code,
-                headers=response.headers,
-                media_type=response.media_type)
-        else:
-            return response
+            sender = ASGIHTTPSender()
+            await response(scope=None, receive=mock_receive, send=sender)
+            return sender.build_starlette_response()
+        return response
 
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = sync_to_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
         try:
-            result = await method_to_call(arg)
+            # TODO(simon): Split this section out when invoke_batch is removed.
+            if self.config.internal_metadata.is_asgi_app:
+                request: Request = arg
+                scope = request.scope
+                root_path = self.config.internal_metadata.path_prefix
+
+                # The incoming scope["path"] contains prefixed path and it
+                # won't be stripped by FastAPI.
+                request.scope["path"] = scope["path"].replace(root_path, "", 1)
+                # root_path is used such that the reverse look up and
+                # redirection works.
+                request.scope["root_path"] = root_path
+
+                sender = ASGIHTTPSender()
+                await self.callable._serve_asgi_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                result = sender.build_starlette_response()
+            else:
+                method_to_call = sync_to_async(
+                    self.get_runner_method(request_item))
+                result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
