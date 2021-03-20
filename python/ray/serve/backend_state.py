@@ -353,7 +353,7 @@ class ReplicaStateContainer:
         self._replicas[state].append(replica)
 
     def get(self, states: Optional[List[ReplicaState]] = None
-            ) -> List[VersionedReplica]:
+            ) -> List[BackendReplica]:
         """Get all replicas of the given states.
 
         This does not remove them from the container. Replicas are returned
@@ -484,12 +484,11 @@ class BackendState:
     ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
-                backend_replica._replica_tag:
-                backend_replica.get_actor_handle()
-                for backend_replica in state_to_replica_dict[
-                    ReplicaState.RUNNING]
+                backend_replica.replica_tag: backend_replica.actor_handle
+                for backend_replica in replicas_container.get(
+                    [ReplicaState.RUNNING])
             }
-            for backend_tag, state_to_replica_dict in self._replicas.items()
+            for backend_tag, replicas_container in self._replicas.items()
             if filter_tag is None or backend_tag == filter_tag
         }
 
