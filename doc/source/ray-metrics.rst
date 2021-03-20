@@ -6,7 +6,7 @@ To help monitoring Ray applications, Ray
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
 - Support custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
-This page describes how to acces these metrics using Prometheus.
+This page describes how to access these metrics using Prometheus.
 
 .. note::
 
@@ -14,6 +14,13 @@ This page describes how to acces these metrics using Prometheus.
 
 Getting Started (Single Node)
 -----------------------------
+
+First, install Ray with the proper dependencies:
+
+.. code-block:: bash
+
+  pip install 'ray[full]'
+
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 
 Let's expose metrics through `ray start`.

@@ -95,7 +95,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "serve": ["uvicorn", "requests", "pydantic<1.7", "starlette", "fastapi"],
+    "full": ["colorful"],
+    "serve": ["uvicorn", "requests", "pydantic", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
@@ -124,7 +125,6 @@ install_requires = [
     "aioredis",
     "click >= 7.0",
     "colorama",
-    "colorful",
     "dataclasses; python_version < '3.7'",
     "filelock",
     "gpustat",
