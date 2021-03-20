@@ -136,6 +136,12 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
           []() { return absl::GetCurrentTimeNanos(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
+
+  RAY_CHECK(
+      RayConfig::instance().maximum_object_store_reservation_for_pulled_objects() > 0 &&
+      RayConfig::instance().maximum_object_store_reservation_for_pulled_objects() <= 1)
+      << "maximum_object_store_reservation_for_pulled_objects must be a nonzero decimal "
+         "less than 1.";
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.

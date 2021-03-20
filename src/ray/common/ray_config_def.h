@@ -375,3 +375,8 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The maximum fraction of the object store used for objects pulled from
+/// remote nodes. These objects are arguments of a queued task or objects
+/// requested by `ray.get` or `ray.wait`.
+RAY_CONFIG(float, maximum_object_store_reservation_for_pulled_objects, 0.7)

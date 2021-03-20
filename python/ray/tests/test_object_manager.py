@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 import multiprocessing
 import numpy as np
@@ -373,6 +374,58 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     allocated = [allocate.remote(i) for i in range(num_objects)]
     ray.get(tasks)
     del allocated
+
+
+@pytest.mark.parametrize("reservation", [0.5, 0.75])
+def test_task_args_memory_threshold(shutdown_only, reservation):
+    num_objs = 3
+    obj_size = int(1e8 // num_objs)
+
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "maximum_object_store_reservation_for_pulled_objects": reservation
+            / 10,
+        },
+        object_store_memory=1e9)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=num_objs, object_store_memory=1e9)
+
+    @ray.remote
+    class Signal:
+        def __init__(self, num_events):
+            self.num_events = num_events
+            self.ready_event = asyncio.Event()
+
+        def send(self):
+            self.num_events -= 1
+            if self.num_events == 0:
+                self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
+    @ray.remote
+    def f(actor, arg):
+        actor.send.remote()
+        time.sleep(1000)
+
+    @ray.remote
+    def empty():
+        return
+
+    num_tasks_expected = int(reservation / (1 / num_objs))
+    print(num_tasks_expected)
+    a = Signal.remote(num_tasks_expected)
+    x = np.zeros(obj_size, dtype=np.uint8)
+    objs = [ray.put(x) for _ in range(num_objs)]
+    for obj in objs:
+        f.remote(a, obj)
+    # Check admission control for tasks.
+    ray.get(a.wait.remote(), timeout=10)
+    num_cores = num_objs - num_tasks_expected
+    ray.get(empty.options(num_cpus=num_cores).remote(), timeout=10)
 
 
 if __name__ == "__main__":

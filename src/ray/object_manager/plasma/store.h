@@ -224,7 +224,11 @@ class PlasmaStore {
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+    size_t max_reservation =
+        RayConfig::instance().maximum_object_store_reservation_for_pulled_objects() *
+        PlasmaAllocator::GetFootprintLimit();
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    available = std::min(max_reservation, available);
     callback(available);
   }
 

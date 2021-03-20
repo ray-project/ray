@@ -246,11 +246,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         auto callback = std::get<2>(*work_it);
         Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
       }
-
-      if (!spec.GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
-      }
       work_it = dispatch_queue.erase(work_it);
     }
     if (is_infeasible) {
@@ -332,6 +327,12 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
+
+  if (!task->GetTaskSpecification().GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(
+        task->GetTaskSpecification().TaskId());
+  }
+
   auto it = pinned_task_arguments_.find(task->GetTaskSpecification().TaskId());
   RAY_CHECK(it != pinned_task_arguments_.end());
   num_pinned_task_arguments_ -= it->second.size();
