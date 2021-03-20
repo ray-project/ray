@@ -250,24 +250,28 @@ class ServeController:
                      version: Optional[str]) -> Optional[GoalId]:
         """TODO."""
 
-        # Infer HTTP route and methods based on replica_config.
+        # By default the path prefix is the deployment name.
         if replica_config.path_prefix is None:
             replica_config.path_prefix = f"/{name}"
-            # Updated here because it is used by backend worker
+            # Backend config should be synchronized so the backend worker
+            # is aware of it.
             backend_config.internal_metadata.path_prefix = f"/{name}"
-        route = replica_config.path_prefix
-        methods = ["GET", "POST"]
+
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            route = "/{route}/{wildcard:path}"
+            route = f"/{replica_config.path_prefix}" + "/{wildcard:path}"
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
             methods = [
                 "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
                 "TRACE", "PATCH"
             ]
+        else:
+            route = replica_config.path_prefix or f"{name}"
+            # Generic endpoint should support a limited subset of HTTP methods.
+            methods = ["GET", "POST"]
 
         async with self.write_lock:
             if version is None:

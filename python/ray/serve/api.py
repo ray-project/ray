@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import time
 from functools import wraps
+import inspect
 import os
 from uuid import UUID
 import threading
@@ -1035,21 +1036,20 @@ def ingress(
     >>> app = FastAPI()
     >>> @serve.deployment
         @serve.ingress(app)
-        def app():
+        class App:
             pass
-    >>> app.deploy()
+    >>> App.deploy()
     """
 
-    def decorator(f):
+    def decorator(cls):
+        if not inspect.isclass(cls):
+            raise ValueError("@serve.ingress must be used with a class.")
+
         if app is not None:
-            f._serve_asgi_app = app
+            cls._serve_asgi_app = app
         if path_prefix is not None:
-            f._serve_path_prefix = path_prefix
+            cls._serve_path_prefix = path_prefix
 
-        @wraps(f)
-        def inner(*args, **kwargs):
-            return f(*args, **kwargs)
-
-        return inner
+        return cls
 
     return decorator

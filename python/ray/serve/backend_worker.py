@@ -242,6 +242,7 @@ class RayServeReplica:
 
         start = time.time()
         try:
+            # TODO(simon): Split this section out when invoke_batch is removed.
             if self.config.internal_metadata.is_asgi_app:
                 request: Request = arg
                 scope = request.scope
@@ -254,9 +255,8 @@ class RayServeReplica:
                 # redirection works.
                 request.scope["root_path"] = root_path
 
-                app = self.callable._serve_asgi_app
                 sender = ASGIHTTPSender()
-                await app(
+                await self.callable._serve_asgi_app(
                     request.scope,
                     request._receive,
                     sender,

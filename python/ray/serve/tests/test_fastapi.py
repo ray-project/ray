@@ -9,12 +9,15 @@ def test_fastapi_function(serve_instance):
     client = serve_instance
     app = FastAPI()
 
-    @serve.ingress(app)
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    client.deploy("f", func)
+    @serve.ingress(app)
+    class FastAPIApp:
+        pass
+
+    client.deploy("f", FastAPIApp)
 
     resp = requests.get(f"http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
@@ -28,12 +31,15 @@ def test_ingress_prefix(serve_instance):
     client = serve_instance
     app = FastAPI()
 
-    @serve.ingress(app, path_prefix="/api")
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    client.deploy("f", func)
+    @serve.ingress(app, path_prefix="/api")
+    class App:
+        pass
+
+    client.deploy("f", App)
 
     resp = requests.get(f"http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
