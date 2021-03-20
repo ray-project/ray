@@ -156,7 +156,7 @@ class ReplicaSet:
         """
         endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.record(
+        self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
@@ -179,7 +179,7 @@ class ReplicaSet:
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.record(
+        self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint})
         return assigned_ref
 
@@ -204,7 +204,7 @@ class Router:
         self._loop = loop or asyncio.get_event_loop()
 
         # -- Metrics Registration -- #
-        self.num_router_requests = metrics.Count(
+        self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
@@ -269,6 +269,6 @@ class Router:
             (await self._get_or_create_replica_set(backend)
              .assign_replica(query))
 
-        self.num_router_requests.record(1, tags={"endpoint": endpoint})
+        self.num_router_requests.inc(tags={"endpoint": endpoint})
 
         return result_ref

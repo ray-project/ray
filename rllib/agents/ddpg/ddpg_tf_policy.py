@@ -123,6 +123,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     model_out_tp1, _ = model(input_dict_next, [], None)
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
+    policy.target_q_func_vars = policy.target_model.variables()
+
     # Policy network evaluation.
     policy_t = model.get_policy_output(model_out_t)
     policy_tp1 = \

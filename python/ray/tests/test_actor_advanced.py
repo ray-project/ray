@@ -10,7 +10,7 @@ import time
 
 import ray
 import ray.test_utils
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
                             kill_actor_and_wait_for_failure,
                             wait_for_condition)
@@ -597,10 +597,6 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     def f():
         return Counter.remote()
 
-    @ray.remote
-    def g():
-        return [Counter.remote()]
-
     # Currently, calling ray.put on an actor handle is allowed, but is
     # there a good use case?
     counter = Counter.remote()
@@ -610,11 +606,7 @@ def test_calling_put_on_actor_handle(ray_start_regular):
     assert ray.get(counter.inc.remote()) == 2
     assert ray.get(new_counter.inc.remote()) == 3
 
-    with pytest.raises(Exception):
-        ray.get(f.remote())
-
-    # The below test works, but do we want to disallow this usage?
-    ray.get(g.remote())
+    ray.get(f.remote())
 
 
 def test_named_but_not_detached(ray_start_regular):

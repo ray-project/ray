@@ -18,6 +18,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -139,10 +141,20 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
+/// Inteface for getting resource reports.
+class ResourceRequestInterface {
+ public:
+  virtual void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
+
+  virtual ~ResourceRequestInterface(){};
+};
+
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
-                              public ResourceReserveInterface {
+                              public ResourceReserveInterface,
+                              public ResourceRequestInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -165,7 +177,7 @@ class RayletConnection {
   /// \param job_id The ID of the driver. This is non-nil if the client is a
   ///        driver.
   /// \return The connection information.
-  RayletConnection(boost::asio::io_service &io_service, const std::string &raylet_socket,
+  RayletConnection(instrumented_io_context &io_service, const std::string &raylet_socket,
                    int num_retries, int64_t timeout);
 
   ray::Status WriteMessage(MessageType type,
@@ -205,7 +217,7 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
-  RayletClient(boost::asio::io_service &io_service,
+  RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
@@ -222,7 +234,9 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
-  ray::Status Disconnect();
+  ray::Status Disconnect(
+      rpc::WorkerExitType exit_type,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
@@ -398,6 +412,9 @@ class RayletClient : public RayletClientInterface {
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+
+  void RequestResourceReport(
+      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   // Subscribe to receive notification on plasma object
   void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);

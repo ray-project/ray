@@ -14,11 +14,12 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/util/periodical_runner.h"
 
 namespace ray {
 namespace gcs {
@@ -27,7 +28,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
   explicit ServiceBasedGcsClient(const GcsClientOptions &options);
 
-  Status Connect(boost::asio::io_service &io_service) override;
+  Status Connect(instrumented_io_context &io_service) override;
 
   void Disconnect() override;
 

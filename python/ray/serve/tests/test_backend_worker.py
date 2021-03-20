@@ -79,7 +79,7 @@ def make_request_param(call_method="__call__"):
 
 
 async def test_runner_wraps_error():
-    wrapped = wrap_to_ray_error(Exception())
+    wrapped = wrap_to_ray_error("test_function", Exception())
     assert isinstance(wrapped, ray.exceptions.RayTaskError)
 
 

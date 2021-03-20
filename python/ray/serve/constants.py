@@ -37,3 +37,7 @@ DEFAULT_LATENCY_BUCKET_MS = [
 
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
+
+#: Internally reserved version tag that cannot be used by applications.
+# TODO(edoakes): this should be removed when we remove the old codepath.
+RESERVED_VERSION_TAG = "__serve_version__"
