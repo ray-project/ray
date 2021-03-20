@@ -1229,7 +1229,7 @@ def start_dashboard(require_dashboard,
 
         dashboard_url = None
         dashboard_returncode = None
-        for _ in range(20):
+        for _ in range(200):
             dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
