@@ -16,12 +16,19 @@ import os
 from typing import Any, Dict, Tuple, Optional, List
 
 import click
+import warnings
 
 import colorama
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
 except ModuleNotFoundError:
+    warnings.warn(
+        "Not all Ray CLI dependencies were found. "
+        "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+        "only be usable via `pip install 'ray[full]'`. Please "
+        "update your install command.", FutureWarning)
+
     # We mock Colorful to restrict the colors used for consistency
     # anyway, so we also allow for not having colorful at all.
     # If the Ray Core dependency on colorful is ever removed,
@@ -414,12 +421,19 @@ class _CliLogger():
             record.levelname = _level_str
             rendered_message = self._formatter.format(record)
 
+        # We aren't using standard python logging convention, so we hardcode
+        # the log levels for now.
+        if _level_str in ["WARNING", "ERROR", "PANIC"]:
+            stream = sys.stderr
+        else:
+            stream = sys.stdout
+
         if not _linefeed:
-            sys.stdout.write(rendered_message)
-            sys.stdout.flush()
+            stream.write(rendered_message)
+            stream.flush()
             return
 
-        print(rendered_message)
+        print(rendered_message, file=stream)
 
     def indented(self):
         """Context manager that starts an indented block of output.

@@ -32,19 +32,19 @@ Before we start, you will need to install some Python dependencies as follows:
 
         .. code-block:: shell
 
-            $ pip install -U ray boto3
+            $ pip install -U 'ray[full]' boto3
 
     .. group-tab:: Azure
 
         .. code-block:: shell
 
-            $ pip install -U ray azure-cli azure-core
+            $ pip install -U 'ray[full]' azure-cli azure-core
 
     .. group-tab:: GCP
 
         .. code-block:: shell
 
-            $ pip install -U ray google-api-python-client
+            $ pip install -U 'ray[full]' google-api-python-client
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 
@@ -71,12 +71,12 @@ We will write a simple Python application that tracks the IP addresses of the ma
     from collections import Counter
     import socket
     import time
-    
+
     def f():
         time.sleep(0.001)
         # Return IP address.
         return socket.gethostbyname(socket.gethostname())
-    
+
     ip_addresses = [f() for _ in range(10000)]
     print(Counter(ip_addresses))
 
@@ -89,17 +89,17 @@ With some small changes, we can make this application run on Ray (for more infor
     from collections import Counter
     import socket
     import time
-    
+
     import ray
-    
+
     ray.init()
-    
+
     @ray.remote
     def f():
         time.sleep(0.001)
         # Return IP address.
         return socket.gethostbyname(socket.gethostname())
-    
+
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)
     print(Counter(ip_addresses))
@@ -111,25 +111,25 @@ Finally, let's add some code to make the output more interesting:
     from collections import Counter
     import socket
     import time
-    
+
     import ray
-    
+
     ray.init()
-    
+
     print('''This cluster consists of
         {} nodes in total
         {} CPU resources in total
     '''.format(len(ray.nodes()), ray.cluster_resources()['CPU']))
-    
+
     @ray.remote
     def f():
         time.sleep(0.001)
         # Return IP address.
         return socket.gethostbyname(socket.gethostname())
-    
+
     object_ids = [f.remote() for _ in range(10000)]
     ip_addresses = ray.get(object_ids)
-    
+
     print('Tasks executed')
     for ip_address, num_tasks in Counter(ip_addresses).items():
         print('    {} tasks on {}'.format(num_tasks, ip_address))
@@ -141,7 +141,7 @@ Running ``python script.py`` should now output something like:
     This cluster consists of
         1 nodes in total
         4.0 CPU resources in total
-    
+
     Tasks executed
         10000 tasks on 127.0.0.1
 
@@ -159,7 +159,7 @@ A minimal sample cluster configuration file looks as follows:
 
             # An unique identifier for the head node and workers of this cluster.
             cluster_name: minimal
-            
+
             # Cloud-provider specific configuration.
             provider:
                 type: aws
@@ -171,13 +171,13 @@ A minimal sample cluster configuration file looks as follows:
 
             # An unique identifier for the head node and workers of this cluster.
             cluster_name: minimal
-            
+
             # Cloud-provider specific configuration.
             provider:
                 type: azure
                 location: westus2
                 resource_group: ray-cluster
-            
+
             # How Ray will authenticate with newly launched nodes.
             auth:
                 ssh_user: ubuntu
@@ -193,7 +193,7 @@ A minimal sample cluster configuration file looks as follows:
 
             # A unique identifier for the head node and workers of this cluster.
             cluster_name: minimal
-            
+
             # Cloud-provider specific configuration.
             provider:
                 type: gcp
@@ -210,7 +210,17 @@ After defining our configuration, we will use the Ray Cluster Launcher to start 
 Run the application in the cloud
 --------------------------------
 
-We are now ready to execute the application in across multiple machines on our Ray cloud cluster. Run the following command:
+We are now ready to execute the application in across multiple machines on our Ray cloud cluster.
+First, we need to edit the initialization command ``ray.init()`` in ``script.py``.
+Change it to
+
+.. code-block:: python
+
+    ray.init(address='auto')
+
+This will allow Ray to connect to the remote cluster.
+
+Next, run the following command:
 
 .. code-block:: shell
 
@@ -223,7 +233,7 @@ The output should now look similar to the following:
     This cluster consists of
         3 nodes in total
         6.0 CPU resources in total
-    
+
     Tasks executed
         3425 tasks on xxx.xxx.xxx.xxx
         3834 tasks on xxx.xxx.xxx.xxx

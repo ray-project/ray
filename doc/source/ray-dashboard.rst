@@ -18,6 +18,13 @@ The dashboard lets you:
 
 Getting Started
 ---------------
+
+To use the dashboard, first install Ray with the proper dependencies:
+
+.. code-block:: bash
+
+  pip install 'ray[full]'
+
 You can access the dashboard through its default URL, **localhost:8265**.
 (Note that the port number increases if the default port is not available).
 If you prefer to explicitly set the port on which the dashboard will run, you can pass
@@ -171,8 +178,7 @@ More information on how to interpret the flamegraph is available at https://gith
 
 Running Behind a Reverse Proxy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In ray 2.0.0, the dashboard works out-of-the-box when accessed via a reverse proxy. API requests no
-longer need to be proxied individually.
+The dashboard should work out-of-the-box when accessed via a reverse proxy. API requests don't need to be proxied individually.
 
 Always access the dashboard with a trailing ``/`` at the end of the URL.
 For example, if your proxy is set up to handle requests to ``/ray/dashboard``, view the dashboard at ``www.my-website.com/ray/dashboard/``.

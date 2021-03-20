@@ -63,13 +63,15 @@ if __name__ == "__main__":
     # Checkpoint with the lowest policy loss value:
     ckpt = results.get_best_checkpoint(
         best_trial,
-        metric="info/learner/default_policy/policy_loss",
+        metric="info/learner/default_policy/learner_stats/policy_loss",
         mode="min")
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
     ckpt = results.get_best_checkpoint(
-        best_trial, metric="info/learner/default_policy/vf_loss", mode="max")
+        best_trial,
+        metric="info/learner/default_policy/learner_stats/vf_loss",
+        mode="max")
     print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()

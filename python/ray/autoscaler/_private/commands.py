@@ -30,9 +30,10 @@ from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, \
-    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, TAG_RAY_NODE_STATUS
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_NAME,
+    NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+    STATUS_UNINITIALIZED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS)
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
@@ -247,6 +248,7 @@ CONFIG_CACHE_VERSION = 1
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
+    # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
@@ -869,7 +871,7 @@ def exec_cluster(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1039,7 +1041,7 @@ def rsync(config_file: str,
             updater.sync_file_mounts(rsync)
 
     nodes = []
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
     if ip_address:
         nodes = [
@@ -1063,7 +1065,8 @@ def get_head_node_ip(config_file: str,
         config["cluster_name"] = override_cluster_name
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
-    head_node = _get_head_node(config, config_file, override_cluster_name)
+    head_node = _get_running_head_node(config, config_file,
+                                       override_cluster_name)
     if config.get("provider", {}).get("use_internal_ips", False):
         head_node_ip = provider.internal_ip(head_node)
     else:
@@ -1103,18 +1106,27 @@ def _get_worker_nodes(config: Dict[str, Any],
     return provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
 
-def _get_head_node(config: Dict[str, Any],
-                   printable_config_file: str,
-                   override_cluster_name: Optional[str],
-                   create_if_needed: bool = False) -> str:
-    provider = _get_node_provider(config["provider"], config["cluster_name"])
+def _get_running_head_node(config: Dict[str, Any],
+                           printable_config_file: str,
+                           override_cluster_name: Optional[str],
+                           create_if_needed: bool = False,
+                           _provider: Optional[NodeProvider] = None) -> str:
+    """Get a valid, running head node"""
+    provider = _provider or _get_node_provider(config["provider"],
+                                               config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
+    head_node = None
+    for node in nodes:
+        node_state = provider.node_tags(node).get(TAG_RAY_NODE_STATUS)
+        if node_state == STATUS_UP_TO_DATE:
+            head_node = node
+        else:
+            cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
-    if len(nodes) > 0:
-        head_node = nodes[0]
+    if head_node is not None:
         return head_node
     elif create_if_needed:
         get_or_create_head_node(
@@ -1124,7 +1136,7 @@ def _get_head_node(config: Dict[str, Any],
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
-        return _get_head_node(
+        return _get_running_head_node(
             config,
             printable_config_file,
             override_cluster_name,
