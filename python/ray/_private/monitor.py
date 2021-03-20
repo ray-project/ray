@@ -28,6 +28,7 @@ import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
+from ray._raylet import connect_to_gcs
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +98,10 @@ class Monitor:
 
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
-        (ip, port) = gcs_address.split(":")
+        (ip, port) = redis_address.split(":")
         gcs_client = connect_to_gcs(ip, int(port), redis_password)
-        _internal_kv_initialized(gcs_client)
+
+
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \
@@ -108,6 +110,7 @@ class Monitor:
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
+        worker.gcs_client = gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
