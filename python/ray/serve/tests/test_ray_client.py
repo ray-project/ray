@@ -7,10 +7,14 @@ import requests
 import ray
 from ray import serve
 
+# https://tools.ietf.org/html/rfc6335#section-6
+MIN_DYNAMIC_PORT = 49152
+MAX_DYNAMIC_PORT = 65535
+
 
 @pytest.fixture
 def ray_client_instance():
-    port = random.randint(60000, 70000)
+    port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
     subprocess.check_output([
         "ray", "start", "--head", "--num-cpus", "8",
         "--ray-client-server-port", f"{port}"
