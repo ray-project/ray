@@ -320,7 +320,7 @@ class RayParams:
 
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
-            if self.min_worker_port is None and self.min_worker_port is None:
+            if self.min_worker_port is None and self.max_worker_port is None:
                 self.min_worker_port = 0
                 self.max_worker_port = 0
 
