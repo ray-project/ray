@@ -1177,7 +1177,11 @@ def start_dashboard(require_dashboard,
             port_test_socket.bind((host, port))
             port_test_socket.close()
         except socket.error as e:
-            if e.errno == 48:  # address already in use.
+            if not require_dashboard:
+                logger.warning(
+                    "Failed to start the dashboard because it failed to bind "
+                    f"to {host}:{port}: {e}")
+            elif e.errno in {48, 48}:  # address already in use.
                 raise ValueError(
                     f"Failed to bind to {host}:{port} because it's already "
                     "occupied. You can use `ray start --dashboard-port ...` "
