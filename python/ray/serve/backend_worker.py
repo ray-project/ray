@@ -237,7 +237,6 @@ class RayServeReplica:
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = sync_to_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
@@ -263,6 +262,8 @@ class RayServeReplica:
                 )
                 result = sender.build_starlette_response()
             else:
+                method_to_call = sync_to_async(
+                    self.get_runner_method(request_item))
                 result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()

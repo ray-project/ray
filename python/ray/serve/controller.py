@@ -270,14 +270,14 @@ class ServeController:
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            route = f"/{replica_config.path_prefix}" + "/{wildcard:path}"
+            route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
             methods = [
                 "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
                 "TRACE", "PATCH"
             ]
         else:
-            route = replica_config.path_prefix or f"{name}"
+            route = replica_config.path_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
             methods = ["GET", "POST"]
 
