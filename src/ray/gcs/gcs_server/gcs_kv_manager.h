@@ -25,8 +25,7 @@ namespace gcs {
 class GcsKVManager : public rpc::KVHandler {
  public:
   explicit GcsKVManager(std::shared_ptr<RedisClient> redis_client)
-      : store_client_(std::make_unique<RedisStoreClient>(redis_client)),
-        table_name_(TablePrefix_Name(TablePrefix::KV)) {}
+      : redis_client_(redis_client) {}
 
   void HandleGet(const rpc::GetRequest &request, rpc::GetReply *reply,
                  rpc::SendReplyCallback send_reply_callback);
@@ -44,8 +43,7 @@ class GcsKVManager : public rpc::KVHandler {
                   rpc::SendReplyCallback send_reply_callback);
 
  private:
-  std::unique_ptr<StoreClient> store_client_;
-  std::string table_name_;
+  std::shared_ptr<RedisClient> redis_client_;
 };
 
 }  // namespace gcs

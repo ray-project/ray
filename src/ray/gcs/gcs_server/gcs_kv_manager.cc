@@ -5,57 +5,78 @@ namespace gcs {
 
 void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  store_client_->AsyncGet(table_name_, request.key(),
-                          [reply, send_reply_callback](
-                              Status status, const boost::optional<std::string> &result) {
-                            if (result) {
-                              reply->set_value(*result);
-                            }
-                            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-                          });
+  std::vector<std::string> cmd = {
+    "HGET",
+    request.key(),
+    "value"
+  };
+  redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        if(!redis_reply->IsNil()) {
+          reply->set_value(redis_reply->ReadAsString());
+        }
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
 }
 
 void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  store_client_->AsyncPut(table_name_, request.key(), request.value(),
-                          [reply, send_reply_callback](Status status) {
-                            GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-                          });
+  std::vector<std::string> cmd = {
+    "HSET",
+    request.key(),
+    "value",
+    request.value()
+  };
+  redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        auto status = redis_reply->ReadAsStatus();
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+      });
 }
 
 void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  store_client_->AsyncDelete(table_name_, request.key(),
-                             [reply, send_reply_callback](Status status) {
-                               GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-                             });
+  std::vector<std::string> cmd = {
+    "HDEL",
+    request.key(),
+    "value"
+  };
+  redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      });
 }
 
 void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
                                 rpc::ExistsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  store_client_->AsyncExists(
-      table_name_, request.key(),
-      [reply, send_reply_callback](Status status, const boost::optional<bool> &result) {
-        if (result) {
-          reply->set_exists(*result);
-        }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  std::vector<std::string> cmd = {
+    "HEXISTS",
+    request.key(),
+    "value"
+  };
+  redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        bool exists = redis_reply->ReadAsInteger() > 0;
+        reply->set_exists(exists);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
 }
 
 void GcsKVManager::HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  store_client_->AsyncKeys(
-      table_name_, request.prefix(),
-      [reply, send_reply_callback](
-          Status status, const boost::optional<std::vector<std::string>> &results) {
-        if (results) {
-          for (const auto &r : *results) {
-            reply->add_results(r);
-          }
+  std::vector<std::string> cmd = {
+    "HKEYS",
+    request.prefix(),
+    "value"
+  };
+  redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        const auto& results = redis_reply->ReadAsStringArray();
+        for(const auto& result : results) {
+          reply->add_results(result);
         }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
 }
 
