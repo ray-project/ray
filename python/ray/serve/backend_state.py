@@ -1,13 +1,8 @@
-import asyncio
+import math
 import time
-from collections import defaultdict
-from enum import Enum
-from typing import Dict, List, Optional, Tuple
 from abc import ABC
 from collections import defaultdict
 from enum import Enum
-import math
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
@@ -19,10 +14,7 @@ from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.utils import (format_actor_name, get_random_letters, logger,
-                             try_schedule_resources_on_nodes)
-from ray.serve.long_poll import LongPollHost
-from ray.serve.utils import format_actor_name, get_random_letters, logger
+from ray.serve.utils import (format_actor_name, get_random_letters, logger)
 
 import ray
 
@@ -485,16 +477,6 @@ class BackendState:
                 (LongPollNamespace.BACKEND_CONFIGS, key),
                 config,
             )
-
-    def get_running_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
-        return {
-            backend_tag: {
-                r.replica_tag: r.actor_handle
-                for r in replicas.get(states=[ReplicaState.RUNNING])
-            }
-            for backend_tag, replicas in self._replicas.items()
-        }
 
     def get_running_replica_handles(
             self,

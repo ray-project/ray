@@ -16,22 +16,12 @@ from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
-from ray.serve.env import CondaEnv
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController, BackendTag, ReplicaTag
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger,
-                             get_current_node_resource_key)
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
-                              HTTPOptions)
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_conda_env_dir, get_current_node_resource_key,
-                             get_random_letters, logger)
+                             get_current_node_resource_key, get_random_letters,
+                             logger)
 
 import ray
 
