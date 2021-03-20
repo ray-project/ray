@@ -160,6 +160,16 @@ class KubernetesNodeProvider(NodeProvider):
         except ApiException:
             pass
 
+        # Block until autoscaler knows the node is gone.
+        # See <PR URL>.
+        wait_seconds = 35  # Default pod termination grace period + fudge
+        for _ in range(wait_seconds):
+            if node_id in self.non_terminated_nodes({}):
+                time.sleep(1)
+            else:
+                return
+        assert False, "Failed to terminate pod {}.".format(node_id)
+
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
             self.terminate_node(node_id)
