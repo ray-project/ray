@@ -18,17 +18,6 @@ namespace ray {
 
 namespace gcs {
 
-Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
-                                        const std::string &key,
-                                        const OptionalItemCallback<bool> &callback) {
-  auto table = GetOrCreateTable(table_name);
-  absl::MutexLock lock(&(table->mutex_));
-  bool exists = table->records_.count(key);
-  main_io_service_.post([callback, exists]() { callback(Status::OK(), exists); },
-                        "GcsInMemoryStore.Exists");
-  return Status::OK();
-}
-
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key, const std::string &data,
                                      const StatusCallback &callback) {
@@ -214,28 +203,6 @@ Status InMemoryStoreClient::AsyncDeleteByIndex(const std::string &table_name,
         }
       },
       "GcsInMemoryStore.DeleteByIndex");
-  return Status::OK();
-}
-
-Status InMemoryStoreClient::AsyncKeys(
-    const std::string &table_name, const std::string &prefix,
-    const OptionalItemCallback<std::vector<std::string>> &callback) {
-  auto on_done = [callback](const Status &status, std::vector<std::string> result) {
-    callback(status, boost::make_optional(std::move(result)));
-  };
-  std::vector<std::string> result;
-  auto table = GetOrCreateTable(table_name);
-  absl::MutexLock lock(&(table->mutex_));
-  for (const auto &kv : table->records_) {
-    if (kv.first.find(prefix) == 0) {
-      result.push_back(kv.first);
-    }
-  }
-  main_io_service_.post(
-      [on_done, result = std::move(result)]() {
-        on_done(Status::OK(), std::move(result));
-      },
-      "GcsInMemoryStore.Keys");
   return Status::OK();
 }
 

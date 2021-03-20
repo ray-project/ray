@@ -45,14 +45,14 @@ def _internal_kv_put(key: Union[str, bytes],
                      value: Union[str, bytes],
                      overwrite: bool = True) -> bool:
     """Globally associates a value with a given binary key.
-    Right now, overrite is not working. It's for backward compatibility
+
+    This only has an effect if the key does not already have a value.
 
     Returns:
         already_exists (bool): whether the value already exists.
     """
-    gcs_client.kv_put(key, value)
-    # TODO(iycheng) For backward compatibility. Remove later
-    return True
+
+    return gcs_client.kv_put(key, value, overwrite)
 
 
 @client_mode_hook

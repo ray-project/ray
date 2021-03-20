@@ -33,22 +33,6 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::stri
   return DoPut(GenRedisKey(table_name, key), data, callback);
 }
 
-Status RedisStoreClient::AsyncKeys(
-    const std::string &table_name, const std::string &prefix,
-    const OptionalItemCallback<std::vector<std::string>> &callback) {
-  std::string match_pattern = GenRedisKey(table_name, prefix) + "*";
-  auto scanner = std::make_shared<RedisScanner>(redis_client_, table_name);
-  auto on_done = [callback, scanner, table_name](
-                     const Status &status, const std::vector<std::string> &results) {
-    std::vector<std::string> keys;
-    for (const auto &r : results) {
-      keys.push_back(GetKeyFromRedisKey(r, table_name));
-    }
-    callback(status, boost::make_optional(std::move(keys)));
-  };
-  return scanner->ScanKeys(match_pattern, on_done);
-}
-
 Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
                                            const std::string &key,
                                            const std::string &index_key,
@@ -231,22 +215,6 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
 
   auto shard_context = redis_client_->GetShardContext(key);
   return shard_context->RunArgvAsync(args, write_callback);
-}
-
-Status RedisStoreClient::AsyncExists(const std::string &table_name,
-                                     const std::string &key,
-                                     const OptionalItemCallback<bool> &callback) {
-  auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-    if (reply->ReadAsInteger() == 1) {
-      callback(Status::OK(), true);
-    } else {
-      callback(Status::OK(), false);
-    }
-  };
-  auto redis_key = GenRedisKey(table_name, key);
-  std::vector<std::string> args = {"EXISTS", redis_key};
-  auto shard_context = redis_client_->GetShardContext(redis_key);
-  return shard_context->RunArgvAsync(args, redis_callback);
 }
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,

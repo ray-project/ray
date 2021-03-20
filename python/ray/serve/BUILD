@@ -74,6 +74,14 @@ py_test(
 )
 
 py_test(
+    name = "test_backend_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
@@ -102,7 +110,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],

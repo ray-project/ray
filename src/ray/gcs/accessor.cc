@@ -18,9 +18,16 @@
 namespace ray {
 namespace gcs {
 
-Status KVAccessor::Put(const std::string &key, const std::string &value) {
+Status KVAccessor::Put(
+    const std::string &key,
+    const std::string &value,
+    bool overwrite,
+    bool& added) {
   std::promise<Status> ret_promise;
-  AsyncPut(key, value, [&ret_promise](Status status) { ret_promise.set_value(status); });
+  AsyncPut(key, value, overwrite, [&ret_promise, &added](Status status, boost::optional<int> added_num) {
+    added = static_cast<bool>(added_num.value_or(0));
+    ret_promise.set_value(status);
+  });
   return ret_promise.get_future().get();
 }
 

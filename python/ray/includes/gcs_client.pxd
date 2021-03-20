@@ -14,7 +14,10 @@ from ray.includes.common cimport (
 
 cdef extern from "ray/gcs/accessor.h" nogil:
     cdef cppclass CKVAccessor "ray::gcs::KVAccessor":
-        CRayStatus Put(const c_string &key, const c_string &value)
+        CRayStatus Put(const c_string &key,
+                       const c_string &value,
+                       c_bool overwrite,
+                       c_bool &updated)
         CRayStatus Get(const c_string &key, c_string &value)
         CRayStatus Del(const c_string &key)
         CRayStatus Exists(const c_string &key, c_bool &exist)

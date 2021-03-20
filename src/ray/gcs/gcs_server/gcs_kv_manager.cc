@@ -22,15 +22,15 @@ void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *repl
 void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {
-    "HSET",
+    request.overwrite() ? "HSET" : "HSETNX",
     request.key(),
     "value",
     request.value()
   };
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
-        auto status = redis_reply->ReadAsStatus();
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        reply->set_added_num(redis_reply->ReadAsInteger());
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
 }
 
@@ -43,6 +43,7 @@ void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *repl
   };
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
+        reply->set_deleted_num(redis_reply->ReadAsInteger());
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
 }
@@ -66,9 +67,8 @@ void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
 void GcsKVManager::HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {
-    "HKEYS",
-    request.prefix(),
-    "value"
+    "KEYS",
+    request.prefix() + "*"
   };
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {

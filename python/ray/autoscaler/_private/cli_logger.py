@@ -16,12 +16,19 @@ import os
 from typing import Any, Dict, Tuple, Optional, List
 
 import click
+import warnings
 
 import colorama
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
 except ModuleNotFoundError:
+    warnings.warn(
+        "Not all Ray CLI dependencies were found. "
+        "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+        "only be usable via `pip install 'ray[full]'`. Please "
+        "update your install command.", FutureWarning)
+
     # We mock Colorful to restrict the colors used for consistency
     # anyway, so we also allow for not having colorful at all.
     # If the Ray Core dependency on colorful is ever removed,

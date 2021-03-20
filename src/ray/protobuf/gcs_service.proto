@@ -537,10 +537,12 @@ message GetReply {
 message PutRequest {
   bytes key = 1;
   bytes value = 2;
+  bool overwrite = 3;
 }
 
 message PutReply {
   GcsStatus status = 1;
+  int32 added_num = 2;
 }
 
 message DelRequest {
@@ -549,6 +551,7 @@ message DelRequest {
 
 message DelReply {
   GcsStatus status = 1;
+  int32 deleted_num = 2;
 }
 
 message ExistsRequest {

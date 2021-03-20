@@ -39,10 +39,13 @@ cdef class GcsClient:
         self.inner_ = gcs_client
         return self
 
-    def kv_put(self, c_string key, c_string value):
-        status = self.inner_.get().KV().Put(key, value)
+    def kv_put(self, c_string key, c_string value, c_bool overwrite):
+        cdef c_bool added = False
+        status = self.inner_.get().KV().Put(key, value, overwrite, added)
         if not status.ok():
             raise IOError("Put failed: {}".format(status.ToString()))
+        return added
+
 
     def kv_del(self, c_string key):
         status = self.inner_.get().KV().Del(key)
