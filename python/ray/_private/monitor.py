@@ -97,6 +97,9 @@ class Monitor:
 
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+        (ip, port) = gcs_address.split(":")
+        gcs_client = connect_to_gcs(ip, int(port), redis_password)
+        _internal_kv_initialized(gcs_client)
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \
