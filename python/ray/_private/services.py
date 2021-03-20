@@ -1166,57 +1166,55 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    if port is None:
-        port_retries = 20
-        port = ray_constants.DEFAULT_DASHBOARD_PORT
-    else:
-        port_retries = 0
-        port_test_socket = socket.socket()
-        port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            port_test_socket.bind((host, port))
-            port_test_socket.close()
-        except socket.error as e:
-            if not require_dashboard:
-                logger.warning(
-                    "Failed to start the dashboard because it failed to bind "
-                    f"to {host}:{port}: {e}")
-            elif e.errno in {48, 48}:  # address already in use.
-                raise ValueError(
-                    f"Failed to bind to {host}:{port} because it's already "
-                    "occupied. You can use `ray start --dashboard-port ...` "
-                    "or `ray.init(dashboard_port=...)` to select a different "
-                    "port.")
-            else:
-                raise e
-
-    dashboard_dir = "new_dashboard"
-    dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
-    command = [
-        sys.executable, "-u", dashboard_filepath, f"--host={host}",
-        f"--port={port}", f"--port-retries={port_retries}",
-        f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-        f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
-    ]
-
-    if redis_password:
-        command += ["--redis-password", redis_password]
-
-    dashboard_dependencies_present = True
     try:
-        import aiohttp  # noqa: F401
-        import grpc  # noqa: F401
-    except ImportError:
-        dashboard_dependencies_present = False
-        warning_message = (
-            "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp grpcio'.")
-        if require_dashboard:
-            raise ImportError(warning_message)
+        # Make sure port is available.
+        if port is None:
+            port_retries = 50
+            port = ray_constants.DEFAULT_DASHBOARD_PORT
         else:
-            logger.warning(warning_message)
-    if dashboard_dependencies_present:
+            port_retries = 0
+            port_test_socket = socket.socket()
+            port_test_socket.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_REUSEADDR,
+                1,
+            )
+            try:
+                port_test_socket.bind((host, port))
+                port_test_socket.close()
+            except socket.error as e:
+                if e.errno in {48, 98}:  # address already in use.
+                    raise ValueError(
+                        f"Failed to bind to {host}:{port} because it's "
+                        "already occupied. You can use `ray start "
+                        "--dashboard-port ...` or `ray.init(dashboard_port=..."
+                        ")` to select a different port.")
+                else:
+                    raise e
+
+        # Make sure the process can start.
+        try:
+            import aiohttp  # noqa: F401
+            import grpc  # noqa: F401
+        except ImportError:
+            warning_message = (
+                "Missing dependencies for dashboard. Please run "
+                "pip install aiohttp grpcio'.")
+            raise ImportError(warning_message)
+
+        # Start the dashboard process.
+        dashboard_dir = "new_dashboard"
+        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
+                                          "dashboard.py")
+        command = [
+            sys.executable, "-u", dashboard_filepath, f"--host={host}",
+            f"--port={port}", f"--port-retries={port_retries}",
+            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
+            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}"
+        ]
+        if redis_password:
+            command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1224,9 +1222,9 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
+        # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
-
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
@@ -1259,8 +1257,9 @@ def start_dashboard(require_dashboard,
                             lines.append(mm[sep + 1:end].decode("utf-8"))
                             end = sep
                 lines.append(f" The last {n} lines of {dashboard_log}:")
-            except Exception:
-                pass
+            except Exception as e:
+                raise Exception(f"Failed to read dashbord log: {e}")
+
             last_log_str = "\n".join(reversed(lines[-n:]))
             raise Exception("Failed to start the dashboard"
                             f"{returncode_str}.{last_log_str}")
@@ -1270,8 +1269,12 @@ def start_dashboard(require_dashboard,
                     colorama.Fore.RESET, colorama.Style.NORMAL)
 
         return dashboard_url, process_info
-    else:
-        return None, None
+    except Exception as e:
+        if require_dashboard:
+            raise e from e
+        else:
+            logger.error(f"Failed to start the dashboard: {e}")
+            return None, None
 
 
 def start_gcs_server(redis_address,
