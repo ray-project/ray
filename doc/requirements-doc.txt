@@ -4,6 +4,7 @@ colorful
 filelock
 flask
 flatbuffers
+fastapi
 jsonschema
 mock
 numpy

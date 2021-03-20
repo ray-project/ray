@@ -6,11 +6,10 @@ import inspect
 import os
 from uuid import UUID
 import threading
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+from typing import (Any, Callable, Coroutine, Dict, List, Optional,
+                    TYPE_CHECKING, Type, Union)
 from dataclasses import dataclass
 from warnings import warn
-
-from fastapi import FastAPI, APIRouter
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -25,6 +24,9 @@ from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
                               HTTPOptions)
 from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI, APIRouter  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_async_loop = None
@@ -1021,7 +1023,7 @@ def accept_batch(f: Callable) -> Callable:
 
 
 def ingress(
-        app: Union[FastAPI, APIRouter, None] = None,
+        app: Union["FastAPI", "APIRouter", None] = None,
         path_prefix: Optional[str] = None,
 ):
     """Mark a FastAPI application ingress for Serve.
