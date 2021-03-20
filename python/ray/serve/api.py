@@ -1,11 +1,13 @@
 import asyncio
 import atexit
+import inspect
 import os
 import threading
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
+                    Optional, Type, Union)
 from uuid import UUID
 from warnings import warn
 
@@ -21,9 +23,12 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger)
+                             logger, register_custom_serializers)
 
 import ray
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_async_loop = None
@@ -467,7 +472,10 @@ class Client:
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+            is_blocking=replica_config.is_blocking,
+            is_asgi_app=replica_config.is_asgi_app,
+            path_prefix=replica_config.path_prefix,
+        )
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -660,6 +668,8 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
+    register_custom_serializers()
+
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
@@ -725,6 +735,8 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
+
+    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -1015,3 +1027,38 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
+
+
+def ingress(
+        app: Union["FastAPI", "APIRouter", None] = None,
+        path_prefix: Optional[str] = None,
+):
+    """Mark a FastAPI application ingress for Serve.
+
+    Args:
+        app(FastAPI,APIRouter,None): the app or router object serve as ingress
+            for this backend.
+        path_prefix(str,None): The path prefix for the ingress. For example,
+            `/api`. Serve uses the deployment name as path_prefix by default.
+
+    Example:
+    >>> app = FastAPI()
+    >>> @serve.deployment
+        @serve.ingress(app)
+        class App:
+            pass
+    >>> App.deploy()
+    """
+
+    def decorator(cls):
+        if not inspect.isclass(cls):
+            raise ValueError("@serve.ingress must be used with a class.")
+
+        if app is not None:
+            cls._serve_asgi_app = app
+        if path_prefix is not None:
+            cls._serve_path_prefix = path_prefix
+
+        return cls
+
+    return decorator
