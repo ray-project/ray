@@ -314,60 +314,54 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
 }
 
 void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
+  // The object is already local; abort.
   if (object_is_local_(object_id)) {
     return;
   }
+
+  // The object is no longer needed; abort.
   if (active_object_pull_requests_.count(object_id) == 0) {
     return;
   }
+
+  // The object waiting for local restore or pull retry; abort.
   auto it = object_pull_requests_.find(object_id);
   RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
-  if (request.next_pull_time > get_time_()) {
+  if (request.pending_restore || request.next_pull_time > get_time_()) {
     return;
   }
 
-  // We always pull objects from a remote node before
-  // restoring it because of two reasons.
-  // 1. This will help reducing the load of external storages
-  //    or remote node that spilled the object.
-  // 2. Also, if we use multi-node file spilling, the restoration will be
-  //    confirmed by a object location subscription, so we should pull first
-  //    before requesting for object restoration.
-  bool did_pull = PullFromRandomLocation(object_id);
-  if (did_pull) {
-    // New object locations were found, so begin trying to pull from a
-    // client.
+  // If we can restore directly from this raylet, then invoke the restore callback
+  // and mark the pull request as pending restore.
+  bool can_restore_directly =
+      request.spilled_url.empty() &&
+      (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
+  if (can_restore_directly) {
     UpdateRetryTimer(request);
-    return;
-  }
-
-  // If we cannot pull, it means all objects have been evicted, so try restoring objects
-  // from the external storage. If the object was spilled on the current node, the
-  // callback will restore the object from the local the disk.
-  // Otherwise, it will send a request to a remote node that spilled the object.
-  // If external storage is a distributed storage, we always try restoring from it without
-  // sending RPCs.
-  if (!request.spilled_url.empty()) {
-    const auto spilled_node_id = request.spilled_node_id;
+    request.pending_restore = true;
     restore_spilled_object_(
-        object_id, request.spilled_url, spilled_node_id,
+        object_id, request.spilled_url,
         [this, object_id, spilled_node_id](const ray::Status &status) {
-          if (!status.ok()) {
-            const auto node_id_with_issue =
-                spilled_node_id.IsNil() ? self_node_id_ : spilled_node_id;
-            RAY_LOG(WARNING)
-                << "Object restoration failed and the object could "
-                   "not be "
-                   "found on any other nodes. This can happen if the location where the "
-                   "object was spilled is unreachable. This job may hang if the object "
-                   "is permanently unreachable. "
-                   "Please check the log of node of id: "
-                << node_id_with_issue << " Object id: " << object_id;
+          // TODO(ekl) why do we need a mutex at all here?
+          // absl::MutexLock lock(&active_objects_mu_);
+          auto it = object_pull_requests_.find(object_id);
+          if (it != object_pull_requests_.end()) {
+            auto &request = it->second;
+            request.pending_restore = false;
+            if (!status.ok()) {
+              RAY_LOG(ERROR) << "Object restore for " << object_id
+                             << " failed, retrying: " << status;
+            }
           }
         });
-    // We shouldn't update the timer here because restoration takes some time, and since
-    // we retry pull requests with exponential backoff, the delay could be large.
+  }
+
+  // Fall back to pulling from a remote node. If the object is spilled on the local
+  // disk of the remote node, it will be restored by PushManager prior to pushing.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    UpdateRetryTimer(request);
   }
 }
 
@@ -378,9 +372,16 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   }
 
   auto &node_vector = it->second.client_locations;
+  auto &spilled_node_id = it->second.spilled_node_id
 
-  // The timer should never fire if there are no expected client locations.
-  if (node_vector.empty()) {
+                          if (node_vector.empty()) {
+    // Pull from remote node, it will be restored prior to push.
+    if (!spilled_node_id.empty()) {
+      RAY_CHECK(spilled_node_id != self_node_id_);
+      send_pull_request_(object_id, spilled_node_id);
+      return true;
+    }
+    // The timer should never fire if there are no expected client locations.
     return false;
   }
 
