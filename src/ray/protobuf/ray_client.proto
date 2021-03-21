@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 enum Type { DEFAULT = 0; }
 
 // An argument to a ClientTask.
@@ -229,6 +231,22 @@ message KVListResponse {
   repeated bytes keys = 1;
 }
 
+message UpdateRuntimeEnvRequest {
+  RuntimeEnv runtime_env = 1;
+}
+
+message UpdateRuntimeEnvReply {
+  RuntimeEnv missing = 1;
+}
+
+message DriverReadyRequest {
+}
+
+message DriverReadyReply {
+  bool is_ready = 1;
+  string message = 2;
+}
+
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -249,6 +267,10 @@ service RayletDriver {
   rpc KVDel(KVDelRequest) returns (KVDelResponse) {
   }
   rpc KVList(KVListRequest) returns (KVListResponse) {
+  }
+  rpc UpdateRuntimeEnv(UpdateRuntimeEnvRequest) returns (UpdateRuntimeEnvReply) {
+  }
+  rpc DriverReady(DriverReadyRequest) returns (DriverReadyReply) {
   }
 }
 
