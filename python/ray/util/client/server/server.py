@@ -19,7 +19,8 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
+from ray.util.client.common import (GRPC_MAX_MESSAGE_SIZE,
+                                    CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
@@ -459,7 +460,7 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10),
+        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=[
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
             ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),

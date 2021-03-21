@@ -94,6 +94,7 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
+import ray._private.util_worker_handlers as util_worker_handlers
 from ray import external_storage
 from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
@@ -600,6 +601,8 @@ cdef CRayStatus task_execution_handler(
                 if isinstance(e, RayActorError) and \
                    e.has_creation_task_error():
                     traceback_str = str(e)
+                    logger.error("Exception raised "
+                                 f"in creation task: {traceback_str}")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.
                     # See https://github.com/cython/cython/issues/1863
@@ -658,6 +661,14 @@ cdef void gc_collect() nogil:
             logger.debug(
                 "gc.collect() freed {} refs in {} seconds".format(
                     num_freed, end - start))
+
+
+cdef void run_on_util_worker_handler(
+        c_string req,
+        c_vector[c_string] args) nogil:
+    with gil:
+        util_worker_handlers.dispatch(
+            req.decode(), [arg.decode() for arg in args])
 
 
 cdef c_vector[c_string] spill_objects_handler(
@@ -880,6 +891,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.run_on_util_worker_handler = run_on_util_worker_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
