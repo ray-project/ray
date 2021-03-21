@@ -71,11 +71,6 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        # NOTE(simon): Currently we do all-to-all broadcast. This means
-        # any listeners will receive notification for all changes. This
-        # can be problem at scale, e.g. updating a single backend config
-        # will send over the entire configs. In the future, we should
-        # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
         self.goal_manager = AsyncGoalManager()
@@ -257,6 +252,30 @@ class ServeController:
                      replica_config: ReplicaConfig,
                      version: Optional[str]) -> Optional[GoalId]:
         """TODO."""
+
+        # By default the path prefix is the deployment name.
+        if replica_config.path_prefix is None:
+            replica_config.path_prefix = f"/{name}"
+            # Backend config should be synchronized so the backend worker
+            # is aware of it.
+            backend_config.internal_metadata.path_prefix = f"/{name}"
+
+        if replica_config.is_asgi_app:
+            # When the backend is asgi application, we want to proxy it
+            # with a prefixed path as well as proxy all HTTP methods.
+            # {wildcard:path} is used so HTTPProxy's Starlette router can match
+            # arbitrary path.
+            route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+            methods = [
+                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
+                "TRACE", "PATCH"
+            ]
+        else:
+            route = replica_config.path_prefix
+            # Generic endpoint should support a limited subset of HTTP methods.
+            methods = ["GET", "POST"]
+
         async with self.write_lock:
             if version is None:
                 version = RESERVED_VERSION_TAG
@@ -270,10 +289,12 @@ class ServeController:
                         "cannot be used by applications.")
             goal_id = self.backend_state.deploy_backend(
                 name, backend_config, replica_config, version)
-
-            self.endpoint_state.create_endpoint(name, f"/{name}",
-                                                ["GET", "POST"],
-                                                TrafficPolicy({
-                                                    name: 1.0
-                                                }))
+            self.endpoint_state.create_endpoint(
+                name,
+                route,
+                methods,
+                TrafficPolicy({
+                    name: 1.0
+                }),
+            )
             return goal_id
