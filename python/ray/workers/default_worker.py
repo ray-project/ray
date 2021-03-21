@@ -134,6 +134,8 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
+    elif args.worker_type == "UTIL_WORKER":
+        mode = ray.UTIL_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
