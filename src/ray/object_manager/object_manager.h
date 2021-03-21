@@ -108,9 +108,8 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback =
-      std::function<void(const ObjectID &, const std::string &,
-                         std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback = std::function<void(
+      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -212,12 +211,15 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(instrumented_io_context &main_service,
-                         const NodeID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback = nullptr,
-                         std::function<void()> object_store_full_callback = nullptr);
+  explicit ObjectManager(
+      instrumented_io_context &main_service, const NodeID &self_node_id,
+      const ObjectManagerConfig &config,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<std::string(const ObjectID &)> get_spilled_object_url,
+      std::function<void(const ObjectID &, const std::string &)> restore_object,
+      SpillObjectsCallback spill_objects_callback = nullptr,
+      std::function<void()> object_store_full_callback = nullptr);
 
   ~ObjectManager();
 
@@ -484,9 +486,11 @@ class ObjectManager : public ObjectManagerInterface,
       remote_object_manager_clients_;
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
+  std::function<std::string(const ObjectID &)> get_spilled_object_url_,
+      std::function<void(const ObjectID &, const std::string &)> restore_object_,
 
-  /// Pull manager retry timer .
-  boost::asio::deadline_timer pull_retry_timer_;
+      /// Pull manager retry timer .
+      boost::asio::deadline_timer pull_retry_timer_;
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;

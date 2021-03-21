@@ -366,7 +366,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
-    if (!spilled_node_id.empty()) {
+    if (!spilled_node_id.IsNil()) {
       RAY_CHECK(spilled_node_id != self_node_id_);
       send_pull_request_(object_id, spilled_node_id);
       return true;

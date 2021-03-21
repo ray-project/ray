@@ -87,6 +87,13 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
             node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
                 object_id, object_url, node_id, callback);
           },
+          [this](const ObjectID &object_id) {
+            return node_manager_.GetLocalObjectManager().GetSpilledObjectURL(object_id);
+          },
+          [this](const std::string &object_url) {
+            return node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
+                object_id, object_url, nullptr);
+          },
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.

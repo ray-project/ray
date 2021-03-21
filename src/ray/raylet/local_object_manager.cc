@@ -343,27 +343,20 @@ void LocalObjectManager::AddSpilledUrls(
   }
 }
 
+std::string LocalObjectManager::GetSpilledObjectURL(const ObjectID &object_id) {
+  auto entry = spilled_objects_url_.find(object_id);
+  if (entry != spilled_objects_url_.end()) {
+    return entry->second;
+  } else {
+    return "";
+  }
+}
+
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
-    return;
-  }
-
-  // Restore the object.
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
-  if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
-    RAY_CHECK(!node_id.IsNil());
-    RAY_LOG(DEBUG)
-        << "Restoration request was ignored because the node didn't spill the object "
-        << object_id << " yet. It will be retried...";
-    // If the object wasn't spilled yet on this node, just return. The caller should retry
-    // in this case.
-    if (callback) {
-      callback(Status::OK());
-    }
     return;
   }
 
