@@ -1,27 +1,34 @@
 import asyncio
 import atexit
-import time
-from functools import wraps
+import inspect
 import os
-from uuid import UUID
 import threading
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+import time
 from dataclasses import dataclass
+from functools import wraps
+from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
+                    Optional, Type, Union)
+from uuid import UUID
 from warnings import warn
 
-import ray
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController, BackendTag, ReplicaTag
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_random_letters, logger,
-                             get_current_node_resource_key)
-from ray.serve.exceptions import RayServeException
-from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
-                              HTTPOptions)
-from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
+from ray.serve.common import EndpointTag
+from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
+                              ReplicaConfig)
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.router import RequestMetadata, Router
+from ray.serve.utils import (block_until_http_ready, format_actor_name,
+                             get_current_node_resource_key, get_random_letters,
+                             logger, register_custom_serializers)
+
+import ray
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_async_loop = None
@@ -83,20 +90,21 @@ def _ensure_connected(f: Callable) -> Callable:
 
 
 class ThreadProxiedRouter:
-    def __init__(self, controller_handle, sync: bool):
+    def __init__(self, controller_handle, sync: bool,
+                 endpoint_tag: EndpointTag):
         self.controller_handle = controller_handle
         self.sync = sync
-        self.router = Router(controller_handle)
-
+        self.endpoint_tag = endpoint_tag
         if sync:
-            self.async_loop = create_or_get_async_loop_in_thread()
-            asyncio.run_coroutine_threadsafe(
-                self.router.setup_in_async_loop(),
-                self.async_loop,
-            )
+            self._async_loop = create_or_get_async_loop_in_thread()
         else:
-            self.async_loop = asyncio.get_event_loop()
-            self.async_loop.create_task(self.router.setup_in_async_loop())
+            self._async_loop = asyncio.get_event_loop()
+        self.router = Router(controller_handle, endpoint_tag, self._async_loop)
+
+    @property
+    def async_loop(self):
+        # called by handles
+        return self._async_loop
 
     def _remote(self, endpoint_name, handle_options, request_data,
                 kwargs) -> Coroutine:
@@ -114,7 +122,11 @@ class ThreadProxiedRouter:
 
     def __reduce__(self):
         deserializer = ThreadProxiedRouter
-        serialized_data = (self.controller_handle, self.sync)
+        serialized_data = (
+            self.controller_handle,
+            self.sync,
+            self.endpoint_tag,
+        )
         return deserializer, serialized_data
 
 
@@ -129,8 +141,9 @@ class Client:
         self._shutdown = False
         self._http_config = ray.get(controller.get_http_config.remote())
 
-        self._sync_proxied_router = None
-        self._async_proxied_router = None
+        # TODO(simon): remove this when dropping router object and making
+        # ServeHandle sync only.
+        self._cached_routers = dict()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -142,17 +155,15 @@ class Client:
 
             atexit.register(shutdown_serve_client)
 
-    def _get_proxied_router(self, sync: bool):
-        if sync:
-            if self._sync_proxied_router is None:
-                self._sync_proxied_router = ThreadProxiedRouter(
-                    self._controller, sync=True)
-            return self._sync_proxied_router
-        else:
-            if self._async_proxied_router is None:
-                self._async_proxied_router = ThreadProxiedRouter(
-                    self._controller, sync=False)
-            return self._async_proxied_router
+    def _get_proxied_router(self, sync: bool, endpoint: EndpointTag):
+        key = (sync, endpoint)
+        if key not in self._cached_routers:
+            self._cached_routers[key] = ThreadProxiedRouter(
+                self._controller,
+                sync,
+                endpoint,
+            )
+        return self._cached_routers[key]
 
     def __del__(self):
         if not self._detached:
@@ -461,7 +472,10 @@ class Client:
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
             accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+            is_blocking=replica_config.is_blocking,
+            is_asgi_app=replica_config.is_asgi_app,
+            path_prefix=replica_config.path_prefix,
+        )
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -585,12 +599,13 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/advanced.html#sync-and-async-handles")
 
+        # NOTE(simon): this extra layer of router seems unnecessary
+        # BUT it's needed still because of the shared asyncio thread.
+        router = self._get_proxied_router(sync=sync, endpoint=endpoint_name)
         if sync:
-            handle = RayServeSyncHandle(
-                self._get_proxied_router(sync=sync), endpoint_name)
+            handle = RayServeSyncHandle(router, endpoint_name)
         else:
-            handle = RayServeHandle(
-                self._get_proxied_router(sync=sync), endpoint_name)
+            handle = RayServeHandle(router, endpoint_name)
         return handle
 
 
@@ -652,6 +667,8 @@ def start(
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
+
+    register_custom_serializers()
 
     # Try to get serve controller if it exists
     if detached:
@@ -718,6 +735,8 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
+
+    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -1008,3 +1027,38 @@ def accept_batch(f: Callable) -> Callable:
     """
     f._serve_accept_batch = True
     return f
+
+
+def ingress(
+        app: Union["FastAPI", "APIRouter", None] = None,
+        path_prefix: Optional[str] = None,
+):
+    """Mark a FastAPI application ingress for Serve.
+
+    Args:
+        app(FastAPI,APIRouter,None): the app or router object serve as ingress
+            for this backend.
+        path_prefix(str,None): The path prefix for the ingress. For example,
+            `/api`. Serve uses the deployment name as path_prefix by default.
+
+    Example:
+    >>> app = FastAPI()
+    >>> @serve.deployment
+        @serve.ingress(app)
+        class App:
+            pass
+    >>> App.deploy()
+    """
+
+    def decorator(cls):
+        if not inspect.isclass(cls):
+            raise ValueError("@serve.ingress must be used with a class.")
+
+        if app is not None:
+            cls._serve_asgi_app = app
+        if path_prefix is not None:
+            cls._serve_path_prefix = path_prefix
+
+        return cls
+
+    return decorator
