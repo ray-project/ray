@@ -77,9 +77,9 @@ from ray.state import (  # noqa: E402
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor,
-    get_gpu_ids, get_resource_ids, get_dashboard_url, init, is_initialized,
-    put, kill, remote, shutdown, show_in_dashboard, wait,
+    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
+    get_resource_ids, get_dashboard_url, init, is_initialized, put, kill,
+    remote, shutdown, show_in_dashboard, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
