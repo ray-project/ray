@@ -173,6 +173,9 @@ class LocalObjectManager {
                       const rpc::SpillObjectsReply &worker_reply,
                       std::function<void(const ray::Status &)> callback);
 
+  /// Return the spilled object URL or the empty string.
+  std::string GetSpilledObjectURL(const ObjectID &object_id);
+
   /// Delete spilled objects stored in given urls.
   ///
   /// \param urls_to_delete List of urls to delete from external storages.

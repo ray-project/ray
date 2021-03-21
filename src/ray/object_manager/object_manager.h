@@ -217,7 +217,6 @@ class ObjectManager : public ObjectManagerInterface,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
-      std::function<void(const ObjectID &, const std::string &)> restore_object,
       SpillObjectsCallback spill_objects_callback = nullptr,
       std::function<void()> object_store_full_callback = nullptr);
 
@@ -485,12 +484,14 @@ class ObjectManager : public ObjectManagerInterface,
   std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 
+  /// Callback to trigger direct restoration of an object.
   const RestoreSpilledObjectCallback restore_spilled_object_;
-  std::function<std::string(const ObjectID &)> get_spilled_object_url_,
-      std::function<void(const ObjectID &, const std::string &)> restore_object_,
 
-      /// Pull manager retry timer .
-      boost::asio::deadline_timer pull_retry_timer_;
+  /// Callback to get the URL of a locally spilled object.
+  std::function<std::string(const ObjectID &)> get_spilled_object_url_;
+
+  /// Pull manager retry timer .
+  boost::asio::deadline_timer pull_retry_timer_;
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;

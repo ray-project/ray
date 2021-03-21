@@ -57,7 +57,6 @@ ObjectManager::ObjectManager(
     std::shared_ptr<ObjectDirectoryInterface> object_directory,
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
-    std::function<void(const ObjectID &, const std::string &)> restore_object,
     SpillObjectsCallback spill_objects_callback,
     std::function<void()> object_store_full_callback)
     : main_service_(&main_service),
@@ -73,7 +72,6 @@ ObjectManager::ObjectManager(
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(get_spilled_object_url),
-      restore_object_(restore_object),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -349,7 +347,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     // if the local filesystem storage type is being used.
     auto object_url = get_spilled_object_url_(object_id);
     if (!object_url.empty()) {
-      restore_object_(object_id, object_url);
+      restore_spilled_object_(object_id, object_url, nullptr);
     }
     if (nodes.count(node_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
