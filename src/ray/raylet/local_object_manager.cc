@@ -344,26 +344,10 @@ void LocalObjectManager::AddSpilledUrls(
 }
 
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
+    const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
-    return;
-  }
-
-  if (is_external_storage_type_fs_ && node_id != self_node_id_) {
-    RAY_CHECK(!node_id.IsNil());
-    // If we know where this object was spilled, and the current node is not that one,
-    // send a RPC to a remote node that spilled the object to restore it.
-    RAY_LOG(DEBUG) << "Send an object restoration request of id: " << object_id
-                   << " to a remote node: " << node_id;
-    // TODO(sang): We need to deduplicate this remote RPC. Since restore request
-    // is retried every 10ms without exponential backoff, this can add huge overhead to
-    // a remote node that spilled the object.
-    restore_object_from_remote_node_(object_id, object_url, node_id);
-    if (callback) {
-      callback(Status::OK());
-    }
     return;
   }
 

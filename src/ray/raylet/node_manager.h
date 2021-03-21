@@ -579,11 +579,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;
 
-  /// Send a object restoration request to a remote node of a given node id.
-  void SendSpilledObjectRestorationRequestToRemoteNode(const ObjectID &object_id,
-                                                       const std::string &spilled_url,
-                                                       const NodeID &node_id);
-
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///

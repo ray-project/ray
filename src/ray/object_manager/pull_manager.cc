@@ -324,37 +324,27 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // The object waiting for local restore or pull retry; abort.
+  // The object waiting for local pull retry; abort.
   auto it = object_pull_requests_.find(object_id);
   RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
-  if (request.pending_restore || request.next_pull_time > get_time_()) {
+  if (request.next_pull_time > get_time_()) {
     return;
   }
 
-  // If we can restore directly from this raylet, then invoke the restore callback
-  // and mark the pull request as pending restore.
+  // If we can restore directly from this raylet, then prefer to do so.
   bool can_restore_directly =
       request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
     UpdateRetryTimer(request);
-    request.pending_restore = true;
-    restore_spilled_object_(
-        object_id, request.spilled_url,
-        [this, object_id, spilled_node_id](const ray::Status &status) {
-          // TODO(ekl) why do we need a mutex at all here?
-          // absl::MutexLock lock(&active_objects_mu_);
-          auto it = object_pull_requests_.find(object_id);
-          if (it != object_pull_requests_.end()) {
-            auto &request = it->second;
-            request.pending_restore = false;
-            if (!status.ok()) {
-              RAY_LOG(ERROR) << "Object restore for " << object_id
-                             << " failed, retrying: " << status;
-            }
-          }
-        });
+    restore_spilled_object_(object_id, request.spilled_url,
+                            [this, object_id](const ray::Status &status) {
+                              if (!status.ok()) {
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                               << " failed, will retry later: " << status;
+                              }
+                            });
   }
 
   // Fall back to pulling from a remote node. If the object is spilled on the local

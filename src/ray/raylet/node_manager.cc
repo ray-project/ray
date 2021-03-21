@@ -2288,30 +2288,6 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
   }
 }
 
-void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
-    const ObjectID &object_id, const std::string &spilled_url, const NodeID &node_id) {
-  // Fetch from a remote node.
-  if (!remote_node_manager_addresses_.contains(node_id)) {
-    // It is possible the new node information is not received at this point.
-    // In this case, the PullManager will handle retry, so we just return.
-    return;
-  }
-  const auto &entry = remote_node_manager_addresses_.find(node_id);
-  // TODO(sang): Use a node manager pool instead.
-  auto raylet_client =
-      std::make_shared<ray::raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
-          entry->second.first, entry->second.second, client_call_manager_));
-  raylet_client->RestoreSpilledObject(
-      object_id, spilled_url, node_id,
-      [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
-                              "remote node. This request will be retried. Error message: "
-                           << status.ToString();
-        }
-      });
-}
-
 }  // namespace raylet
 
 }  // namespace ray
