@@ -101,7 +101,6 @@ class Monitor:
         (ip, port) = redis_address.split(":")
         gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
-
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \

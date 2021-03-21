@@ -1560,8 +1560,7 @@ Status ServiceBasedKVAccessor::AsyncPut(const std::string &key, const std::strin
   req.set_value(value);
   req.set_overwrite(overwrite);
   client_impl_->GetGcsRpcClient().Put(
-      req,
-      [callback](const Status &status, const rpc::PutReply &reply) {
+      req, [callback](const Status &status, const rpc::PutReply &reply) {
         callback(status, reply.added_num());
       });
   return Status::OK();

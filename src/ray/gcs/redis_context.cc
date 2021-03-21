@@ -87,7 +87,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   case REDIS_REPLY_ARRAY: {
-    if(redis_reply->elements == 0) {
+    if (redis_reply->elements == 0) {
       break;
     }
     redisReply *message_type = redis_reply->element[0];

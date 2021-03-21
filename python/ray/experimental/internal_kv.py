@@ -2,8 +2,7 @@ import ray
 from typing import List, Union
 
 from ray._private.client_mode_hook import client_mode_hook
-from collections import namedtuple
-from ray._raylet import connect_to_gcs, GcsClient
+
 
 @client_mode_hook
 def _internal_kv_initialized(target=None):

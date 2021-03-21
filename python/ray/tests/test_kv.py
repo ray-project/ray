@@ -1,8 +1,6 @@
 import ray
 from ray import ray_constants
 from ray._raylet import connect_to_gcs
-import importlib
-from ray.experimental import internal_kv
 
 
 def run_kv_test(gcs_client):

@@ -477,8 +477,7 @@ class ServiceBasedKVAccessor : public KVAccessor {
       const OptionalItemCallback<std::vector<std::string>> &callback) override;
   Status AsyncGet(const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;
-  Status AsyncPut(const std::string &key, const std::string &value,
-                  bool overwrite,
+  Status AsyncPut(const std::string &key, const std::string &value, bool overwrite,
                   const OptionalItemCallback<int> &callback) override;
   Status AsyncExists(const std::string &key,
                      const OptionalItemCallback<bool> &callback) override;

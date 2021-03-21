@@ -46,7 +46,6 @@ cdef class GcsClient:
             raise IOError("Put failed: {}".format(status.ToString()))
         return added
 
-
     def kv_del(self, c_string key):
         status = self.inner_.get().KV().Del(key)
         if not status.ok():

@@ -5,14 +5,10 @@ namespace gcs {
 
 void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {
-    "HGET",
-    request.key(),
-    "value"
-  };
+  std::vector<std::string> cmd = {"HGET", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
-        if(!redis_reply->IsNil()) {
+        if (!redis_reply->IsNil()) {
           reply->set_value(redis_reply->ReadAsString());
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -21,12 +17,8 @@ void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *repl
 
 void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {
-    request.overwrite() ? "HSET" : "HSETNX",
-    request.key(),
-    "value",
-    request.value()
-  };
+  std::vector<std::string> cmd = {request.overwrite() ? "HSET" : "HSETNX", request.key(),
+                                  "value", request.value()};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         reply->set_added_num(redis_reply->ReadAsInteger());
@@ -36,11 +28,7 @@ void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *repl
 
 void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {
-    "HDEL",
-    request.key(),
-    "value"
-  };
+  std::vector<std::string> cmd = {"HDEL", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         reply->set_deleted_num(redis_reply->ReadAsInteger());
@@ -51,11 +39,7 @@ void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *repl
 void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
                                 rpc::ExistsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {
-    "HEXISTS",
-    request.key(),
-    "value"
-  };
+  std::vector<std::string> cmd = {"HEXISTS", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         bool exists = redis_reply->ReadAsInteger() > 0;
@@ -66,14 +50,11 @@ void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
 
 void GcsKVManager::HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {
-    "KEYS",
-    request.prefix() + "*"
-  };
+  std::vector<std::string> cmd = {"KEYS", request.prefix() + "*"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
-        const auto& results = redis_reply->ReadAsStringArray();
-        for(const auto& result : results) {
+        const auto &results = redis_reply->ReadAsStringArray();
+        for (const auto &result : results) {
           reply->add_results(result);
         }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
