@@ -183,7 +183,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
-        - ./ci/keep_alive brew remove --force java & brew uninstall --force java & brew uninstall --cask --force java
+        - ./ci/keep_alive brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
         - ./ci/keep_alive brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
