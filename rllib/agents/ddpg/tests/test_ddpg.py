@@ -45,6 +45,13 @@ class TestDDPG(unittest.TestCase):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
+            # Ensure apply_gradient_fn is being called and updating global_step
+            if config["framework"] == "tf":
+                a = trainer.get_policy().global_step.eval(
+                    trainer.get_policy().get_session())
+            else:
+                a = trainer.get_policy().global_step
+            check(a, 500)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
