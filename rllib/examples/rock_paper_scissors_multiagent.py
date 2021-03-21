@@ -105,13 +105,9 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     trainer_obj = cls(config=config)
     for _ in range(args.stop_iters):
         results = trainer_obj.train()
-        # print(results)
         # Timesteps reached.
-        if "policy_learned_reward" in results["hist_stats"]:
-            # player_0_rewards = player_0_num_wins - player_1_num_wins
-            reward_diff = sum(results["hist_stats"]["policy_learned_reward"])
-        else:
-            reward_diff = 0
+        reward_diff = sum(results["hist_stats"]["policy_always_same_reward"])
+        reward_diff += sum(results["hist_stats"]["policy_beat_last_reward"])
         if results["timesteps_total"] > args.stop_timesteps:
             break
         # Reward (difference) reached -> all good, return.
