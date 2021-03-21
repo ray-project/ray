@@ -44,7 +44,7 @@ cdef extern from * namespace "_gcs_maker":
               thread_([this](){
                   io_context_.run();
               }) {
-           Connect(io_context_);
+           RAY_CHECK(Connect(io_context_).ok());
         }
         ~RayletGcsClient() {
           io_context_.stop();
