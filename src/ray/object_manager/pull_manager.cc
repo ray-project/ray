@@ -362,9 +362,9 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   }
 
   auto &node_vector = it->second.client_locations;
-  auto &spilled_node_id = it->second.spilled_node_id
+  auto &spilled_node_id = it->second.spilled_node_id;
 
-                          if (node_vector.empty()) {
+  if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.empty()) {
       RAY_CHECK(spilled_node_id != self_node_id_);
