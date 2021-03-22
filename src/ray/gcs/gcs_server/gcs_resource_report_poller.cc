@@ -39,7 +39,7 @@ void GcsResourceReportPoller::Start() {
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
-  ticker_.RunFnPeriodically([this] { Tick(); }, 100);
+  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
 }
 
 void GcsResourceReportPoller::Stop() {
@@ -53,9 +53,7 @@ void GcsResourceReportPoller::Stop() {
   }
 }
 
-void GcsResourceReportPoller::HandleNodeAdded(
-    const rpc::GcsNodeInfo &node_info) {
-  RAY_LOG(ERROR) << "Entered report poller node added handler";
+void GcsResourceReportPoller::HandleNodeAdded(const rpc::GcsNodeInfo &node_info) {
   absl::MutexLock guard(&mutex_);
 
   rpc::Address address;
@@ -73,24 +71,21 @@ void GcsResourceReportPoller::HandleNodeAdded(
 
   nodes_[node_id] = state;
   to_pull_queue_.push_front(state);
-  RAY_LOG(ERROR) << "Node was added with id: " << node_id;
+  RAY_LOG(DEBUG) << "Node was added with id: " << node_id;
 
   polling_service_.post([this]() { TryPullResourceReport(); });
 }
 
-void GcsResourceReportPoller::HandleNodeRemoved(
-    const rpc::GcsNodeInfo &node_info) {
+void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   {
     absl::MutexLock guard(&mutex_);
     nodes_.erase(node_id);
     RAY_CHECK(!nodes_.count(node_id));
   }
-  RAY_LOG(ERROR) << "Node removed (node_id: " << node_id
+  RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
                  << ")# of remaining nodes: " << nodes_.size();
 }
-
-void GcsResourceReportPoller::Tick() { TryPullResourceReport(); }
 
 void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
@@ -101,7 +96,6 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
     auto to_pull = to_pull_queue_.front();
     if (cur_time < to_pull->next_pull_time) {
-      RAY_LOG(ERROR) << "Skipping, not time yet";
       break;
     }
 
@@ -118,7 +112,6 @@ void GcsResourceReportPoller::TryPullResourceReport() {
 }
 
 void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
-  RAY_LOG(ERROR) << "Pulling report for " << state->node_id;
   inflight_pulls_++;
 
   request_report_(

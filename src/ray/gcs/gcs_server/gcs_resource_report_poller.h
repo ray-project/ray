@@ -63,12 +63,10 @@ class GcsResourceReportPoller {
   void Stop();
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
-      LOCKS_EXCLUDED(mutex_);
+  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info)
-      LOCKS_EXCLUDED(mutex_);
+  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
  private:
   // An asio service which does the polling work.
@@ -128,7 +126,6 @@ class GcsResourceReportPoller {
   // queue should be sorted by time. The front should contain the first item to pull.
   std::deque<std::shared_ptr<PullState>> to_pull_queue_ GUARDED_BY(mutex_);
 
-  void Tick();
   /// Try to pull from the node. We may not be able to if it violates max concurrent
   /// pulls. This method is thread safe.
   void TryPullResourceReport() LOCKS_EXCLUDED(mutex_);

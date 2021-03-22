@@ -291,7 +291,7 @@ void GcsServer::InitTaskInfoHandler() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
-  void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
+void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
         gcs_resource_manager_, raylet_client_pool_,
@@ -324,7 +324,7 @@ void GcsServer::InitGcsWorkerManager() {
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
-                                            RAY_LOG(ERROR) << "[GCS Server] Detected node added.";
+    RAY_LOG(ERROR) << "[GCS Server] Detected node added.";
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
     gcs_resource_manager_->OnNodeAdd(*node);
@@ -332,10 +332,7 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (config_.pull_based_resource_reporting) {
-      RAY_LOG(ERROR) << "poller node added handler active!";
       gcs_resource_report_poller_->HandleNodeAdded(*node);
-    } else {
-      RAY_LOG(ERROR) << "poller node added handler NOT active";
     }
   });
   gcs_node_manager_->AddNodeRemovedListener(

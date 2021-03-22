@@ -13,7 +13,7 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
@@ -1197,22 +1197,15 @@ def test_create_placement_group_after_gcs_server_restart(
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
-    print("1")
-
     # Restart gcs server.
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
-
-    time.sleep(0.5)
-    print("2")
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     ray.get(placement_group2.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
-
-    print("3")
 
     # Create placement group 3.
     # Status is `PENDING` because the cluster resource is insufficient.
