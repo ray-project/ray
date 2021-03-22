@@ -378,9 +378,13 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_FALSE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+  }
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
@@ -397,7 +401,6 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
     manager.AsyncRestoreSpilledObject(object_id, url, [&](const Status &status) {
-      RAY_LOG(ERROR) << "Callback fired!";
       ASSERT_TRUE(status.ok());
       num_times_fired++;
     });
