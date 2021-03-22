@@ -193,11 +193,16 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(self, result_object_id: ray.ObjectRef) -> bool:
+    def _wait_for_goal(self,
+                       result_object_id: ray.ObjectRef,
+                       timeout: Optional[float] = None) -> bool:
         goal_id: Optional[UUID] = ray.get(result_object_id)
-        if goal_id is not None:
-            ray.get(self._controller.wait_for_goal.remote(goal_id))
-            logger.debug(f"Goal {goal_id} completed.")
+        if goal_id is None:
+            return True
+
+        ready, _ = ray.wait(
+            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        return len(ready) == 1
 
     @_ensure_connected
     def create_endpoint(self,
@@ -436,7 +441,8 @@ class Client:
                *init_args: Any,
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-               version: Optional[str] = None) -> None:
+               version: Optional[str] = None,
+               _blocking: Optional[bool] = True) -> None:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -474,9 +480,13 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        self._wait_for_goal(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, version))
+        goal_ref = self._controller.deploy.remote(name, backend_config,
+                                                  replica_config, version)
+
+        if _blocking:
+            self._wait_for_goal(goal_ref)
+        else:
+            return goal_ref
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:

@@ -635,7 +635,7 @@ class BackendState:
     def _scale_backend_replicas(
             self,
             backend_tag: BackendTag,
-            num_replicas: int,
+            target_replicas: int,
             target_version: str,
     ) -> bool:
         """Scale the given backend to the number of replicas.
@@ -648,11 +648,11 @@ class BackendState:
         before writing a checkpoint.
         """
         logger.debug("Scaling backend '{}' to {} replicas".format(
-            backend_tag, num_replicas))
+            backend_tag, target_replicas))
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
-        assert num_replicas >= 0, ("Number of replicas must be"
-                                   " greater than or equal to 0.")
+        assert target_replicas >= 0, ("Number of replicas must be"
+                                      " greater than or equal to 0.")
 
         backend_info: BackendInfo = self._backend_metadata[backend_tag]
         graceful_shutdown_timeout_s = (
@@ -662,38 +662,46 @@ class BackendState:
         self._stop_wrong_version_replicas(backend_tag, target_version,
                                           graceful_shutdown_timeout_s)
 
-        current_num_replicas = self._replicas[backend_tag].count(states=[
+        current_replicas = self._replicas[backend_tag].count(states=[
             ReplicaState.SHOULD_START, ReplicaState.STARTING,
             ReplicaState.RUNNING
         ])
 
-        delta_num_replicas = num_replicas - current_num_replicas
-
-        if delta_num_replicas == 0:
+        delta_replicas = target_replicas - current_replicas
+        if delta_replicas == 0:
             return False
 
-        elif delta_num_replicas > 0:
-            logger.info(f"Adding {delta_num_replicas} replicas "
-                        f"to backend '{backend_tag}'.")
-            for _ in range(delta_num_replicas):
+        elif delta_replicas > 0:
+            # XXX: note about the logic here.
+            stopping_replicas = self._replicas[backend_tag].count(states=[
+                ReplicaState.SHOULD_STOP,
+                ReplicaState.STOPPING,
+            ])
+            to_add = delta_replicas - stopping_replicas
+            assert to_add >= 0
+            if to_add > 0:
+                logger.info(f"Adding {to_add} replicas "
+                            f"to backend '{backend_tag}'.")
+            for _ in range(to_add):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, target_version))
 
-        elif delta_num_replicas < 0:
-            logger.info(f"Removing {-delta_num_replicas} replicas "
+        elif delta_replicas < 0:
+            to_remove = -delta_replicas
+            logger.info(f"Removing {to_remove} replicas "
                         f"from backend '{backend_tag}'.")
-            assert self._target_replicas[backend_tag] >= delta_num_replicas
-
-            for _ in range(-delta_num_replicas):
+            for _ in range(to_remove):
                 replicas_to_stop = self._replicas[backend_tag].pop(
                     states=[
                         ReplicaState.SHOULD_START, ReplicaState.STARTING,
                         ReplicaState.RUNNING
                     ],
-                    max_replicas=-delta_num_replicas)
+                    max_replicas=to_remove)
+
+                assert len(replicas_to_stop) == to_remove
 
                 for replica in replicas_to_stop:
                     replica.set_should_stop(graceful_shutdown_timeout_s)
@@ -755,6 +763,7 @@ class BackendState:
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
+        start = time.time()
         self._scale_all_backends()
 
         for goal_id in self._completed_goals():
@@ -767,6 +776,7 @@ class BackendState:
                 replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
+                transition_triggered = True
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
@@ -778,11 +788,10 @@ class BackendState:
                     replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STOPPING]):
-                if replica.check_stopped():
-                    transition_triggered = True
-                else:
+                if not replica.check_stopped():
                     replicas.add(ReplicaState.STOPPING, replica)
 
         if transition_triggered:
             self._checkpoint()
             self._notify_replica_handles_changed()
+        logger.debug(f"Finished update loop in {1000*(time.time()-start)}ms.")
