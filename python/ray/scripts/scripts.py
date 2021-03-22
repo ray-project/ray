@@ -1384,8 +1384,8 @@ terminal width is less than 137 characters.")
     default=False,
     help="Display plasma store stats only.")
 @click.option(
-    '--num-entries',
-    '--n',
+    "--num-entries",
+    "--n",
     type=int,
     default=None,
     help="Specify number of sorted entries per group.")
