@@ -608,7 +608,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = {"_state": super().get_state()}
-            state["_optimizer_variables"] = self._optimizer.variables()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             return state
 
         @override(Policy)
