@@ -3,7 +3,7 @@ import logging
 import time
 
 import ray
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.test_utils import wait_for_condition
 
 logger = logging.getLogger(__name__)
