@@ -7,7 +7,7 @@ import pytest
 import subprocess
 
 import ray
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
 
@@ -219,7 +219,7 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
-    cluster = ray._private.cluster_utils.Cluster(
+    cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
