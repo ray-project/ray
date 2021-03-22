@@ -108,6 +108,9 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
     return;
   }
 
+  // TODO(fyrestone): We should set the driver exit state.
+  job_table_data->set_driver_exit_state(rpc::JobTableData::OK);
+
   RAY_CHECK_OK(UpdateJobStateToDead(
       job_table_data, [send_reply_callback, reply](const Status &status) {
         RAY_CHECK_OK(status);
@@ -187,11 +190,14 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   // We should fill in as much information as possible for dashboard
   // showing job info.
   auto job_table_data = std::make_shared<rpc::JobTableData>();
+  job_table_data->set_state(rpc::JobTableData::SUBMITTED);
   job_table_data->set_job_id(request.job_id());
   job_table_data->set_language(request.language());
+  // Set the job payload (the json submitted from dashboard).
   job_table_data->set_job_payload(request.job_payload());
+  // Mark the job is submitted, so we know it needs the job environment
+  // initialized before the job task is executed.
   job_table_data->set_is_submitted(true);
-  job_table_data->set_state(rpc::JobTableData::SUBMITTED);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
@@ -206,6 +212,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   auto maybe_node = gcs_node_manager_->GetAliveNode(driver_client_id);
   if (maybe_node.has_value()) {
     auto node = maybe_node.value();
+    // The hostname and ip address of the node are the same as the driver.
     job_table_data->set_driver_hostname(node->node_manager_hostname());
     job_table_data->set_driver_ip_address(node->node_manager_address());
   }

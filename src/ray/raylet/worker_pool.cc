@@ -146,6 +146,11 @@ Process WorkerPool::StartWorkerProcess(
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
+    if (finished_jobs_.contains(job_id)) {
+      RAY_LOG(DEBUG) << "Failed to start worker process as the job " << job_id
+                     << " has been finished.";
+      return Process();
+    }
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
@@ -394,9 +399,11 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
-  // Currently we don't erase the job from `all_jobs_` , as a workaround for
-  // https://github.com/ray-project/ray/issues/11437.
-  // unfinished_jobs_.erase(job_id);
+  finished_jobs_.emplace(job_id);
+}
+
+bool WorkerPool::IsJobRunning(const JobID &job_id) const {
+  return !finished_jobs_.contains(job_id) && all_jobs_.contains(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -421,6 +428,17 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+
+  // If the job is finished, we will remove the idle worker.
+  if (!IsIOWorkerType(worker->GetWorkerType()) &&
+      !IsJobRunning(worker->GetAssignedJobId())) {
+    state.starting_worker_processes.erase(process);
+    Status status =
+        Status::Invalid("The job is not running now. Reject all worker registrations.");
+    send_reply_callback(status, /*port=*/0);
+    return status;
+  }
+
   worker->SetProcess(process);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
@@ -482,6 +500,10 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
+  const auto job_id = driver->GetAssignedJobId();
+  if (finished_jobs_.contains(job_id)) {
+    return Status::Invalid("The job is not running now. Reject driver registration.");
+  }
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   Status status = GetNextFreePort(&port);
@@ -492,7 +514,6 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  const auto job_id = driver->GetAssignedJobId();
   all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
@@ -783,6 +804,14 @@ void WorkerPool::TryKillingIdleWorkers() {
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     const TaskSpecification &task_spec) {
+  auto job_id = task_spec.JobId();
+  RAY_CHECK(!job_id.IsNil());
+  if (finished_jobs_.contains(job_id)) {
+    RAY_LOG(DEBUG) << "Failed to pop worker as the job " << job_id
+                   << " has been finished.";
+    return nullptr;
+  }
+
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;

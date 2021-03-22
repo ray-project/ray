@@ -63,8 +63,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
+  /// The shared pointer of GcsNodeManager to select driver.
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
 
+  /// Map from job ID to the JobTableData.
   absl::flat_hash_map<JobID, std::shared_ptr<JobTableData>> jobs_;
 
   /// Map from driver node ID to the IDs of jobs associated with the driver.

@@ -1095,26 +1095,24 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     auto cb_register_driver = [this, send_reply_callback, job_table_data](
                                   Status status, int assigned_port) {
       if (!status.ok()) {
-        send_reply_callback(status, 0);
+        send_reply_callback(status, /*port=*/0);
         return;
       }
 
       // Register job to GCS.
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
           job_table_data, [send_reply_callback, assigned_port](const Status &status) {
-            if (!status.ok()) {
-              // TODO: Clean workers started by RegisterDriver.
-              send_reply_callback(status, 0);
-              return;
+            if (status.ok()) {
+              send_reply_callback(status, assigned_port);
+            } else {
+              send_reply_callback(status, /*port=*/0);
             }
-
-            send_reply_callback(status, assigned_port);
           }));
     };
 
     Status status = worker_pool_.RegisterDriver(worker, job_config, cb_register_driver);
     if (!status.ok()) {
-      send_reply_callback(status, 0);
+      send_reply_callback(status, /*port=*/0);
     }
   }
 }

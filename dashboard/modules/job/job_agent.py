@@ -39,38 +39,73 @@ class JobInfo:
         return self._log_dir
 
     def language(self):
+        """ The job driver language, we use this field to determine how to
+        start the driver. The value is one of the names of enum Language
+        defined in common.proto, e.g. PYTHON
+        """
         return self._job_info["language"]
 
     def supported_languages(self):
+        """ The languages are using by the job. We treat the job as
+        multi-languages by default. The value is a list of language names of
+        enum Language defined in common.proto.
+        """
         return self._job_info.get("supportedLanguages", ["PYTHON", "JAVA"])
 
     def url(self):
+        """ The url to download the job package archive. The archive format is
+        one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
+        https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
+        """
         return self._job_info["url"]
 
     def job_id(self):
+        """ The job id hex string.
+        """
         return self._job_id
 
     def driver_entry(self):
+        """ The entry to start the driver.
+        PYTHON:
+          - The basename of driver filename without extension in the job
+          package archive.
+        JAVA:
+          - The driver class full name in the job package archive.
+        """
         return self._job_info["driverEntry"]
 
     def driver_args(self):
-        driver_args = self._job_info["driverArgs"]
+        """ The driver arguments in list.
+        PYTHON:
+          -  The arguments to pass to the main() function in driver entry.
+          e.g. [1, False, 3.14, "abc"]
+        JAVA:
+          - The arguments to pass to the driver command line.
+          e.g. ["-custom-arg", "abc"]
+        """
+        driver_args = self._job_info.get("driverArgs", [])
         assert isinstance(driver_args, list)
         return driver_args
 
-    def set_driver(self, driver):
+    def set_driver(self, driver: asyncio.subprocess.Process):
+        """ Set the driver process instance.
+        """
         self._driver = driver
 
     def driver(self):
         return self._driver
 
     def set_initialize_task(self, task):
+        """ Set an async task that initializes the job environment.
+        """
         self._initialize_task = task
 
     def initialize_task(self):
         return self._initialize_task
 
     def env(self):
+        """ The environment vars to pass to job config.
+        """
         job_package_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=self._temp_dir, job_id=self._job_id)
         env_dict = {"RAY_JOB_DIR": job_package_dir}
