@@ -340,7 +340,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // If we can restore directly from this raylet, then prefer to do so.
+  // If we can restore directly from this raylet, then try to do so.
   bool can_restore_directly =
       !request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
@@ -349,11 +349,15 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id, request.spilled_url,
                             [this, object_id](const ray::Status &status) {
                               if (!status.ok()) {
-                                RAY_LOG(ERROR) << "Object restore for " << object_id
+                                RAY_LOG(ERROR) << "Object restore for " << object_id.Hex()
                                                << " failed, will retry later: " << status;
                               }
                             });
+    return;
   }
+
+  // TODO(ekl) should we more directly mark the object as lost in this case?
+  RAY_LOG(ERROR) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -367,8 +371,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
-    if (!spilled_node_id.IsNil()) {
-      RAY_CHECK(spilled_node_id != self_node_id_);
+    if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
