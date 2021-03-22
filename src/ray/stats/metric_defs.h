@@ -64,6 +64,26 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
+static Gauge ObjectDirectoryLocationSubscriptions(
+    "object_directory_subscriptions", "Number of object location subscriptions.",
+    "subscriptions");
+
+static Gauge ObjectDirectoryLocationUpdates(
+    "object_directory_updates", "Number of object location updates per second.",
+    "updates");
+
+static Gauge ObjectDirectoryLocationLookups(
+    "object_directory_lookups", "Number of object location lookups per second.",
+    "lookups");
+
+static Gauge ObjectDirectoryAddedLocations("object_directory_added_locations",
+                                           "Number of object locations added per second.",
+                                           "additions");
+
+static Gauge ObjectDirectoryRemovedLocations(
+    "object_directory_removed_locations",
+    "Number of object locations removed per second.", "removals");
+
 static Gauge NumInfeasibleTasks(
     "num_infeasible_tasks",
     "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
