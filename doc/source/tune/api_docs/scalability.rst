@@ -3,7 +3,7 @@
 Scalability and overhead benchmarks
 ===================================
 
-We conducted a series of microbenchmarks where we tested the scalability of Ray Tune and tried to reason about
+We conducted a series of microbenchmarks where we evaluated the scalability of Ray Tune and analyzed the
 performance overhead we observed. The results from these benchmarks are reflected in the documentation,
 e.g. when we make suggestions on :ref:`how to remove performance bottlenecks <tune-bottlenecks>`.
 
@@ -188,4 +188,3 @@ In the table below we present more detailed results on the network communication
 +-------------+--------------------------+---------+---------------+------------------+---------+
 | 10          | 1                        | 10      | 2             | 300s             | 334.37  |
 +-------------+--------------------------+---------+---------------+------------------+---------+
-
