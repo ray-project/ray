@@ -134,15 +134,11 @@ void GcsResourceReportPoller::NodeResourceReportReceived(
     const std::shared_ptr<PullState> state) {
   absl::MutexLock guard(&mutex_);
   inflight_pulls_--;
-  NodeID &node_id = state->node_id;
-  if (nodes_.count(node_id) == 0) {
-    RAY_LOG(INFO)
-        << "Resource report received, but the node is no longer in the cluster. NodeID: "
-        << node_id;
-  } else {
-    state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
-    to_pull_queue_.push_back(state);
-  }
+
+  // Schedule the next pull. The scheduling `TryPullResourceReport` loop will handle
+  // validating that this node is still in the cluster.
+  state->next_pull_time = get_current_time_milli_() + poll_period_ms_;
+  to_pull_queue_.push_back(state);
 
   polling_service_.post([this] { TryPullResourceReport(); });
 }
