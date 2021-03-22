@@ -12,6 +12,7 @@ import ray
 from ray.test_utils import run_string_as_driver
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
+from ray.experimental import internal_kv as kv
 
 driver_script = """
 import sys
@@ -79,6 +80,7 @@ def test_single_node(ray_start_cluster_head, working_dir):
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -92,6 +94,7 @@ def test_two_node(two_node_cluster, working_dir):
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -106,6 +109,7 @@ def test_two_node_module(two_node_cluster, working_dir):
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -126,6 +130,8 @@ def test_two_node_uri(two_node_cluster, working_dir):
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    # pinned uri will not be deleted
+    assert len(kv._internal_kv_list("pingcs://")) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -158,6 +164,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     # It's a detached actors, so it should still be there
+    assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(PKG_DIR).iterdir())) == 2
     pkg = list(Path(PKG_DIR).glob("*.zip"))[0]
     import sys

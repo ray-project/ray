@@ -223,7 +223,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_,
+      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -321,8 +321,7 @@ void GcsServer::InitRuntimeEnvManager() {
             // Skip other uri
             cb(true);
           }
-          auto key = uri.substr(pos + sep.size());
-          this->kv_manager_->AsyncDel(key, [cb](int deleted_num) {
+          this->kv_manager_->AsyncDel(uri, [cb](int deleted_num) {
             if(deleted_num == 0) {
               cb(false);
             } else {

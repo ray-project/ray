@@ -6,15 +6,30 @@ void RuntimeEnvManager::AddUriReference(const std::string &hex_id,
                                         const rpc::RuntimeEnv &runtime_env) {
   const auto &uris = runtime_env.uris();
   for (const auto &uri : uris) {
-    if (unused_uris_.count(uri)) {
-      unused_uris_.erase(uri);
-    }
-    uri_reference_[uri]++;
-    id_to_uris_[hex_id].push_back(uri);
+    AddUriReference(hex_id, uri);
   }
 }
 
+
+void RuntimeEnvManager::AddUriReference(const std::string &hex_id, const std::string &uri) {
+  if (unused_uris_.count(uri)) {
+    unused_uris_.erase(uri);
+  }
+  uri_reference_[uri]++;
+  id_to_uris_[hex_id].push_back(uri);
+}
+
+const std::vector<std::string>& RuntimeEnvManager::GetReferences(const std::string &hex_id) const {
+  static const std::vector<std::string> _default;
+  auto it = id_to_uris_.find(hex_id);
+  return it == id_to_uris_.end() ? _default : it->second;
+}
+
 void RuntimeEnvManager::RemoveUriReference(const std::string &hex_id) {
+  if(!id_to_uris_.count(hex_id)) {
+    return;
+  }
+
   for (const auto &uri : id_to_uris_[hex_id]) {
     --uri_reference_[uri];
     auto ref_count = uri_reference_[uri];

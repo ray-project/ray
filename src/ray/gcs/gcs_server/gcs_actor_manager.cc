@@ -88,13 +88,15 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
-      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed) {
+      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      runtime_env_manager_(runtime_env_manager) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
@@ -284,6 +286,14 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     // This actor is owned. Send a long polling request to the actor's
     // owner to determine when the actor should be removed.
     PollOwnerForActorOutOfScope(actor);
+  } else {
+    // If it's a detached actor, we need to register the runtime env it used to GC
+    auto job_id = JobID::FromBinary(request.task_spec().job_id());
+    const auto& uris = runtime_env_manager_.GetReferences(job_id.Hex());
+    auto actor_id_hex = actor->GetActorID().Hex();
+    for(const auto& uri : uris) {
+      runtime_env_manager_.AddUriReference(actor_id_hex, uri);
+    }
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.
@@ -445,11 +455,14 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
+
   registered_actors_.erase(it);
 
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
+  } else {
+    runtime_env_manager_.RemoveUriReference(actor->GetActorID().Hex());
   }
 
   // Remove actor from `named_actors_` if its name is not empty.
