@@ -140,6 +140,7 @@ class FailureInjectorCallback(Callback):
                         yes=True,
                         hard=should_terminate,
                         override_cluster_name=None)
+                    return
                 except click.exceptions.ClickException:
                     failures += 1
                     logger.exception("Killing random node failed in attempt "
