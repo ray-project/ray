@@ -149,6 +149,9 @@ message ActorTableData {
   // The exception thrown in creation task. This field is set if this actor died because
   // of exception thrown in creation task. Only applies when state=DEAD.
   RayException creation_task_exception = 18;
+  // Runtime required to run this actor
+  // It'll only be set if it's a detached actor and the original job has this field
+  RuntimeEnv runtime_env;
 }
 
 message ErrorTableData {
