@@ -137,7 +137,12 @@ class _Registry:
                 raise ValueError(
                     "Registry value for {}/{} doesn't exist.".format(
                         category, key))
-            return pickle.loads(value)
+            try:
+                return pickle.loads(value)
+            except EOFError as e:
+                print(">>>DBG!!!", category, key, len(value))
+                raise e
+
         else:
             return pickle.loads(self._to_flush[(category, key)])
 

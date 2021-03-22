@@ -177,7 +177,9 @@ class Monitor:
             self.update_resource_requests()
             self.update_event_summary()
             status = {
-                "load_metrics_report": self.load_metrics.summary()._asdict()
+                "load_metrics_report": self.load_metrics.summary()._asdict(),
+                "time": time.time(),
+                "monitor_pid": os.getpid()
             }
 
             # Process autoscaling actions
