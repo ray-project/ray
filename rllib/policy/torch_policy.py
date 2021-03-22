@@ -692,19 +692,22 @@ class TorchPolicy(Policy):
         Args:
             export_dir (str): Local writable directory or filename.
         """
-        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch.data)
+        self._lazy_tensor_dict(self._dummy_batch)
         # Provide dummy state inputs if not an RNN (torch cannot jit with
         # returned empty internal states list).
-        if "state_in_0" not in dummy_inputs:
-            dummy_inputs["state_in_0"] = dummy_inputs["seq_lens"] = np.array(
-                [1.0])
+        if "state_in_0" not in self._dummy_batch:
+            self._dummy_batch["state_in_0"] = \
+                self._dummy_batch["seq_lens"] = np.array([1.0])
         state_ins = []
         i = 0
-        while "state_in_{}".format(i) in dummy_inputs:
-            state_ins.append(dummy_inputs["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in self._dummy_batch:
+            state_ins.append(self._dummy_batch["state_in_{}".format(i)])
             i += 1
-        seq_lens = dummy_inputs["seq_lens"]
-        dummy_inputs = {k: dummy_inputs[k] for k in dummy_inputs.keys()}
+        seq_lens = self._dummy_batch["seq_lens"]
+        dummy_inputs = {
+            k: self._dummy_batch[k]
+            for k in self._dummy_batch.keys() if k != "is_training"
+        }
         traced = torch.jit.trace(self.model,
                                  (dummy_inputs, state_ins, seq_lens))
         if not os.path.exists(export_dir):
