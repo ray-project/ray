@@ -277,8 +277,11 @@ message JobConfig {
 
 message JobTableData {
   enum JobState {
+    // The job is submitted from dashboard.
     SUBMITTED = 0;
+    // The driver is registered to raylet and GCS.
     RUNNING = 1;
+    // The driver is exited.
     FINISHED = 2;
   }
   // The job ID.
@@ -303,9 +306,9 @@ message JobTableData {
   JobState state = 10;
   // Job payload (The original job request json from dashboard).
   string job_payload = 11;
-  // Whether the job is submitted. This field determines whether
-  // to initialize the job environment or not.
-  bool is_submitted = 12;
+  // Whether the job is submitted from dashboard. This field 
+  // determines whether to initialize the job environment or not.
+  bool is_submitted_from_dashboard = 12;
 }
 
 message WorkerTableData {

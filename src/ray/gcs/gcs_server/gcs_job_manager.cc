@@ -64,7 +64,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   }
 
   // Reserve these fields that may be filled when submitting.
-  auto is_submitted = job_table_data->is_submitted();
+  auto is_submitted_from_dashboard = job_table_data->is_submitted_from_dashboard();
   auto job_payload = job_table_data->job_payload();
 
   // Just use the job_table_data come from raylet.
@@ -72,7 +72,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
   job_table_data->set_state(rpc::JobTableData::RUNNING);
 
   // Recover reserved fields.
-  job_table_data->set_is_submitted(is_submitted);
+  job_table_data->set_is_submitted_from_dashboard(is_submitted_from_dashboard);
   job_table_data->set_job_payload(job_payload);
 
   auto on_done = [this, job_table_data, driver_pid, reply,
@@ -195,7 +195,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   job_table_data->set_job_payload(request.job_payload());
   // Mark the job is submitted, this field determines whether to
   // initialize the job environement or not.
-  job_table_data->set_is_submitted(true);
+  job_table_data->set_is_submitted_from_dashboard(true);
 
   auto driver_client_id = SelectDriver(*job_table_data);
   if (driver_client_id.IsNil()) {
