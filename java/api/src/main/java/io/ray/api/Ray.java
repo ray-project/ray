@@ -321,7 +321,7 @@ public final class Ray extends RayCall {
   /**
    * Get a placement group by placement group Id.
    *
-   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   * @deprecated This method is no longer recommended, use {@link
    *     PlacementGroups#getPlacementGroup(PlacementGroupId)} instead.
    * @param id placement group id.
    * @return The placement group.
