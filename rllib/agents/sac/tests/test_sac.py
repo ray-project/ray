@@ -56,7 +56,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:

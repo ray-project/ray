@@ -14,16 +14,17 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/util/asio_util.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 namespace gcs {
 
 GcsActorScheduler::GcsActorScheduler(
-    boost::asio::io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+    instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
     const gcs::GcsNodeManager &gcs_node_manager,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
@@ -127,15 +128,28 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
   return actor_ids;
 }
 
-void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id) {
-  // NOTE: This method does not currently cancel the outstanding lease request.
-  // It only removes leasing information from the internal state so that
-  // RequestWorkerLease ignores the response from raylet.
+void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &actor_id,
+                                        const TaskID &task_id) {
+  // NOTE: This method will cancel the outstanding lease request and remove leasing
+  // information from the internal state.
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
   if (node_it->second.empty()) {
     node_to_actors_when_leasing_.erase(node_it);
+  }
+
+  const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  const auto &iter = alive_nodes.find(node_id);
+  if (iter != alive_nodes.end()) {
+    const auto &node_info = iter->second;
+    rpc::Address address;
+    address.set_raylet_id(node_info->node_id());
+    address.set_ip_address(node_info->node_manager_address());
+    address.set_port(node_info->node_manager_port());
+    auto lease_client = GetOrConnectLeaseClient(address);
+    lease_client->CancelWorkerLease(
+        task_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
   }
 }
 
@@ -241,6 +255,16 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           }
 
           if (status.ok()) {
+            if (reply.worker_address().raylet_id().empty() &&
+                reply.retry_at_raylet_address().raylet_id().empty()) {
+              // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
+              // the number of remaining restarts of the actor is not equal to 0, GCS will
+              // reschedule the actor, so it return directly here.
+              RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
+                             << " creation task has been cancelled.";
+              return;
+            }
+
             // Remove the actor from the leasing map as the reply is returned from the
             // remote node.
             iter->second.erase(actor_iter);

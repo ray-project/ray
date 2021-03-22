@@ -17,6 +17,8 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/core_worker/context.h"
 #include "ray/gcs/gcs_client.h"
 
@@ -27,7 +29,7 @@ namespace worker {
 class Profiler {
  public:
   Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-           boost::asio::io_service &io_service,
+           instrumented_io_context &io_service,
            const std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
@@ -35,16 +37,16 @@ class Profiler {
 
  private:
   // Flush all of the events that have been added since last flush to the GCS.
-  void FlushEvents(const boost::system::error_code &error) LOCKS_EXCLUDED(mutex_);
+  void FlushEvents() LOCKS_EXCLUDED(mutex_);
 
   // Mutex guarding rpc_profile_data_.
   absl::Mutex mutex_;
 
   // ASIO IO service event loop. Must be started by the caller.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 
-  // Timer used to periodically flush events to the GCS.
-  boost::asio::steady_timer timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.

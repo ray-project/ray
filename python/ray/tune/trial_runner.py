@@ -9,7 +9,7 @@ import time
 import traceback
 import warnings
 
-from ray.services import get_node_ip_address
+from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
@@ -296,6 +296,8 @@ class TrialRunner:
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
         self._callbacks = CallbackList(callbacks or [])
+
+        self._callbacks.setup()
 
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
@@ -737,10 +739,11 @@ class TrialRunner:
             result = trial.last_result
             result.update(done=True)
 
-        self._validate_result_metrics(result)
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
+        self._validate_result_metrics(flat_result)
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)

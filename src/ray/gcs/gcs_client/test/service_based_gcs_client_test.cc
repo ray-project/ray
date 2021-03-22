@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -41,17 +42,17 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.redis_address = "127.0.0.1";
-    config_.is_test = true;
+    config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    client_io_service_.reset(new boost::asio::io_service());
+    client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     }));
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -67,7 +68,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                  config_.redis_password, config_.is_test);
+                                  config_.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
@@ -92,7 +93,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -538,12 +539,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> server_io_service_;
+  std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> client_io_service_;
+  std::unique_ptr<instrumented_io_context> client_io_service_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -586,7 +587,13 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // Register an actor to GCS.
   RegisterActor(actor_table_data1, false);
   RegisterActor(actor_table_data2, false);
-  WaitForExpectedCount(actor_update_count, 2);
+
+  // NOTE: In the process of actor registration, if the callback function of
+  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `ActorTable().Put` is executed, GCS will publish once; otherwise, GCS will publish
+  // twice. So we assert `actor_update_count >= 2`.
+  auto condition = [&actor_update_count]() { return actor_update_count >= 2; };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
@@ -1009,13 +1016,16 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  ASSERT_FALSE(RegisterActor(actor_table_data, false));
+  // NOTE: In the process of actor registration, if the callback function of
+  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `ActorTable().Put` is executed, the actor registration fails; otherwise, the actor
+  // registration succeeds. So we can't assert whether the actor is registered
+  // successfully.
+  RegisterActor(actor_table_data, false);
 
-  // We should receive a new DEAD notification from the subscribe channel.
+  // We should receive a new notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();

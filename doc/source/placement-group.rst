@@ -231,51 +231,57 @@ Let's create a placement group. Recall that each bundle is a collection of resou
           .setResource("CPU", 2.0)
           .remote();
 
-.. tabs::
-  .. group-tab:: Python
+.. note::
 
-    .. code-block:: python
+  When using placement groups, users should ensure that their placement groups are ready (by calling ``ray.get(pg.ready())``)
+  and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
+  print a warning about infeasible tasks.
 
-      gpu_bundle = {"GPU": 2}
-      extra_resource_bundle = {"extra_resource": 2}
+  .. tabs::
+    .. group-tab:: Python
 
-      # Reserve bundles with strict pack strategy.
-      # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-      # Using this placement group for scheduling actors or tasks will guarantee that they will
-      # be colocated on the same node.
-      pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+      .. code-block:: python
 
-      # Wait until placement group is created.
-      ray.get(pg.ready())
+        gpu_bundle = {"GPU": 2}
+        extra_resource_bundle = {"extra_resource": 2}
 
-  .. group-tab:: Java
+        # Reserve bundles with strict pack strategy.
+        # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+        # Using this placement group for scheduling actors or tasks will guarantee that they will
+        # be colocated on the same node.
+        pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
 
-    .. code-block:: java
+        # Wait until placement group is created.
+        ray.get(pg.ready())
 
-      List<Map<String, Double>> bundles = new ArrayList<>();
-      Map<String, Double> bundle1 = new HashMap<>();
-      Map<String, Double> bundle2 = new HashMap<>();
-      bundle1.put("GPU", 2.0);
-      bundle2.put("extra_resource", 2.0);
+    .. group-tab:: Java
 
-      bundles.add(bundle1);
-      bundles.add(bundle2);
+      .. code-block:: java
 
-      /**
-       * Reserve bundles with strict pack strategy.
-       * It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-       * Using this placement group for scheduling actors or tasks will guarantee that they will
-       * be colocated on the same node.
-       */
-      PlacementGroupCreationOptions options =
-        new PlacementGroupCreationOptions.Builder()
-          .setBundles(bundles)
-          .setStrategy(PlacementStrategy.STRICT_PACK)
-          .build();
+        List<Map<String, Double>> bundles = new ArrayList<>();
+        Map<String, Double> bundle1 = new HashMap<>();
+        Map<String, Double> bundle2 = new HashMap<>();
+        bundle1.put("GPU", 2.0);
+        bundle2.put("extra_resource", 2.0);
 
-      PlacementGroup pg = Ray.createPlacementGroup(options);
-      boolean isCreated = pg.wait(60)
-      Assert.assertTrue(isCreated);
+        bundles.add(bundle1);
+        bundles.add(bundle2);
+
+        /**
+         * Reserve bundles with strict pack strategy.
+         * It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+         * Using this placement group for scheduling actors or tasks will guarantee that they will
+         * be colocated on the same node.
+         */
+        PlacementGroupCreationOptions options =
+          new PlacementGroupCreationOptions.Builder()
+            .setBundles(bundles)
+            .setStrategy(PlacementStrategy.STRICT_PACK)
+            .build();
+
+        PlacementGroup pg = Ray.createPlacementGroup(options);
+        boolean isCreated = pg.wait(60)
+        Assert.assertTrue(isCreated);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
@@ -394,7 +400,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
 
       It's not implemented for Java APIs yet.
 
-Note that you can anytime remove the placement group to clean up resources.
+You can remove a placement group at any time to free its allocated resources.
 
 .. tabs::
   .. group-tab:: Python

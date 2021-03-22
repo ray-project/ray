@@ -30,8 +30,10 @@ from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
+from ray.autoscaler.tags import (
+    TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_NAME,
+    NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+    STATUS_UNINITIALIZED, STATUS_UP_TO_DATE, TAG_RAY_NODE_STATUS)
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
@@ -102,13 +104,15 @@ def debug_status(status, error) -> str:
     else:
         status = status.decode("utf-8")
         as_dict = json.loads(status)
+        time = datetime.datetime.fromtimestamp(as_dict["time"])
         lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
         if "autoscaler_report" in as_dict:
             autoscaler_summary = AutoscalerSummary(
                 **as_dict["autoscaler_report"])
-            status = format_info_string(lm_summary, autoscaler_summary)
+            status = format_info_string(
+                lm_summary, autoscaler_summary, time=time)
         else:
-            status = format_info_string_no_node_types(lm_summary)
+            status = format_info_string_no_node_types(lm_summary, time=time)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -246,6 +250,7 @@ CONFIG_CACHE_VERSION = 1
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
+    # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
@@ -611,6 +616,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
             head_node_tags[TAG_RAY_NODE_NAME] = "ray-{}-head".format(
                 config["cluster_name"])
+            head_node_tags[TAG_RAY_NODE_STATUS] = STATUS_UNINITIALIZED
             provider.create_node(head_node_config, head_node_tags, 1)
             cli_logger.print("Launched a new head node")
 
@@ -867,7 +873,7 @@ def exec_cluster(config_file: str,
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
 
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=start)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1037,7 +1043,7 @@ def rsync(config_file: str,
             updater.sync_file_mounts(rsync)
 
     nodes = []
-    head_node = _get_head_node(
+    head_node = _get_running_head_node(
         config, config_file, override_cluster_name, create_if_needed=False)
     if ip_address:
         nodes = [
@@ -1061,7 +1067,8 @@ def get_head_node_ip(config_file: str,
         config["cluster_name"] = override_cluster_name
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
-    head_node = _get_head_node(config, config_file, override_cluster_name)
+    head_node = _get_running_head_node(config, config_file,
+                                       override_cluster_name)
     if config.get("provider", {}).get("use_internal_ips", False):
         head_node_ip = provider.internal_ip(head_node)
     else:
@@ -1101,18 +1108,27 @@ def _get_worker_nodes(config: Dict[str, Any],
     return provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
 
-def _get_head_node(config: Dict[str, Any],
-                   printable_config_file: str,
-                   override_cluster_name: Optional[str],
-                   create_if_needed: bool = False) -> str:
-    provider = _get_node_provider(config["provider"], config["cluster_name"])
+def _get_running_head_node(config: Dict[str, Any],
+                           printable_config_file: str,
+                           override_cluster_name: Optional[str],
+                           create_if_needed: bool = False,
+                           _provider: Optional[NodeProvider] = None) -> str:
+    """Get a valid, running head node"""
+    provider = _provider or _get_node_provider(config["provider"],
+                                               config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
     nodes = provider.non_terminated_nodes(head_node_tags)
+    head_node = None
+    for node in nodes:
+        node_state = provider.node_tags(node).get(TAG_RAY_NODE_STATUS)
+        if node_state == STATUS_UP_TO_DATE:
+            head_node = node
+        else:
+            cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
-    if len(nodes) > 0:
-        head_node = nodes[0]
+    if head_node is not None:
         return head_node
     elif create_if_needed:
         get_or_create_head_node(
@@ -1122,7 +1138,7 @@ def _get_head_node(config: Dict[str, Any],
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
-        return _get_head_node(
+        return _get_running_head_node(
             config,
             printable_config_file,
             override_cluster_name,
@@ -1135,6 +1151,7 @@ def _get_head_node(config: Dict[str, Any],
 def get_local_dump_archive(stream: bool = False,
                            output: Optional[str] = None,
                            logs: bool = True,
+                           debug_state: bool = True,
                            pip: bool = True,
                            processes: bool = True,
                            processes_verbose: bool = False) -> Optional[str]:
@@ -1144,6 +1161,7 @@ def get_local_dump_archive(stream: bool = False,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)
@@ -1174,6 +1192,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
                              local: Optional[bool] = None,
                              output: Optional[str] = None,
                              logs: bool = True,
+                             debug_state: bool = True,
                              pip: bool = True,
                              processes: bool = True,
                              processes_verbose: bool = False) -> Optional[str]:
@@ -1185,6 +1204,11 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
         content_str += \
             "  - The logfiles of your Ray session\n" \
             "    This usually includes Python outputs (stdout/stderr)\n"
+
+    if debug_state:
+        content_str += \
+            "  - Debug state information on your Ray cluster \n" \
+            "    e.g. number of workers, drivers, objects, etc.\n"
 
     if pip:
         content_str += "  - Your installed Python packages (`pip freeze`)\n"
@@ -1217,8 +1241,8 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     if not nodes:
         cli_logger.error(
-            f"No nodes found. Specify with `--host` or by passing a ray "
-            f"cluster config to `--cluster`.")
+            "No nodes found. Specify with `--host` or by passing a ray "
+            "cluster config to `--cluster`.")
         return None
 
     if cluster_config_file:
@@ -1231,6 +1255,7 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     parameters = GetParameters(
         logs=logs,
+        debug_state=debug_state,
         pip=pip,
         processes=processes,
         processes_verbose=processes_verbose)

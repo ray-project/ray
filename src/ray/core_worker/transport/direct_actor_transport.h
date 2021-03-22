@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -51,9 +52,12 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
-                               bool dead = false) = 0;
+  virtual void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
+
+  virtual void CheckTimeoutTasks() = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
@@ -111,10 +115,18 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead = false);
+  /// \param[in] creation_task_exception Reason why the actor is dead, only applies when
+  /// dead = true. If this arg is set, it means this actor died because of an exception
+  /// thrown in creation task.
+  void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
+
+  /// Check timeout tasks that are waiting for Death info.
+  void CheckTimeoutTasks();
 
  private:
   struct ClientQueue {
@@ -122,6 +134,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
+    /// Only applies when state=DEAD.
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -192,6 +206,15 @@ class CoreWorkerDirectActorTaskSubmitter
     // NOTE(simon): consider absl::btree_set for performance, but it requires updating
     // abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
+
+    /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
+    /// For 1) the task will wait for the DEAD state notification, then mark task as
+    /// failed using the death_info in notification. For 2) we'll never receive a DEAD
+    /// notification, in this case we'll wait for a fixed timeout value and then mark it
+    /// as failed.
+    /// pair key: timestamp in ms when this task should be considered as timeout.
+    /// pair value: task specification
+    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -362,7 +385,7 @@ class SchedulingQueue {
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
-  ActorSchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
+  ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
                        WorkerContext &worker_context,
                        int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : worker_context_(worker_context),
@@ -596,7 +619,7 @@ class CoreWorkerDirectTaskReceiver {
   using OnTaskDone = std::function<ray::Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               boost::asio::io_service &main_io_service,
+                               instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
                                const OnTaskDone &task_done)
       : worker_context_(worker_context),
@@ -629,7 +652,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
-  boost::asio::io_service &task_main_io_service_;
+  instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
   /// Shared pool for producing new core worker clients.

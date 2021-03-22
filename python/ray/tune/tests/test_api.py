@@ -1,9 +1,11 @@
+import pickle
 from collections import Counter
 import shutil
 import tempfile
 import copy
 import numpy as np
 import os
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -15,6 +17,7 @@ from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
                       EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
 from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
@@ -305,16 +308,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLogdir(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a": "b"
                 },
@@ -343,16 +346,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLongFilename(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
                     "b" * 50: tune.sample_from(lambda spec: "long" * 40),
@@ -838,14 +841,51 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ]
         self.assertTrue(all(complete_results1))
 
-    def testDurableTrainable(self):
+    def _testDurableTrainable(self, trainable, function=False, cleanup=True):
+        sync_client = mock_storage_client()
+        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
+        with patch(mock_get_client) as mock_get_cloud_sync_client:
+            mock_get_cloud_sync_client.return_value = sync_client
+            test_trainable = trainable(remote_checkpoint_dir=MOCK_REMOTE_DIR)
+            result = test_trainable.train()
+            self.assertEqual(result["metric"], 1)
+            checkpoint_path = test_trainable.save()
+            result = test_trainable.train()
+            self.assertEqual(result["metric"], 2)
+            result = test_trainable.train()
+            self.assertEqual(result["metric"], 3)
+            result = test_trainable.train()
+            self.assertEqual(result["metric"], 4)
+
+            if not function:
+                test_trainable.state["hi"] = 2
+                test_trainable.restore(checkpoint_path)
+                self.assertEqual(test_trainable.state["hi"], 1)
+            else:
+                # Cannot re-use function trainable, create new
+                tune.session.shutdown()
+                test_trainable = trainable(
+                    remote_checkpoint_dir=MOCK_REMOTE_DIR)
+                test_trainable.restore(checkpoint_path)
+
+            result = test_trainable.train()
+            self.assertEqual(result["metric"], 2)
+
+        if cleanup:
+            self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
+
+    def testDurableTrainableClass(self):
         class TestTrain(DurableTrainable):
             def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
 
             def step(self):
                 self.state["iter"] += 1
-                return {"timesteps_this_iter": 1, "done": True}
+                return {
+                    "timesteps_this_iter": 1,
+                    "metric": self.state["iter"],
+                    "done": self.state["iter"] > 3
+                }
 
             def save_checkpoint(self, path):
                 return self.state
@@ -853,18 +893,54 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def load_checkpoint(self, state):
                 self.state = state
 
-        sync_client = mock_storage_client()
-        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
-        with patch(mock_get_client) as mock_get_cloud_sync_client:
-            mock_get_cloud_sync_client.return_value = sync_client
-            test_trainable = TestTrain(remote_checkpoint_dir=MOCK_REMOTE_DIR)
-            checkpoint_path = test_trainable.save()
-            test_trainable.train()
-            test_trainable.state["hi"] = 2
-            test_trainable.restore(checkpoint_path)
-            self.assertEqual(test_trainable.state["hi"], 1)
+        self._testDurableTrainable(TestTrain)
 
-        self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
+    def testDurableTrainableWrapped(self):
+        class TestTrain(Trainable):
+            def setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def step(self):
+                self.state["iter"] += 1
+                return {
+                    "timesteps_this_iter": 1,
+                    "metric": self.state["iter"],
+                    "done": self.state["iter"] > 3
+                }
+
+            def save_checkpoint(self, path):
+                return self.state
+
+            def load_checkpoint(self, state):
+                self.state = state
+
+        self._testDurableTrainable(durable(TestTrain), cleanup=False)
+
+        tune.register_trainable("test_train", TestTrain)
+
+        self._testDurableTrainable(durable("test_train"))
+
+    def testDurableTrainableFunction(self):
+        def test_train(config, checkpoint_dir=None):
+            state = {"hi": 1, "iter": 0}
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "ckpt.pkl"),
+                          "rb") as fp:
+                    state = pickle.load(fp)
+
+            for i in range(4):
+                state["iter"] += 1
+                with tune.checkpoint_dir(step=state["iter"]) as dir:
+                    with open(os.path.join(dir, "ckpt.pkl"), "wb") as fp:
+                        pickle.dump(state, fp)
+                tune.report(
+                    **{
+                        "timesteps_this_iter": 1,
+                        "metric": state["iter"],
+                        "done": state["iter"] > 3
+                    })
+
+        self._testDurableTrainable(durable(test_train), function=True)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -1168,6 +1244,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     break
             self.assertFalse(found)
 
+    def testWithParameters(self):
+        class Data:
+            def __init__(self):
+                self.data = [0] * 500_000
+
+        data = Data()
+        data.data[100] = 1
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+                self.data[101] = 2  # Changes are local
+
+            def step(self):
+                return dict(
+                    metric=len(self.data), hundred=self.data[100], done=True)
+
+        trial_1, trial_2 = tune.run(
+            tune.with_parameters(TestTrainable, data=data),
+            num_samples=2).trials
+
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["hundred"], 1)
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["hundred"], 1)
+        self.assertTrue(str(trial_1).startswith("TestTrainable"))
+
+    def testWithParameters2(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+
+            def step(self):
+                return dict(metric=len(self.data), done=True)
+
+        trainable = tune.with_parameters(TestTrainable, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
 
 class SerializabilityTest(unittest.TestCase):
     @classmethod
@@ -1392,5 +1515,4 @@ class ApiTestFast(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
