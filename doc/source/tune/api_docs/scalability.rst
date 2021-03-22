@@ -11,8 +11,12 @@ This page gives an overview over the experiments we did. For each of these exper
 examine the total runtime of the experiment and address issues when the observed overhead compared to the
 minimal theoretical time was too high (e.g. more than 20% overhead).
 
+In some of the experiments we tweaked the default settings for maximum throughput, e.g. by disabling
+trial synchronization or result logging. If this is the case, this is stated in the respective benchmark
+description.
 
-.. list-table:: TrialScheduler Feature Compatibility Matrix
+
+.. list-table:: Ray Tune scalability benchmarks overview
    :header-rows: 1
 
    * - Variable
@@ -81,6 +85,10 @@ Below we discuss some insights on results where we observed much overhead.
 
 Result throughput
 -----------------
+Result throughput describes the number of results Ray Tune can process in a given timeframe (e.g.
+"results per second").
+The higher the throughput, the more concurrent results can be processed without major delays.
+
 Result throughput is limited by the time it takes to process results. When a trial reports results, it only
 continues training once the trial executor re-triggered the remote training function. If many trials report
 results at the same time, each subsequent remote training call is only triggered after handling that trial's
@@ -93,7 +101,7 @@ results per trial for dozens or hundreds of trials can become a bottleneck.
 **Main insight**: Ray Tune will throw a warning when trial processing becomes a bottleneck. If you notice
 that this becomes a problem, please follow our guidelines outlined :ref:`in the FAQ <tune-bottlenecks>`.
 Generally, it is advised to not report too many results at the same time. Consider increasing the report
-intervals.
+intervals by a factor of 5-10x.
 
 Below we present more detailed results on the result throughput performance.
 
@@ -101,6 +109,9 @@ Many concurrent trials
 """"""""""""""""""""""
 In this setup, loggers (CSV, JSON, and TensorboardX) and trial synchronization are disabled, except when
 explicitly noted.
+
+In this experiment, we're running many concurrent trials (up to 1,000) on a cluster. We then adjust the
+reporting frequency (number of results per second) of the trials to measure the throughput limits.
 
 It seems that around 500 total results/second seem to be the threshold for acceptable performance
 when logging and synchronization are disabled. With logging enabled, around 50-100 results per second
@@ -135,6 +146,10 @@ Many results on a single node
 In this setup, loggers (CSV, JSON, and TensorboardX) are disabled, except when
 explicitly noted.
 
+In this experiment, we're running 96 concurrent trials on a single node. We then adjust the
+reporting frequency (number of results per second) of the trials to find the throughput limits.
+Compared to the cluster experiment setup, we report much more often, as we're running less total trials in parallel.
+
 On a single node, throughput seems to be a bit higher. With logging, handling 1000 results per second
 seems acceptable in terms of overhead, though you should probably still target for a lower number.
 
@@ -164,6 +179,10 @@ trial synchronization, where results and checkpoints are periodically synchroniz
 Per default this happens via SSH, where connnection initialization can take between 1 and 2 seconds each time.
 Since this is a blocking operation that happens on a per-trial basis, running many concurrent trials
 quickly becomes bottlenecked by this synchronization.
+
+In this experiment, we ran a number of trials on a cluster. Each trial was run on a separate node. We
+varied the number of concurrent trials (and nodes) to see how much network communication affects
+total runtime.
 
 **Main insight**: When running many concurrent trials in a distributed setup, consider using a
 :ref:`ray.tune.durable <tune-durable-trainable>` for checkpoint synchronization instead. Another option would
