@@ -18,6 +18,7 @@ from ray.rllib import _register_all
 class TrialRunnerPlacementGroupTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "-1"  # Reset default
         self.head_cpus = 8
         self.head_gpus = 4
         self.head_custom = 16

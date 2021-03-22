@@ -31,6 +31,8 @@ class TrialRunnerTest3(unittest.TestCase):
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
 
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "-1"  # Reset default
+
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
