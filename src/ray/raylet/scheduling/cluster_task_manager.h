@@ -157,7 +157,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
-  void RecordMetrics();
+  void RecordMetrics() override;
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
