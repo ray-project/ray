@@ -179,7 +179,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # start blocking
     start = time.time()
     new_version_ref = None
-    while time.time() - start < 10:
+    while time.time() - start < 30:
         ready, not_ready = ray.wait([call.remote(block=False)], timeout=0.5)
         if len(ready) == 1:
             # If the request doesn't block, it must have been the old version.
@@ -243,7 +243,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         blocking = []
         responses = defaultdict(set)
         start = time.time()
-        while time.time() - start < 2:
+        while time.time() - start < 30:
             refs = [call.remote(block=False) for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=0.1)
             for ref in ready:
