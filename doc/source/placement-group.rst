@@ -62,15 +62,15 @@ Ray placement group can be created via the ``ray.util.placement_group`` API if y
 
     .. code-block:: java
 
+      // Initialize Ray.
+      Ray.init();
+
       // Construct a list of bundles.
       List<Map<String, Double>> bundles = new ArrayList<>();
-      Map<String, Double> bundle1 = new HashMap<>();
-      Map<String, Double> bundle2 = new HashMap<>();
-      bundle1.put("CPU", 2.0);
-      bundle2.put("extra_resource", 2.0);
+      Map<String, Double> bundle = new HashMap<>();
+      bundle.put("CPU", 1.0);
 
-      bundles.add(bundle1);
-      bundles.add(bundle2);
+      bundles.add(bundle);
 
       // Make a creation option with bundles and strategy.
       PlacementGroupCreationOptions options =
