@@ -19,7 +19,7 @@ matplotlib==3.3.4
 mlflow==1.14.0
 mxnet==1.7.0.post1
 nevergrad==0.4.2.post5
-optuna==2.5.0
+optuna==2.6.0
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3
