@@ -79,7 +79,8 @@ void GcsResourceReportPoller::HandleNodeRemoved(
     nodes_.erase(node_id);
     RAY_CHECK(!nodes_.count(node_id));
   }
-  RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id << ")# of remaining nodes: " << nodes_.size();
+  RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
+                 << ")# of remaining nodes: " << nodes_.size();
 }
 
 void GcsResourceReportPoller::Tick() { TryPullResourceReport(); }
