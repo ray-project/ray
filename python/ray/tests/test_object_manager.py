@@ -385,8 +385,7 @@ def test_task_args_memory_threshold(shutdown_only, reservation):
     cluster.add_node(
         num_cpus=0,
         _system_config={
-            "maximum_object_store_reservation_for_pulled_objects": reservation
-            / 10,
+            "pull_manager_memory_fraction": reservation / 10,
         },
         object_store_memory=1e9)
     ray.init(address=cluster.address)

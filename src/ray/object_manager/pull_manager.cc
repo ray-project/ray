@@ -10,7 +10,8 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &)> cancel_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
-    size_t num_bytes_available, std::function<void()> object_store_full_callback)
+    size_t num_bytes_available, size_t max_reservation,
+    std::function<void()> object_store_full_callback)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
@@ -19,6 +20,7 @@ PullManager::PullManager(
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
+      max_reservation_(max_reservation),
       object_store_full_callback_(object_store_full_callback),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
@@ -118,6 +120,7 @@ void PullManager::DeactivatePullBundleRequest(
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+  num_bytes_available = std::min(num_bytes_available, max_reservation_);
   if (num_bytes_available_ != num_bytes_available) {
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
