@@ -479,9 +479,12 @@ class SampleBatch(dict):
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        if key == "seq_lens":
+            self.seq_lens = item
+            return
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        if not hasattr(self, "added_keys"):
+        elif not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 

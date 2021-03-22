@@ -657,7 +657,7 @@ class Policy(metaclass=ABCMeta):
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         if seq_lens is not None:
-            train_batch["seq_lens"] = seq_lens
+            train_batch.seq_lens = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:

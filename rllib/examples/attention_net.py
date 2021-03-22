@@ -26,7 +26,7 @@ parser.add_argument("--stop-reward", type=float, default=80)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",

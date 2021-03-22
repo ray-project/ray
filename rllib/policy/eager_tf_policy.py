@@ -427,7 +427,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             # Pack internal state inputs into (separate) list.
             state_batches = [
