@@ -155,7 +155,7 @@ class JobProcessor:
             logger.info("[%s] Finished download[%s] %s to %s", job_id,
                         cmd_index, url, filename)
 
-    async def _unzip_package(self, filename, path):
+    async def _unpack_package(self, filename, path):
         code = f"import shutil; " \
                f"shutil.unpack_archive({repr(filename)}, {repr(path)})"
         unzip_cmd = [self._get_current_python(), "-c", code]
@@ -246,7 +246,7 @@ class DownloadPackage(JobProcessor):
         unzip_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
         await self._download_package(self._http_session, url, filename)
-        await self._unzip_package(filename, unzip_dir)
+        await self._unpack_package(filename, unzip_dir)
 
 
 class StartPythonDriver(JobProcessor):

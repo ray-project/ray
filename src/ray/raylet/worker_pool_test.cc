@@ -992,6 +992,36 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
+TEST_F(WorkerPoolTest, TestRegisterWorkerAfterJobFinished) {
+  Process proc =
+      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  ASSERT_TRUE(proc.IsValid());
+
+  worker_pool_->HandleJobFinished(JOB_ID);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
+    workers.push_back(CreateWorker(Process(), Language::JAVA));
+  }
+  // These workers shouldn't be registered to the worker pool as the job has finished.
+  for (const auto &worker : workers) {
+    auto status = worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {});
+    ASSERT_TRUE(status.IsInvalid());
+  }
+
+  // The driver shouldn't be registered to the worker pool as the job has finished.
+  rpc::JobConfig job_config = rpc::JobConfig();
+  auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
+  driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
+  auto status = worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {});
+  ASSERT_TRUE(status.IsInvalid());
+
+  // It shouldn't start a new worker process as job has finished.
+  proc =
+      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  ASSERT_FALSE(proc.IsValid());
+}
+
 }  // namespace raylet
 
 }  // namespace ray
