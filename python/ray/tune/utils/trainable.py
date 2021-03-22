@@ -210,29 +210,10 @@ class TrainableUtil:
         last_df_row = \
             df[df['training_iteration'] == df['training_iteration'].max()]
         if len(last_df_row) == 0:
-            raise ValueError(f"No checkpoints in directory: {logdir}")
-        last_checkpoint_path = str(last_df_row['chkpt_path'])
-        return last_checkpoint_path
-
-        # TODO: old, dead code below; remove after testing
-        # else load the last checkpoint from all available checkpoints
-        abs_logdir = os.path.abspath(logdir)
-        checkpoints = [
-            f for f in os.listdir(abs_logdir) if f.startswith('checkpoint')
-        ]
-        if len(checkpoints) == 0:
-            raise ValueError(f"No checkpoints in directory: {logdir}")
-
-        # sort according to checkpoint number after '_'
-        sorted_checkpoints = sorted(
-            checkpoints, key=lambda cp: int(cp.split('_')[-1]))
-        last_checkpoint_dir = os.path.join(abs_logdir,
-                                           sorted_checkpoints[-1])
-        # retrieve checkpoint number for filename and construct full path
-        last_checkpoint_no = last_checkpoint_dir.split('_')[-1]
-        last_checkpoint_path = os.path.join(
-            last_checkpoint_dir, f'checkpoint-{last_checkpoint_no}')
-
+            subdirs = glob.glob(os.path.join(logdir, "*", ""))
+            raise ValueError(f"No checkpoints found in directory: {logdir}"
+                             f"Maybe in a sub-directory? {subdirs}")
+        last_checkpoint_path = last_df_row['chkpt_path'].item()
         return last_checkpoint_path
 
     @staticmethod

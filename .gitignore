@@ -165,7 +165,7 @@ streaming/java/**/.project
 streaming/java/**/*.log
 
 # python virtual env
-venv
+venv*
 
 # pyenv version file
 .python-version
