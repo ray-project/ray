@@ -14,10 +14,11 @@ import redis
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
-import ray.utils
+import ray._private.utils
+from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
-from ray.cluster_utils import Cluster
+from ray._private.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
@@ -68,74 +69,13 @@ def test_unhandled_errors(ray_start_regular):
         del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
 
 
-def test_failed_task(ray_start_regular, error_pubsub):
-    @ray.remote
-    def throw_exception_fct1():
-        raise Exception("Test function 1 intentionally failed.")
-
-    @ray.remote
-    def throw_exception_fct2():
-        raise Exception("Test function 2 intentionally failed.")
-
-    @ray.remote(num_returns=3)
-    def throw_exception_fct3(x):
-        raise Exception("Test function 3 intentionally failed.")
-
-    p = error_pubsub
-
-    throw_exception_fct1.remote()
-    throw_exception_fct1.remote()
-
-    msgs = get_error_message(p, 2, ray_constants.TASK_PUSH_ERROR)
-    assert len(msgs) == 2
-    for msg in msgs:
-        assert "Test function 1 intentionally failed." in msg.error_message
-
-    x = throw_exception_fct2.remote()
-    try:
-        ray.get(x)
-    except Exception as e:
-        assert "Test function 2 intentionally failed." in str(e)
-    else:
-        # ray.get should throw an exception.
-        assert False
-
-    x, y, z = throw_exception_fct3.remote(1.0)
-    for ref in [x, y, z]:
-        try:
-            ray.get(ref)
-        except Exception as e:
-            assert "Test function 3 intentionally failed." in str(e)
-        else:
-            # ray.get should throw an exception.
-            assert False
-
-    class CustomException(ValueError):
-        pass
-
-    @ray.remote
-    def f():
-        raise CustomException("This function failed.")
-
-    try:
-        ray.get(f.remote())
-    except Exception as e:
-        assert "This function failed." in str(e)
-        assert isinstance(e, CustomException)
-        assert isinstance(e, ray.exceptions.RayTaskError)
-        assert "RayTaskError(CustomException)" in repr(e)
-    else:
-        # ray.get should throw an exception.
-        assert False
-
-
 def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
     address = address_info["redis_address"]
     redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     error_message = "Test error message"
-    ray.utils.push_error_to_driver_through_redis(
+    ray._private.utils.push_error_to_driver_through_redis(
         redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, error_message)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)
@@ -297,13 +237,6 @@ def temporary_helper_function():
     with pytest.raises(Exception, match="failed to be imported"):
         ray.get(foo.get_val.remote(1, arg2=2))
 
-    # Wait for the error from when the call to get_val.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert ("failed to be imported, and so cannot execute this method" in
-            errors[0].error_message)
-
     f.close()
 
     # Clean up the junk we added to sys.path.
@@ -331,12 +264,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.TASK_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
-    # Make sure that we get errors from a failed method.
-    a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0].error_message
+    # Incoming methods will get the exception in creation task
+    with pytest.raises(ray.exceptions.RayActorError) as e:
+        ray.get(a.fail_method.remote())
+    assert error_message1 in str(e.value)
 
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
@@ -768,6 +699,15 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
+    # Placement group cannot be made, but no warnings should occur.
+    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
+    pg.ready()
+    f.options(placement_group=pg).remote()
+
+    errors = get_error_message(
+        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
+    assert len(errors) == 0, errors
+
 
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
@@ -887,10 +827,10 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ch = logging.StreamHandler(log_capture_string)
 
     # TODO(rkn): It's terrible to have to rely on this implementation detail,
-    # the fact that the warning comes from ray.import_thread.logger. However,
-    # I didn't find a good way to capture the output for all loggers
+    # the fact that the warning comes from ray._private.import_thread.logger.
+    # However, I didn't find a good way to capture the output for all loggers
     # simultaneously.
-    ray.import_thread.logger.addHandler(ch)
+    ray._private.import_thread.logger.addHandler(ch)
 
     ray.get(create_remote_function.remote())
 
@@ -900,7 +840,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         if len(log_contents) > 0:
             break
 
-    ray.import_thread.logger.removeHandler(ch)
+    ray._private.import_thread.logger.removeHandler(ch)
 
     assert "remote function" in log_contents
     assert "has been exported {} times.".format(
@@ -926,7 +866,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     # TODO(rkn): As mentioned above, it's terrible to have to rely on this
     # implementation detail.
-    ray.import_thread.logger.addHandler(ch)
+    ray._private.import_thread.logger.addHandler(ch)
 
     ray.get(create_actor_class.remote())
 
@@ -936,7 +876,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         if len(log_contents) > 0:
             break
 
-    ray.import_thread.logger.removeHandler(ch)
+    ray._private.import_thread.logger.removeHandler(ch)
 
     assert "actor" in log_contents
     assert "has been exported {} times.".format(
@@ -1065,6 +1005,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     ray.init(address=cluster.address)
     p = init_error_pubsub()
     errors = get_error_message(p, 1, timeout=5)
+    print(errors)
     assert len(errors) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0)
@@ -1330,7 +1271,7 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
             time.sleep(0.01)
             cnt += 1
             continue
-        data = json.loads(ray.utils.decode(msg["data"]))
+        data = json.loads(ray._private.utils.decode(msg["data"]))
         assert data["pid"] == "gcs_server"
 
 
@@ -1420,7 +1361,7 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
             time.sleep(0.01)
             cnt += 1
             continue
-        data = json.loads(ray.utils.decode(msg["data"]))
+        data = json.loads(ray._private.utils.decode(msg["data"]))
         if data["pid"] == "raylet":
             found = any("Failed to start the grpc server." in line
                         for line in data["lines"])

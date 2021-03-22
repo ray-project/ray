@@ -35,7 +35,7 @@ def decode_object_ref_if_needed(object_ref: str) -> bytes:
         # when it is base64 encoded because objectRef is always 20B.
         return base64.standard_b64decode(object_ref)
     else:
-        return ray.utils.hex_to_binary(object_ref)
+        return ray._private.utils.hex_to_binary(object_ref)
 
 
 class SortingType(Enum):

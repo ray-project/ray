@@ -244,14 +244,13 @@ class _AgentCollector:
         batch = SampleBatch(batch_data, _dont_check_lens=True)
 
         # Add EPS_ID and UNROLL_ID to batch.
-        batch.data[SampleBatch.EPS_ID] = np.repeat(self.episode_id,
-                                                   batch.count)
-        if SampleBatch.UNROLL_ID not in batch.data:
+        batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
+        if SampleBatch.UNROLL_ID not in batch:
             # TODO: (sven) Once we have the additional
             #  model.preprocess_train_batch in place (attention net PR), we
             #  should not even need UNROLL_ID anymore:
             #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
-            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+            batch[SampleBatch.UNROLL_ID] = np.repeat(
                 _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
 
@@ -593,7 +592,7 @@ class SimpleListCollector(SampleCollector):
 
         self._reset_inference_calls(policy_id)
 
-        return input_dict
+        return SampleBatch(input_dict)
 
     @override(SampleCollector)
     def postprocess_episode(

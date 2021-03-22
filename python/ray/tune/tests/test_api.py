@@ -5,6 +5,7 @@ import tempfile
 import copy
 import numpy as np
 import os
+import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -307,16 +308,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLogdir(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a": "b"
                 },
@@ -345,16 +346,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLongFilename(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
                     "b" * 50: tune.sample_from(lambda spec: "long" * 40),
@@ -1243,6 +1244,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     break
             self.assertFalse(found)
 
+    def testWithParameters(self):
+        class Data:
+            def __init__(self):
+                self.data = [0] * 500_000
+
+        data = Data()
+        data.data[100] = 1
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+                self.data[101] = 2  # Changes are local
+
+            def step(self):
+                return dict(
+                    metric=len(self.data), hundred=self.data[100], done=True)
+
+        trial_1, trial_2 = tune.run(
+            tune.with_parameters(TestTrainable, data=data),
+            num_samples=2).trials
+
+        self.assertEqual(data.data[101], 0)
+        self.assertEqual(trial_1.last_result["metric"], 500_000)
+        self.assertEqual(trial_1.last_result["hundred"], 1)
+        self.assertEqual(trial_2.last_result["metric"], 500_000)
+        self.assertEqual(trial_2.last_result["hundred"], 1)
+        self.assertTrue(str(trial_1).startswith("TestTrainable"))
+
+    def testWithParameters2(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        class TestTrainable(Trainable):
+            def setup(self, config, data):
+                self.data = data.data
+
+            def step(self):
+                return dict(metric=len(self.data), done=True)
+
+        trainable = tune.with_parameters(TestTrainable, data=Data())
+        # ray.cloudpickle will crash for some reason
+        import cloudpickle as cp
+        dumped = cp.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
+
 
 class SerializabilityTest(unittest.TestCase):
     @classmethod
@@ -1467,5 +1515,4 @@ class ApiTestFast(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

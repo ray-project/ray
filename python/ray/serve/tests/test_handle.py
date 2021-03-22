@@ -6,13 +6,11 @@ from ray import serve
 
 @pytest.mark.asyncio
 async def test_async_handle_serializable(serve_instance):
-    client = serve_instance
-
     def f(_):
         return "hello"
 
-    client.create_backend("f", f)
-    client.create_endpoint("f", backend="f")
+    serve.create_backend("f", f)
+    serve.create_endpoint("f", backend="f")
 
     @ray.remote
     class TaskActor:
@@ -21,7 +19,7 @@ async def test_async_handle_serializable(serve_instance):
             output = await ref
             return output
 
-    handle = client.get_handle("f", sync=False)
+    handle = serve.get_handle("f", sync=False)
 
     task_actor = TaskActor.remote()
     result = await task_actor.task.remote(handle)
@@ -29,47 +27,42 @@ async def test_async_handle_serializable(serve_instance):
 
 
 def test_sync_handle_serializable(serve_instance):
-    client = serve_instance
-
     def f(_):
         return "hello"
 
-    client.create_backend("f", f)
-    client.create_endpoint("f", backend="f")
+    serve.create_backend("f", f)
+    serve.create_endpoint("f", backend="f")
 
     @ray.remote
     def task(handle):
         return ray.get(handle.remote())
 
-    handle = client.get_handle("f", sync=True)
+    handle = serve.get_handle("f", sync=True)
     result_ref = task.remote(handle)
     assert ray.get(result_ref) == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
-    client = serve_instance
-
     class Endpoint1:
         def __call__(self, starlette_request):
             return "hello"
 
     class Endpoint2:
         def __init__(self):
-            client = serve.connect()
-            self.handle = client.get_handle("endpoint1")
+            self.handle = serve.get_handle("endpoint1")
 
         def __call__(self, _):
             return ray.get(self.handle.remote())
 
-    client.create_backend("endpoint1:v0", Endpoint1)
-    client.create_endpoint(
+    serve.create_backend("endpoint1:v0", Endpoint1)
+    serve.create_endpoint(
         "endpoint1",
         backend="endpoint1:v0",
         route="/endpoint1",
         methods=["GET", "POST"])
 
-    client.create_backend("endpoint2:v0", Endpoint2)
-    client.create_endpoint(
+    serve.create_backend("endpoint2:v0", Endpoint2)
+    serve.create_endpoint(
         "endpoint2",
         backend="endpoint2:v0",
         route="/endpoint2",
@@ -79,8 +72,6 @@ def test_handle_in_endpoint(serve_instance):
 
 
 def test_handle_http_args(serve_instance):
-    client = serve_instance
-
     class Endpoint:
         async def __call__(self, request):
             return {
@@ -90,8 +81,8 @@ def test_handle_http_args(serve_instance):
                 "json": await request.json()
             }
 
-    client.create_backend("backend", Endpoint)
-    client.create_endpoint(
+    serve.create_backend("backend", Endpoint)
+    serve.create_endpoint(
         "endpoint", backend="backend", route="/endpoint", methods=["POST"])
 
     ground_truth = {
@@ -113,7 +104,7 @@ def test_handle_http_args(serve_instance):
         headers=ground_truth["headers"],
         json=ground_truth["json"]).json()
 
-    handle = client.get_handle("endpoint")
+    handle = serve.get_handle("endpoint")
     resp_handle = ray.get(
         handle.options(
             http_method=ground_truth["method"],
@@ -127,20 +118,18 @@ def test_handle_http_args(serve_instance):
 
 
 def test_handle_inject_starlette_request(serve_instance):
-    client = serve_instance
-
     def echo_request_type(request):
         return str(type(request))
 
-    client.create_backend("echo:v0", echo_request_type)
-    client.create_endpoint("echo", backend="echo:v0", route="/echo")
+    serve.create_backend("echo:v0", echo_request_type)
+    serve.create_endpoint("echo", backend="echo:v0", route="/echo")
 
     def wrapper_model(web_request):
-        handle = serve.connect().get_handle("echo")
+        handle = serve.get_handle("echo")
         return ray.get(handle.remote(web_request))
 
-    client.create_backend("wrapper:v0", wrapper_model)
-    client.create_endpoint("wrapper", backend="wrapper:v0", route="/wrapper")
+    serve.create_backend("wrapper:v0", wrapper_model)
+    serve.create_endpoint("wrapper", backend="wrapper:v0", route="/wrapper")
 
     for route in ["/echo", "/wrapper"]:
         resp = requests.get(f"http://127.0.0.1:8000{route}")
@@ -152,8 +141,6 @@ def test_handle_option_chaining(serve_instance):
     # https://github.com/ray-project/ray/issues/12802
     # https://github.com/ray-project/ray/issues/12798
 
-    client = serve_instance
-
     class MultiMethod:
         def method_a(self, _):
             return "method_a"
@@ -164,12 +151,12 @@ def test_handle_option_chaining(serve_instance):
         def __call__(self, _):
             return "__call__"
 
-    client.create_backend("m", MultiMethod)
-    client.create_endpoint("m", backend="m")
+    serve.create_backend("m", MultiMethod)
+    serve.create_endpoint("m", backend="m")
 
     # get_handle should give you a clean handle
-    handle1 = client.get_handle("m").options(method_name="method_a")
-    handle2 = client.get_handle("m")
+    handle1 = serve.get_handle("m").options(method_name="method_a")
+    handle2 = serve.get_handle("m")
     # options().options() override should work
     handle3 = handle1.options(method_name="method_b")
 

@@ -81,7 +81,7 @@ def export_test(alg_name, failures, framework="tf"):
         res = algo.train()
         print("current status: " + str(res))
 
-    export_dir = os.path.join(ray.utils.get_user_temp_dir(),
+    export_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
                               "export_dir_%s" % alg_name)
     print("Exporting model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)

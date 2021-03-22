@@ -18,6 +18,8 @@ py_test_module_list(
     "test_actor_resources.py",
     "test_advanced.py",
     "test_advanced_2.py",
+    "test_advanced_3.py",
+    "test_advanced_4.py",
     "test_array.py",
     "test_autoscaling_policy.py",
     "test_basic.py",
@@ -125,7 +127,6 @@ py_test_module_list(
   files = [
     "test_failure.py",
     "test_stress_failure.py",
-    "test_advanced_3.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -137,6 +138,7 @@ py_test_module_list(
   files = [
     "test_placement_group.py",
     "test_object_spilling.py",
+    "test_runtime_env.py",
   ],
   size = "large",
   extra_srcs = SRCS,

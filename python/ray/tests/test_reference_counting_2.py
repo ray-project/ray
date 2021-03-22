@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import ray
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.test_utils import SignalActor, put_object, wait_for_condition
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
