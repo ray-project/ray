@@ -3,8 +3,9 @@
 namespace ray {
 namespace gcs {
 
-void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) {
+void GcsInternalKVManager::HandleInternalKVGet(
+    const rpc::InternalKVGetRequest &request, rpc::InternalKVGetReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"HGET", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
@@ -15,8 +16,9 @@ void GcsKVManager::HandleGet(const rpc::GetRequest &request, rpc::GetReply *repl
       });
 }
 
-void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) {
+void GcsInternalKVManager::HandleInternalKVPut(
+    const rpc::InternalKVPutRequest &request, rpc::InternalKVPutReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {request.overwrite() ? "HSET" : "HSETNX", request.key(),
                                   "value", request.value()};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
@@ -26,8 +28,9 @@ void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *repl
       });
 }
 
-void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) {
+void GcsInternalKVManager::HandleInternalKVDel(
+    const rpc::InternalKVDelRequest &request, rpc::InternalKVDelReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"HDEL", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
@@ -36,9 +39,9 @@ void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *repl
       });
 }
 
-void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
-                                rpc::ExistsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) {
+void GcsInternalKVManager::HandleInternalKVExists(
+    const rpc::InternalKVExistsRequest &request, rpc::InternalKVExistsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"HEXISTS", request.key(), "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {
@@ -48,8 +51,9 @@ void GcsKVManager::HandleExists(const rpc::ExistsRequest &request,
       });
 }
 
-void GcsKVManager::HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) {
+void GcsInternalKVManager::HandleInternalKVKeys(
+    const rpc::InternalKVKeysRequest &request, rpc::InternalKVKeysReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::string> cmd = {"KEYS", request.prefix() + "*"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [reply, send_reply_callback](auto redis_reply) {

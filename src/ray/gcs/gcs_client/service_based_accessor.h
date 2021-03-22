@@ -467,21 +467,23 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   ServiceBasedGcsClient *client_impl_;
 };
 
-class ServiceBasedKVAccessor : public KVAccessor {
+class ServiceBasedInternalKVAccessor : public InternalKVAccessor {
  public:
-  explicit ServiceBasedKVAccessor(ServiceBasedGcsClient *client_impl);
-  ~ServiceBasedKVAccessor() override = default;
+  explicit ServiceBasedInternalKVAccessor(ServiceBasedGcsClient *client_impl);
+  ~ServiceBasedInternalKVAccessor() override = default;
 
-  Status AsyncKeys(
+  Status AsyncInternalKVKeys(
       const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback) override;
-  Status AsyncGet(const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
-  Status AsyncPut(const std::string &key, const std::string &value, bool overwrite,
-                  const OptionalItemCallback<int> &callback) override;
-  Status AsyncExists(const std::string &key,
-                     const OptionalItemCallback<bool> &callback) override;
-  Status AsyncDel(const std::string &key, const StatusCallback &callback) override;
+  Status AsyncInternalKVGet(const std::string &key,
+                            const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+                            bool overwrite,
+                            const OptionalItemCallback<int> &callback) override;
+  Status AsyncInternalKVExists(const std::string &key,
+                               const OptionalItemCallback<bool> &callback) override;
+  Status AsyncInternalKVDel(const std::string &key,
+                            const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

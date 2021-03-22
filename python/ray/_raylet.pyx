@@ -848,6 +848,7 @@ cdef void terminate_asyncio_thread() nogil:
 
 
 def connect_to_gcs(ip, port, password):
+    print("Connecting to gcs: ", ip, port, password)
     return GcsClient.make_from_address(ip, port, password)
 
 

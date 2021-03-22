@@ -523,62 +523,62 @@ service PlacementGroupInfoGcsService {
       returns (WaitPlacementGroupUntilReadyReply);
 }
 
-message GetRequest {
+message InternalKVGetRequest {
   bytes key = 1;
 }
 
-message GetReply {
+message InternalKVGetReply {
   GcsStatus status = 1;
   oneof optional_value {
     bytes value = 2;
   }
 }
 
-message PutRequest {
+message InternalKVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
 }
 
-message PutReply {
+message InternalKVPutReply {
   GcsStatus status = 1;
   int32 added_num = 2;
 }
 
-message DelRequest {
+message InternalKVDelRequest {
   bytes key = 1;
 }
 
-message DelReply {
+message InternalKVDelReply {
   GcsStatus status = 1;
   int32 deleted_num = 2;
 }
 
-message ExistsRequest {
+message InternalKVExistsRequest {
   bytes key = 1;
 }
 
-message ExistsReply {
+message InternalKVExistsReply {
   GcsStatus status = 1;
   bool exists = 2;
 }
 
-message KeysRequest {
+message InternalKVKeysRequest {
   bytes prefix = 1;
 }
 
-message KeysReply {
+message InternalKVKeysReply {
   GcsStatus status = 1;
   repeated bytes results = 2;
 }
 
 // Service for KV storage
-service KVGcsService {
-  rpc Get(GetRequest) returns (GetReply);
-  rpc Put(PutRequest) returns (PutReply);
-  rpc Del(DelRequest) returns (DelReply);
-  rpc Exists(ExistsRequest) returns (ExistsReply);
-  rpc Keys(KeysRequest) returns (KeysReply);
+service InternalKVGcsService {
+  rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
+  rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
+  rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
+  rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

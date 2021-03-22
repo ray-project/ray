@@ -21,26 +21,31 @@
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `KVHandler`.
-class GcsKVManager : public rpc::KVHandler {
+/// This implementation class of `InternalKVHandler`.
+class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsKVManager(std::shared_ptr<RedisClient> redis_client)
+  explicit GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(redis_client) {}
 
-  void HandleGet(const rpc::GetRequest &request, rpc::GetReply *reply,
-                 rpc::SendReplyCallback send_reply_callback);
+  void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
+                           rpc::InternalKVGetReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
-  void HandlePut(const rpc::PutRequest &request, rpc::PutReply *reply,
-                 rpc::SendReplyCallback send_reply_callback);
+  void HandleInternalKVPut(const rpc::InternalKVPutRequest &request,
+                           rpc::InternalKVPutReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
-  void HandleDel(const rpc::DelRequest &request, rpc::DelReply *reply,
-                 rpc::SendReplyCallback send_reply_callback);
+  void HandleInternalKVDel(const rpc::InternalKVDelRequest &request,
+                           rpc::InternalKVDelReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
-  void HandleExists(const rpc::ExistsRequest &request, rpc::ExistsReply *reply,
-                    rpc::SendReplyCallback send_reply_callback);
+  void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
+                              rpc::InternalKVExistsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback);
 
-  void HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
-                  rpc::SendReplyCallback send_reply_callback);
+  void HandleInternalKVKeys(const rpc::InternalKVKeysRequest &request,
+                            rpc::InternalKVKeysReply *reply,
+                            rpc::SendReplyCallback send_reply_callback);
 
  private:
   std::shared_ptr<RedisClient> redis_client_;

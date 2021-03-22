@@ -18,29 +18,31 @@
 namespace ray {
 namespace gcs {
 
-Status KVAccessor::Put(const std::string &key, const std::string &value, bool overwrite,
-                       bool &added) {
+Status InternalKVAccessor::InternalKVPut(const std::string &key, const std::string &value,
+                                         bool overwrite, bool &added) {
   std::promise<Status> ret_promise;
-  AsyncPut(key, value, overwrite,
-           [&ret_promise, &added](Status status, boost::optional<int> added_num) {
-             added = static_cast<bool>(added_num.value_or(0));
-             ret_promise.set_value(status);
-           });
+  AsyncInternalInternalKVPut(
+      key, value, overwrite,
+      [&ret_promise, &added](Status status, boost::optional<int> added_num) {
+        added = static_cast<bool>(added_num.value_or(0));
+        ret_promise.set_value(status);
+      });
   return ret_promise.get_future().get();
 }
 
-Status KVAccessor::Keys(const std::string &prefix, std::vector<std::string> &value) {
+Status InternalKVAccessor::InternalKVKeys(const std::string &prefix,
+                                          std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
-  AsyncKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
+  AsyncInternalKVKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
     value = values.value_or(std::vector<std::string>());
     ret_promise.set_value(status);
   });
   return ret_promise.get_future().get();
 }
 
-Status KVAccessor::Get(const std::string &key, std::string &value) {
+Status InternalKVAccessor::InternalKVGet(const std::string &key, std::string &value) {
   std::promise<Status> ret_promise;
-  AsyncGet(key, [&ret_promise, &value](Status status, auto &v) {
+  AsyncInternalKVGet(key, [&ret_promise, &value](Status status, auto &v) {
     if (v) {
       ret_promise.set_value(status);
       value = *v;
@@ -51,21 +53,22 @@ Status KVAccessor::Get(const std::string &key, std::string &value) {
   return ret_promise.get_future().get();
 }
 
-Status KVAccessor::Del(const std::string &key) {
+Status InternalKVAccessor::InternalKVDel(const std::string &key) {
   std::promise<Status> ret_promise;
-  AsyncDel(key, [&ret_promise](Status status) { ret_promise.set_value(status); });
+  AsyncInternalKVDel(key,
+                     [&ret_promise](Status status) { ret_promise.set_value(status); });
   return ret_promise.get_future().get();
 }
 
-Status KVAccessor::Exists(const std::string &key, bool &exist) {
+Status InternalKVAccessor::InternalKVExists(const std::string &key, bool &exist) {
   std::promise<Status> ret_promise;
-  AsyncExists(key,
-              [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
-                if (value) {
-                  exist = *value;
-                }
-                ret_promise.set_value(status);
-              });
+  AsyncInternalKVExists(
+      key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
+        if (value) {
+          exist = *value;
+        }
+        ret_promise.set_value(status);
+      });
   return ret_promise.get_future().get();
 }
 
