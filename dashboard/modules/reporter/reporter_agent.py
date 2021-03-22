@@ -139,7 +139,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             self._cpu_counts = (psutil.cpu_count(),
                                 psutil.cpu_count(logical=False))
 
-        self._ip = ray._private.services.get_node_ip_address()
+        self._ip = ray.util.get_node_ip_address()
         self._redis_address, _ = dashboard_agent.redis_address
         self._is_head_node = (self._ip == self._redis_address)
         self._hostname = socket.gethostname()

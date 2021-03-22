@@ -155,7 +155,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -209,7 +209,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -299,7 +299,8 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -421,6 +422,7 @@ class Worker:
         an actual response.
         """
         if self.server is not None:
+            logger.debug("Pinging server.")
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
             return result is not None

@@ -32,15 +32,28 @@ DOCKER_HUB_DESCRIPTION = {
 PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
-def _release_build():
+def _get_branch():
     branch = (os.environ.get("TRAVIS_BRANCH")
               or os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)
         print("Environment is above ^^")
+    return branch
+
+
+def _release_build():
+    branch = _get_branch()
+    if branch is None:
         return False
     return branch != "master" and branch.startswith("releases")
+
+
+def _valid_branch():
+    branch = _get_branch()
+    if branch is None:
+        return False
+    return branch == "master" or _release_build()
 
 
 def _get_curr_dir():
@@ -384,7 +397,11 @@ if __name__ == "__main__":
         build_ray_ml()
 
         if build_type in {MERGE, PR}:  # Skipping push on buildkite
-            push_and_tag_images(base_images_built, build_type == MERGE)
+            is_merge = build_type == MERGE
+            valid_branch = _valid_branch()
+            if (not valid_branch) and is_merge:
+                print(f"Invalid Branch found: {_get_branch()}")
+            push_and_tag_images(base_images_built, valid_branch and is_merge)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)
