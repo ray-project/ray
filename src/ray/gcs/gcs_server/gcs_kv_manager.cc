@@ -28,11 +28,19 @@ void GcsKVManager::HandlePut(const rpc::PutRequest &request, rpc::PutReply *repl
 
 void GcsKVManager::HandleDel(const rpc::DelRequest &request, rpc::DelReply *reply,
                              rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {"HDEL", request.key(), "value"};
+  AsyncDel(request.key(), [reply, send_reply_callback](int deleted_num) {
+    reply->set_deleted_num(deleted_num);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  });
+}
+
+void GcsKVManager::AsyncDel(const std::string& key,
+                            std::function<void(int)> cb) {
+  std::vector<std::string> cmd = {"HDEL", key, "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [reply, send_reply_callback](auto redis_reply) {
-        reply->set_deleted_num(redis_reply->ReadAsInteger());
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      cmd,
+      [cb](auto redis_reply) {
+        cb(redis_reply->ReadAsInteger());
       });
 }
 

@@ -41,7 +41,7 @@ class GcsKVManager : public rpc::KVHandler {
 
   void HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
-
+  void AsyncDel(const std::string& key, std::function<void(int)> cb);
  private:
   std::shared_ptr<RedisClient> redis_client_;
 };

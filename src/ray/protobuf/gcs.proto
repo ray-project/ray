@@ -151,7 +151,7 @@ message ActorTableData {
   RayException creation_task_exception = 18;
   // Runtime required to run this actor
   // It'll only be set if it's a detached actor and the original job has this field
-  RuntimeEnv runtime_env;
+  RuntimeEnv runtime_env = 19;
 }
 
 message ErrorTableData {
