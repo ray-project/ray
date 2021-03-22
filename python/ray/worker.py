@@ -120,8 +120,6 @@ class Worker:
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
         self._load_code_from_local = False
-        self.core_worker_connection_initiated = False
-        self.core_worker_connected = False
 
     @property
     def connected(self):
@@ -1213,14 +1211,12 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
 
     serialized_job_config = job_config.serialize()
-    worker.core_worker_connection_initiated = True
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
-    worker.core_worker_connected = True
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
 
