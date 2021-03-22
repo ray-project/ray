@@ -34,7 +34,8 @@ def _internal_kv_put(key: Union[str, bytes],
         already_exists (bool): whether the value already exists.
     """
 
-    return ray.worker.global_worker.gcs_client.kv_put(key, value, overwrite)
+    return not ray.worker.global_worker.gcs_client.kv_put(
+        key, value, overwrite)
 
 
 @client_mode_hook

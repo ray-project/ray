@@ -10,7 +10,7 @@ import time
 
 import ray
 import ray.test_utils
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
                             kill_actor_and_wait_for_failure,
                             wait_for_condition)
@@ -922,7 +922,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             return count
 
         def set_count(self, count):
-            _internal_kv_put("count", count, True)
+            _internal_kv_put("count", str(count), True)
 
     # Verify we can get the object successfully.
     ra = RestartableActor.remote()

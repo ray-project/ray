@@ -772,20 +772,22 @@ class PlacementGroupInfoAccessor {
   PlacementGroupInfoAccessor() = default;
 };
 
-class KVAccessor {
+class InternalKVAccessor {
  public:
-  virtual ~KVAccessor() = default;
+  virtual ~InternalKVAccessor() = default;
 
-  virtual Status AsyncKeys(
+  virtual Status AsyncInternalKVKeys(
       const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
-  virtual Status AsyncGet(const std::string &key,
-                          const OptionalItemCallback<std::string> &callback) = 0;
-  virtual Status AsyncPut(const std::string &key, const std::string &value,
-                          bool overwrite, const OptionalItemCallback<int> &callback) = 0;
-  virtual Status AsyncExists(const std::string &key,
-                             const OptionalItemCallback<bool> &callback) = 0;
-  virtual Status AsyncDel(const std::string &key, const StatusCallback &callback) = 0;
+  virtual Status AsyncInternalKVGet(
+      const std::string &key, const OptionalItemCallback<std::string> &callback) = 0;
+  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+                                    bool overwrite,
+                                    const OptionalItemCallback<int> &callback) = 0;
+  virtual Status AsyncInternalKVExists(const std::string &key,
+                                       const OptionalItemCallback<bool> &callback) = 0;
+  virtual Status AsyncInternalKVDel(const std::string &key,
+                                    const StatusCallback &callback) = 0;
 
   // These are sync functions of the async above
   Status Keys(const std::string &prefix, std::vector<std::string> &value);
@@ -796,7 +798,7 @@ class KVAccessor {
   Status Exists(const std::string &key, bool &exist);
 
  protected:
-  KVAccessor() = default;
+  InternalKVAccessor() = default;
 };
 
 }  // namespace gcs

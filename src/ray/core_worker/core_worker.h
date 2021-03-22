@@ -92,7 +92,8 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
-        metrics_agent_port(-1) {}
+        metrics_agent_port(-1),
+        connect_on_start(true) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -170,6 +171,10 @@ struct CoreWorkerOptions {
   /// The port number of a metrics agent that imports metrics from core workers.
   /// -1 means there's no such agent.
   int metrics_agent_port;
+  /// If false, the constructor won't connect and notify raylets that it is
+  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
+  /// TODO(sang): Use this method for Java and cpp frontend too.
+  bool connect_on_start;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -338,6 +343,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
+
+  /// Connect to the raylet and notify that the core worker is ready.
+  /// If the options.connect_on_start is false, it doesn't need to be explicitly
+  /// called.
+  void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional

@@ -13,7 +13,7 @@ from cython.operator cimport dereference
 from libcpp cimport nullptr
 
 from ray.includes.gcs_client cimport (
-    CKVAccessor,
+    CInternalKVAccessor,
     CGcsClient,
     make_gcs,
 )
@@ -39,15 +39,19 @@ cdef class GcsClient:
         self.inner_ = gcs_client
         return self
 
+    def disconnect(self):
+        self.inner_.reset()
+
     def kv_put(self, c_string key, c_string value, c_bool overwrite):
         cdef c_bool added = False
-        status = self.inner_.get().KV().Put(key, value, overwrite, added)
+        status = self.inner_.get().InternalKV().Put(
+            key, value, overwrite, added)
         if not status.ok():
             raise IOError("Put failed: {}".format(status.ToString()))
         return added
 
     def kv_del(self, c_string key):
-        status = self.inner_.get().KV().Del(key)
+        status = self.inner_.get().InternalKV().Del(key)
         if not status.ok():
             raise IOError("Del failed: {}".format(status.ToString()))
 
@@ -55,7 +59,7 @@ cdef class GcsClient:
         cdef:
             c_string value
             c_bool exists = True
-        status = self.inner_.get().KV().Get(key, value)
+        status = self.inner_.get().InternalKV().Get(key, value)
         if status.IsNotFound():
             exists = False
         elif not status.ok():
@@ -65,7 +69,7 @@ cdef class GcsClient:
     def kv_keys(self, c_string key):
         cdef:
             c_vector[c_string] results
-        status = self.inner_.get().KV().Keys(key, results)
+        status = self.inner_.get().InternalKV().Keys(key, results)
         if not status.ok():
             raise IOError("Keys failed: {}".format(status.ToString()))
         return results
@@ -73,7 +77,7 @@ cdef class GcsClient:
     def kv_exists(self, c_string key):
         cdef:
             c_bool exist = False
-        status = self.inner_.get().KV().Exists(key, exist)
+        status = self.inner_.get().InternalKV().Exists(key, exist)
         if not status.ok():
             raise IOError("Exists failed: {}".format(status.ToString()))
         return exist

@@ -167,6 +167,6 @@ proto_library(
 
 python_grpc_compile(
     name = "ray_client_py_proto",
-    deps = [":ray_client_proto"]
+    deps = [":ray_client_proto"],
 )
 

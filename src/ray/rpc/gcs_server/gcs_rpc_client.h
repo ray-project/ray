@@ -113,8 +113,8 @@ class GcsRpcClient {
     placement_group_info_grpc_client_ =
         std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
                                                                    client_call_manager);
-    kv_grpc_client_ =
-        std::make_unique<GrpcClient<KVGcsService>>(address, port, client_call_manager);
+    internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
+        address, port, client_call_manager);
   }
 
   /// Add job info to GCS Service.
@@ -270,11 +270,16 @@ class GcsRpcClient {
                              placement_group_info_grpc_client_, )
 
   /// Operations for kv (Get, Put, Del, Exists)
-  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Get, kv_grpc_client_, )
-  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Put, kv_grpc_client_, )
-  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Del, kv_grpc_client_, )
-  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Exists, kv_grpc_client_, )
-  VOID_GCS_RPC_CLIENT_METHOD(KVGcsService, Keys, kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVDel,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVExists,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
+                             internal_kv_grpc_client_, )
 
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
@@ -291,7 +296,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
-  std::unique_ptr<GrpcClient<KVGcsService>> kv_grpc_client_;
+  std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
 };
 
 }  // namespace rpc

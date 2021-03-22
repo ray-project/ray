@@ -571,7 +571,7 @@ void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) 
 
 void WorkerPool::PopUtilWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+  PopIOWorkerInternal(rpc::WorkerType::UTIL_WORKER, callback);
 }
 
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
