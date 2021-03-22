@@ -135,6 +135,9 @@ class LocalObjectManager {
   /// Record object spilling stats to metrics.
   void RecordObjectSpillingStats() const;
 
+  /// Return the spilled object URL or the empty string.
+  std::string GetSpilledObjectURL(const ObjectID &object_id);
+
   std::string DebugString() const;
 
  private:
@@ -172,9 +175,6 @@ class LocalObjectManager {
   void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
                       const rpc::SpillObjectsReply &worker_reply,
                       std::function<void(const ray::Status &)> callback);
-
-  /// Return the spilled object URL or the empty string.
-  std::string GetSpilledObjectURL(const ObjectID &object_id);
 
   /// Delete spilled objects stored in given urls.
   ///

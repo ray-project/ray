@@ -332,9 +332,17 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
+  // Fall back to pulling from a remote node. If the object is spilled on the local
+  // disk of the remote node, it will be restored by PushManager prior to pushing.
+  bool did_pull = PullFromRandomLocation(object_id);
+  if (did_pull) {
+    UpdateRetryTimer(request);
+    return;
+  }
+
   // If we can restore directly from this raylet, then prefer to do so.
   bool can_restore_directly =
-      request.spilled_url.empty() &&
+      !request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
     UpdateRetryTimer(request);
@@ -345,13 +353,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                                                << " failed, will retry later: " << status;
                               }
                             });
-  }
-
-  // Fall back to pulling from a remote node. If the object is spilled on the local
-  // disk of the remote node, it will be restored by PushManager prior to pushing.
-  bool did_pull = PullFromRandomLocation(object_id);
-  if (did_pull) {
-    UpdateRetryTimer(request);
   }
 }
 
