@@ -31,7 +31,6 @@ from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
-from ray.tune.trainable import Trainable
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 

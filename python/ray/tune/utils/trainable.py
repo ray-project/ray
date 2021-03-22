@@ -148,7 +148,7 @@ class TrainableUtil:
         Returns:
             A string with the full path to the checkpoint within the directory.
         """
-        if 'checkpoint' not in checkpoint_dir:
+        if "checkpoint" not in checkpoint_dir:
             raise ValueError("The given path does not point to a specific "
                              f"checkpoint: {checkpoint_dir}")
         # if it directly points to the checkpoint file, just return it
@@ -156,8 +156,8 @@ class TrainableUtil:
             return checkpoint_dir
 
         # else derive the checkpoint file and return it
-        checkpoint_number = checkpoint_dir.split('_')[-1]
-        return os.path.join(checkpoint_dir, f'checkpoint-{checkpoint_number}')
+        checkpoint_number = checkpoint_dir.split("_")[-1]
+        return os.path.join(checkpoint_dir, f"checkpoint-{checkpoint_number}")
 
     @staticmethod
     def get_checkpoints_paths(logdir):
@@ -201,23 +201,23 @@ class TrainableUtil:
             iteration).
         """
         # if logdir already points to a specific checkpoint load it
-        if 'checkpoint' in logdir:
+        if "checkpoint" in logdir:
             return TrainableUtil.get_checkpoint_path(logdir)
 
         # get all checkpoint paths and their corresponding training iteration
         df = TrainableUtil.get_checkpoints_paths(logdir)
         # retrieve path with highest training iteration
         last_df_row = \
-            df[df['training_iteration'] == df['training_iteration'].max()]
+            df[df["training_iteration"] == df["training_iteration"].max()]
         if len(last_df_row) == 0:
             subdirs = glob.glob(os.path.join(logdir, "*", ""))
             raise ValueError(f"No checkpoints found in directory: {logdir}"
                              f"Maybe in a sub-directory? {subdirs}")
-        last_checkpoint_path = last_df_row['chkpt_path'].item()
+        last_checkpoint_path = last_df_row["chkpt_path"].item()
         return last_checkpoint_path
 
     @staticmethod
-    def get_best_checkpoint(logdir, metric, mode='max'):
+    def get_best_checkpoint(logdir, metric, mode="max"):
         """Finds and returns best checkpoint from given directory according to
         the given metric.
 
@@ -231,7 +231,7 @@ class TrainableUtil:
             mode.
         """
         # if logdir already points to a specific checkpoint load it
-        if 'checkpoint' in logdir:
+        if "checkpoint" in logdir:
             return TrainableUtil.get_checkpoint_path(logdir)
 
         # else load the best checkpoint from all available checkpoints

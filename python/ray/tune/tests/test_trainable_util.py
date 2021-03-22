@@ -84,7 +84,7 @@ class TrainableUtilTest(unittest.TestCase):
         last_checkpoint = TrainableUtil.get_last_checkpoint(self.logdir)
         self.assertTrue(os.path.isfile(last_checkpoint))
         # assert the function returns the 2nd (and latest) checkpoint
-        self.assertTrue('2' in last_checkpoint)
+        self.assertTrue("2" in last_checkpoint)
 
         # load the checkpoint and do one more train iteration
         tune.run(
@@ -105,7 +105,7 @@ class TrainableUtilTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(self.logdir))
         best_checkpoint = \
             TrainableUtil.get_best_checkpoint(self.logdir,
-                                          metric='episode_reward_mean')
+                                              metric="episode_reward_mean")
         self.assertTrue(os.path.isfile(best_checkpoint))
 
         # load the checkpoint and do one more train iteration
