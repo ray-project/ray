@@ -37,12 +37,15 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic<1.7
+pydantic
 dataclasses; python_version < '3.7'
 starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
+azure-common
+azure-mgmt-resource
+msrestazure
 boto3
 cython==0.29.0
 dataclasses; python_version < '3.7'
@@ -73,5 +76,6 @@ testfixtures
 werkzeug
 xlrd
 starlette
+fastapi
 smart_open[s3]
 tqdm

@@ -640,7 +640,7 @@ def test_get_correct_node_ip():
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
-        found_ip = ray._private.services.get_node_ip_address()
+        found_ip = ray.util.get_node_ip_address()
         assert found_ip == "10.0.0.111"
 
 

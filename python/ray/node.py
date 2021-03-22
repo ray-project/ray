@@ -99,10 +99,10 @@ class Node:
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
         elif ray_params.redis_address:
-            node_ip_address = ray._private.services.get_node_ip_address(
+            node_ip_address = ray.util.get_node_ip_address(
                 ray_params.redis_address)
         else:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
         if ray_params.raylet_ip_address:
@@ -288,11 +288,11 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._session_dir,
-                                             "runtime_resources")
-        try_to_create_directory(self._runtime_env_dir)
+        self._resource_dir = os.path.join(self._session_dir,
+                                          "runtime_resources")
+        try_to_create_directory(self._resource_dir)
         import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._runtime_env_dir
+        runtime_env.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -791,6 +791,7 @@ class Node:
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._resource_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -810,7 +811,6 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.

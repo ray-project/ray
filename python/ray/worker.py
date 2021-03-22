@@ -62,6 +62,7 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
+GENERAL_IO_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -85,7 +86,6 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        connected (bool): True if Ray has been started and False otherwise.
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
@@ -98,7 +98,6 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run = []
-        self.actor_init_error = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -125,6 +124,7 @@ class Worker:
 
     @property
     def connected(self):
+        """bool: True if Ray has been started and False otherwise."""
         return self.node is not None
 
     @property
@@ -171,17 +171,6 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
-
-    def mark_actor_init_failed(self, error):
-        """Called to mark this actor as failed during initialization."""
-
-        self.actor_init_error = error
-
-    def reraise_actor_init_error(self):
-        """Raises any previous actor initialization error."""
-
-        if self.actor_init_error is not None:
-            raise self.actor_init_error
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -500,7 +489,7 @@ def init(
         ignore_reinit_error=False,
         include_dashboard=None,
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
-        dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        dashboard_port=None,
         job_config=None,
         configure_logging=True,
         logging_level=logging.INFO,
@@ -573,8 +562,9 @@ def init(
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
-        dashboard_port: The port to bind the dashboard server to. Defaults to
-            8265.
+        dashboard_port(int, None): The port to bind the dashboard server to.
+            Defaults to 8265 and Ray will automatically find a free port if
+            8265 is not available.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -1240,11 +1230,10 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        runtime_env.ensure_runtime_env_setup(
-            os.environ.get(
-                "RAY_RUNTIME_ENV_FILES",
-                worker.core_worker.get_job_config()
-                .runtime_env.working_dir_uri))
+        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        job_config = [job_config] if job_config else \
+            worker.core_worker.get_job_config().runtime_env.uris
+        runtime_env.ensure_runtime_env_setup(job_config)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
