@@ -17,7 +17,7 @@ from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
-import ray._private.cluster_utils
+import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
