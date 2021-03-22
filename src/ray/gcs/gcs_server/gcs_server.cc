@@ -320,14 +320,15 @@ void GcsServer::InitRuntimeEnvManager() {
           if(scheme != "gcs") {
             // Skip other uri
             cb(true);
+          } else {
+            this->kv_manager_->AsyncDel(uri, [cb](int deleted_num) {
+              if(deleted_num == 0) {
+                cb(false);
+              } else {
+                cb(true);
+              }
+            });
           }
-          this->kv_manager_->AsyncDel(uri, [cb](int deleted_num) {
-            if(deleted_num == 0) {
-              cb(false);
-            } else {
-              cb(true);
-            }
-          });
         }
       });
 }

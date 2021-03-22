@@ -131,6 +131,7 @@ def test_two_node_uri(two_node_cluster, working_dir):
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
     # pinned uri will not be deleted
+    print(list(kv._internal_kv_list("")))
     assert len(kv._internal_kv_list("pingcs://")) == 1
 
 
@@ -148,6 +149,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert out.strip().split()[-1] == "1000"
     from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -175,6 +177,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @pytest.fixture(scope="session")
