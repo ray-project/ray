@@ -107,6 +107,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   ASSERT_TRUE(num_abort_calls_.empty());
 
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
 
@@ -170,6 +171,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
   ASSERT_EQ(num_abort_calls_[obj1], 1);
@@ -226,6 +228,7 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(num_abort_calls_[obj1], 1);
   AssertNoLeaks();
@@ -282,6 +285,7 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
   ASSERT_EQ(num_abort_calls_[obj1], 1);
@@ -331,6 +335,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
   ASSERT_EQ(num_abort_calls_[obj1], 1);
@@ -349,7 +354,11 @@ TEST_F(PullManagerTest, TestBasic) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
+  }
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
@@ -365,11 +374,13 @@ TEST_F(PullManagerTest, TestBasic) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, oids);
   AssertNumActiveRequestsEquals(0);
   for (auto &oid : oids) {
     ASSERT_EQ(num_abort_calls_[oid], 1);
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
   }
 
   // Don't pull a remote object if we've canceled.
@@ -399,6 +410,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
@@ -406,6 +418,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   AssertNumActiveRequestsEquals(oids.size());
 
   // Cancel one request.
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id1));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id1);
   ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_TRUE(objects_to_cancel.empty());
@@ -418,14 +431,17 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
     ASSERT_EQ(num_send_pull_request_calls_, i + 1);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
   }
 
   // Cancel the other request.
   ASSERT_TRUE(num_abort_calls_.empty());
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id2));
   objects_to_cancel = pull_manager_.CancelPull(req_id2);
   ASSERT_EQ(objects_to_cancel, oids);
   AssertNumActiveRequestsEquals(0);
   for (auto &oid : oids) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
     ASSERT_EQ(num_abort_calls_[oid], 1);
   }
 
@@ -455,12 +471,17 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[i]));
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), object_size);
   }
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   AssertNumActiveRequestsEquals(oids.size());
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
+  for (size_t i = 0; i < oids.size(); i++) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
+  }
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
@@ -469,8 +490,10 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   AssertNumActiveRequestsEquals(0);
   ASSERT_EQ(num_object_store_full_calls_, 1);
   for (auto &oid : oids) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
     ASSERT_EQ(num_abort_calls_[oid], 1);
   }
+  ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   // No new pull requests after the next tick.
   fake_time_ += 10;
   auto prev_pull_requests = num_send_pull_request_calls_;
@@ -482,6 +505,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
 
   // Increase the available memory again.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size);
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   AssertNumActiveRequestsEquals(oids.size());
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
   ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests + oids.size());
@@ -490,11 +514,13 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   ASSERT_EQ(num_object_store_full_calls_, 1);
   num_object_store_full_calls_ = 0;
   for (auto &oid : oids) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
     ASSERT_EQ(num_abort_calls_[oid], 1);
   }
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
     ASSERT_EQ(num_abort_calls_[oid], 2);
   }
   AssertNoLeaks();
@@ -548,6 +574,13 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
       ASSERT_EQ(num_object_store_full_calls_, 1);
     } else {
       ASSERT_EQ(num_object_store_full_calls_, 0);
+    }
+    for (size_t i = 0; i < req_ids.size(); i++) {
+      if ((int)i < num_requests_expected) {
+        ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
+      } else {
+        ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
+      }
     }
     num_object_store_full_calls_ = 0;
   }

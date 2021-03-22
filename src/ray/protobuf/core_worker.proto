@@ -151,6 +151,10 @@ message GetObjectStatusReply {
   // The Ray object: either a concrete value, an in-Plasma indicator, or an
   // exception.
   RayObject object = 2;
+  // This object's locations.
+  repeated bytes node_ids = 3;
+  // The size of the object in bytes.
+  uint64 object_size = 4;
 }
 
 message WaitForActorOutOfScopeRequest {
@@ -376,6 +380,16 @@ message ExitRequest {
 }
 
 message ExitReply {
+  /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
+  bool success = 1;
+}
+
+message RunOnUtilWorkerRequest {
+  string request = 1;
+  repeated string args = 2;
+}
+
+message RunOnUtilWorkerReply {
 }
 
 service CoreWorkerService {
@@ -429,6 +443,8 @@ service CoreWorkerService {
   rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Run a request on io worker
+  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
 }

@@ -22,7 +22,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
+    TrainTFMultiGPU
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -82,6 +83,9 @@ DEFAULT_CONFIG = with_common_config({
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
     "buffer_size": 50000,
+    # The number of contiguous environment steps to replay at once. This may
+    # be set to greater than 1 to support recurrent models.
+    "replay_sequence_length": 1,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": True,
     # Alpha parameter for prioritized replay buffer.
@@ -94,6 +98,7 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_beta_annealing_timesteps": 20000,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
+
     # Whether to LZ4 compress observations
     "compress_observations": False,
     # Callback to run before learning on a multi-agent batch of experiences.
@@ -166,6 +171,13 @@ def validate_config(config: TrainerConfigDict) -> None:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
 
+    # Multi-agent mode and multi-GPU optimizer.
+    if config["multiagent"]["policies"] and not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
+
 
 def execution_plan(workers: WorkerSet,
                    config: TrainerConfigDict) -> LocalIterator[dict]:
@@ -194,7 +206,9 @@ def execution_plan(workers: WorkerSet,
         buffer_size=config["buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
+        replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
@@ -225,9 +239,22 @@ def execution_plan(workers: WorkerSet,
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = TrainTFMultiGPU(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))

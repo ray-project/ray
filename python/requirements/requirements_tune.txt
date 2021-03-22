@@ -1,5 +1,6 @@
+autogluon.core==0.0.16b20210113  # to pin autogluon.core
 ax-platform==0.1.9; python_version < '3.7'
-ax-platform==0.1.19; python_version >= '3.7'
+ax-platform==0.1.20; python_version >= '3.7'
 bayesian-optimization==1.2.0
 ConfigSpace==0.4.10
 dragonfly-opt==0.1.6
@@ -15,10 +16,10 @@ keras==2.4.3
 kubernetes==12.0.1
 lightgbm==3.1.1
 matplotlib==3.3.4
-mlflow==1.13.1
+mlflow==1.14.0
 mxnet==1.7.0.post1
 nevergrad==0.4.2.post5
-optuna==2.4.0
+optuna==2.6.0
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3

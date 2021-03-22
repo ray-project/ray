@@ -253,8 +253,8 @@ class ValueNetworkMixin:
 
                 @make_tf_callable(self.get_session())
                 def value(**input_dict):
-                    model_out, _ = self.model.from_batch(
-                        input_dict, is_training=False)
+                    input_dict = SampleBatch(input_dict)
+                    model_out, _ = self.model(input_dict)
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 
@@ -358,7 +358,7 @@ PPOTFPolicy = build_tf_policy(
     postprocess_fn=compute_gae_for_sample_batch,
     stats_fn=kl_and_loss_stats,
     gradients_fn=compute_and_clip_gradients,
-    extra_action_fetches_fn=vf_preds_fetches,
+    extra_action_out_fn=vf_preds_fetches,
     before_init=setup_config,
     before_loss_init=setup_mixins,
     mixins=[

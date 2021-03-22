@@ -200,6 +200,26 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncKillActor(
+    const ActorID &actor_id, bool force_kill, bool no_restart,
+    const ray::gcs::StatusCallback &callback) {
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_restart(no_restart);
+  client_impl_->GetGcsRpcClient().KillActorViaGcs(
+      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
+        if (callback) {
+          auto status =
+              reply.status().code() == (int)StatusCode::OK
+                  ? Status()
+                  : Status(StatusCode(reply.status().code()), reply.status().message());
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
@@ -1292,10 +1312,17 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const StatusCallback &callback) {
   auto job_id = JobID::FromBinary(data_ptr->job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
-  Status status = client_impl_->GetGcsPubSub().Publish(
-      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
-  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
-  return status;
+  rpc::ReportJobErrorRequest request;
+  request.mutable_job_error()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportJobError(
+      request,
+      [job_id, callback](const Status &status, const rpc::ReportJobErrorReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+      });
+  return Status::OK();
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(

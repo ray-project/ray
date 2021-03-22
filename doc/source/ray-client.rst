@@ -4,15 +4,11 @@
 Ray Client
 **********
 
-.. note::
-
-   This feature is still in beta and subject to changes.
-
 ===========
 Basic usage
 ===========
 
-The Ray client server is automatically started on port ``10001`` when you use ``ray start --head`` or Ray in an autoscaling cluster. The port can be changed by specifying --ray-client-server-port in the ``ray start`` command.
+The Ray client server is automatically started on port ``10001`` when you use ``ray start --head`` or Ray in an autoscaling cluster. The port can be changed by specifying ``--ray-client-server-port`` in the ``ray start`` command to be any integer between 1024 and 65535.
 
 To start the server manually, you can run:
 
@@ -39,16 +35,10 @@ From here, another Ray script can access that server from a networked machine wi
 
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
 
-============
-Known issues
-============
+=======================
+Versioning requirements
+=======================
 
-Because Ray client mode affects the behavior of the Ray API, larger scripts or libraries imported before ``ray.util.connect()`` may not realize they're in client mode. This feature is being tracked with `issue #13272 <https://github.com/ray-project/ray/issues/13272>`_ but the workaround here is provided for beta users.
+Generally, the client Ray version must match the server Ray version. An error will be raised if an incompatible version is used.
 
-One option is to defer the imports from a ``main`` script that calls ``ray.util.connect()`` first. However, some older scripts or libraries might not support that.
-
-Therefore, an environment variable is also available to force a Ray program into client mode: ``RAY_CLIENT_MODE`` An example usage:
-
-.. code-block:: bash
-
-   RAY_CLIENT_MODE=1 python my_ray_program.py
+Similarly, the minor Python (e.g., 3.6 vs 3.7) must match between the client and server. An error will be raised if this is not the case.

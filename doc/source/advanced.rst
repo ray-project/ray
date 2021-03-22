@@ -422,3 +422,34 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+.. _conda-environments-for-tasks-and-actors:
+
+Conda Environments for Tasks and Actors
+-----------------------------------------
+
+Starting with Ray 1.3.0, Ray supports starting tasks and actors in `conda environments <https://docs.conda.io/en/latest/>`_.
+This allows you to use tasks and actors with different (possibly conflicting) package dependencies within a single Ray runtime.
+You will need to have the desired conda environments installed beforehand on all nodes in your Ray cluster, and they
+must all use the same Python minor version (e.g., Python 3.8).
+
+To start a specific task or an actor in an existing conda environment, pass in the environment name to your task or 
+actor via the ``runtime_env`` parameter as follows:
+
+.. code-block:: python
+
+    result = ray.get(my_task.options(runtime_env={"conda_env": "my_env"}).remote())
+
+.. code-block:: python
+
+    my_actor = MyActor.options(runtime_env={"conda_env": "my_env"}).remote()
+
+Nested tasks and actors will inherit the conda environment of their parent by default.
+
+To have Ray start all tasks and actors in a specific conda environment by default, you may
+pass in the desired conda environment name into ``ray.init()``:
+
+.. code-block:: python
+
+    from ray.job_config import JobConfig
+    ray.init(job_config=JobConfig(runtime_env={"conda_env": "my_env"}))
