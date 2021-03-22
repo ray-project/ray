@@ -96,7 +96,7 @@ ray_files += [
 # in this directory
 extras = {
     "full": ["colorful"],
-    "serve": ["uvicorn", "requests", "pydantic", "starlette", "fastapi"],
+    "serve": ["uvicorn", "requests", "pydantic>=1.8", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
