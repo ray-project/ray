@@ -7,16 +7,15 @@ import starlette.responses
 import starlette.routing
 
 import ray
+from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve.common import EndpointTag
-from ray.serve.constants import LongPollKey
+from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
-from ray.serve.utils import _get_logger
+from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
-
-logger = _get_logger()
 
 
 class ServeStarletteEndpoint:
@@ -47,7 +46,7 @@ class ServeStarletteEndpoint:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         if self.handle is None:
-            self.handle = self.client.get_handle(self.endpoint_tag, sync=False)
+            self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
         object_ref = await self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
@@ -102,8 +101,8 @@ class HTTPProxy:
         # route -> (endpoint_tag, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
-        self.long_poll_client = LongPollAsyncClient(controller, {
-            LongPollKey.ROUTE_TABLE: self._update_route_table,
+        self.long_poll_client = LongPollClient(controller, {
+            LongPollNamespace.ROUTE_TABLE: self._update_route_table,
         })
 
         self.request_counter = metrics.Counter(
@@ -111,7 +110,7 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
-    async def _update_route_table(self, route_table):
+    def _update_route_table(self, route_table):
         logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 

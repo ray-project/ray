@@ -208,7 +208,7 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
 
 int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
                                           bool is_subscription,
-                                          boost::asio::io_service &io_service,
+                                          instrumented_io_context &io_service,
                                           int64_t callback_index) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
@@ -352,32 +352,40 @@ Status RedisContext::PingPort(const std::string &address, int port) {
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
-                             const std::string &password = "") {
+                             const std::string &password, bool enable_sync_conn,
+                             bool enable_async_conn, bool enable_subscribe_conn) {
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
   RAY_CHECK(!async_redis_subscribe_context_);
 
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
-  RAY_CHECK_OK(AuthenticateRedis(context_, password));
+  if (enable_sync_conn) {
+    RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
+    RAY_CHECK_OK(AuthenticateRedis(context_, password));
 
-  redisReply *reply = reinterpret_cast<redisReply *>(
-      redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
-  REDIS_CHECK_ERROR(context_, reply);
-  freeReplyObject(reply);
+    redisReply *reply = reinterpret_cast<redisReply *>(
+        redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
+    REDIS_CHECK_ERROR(context_, reply);
+    freeReplyObject(reply);
+  }
 
-  // Connect to async context
-  redisAsyncContext *async_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
-  RAY_CHECK_OK(AuthenticateRedis(async_context, password));
-  redis_async_context_.reset(new RedisAsyncContext(async_context));
-  SetDisconnectCallback(redis_async_context_.get());
+  if (enable_async_conn) {
+    // Connect to async context
+    redisAsyncContext *async_context = nullptr;
+    RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
+    RAY_CHECK_OK(AuthenticateRedis(async_context, password));
+    redis_async_context_.reset(new RedisAsyncContext(async_context));
+    SetDisconnectCallback(redis_async_context_.get());
+  }
 
-  // Connect to subscribe context
-  redisAsyncContext *subscribe_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
-  RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
-  async_redis_subscribe_context_.reset(new RedisAsyncContext(subscribe_context));
-  SetDisconnectCallback(async_redis_subscribe_context_.get());
+  if (enable_subscribe_conn) {
+    // Connect to subscribe context
+    redisAsyncContext *subscribe_context = nullptr;
+    RAY_CHECK_OK(
+        ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
+    RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
+    async_redis_subscribe_context_.reset(new RedisAsyncContext(subscribe_context));
+    SetDisconnectCallback(async_redis_subscribe_context_.get());
+  }
 
   return Status::OK();
 }

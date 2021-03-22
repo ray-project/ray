@@ -16,6 +16,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
@@ -34,7 +35,7 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(boost::asio::io_service &io_service) : io_service_(io_service) {}
+  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -66,12 +67,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 };
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  explicit WorkerPoolMock(boost::asio::io_service &io_service,
+  explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
@@ -210,8 +211,7 @@ class WorkerPoolTest : public ::testing::Test {
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    worker_pool_ =
-        std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_, worker_commands));
+    worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_, worker_commands);
     rpc::JobConfig job_config;
     job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
@@ -249,7 +249,7 @@ class WorkerPoolTest : public ::testing::Test {
       mock_worker_rpc_clients_;
 
  protected:
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
@@ -894,6 +894,41 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+
+  // Start two IO workers. These don't count towards the limit.
+  {
+    RAY_LOG(INFO) << "XXX";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
+    auto worker = CreateSpillWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushSpillWorker(worker);
+  }
+  {
+    RAY_LOG(INFO) << "YYY";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
+    auto worker = CreateRestoreWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushRestoreWorker(worker);
+  }
+  // All workers still alive.
+  worker_pool_->SetCurrentTimeMs(10000);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
+  for (auto &worker : worker_pool_->GetIdleWorkers()) {
+    mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
+    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+  }
+  int num_callbacks = 0;
+  auto callback = [&](std::shared_ptr<WorkerInterface> worker) { num_callbacks++; };
+  worker_pool_->PopSpillWorker(callback);
+  worker_pool_->PopRestoreWorker(callback);
+  ASSERT_EQ(num_callbacks, 2);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {

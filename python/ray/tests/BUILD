@@ -138,6 +138,7 @@ py_test_module_list(
   files = [
     "test_placement_group.py",
     "test_object_spilling.py",
+    "test_runtime_env.py",
   ],
   size = "large",
   extra_srcs = SRCS,

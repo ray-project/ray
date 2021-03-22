@@ -22,6 +22,7 @@
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 
 namespace ray {
@@ -49,7 +50,7 @@ class Raylet {
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   /// \param metrics_export_port A port at which metrics are exposed to.
-  Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
+  Raylet(instrumented_io_context &main_service, const std::string &socket_name,
          const std::string &node_ip_address, const std::string &redis_address,
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
@@ -77,7 +78,7 @@ class Raylet {
   friend class TestObjectManagerIntegration;
 
   // Main event loop.
-  boost::asio::io_service &main_service_;
+  instrumented_io_context &main_service_;
 
   /// ID of this node.
   NodeID self_node_id_;

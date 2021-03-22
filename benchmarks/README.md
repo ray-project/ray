@@ -1,7 +1,5 @@
 # Ray Scalability Envelope
 
-### Note: This document is a WIP. This is not a scalability guarantee (yet).
-
 ## Distributed Benchmarks
 
 All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.
