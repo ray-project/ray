@@ -223,10 +223,17 @@ class AzureNodeProvider(NodeProvider):
         """Sets the tag values (string dict) for the specified node."""
         node_tags = self._get_cached_node(node_id)["tags"]
         node_tags.update(tags)
-        self.compute_client.virtual_machines.update(
-            resource_group_name=self.provider_config["resource_group"],
-            vm_name=node_id,
-            parameters={"tags": node_tags})
+        if hasattr(self.compute_client.virtual_machines, "update"):
+            self.compute_client.virtual_machines.update(
+                resource_group_name=self.provider_config["resource_group"],
+                vm_name=node_id,
+                parameters={"tags": node_tags})
+        else:
+            # Newer versions of the client use begin_update, not update
+            self.compute_client.virtual_machines.begin_update(
+                resource_group_name=self.provider_config["resource_group"],
+                vm_name=node_id,
+                parameters={"tags": node_tags})
         self.cached_nodes[node_id]["tags"] = node_tags
 
     def terminate_node(self, node_id):

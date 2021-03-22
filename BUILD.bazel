@@ -597,6 +597,8 @@ cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
         "@boost//:asio",
+        "@boost//:filesystem",
+        "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",

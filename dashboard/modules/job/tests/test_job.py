@@ -182,7 +182,7 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    ip = ray._private.services.get_node_ip_address()
+    ip = ray.util.get_node_ip_address()
 
     def _check():
         resp = requests.get(f"{webui_url}/jobs?view=summary")

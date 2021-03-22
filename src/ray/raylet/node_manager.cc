@@ -17,13 +17,13 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
-
+#include "boost/filesystem.hpp"
+#include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -223,7 +223,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      record_metrics_period_ms_(config.record_metrics_period_ms) {
+      record_metrics_period_ms_(config.record_metrics_period_ms),
+      runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
+        return DeleteLocalURI(uri, cb);
+      }) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
 
@@ -472,6 +475,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   }
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
+  runtime_env_manager_.AddUriReference(job_id.Hex(), job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -497,6 +501,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       KillWorker(worker);
     }
   }
+  runtime_env_manager_.RemoveUriReference(job_id.Hex());
 }
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
@@ -1233,6 +1238,10 @@ void NodeManager::DisconnectClient(
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
+      if (worker->IsDetachedActor()) {
+        runtime_env_manager_.RemoveUriReference(actor_id.Hex());
+      }
+
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
@@ -1272,6 +1281,62 @@ void NodeManager::DisconnectClient(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb) {
+  auto resource_path = boost::filesystem::path(initial_config_.resource_dir);
+  // Format of URI must be: scheme://path
+  std::string sep = "://";
+  auto pos = uri.find(sep);
+  if (pos == std::string::npos || pos + sep.size() == uri.size()) {
+    RAY_LOG(ERROR) << "Invalid uri: " << uri;
+    cb(true);
+  }
+
+  auto from_path = resource_path / boost::filesystem::path(uri.substr(pos + sep.size()));
+  if (!boost::filesystem::exists(from_path)) {
+    RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
+    cb(true);
+  }
+  std::string deleting_suffix(".deleting");
+  auto to_path = from_path;
+  to_path += deleting_suffix;
+  int suffix_num = 0;
+  // This is for a rare case, where one request is under processing,
+  // but get a new one here.
+  while (boost::filesystem::exists(to_path)) {
+    to_path = from_path;
+    to_path += deleting_suffix;
+    to_path += "." + std::to_string(suffix_num);
+    ++suffix_num;
+  }
+  boost::system::error_code ec;
+  boost::filesystem::rename(from_path, to_path, ec);
+  if (ec.value() != 0) {
+    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
+                   << " because of error " << ec.message();
+    cb(false);
+  }
+
+  std::string to_path_str = to_path.string();
+  // We put actual deleting job in a worker is because deleting big file
+  // will block the thread for a while.
+  worker_pool_.PopUtilWorker(
+      [this, to_path_str, cb](std::shared_ptr<WorkerInterface> io_worker) {
+        rpc::RunOnUtilWorkerRequest req;
+        // TODO(yic): Move this to another file to make it formal
+        req.set_request("DEL_FILE");
+        *req.add_args() = to_path_str;
+        io_worker->rpc_client()->RunOnUtilWorker(
+            req, [this, io_worker, cb](const ray::Status &status,
+                                       const rpc::RunOnUtilWorkerReply &) {
+              worker_pool_.PushUtilWorker(io_worker);
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to execute job in io_worker " << status;
+              }
+              cb(status.ok());
+            });
+      });
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1754,6 +1819,11 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
 
   if (task_spec.IsDetachedActor()) {
     worker.MarkDetachedActor();
+    auto job_id = task.GetTaskSpecification().JobId();
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    RAY_CHECK(job_config);
+    runtime_env_manager_.AddUriReference(actor_id.Hex(), job_config->runtime_env());
+    ;
   }
 }
 
