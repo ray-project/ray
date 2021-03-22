@@ -17,7 +17,7 @@ import ray._private.runtime_env as runtime_support
 from opentelemetry import trace
 from opentelemetry.util.types import Attributes
 import os
-from typing import Any, Callable, List, MutableMapping
+from typing import Any, Callable, Dict, List, MutableMapping, Optional
 from ray.runtime_context import get_runtime_context
 import ray.dict_propagator as dict_propagator
 from ray.util.tracing import use_context
@@ -99,28 +99,6 @@ def _span_consumer_name(func: Callable[..., Any]) -> str:
 #     return function(*args, **kwargs)
 
 
-@wrapt.decorator
-def _resume_trace(wrapped: Callable[..., Any], instance: Any, args: List[Any],
-                  kwargs: MutableMapping[Any, Any]) -> Any:
-    tracer = trace.get_tracer(__name__)
-
-    # assert (
-    #         "_ray_trace_ctx" in kwargs
-    #     ), f"Missing ray_trace_ctx!: {args}, {kwargs}"
-
-    # Set a new context if given a _ray_trace_ctx, or default to current_context
-    # Retrieves the context from the _ray_trace_ctx dictionary we injected
-    # with use_context(
-    #     dict_propagator.extract(kwargs["_ray_trace_ctx"])
-    # ),
-    with tracer.start_as_current_span(
-            _span_consumer_name(wrapped.__name__),
-            kind=trace.SpanKind.CONSUMER,
-            attributes=_hydrate_span_args(wrapped.__name__),
-    ):
-        return wrapped(*args, **kwargs)
-
-
 class RemoteFunction:
     """A remote function.
 
@@ -162,12 +140,11 @@ class RemoteFunction:
             different workers.
     """
 
-    @_resume_trace
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
-        self._function = function
+        self._function = self.with_arguments(function)
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._function_descriptor = function_descriptor
@@ -201,6 +178,31 @@ class RemoteFunction:
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
+
+    @staticmethod
+    def with_arguments(function):
+        def _resume_trace(
+                *args: Any,
+                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+                **kwargs: Any,
+        ) -> Any:
+            tracer = trace.get_tracer(__name__)
+
+            assert ("_ray_trace_ctx" in kwargs
+                    ), f"Missing ray_trace_ctx!: {args}, {kwargs}"
+
+            # Set a new context if given a _ray_trace_ctx, or default to current_context
+            # Retrieves the context from the _ray_trace_ctx dictionary we injected
+            with use_context(
+                    dict_propagator.extract(kwargs[
+                        "_ray_trace_ctx"])), tracer.start_as_current_span(
+                            _span_consumer_name(function.__name__),
+                            kind=trace.SpanKind.CONSUMER,
+                            attributes=_hydrate_span_args(function.__name__),
+                        ):
+                return function(*args, **kwargs)
+
+        return _resume_trace
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Remote functions cannot be called directly. Instead "
@@ -273,16 +275,32 @@ class RemoteFunction:
             args: List[Any],
             kwargs: MutableMapping[Any, Any],
     ) -> Any:
-        """Wrap the _remote function with tracer."""
-        assert "_ray_trace_ctx" not in kwargs
+        """
+        Make sure we inject our current span context into the kwargs for propigation
+        before running our remote tasks
+        """
 
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-                _span_producer_name(instance._function.__name__),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(instance._function.__name__)):
-            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
-            return wrapped(*args, **kwargs)
+        def _start_remote_span(
+                args: Any,
+                kwargs: MutableMapping[Any, Any],
+                *_args: Any,
+                **_kwargs: Any,
+        ) -> Any:
+            assert "_ray_trace_ctx" not in kwargs
+
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                    _span_producer_name(instance._function_name),
+                    kind=trace.SpanKind.PRODUCER,
+                    attributes=_hydrate_span_args(instance._function_name),
+            ):
+                # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+                kwargs["_ray_trace_ctx"] = (  # YAPF formatting
+                    dict_propagator.inject_current_context())
+                print(kwargs)
+                return wrapped(args, kwargs, *_args, **_kwargs)
+
+        return _start_remote_span(*args, **kwargs)
 
     @_propagate_trace
     def _remote(self,
