@@ -22,7 +22,6 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -557,8 +556,20 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        if trial.uses_placement_groups:
-            self._max_pending_trials = TUNE_MAX_PENDING_TRIALS_PG
+        if trial.uses_placement_groups and self._max_pending_trials == 0:
+            max_pending_trials = int(
+                os.getenv("TUNE_MAX_PENDING_TRIALS_PG", -1))
+            if max_pending_trials == -1:
+                # Auto detect
+                if isinstance(self._search_alg, BasicVariantGenerator):
+                    self._max_pending_trials = 1000
+                else:
+                    self._max_pending_trials = 1
+            else:
+                # Manual override
+                self._max_pending_trials = max_pending_trials
+            self.trial_executor.set_max_pending_trials(
+                self._max_pending_trials)
 
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):

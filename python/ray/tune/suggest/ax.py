@@ -1,6 +1,7 @@
 import copy
 from typing import Dict, List, Optional, Union
 
+from ax.exceptions.core import DataRequiredError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -262,7 +263,7 @@ class AxSearch(Searcher):
         else:
             try:
                 parameters, trial_index = self._ax.get_next_trial()
-            except MaxParallelismReachedException:
+            except (MaxParallelismReachedException, DataRequiredError):
                 return None
 
         self._live_trial_mapping[trial_id] = trial_index

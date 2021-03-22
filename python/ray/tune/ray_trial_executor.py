@@ -160,7 +160,8 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
-        self._pg_manager = PlacementGroupManager()
+        self._pg_manager = PlacementGroupManager(
+            prefix=os.getenv("TUNE_PLACEMENT_GROUP_PREFIX", "__tune__"))
         self._staged_trials = set()
         self._just_staged_trials = set()
         self._trial_just_finished = False
@@ -196,6 +197,9 @@ class RayTrialExecutor(TrialExecutor):
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return self._pg_manager.in_staging_grace_period()
+
+    def set_max_pending_trials(self, max_pending: int):
+        self._pg_manager.set_max_staging(max_pending)
 
     def stage_and_update_status(self, trials: List[Trial]):
         """Check and update statuses of scheduled placement groups.
