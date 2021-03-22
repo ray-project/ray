@@ -957,6 +957,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Get metrics from our reward-estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
+
         return out
 
     @DeveloperAPI
@@ -1190,7 +1191,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     def get_node_ip(self) -> str:
         """Returns the IP address of the current node."""
-        return ray._private.services.get_node_ip_address()
+        return ray.util.get_node_ip_address()
 
     def find_free_port(self) -> int:
         """Finds a free port on the current node."""
