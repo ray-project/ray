@@ -153,6 +153,9 @@ def test_replica_state_container_count():
     assert c.count(version="1") == 1
     assert c.count(version="2") == 2
     assert c.count(version="3") == 0
+    assert c.count(exclude_version="1") == 2
+    assert c.count(exclude_version="2") == 1
+    assert c.count(exclude_version="3") == 3
 
     # Test filtering by state and version.
     assert c.count(version="1", states=[ReplicaState.STARTING]) == 1
@@ -160,6 +163,11 @@ def test_replica_state_container_count():
     assert c.count(
         version="2", states=[ReplicaState.STARTING,
                              ReplicaState.STOPPING]) == 2
+    assert c.count(exclude_version="1", states=[ReplicaState.STARTING]) == 1
+    assert c.count(exclude_version="3", states=[ReplicaState.STARTING]) == 2
+    assert c.count(
+        exclude_version="2",
+        states=[ReplicaState.STARTING, ReplicaState.STOPPING]) == 1
 
 
 def test_replica_state_container_get():
@@ -317,14 +325,14 @@ def test_create_delete_single_replica(mock_backend_state):
 
     # Single replica should be created.
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
         states=[ReplicaState.STARTING]) == 1
     assert backend_state._replicas[tag].count() == 1
 
     # update() should not transition the state if the replica isn't ready.
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
         states=[ReplicaState.STARTING]) == 1
     backend_state._replicas[tag].get()[0]._actor.set_ready()
@@ -332,9 +340,9 @@ def test_create_delete_single_replica(mock_backend_state):
 
     # Now the replica should be marked running.
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.RUNNING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.RUNNING]) == 1
 
     # TODO(edoakes): can we remove this extra update period for completing it?
     backend_state.update()
@@ -343,9 +351,9 @@ def test_create_delete_single_replica(mock_backend_state):
     # Removing the replica should transition it to stopping.
     delete_goal = backend_state.delete_backend(tag)
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.STOPPING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.STOPPING]) == 1
     assert backend_state._replicas[tag].get()[0]._actor.stopped
     assert not backend_state._replicas[tag].get()[0]._actor.cleaned_up
     assert not goal_manager.check_complete(delete_goal)
@@ -354,7 +362,7 @@ def test_create_delete_single_replica(mock_backend_state):
     replica = backend_state._replicas[tag].get()[0]
     replica._actor.set_done_stopping()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 0
+    assert backend_state._replicas[tag].count() == 0
 
     # TODO(edoakes): can we remove this extra update period for completing it?
     backend_state.update()
@@ -382,9 +390,9 @@ def test_force_kill(mock_backend_state):
     backend_state.update()
 
     # Replica should remain in STOPPING until it finishes.
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.STOPPING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.STOPPING]) == 1
     assert backend_state._replicas[tag].get()[0]._actor.stopped
 
     backend_state.update()
@@ -394,9 +402,9 @@ def test_force_kill(mock_backend_state):
     assert not backend_state._replicas[tag].get(
     )[0]._actor.force_stopped_counter
     assert not backend_state._replicas[tag].get()[0]._actor.cleaned_up
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.STOPPING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.STOPPING]) == 1
 
     # Advance the timer, now the replica should be force stopped.
     timer.advance(grace_period_s + 0.1)
@@ -404,9 +412,9 @@ def test_force_kill(mock_backend_state):
     assert backend_state._replicas[tag].get()[
         0]._actor.force_stopped_counter == 1
     assert not backend_state._replicas[tag].get()[0]._actor.cleaned_up
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.STOPPING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.STOPPING]) == 1
     assert not goal_manager.check_complete(delete_goal)
 
     # Force stop should be called repeatedly until the replica stops.
@@ -414,16 +422,16 @@ def test_force_kill(mock_backend_state):
     assert backend_state._replicas[tag].get()[
         0]._actor.force_stopped_counter == 2
     assert not backend_state._replicas[tag].get()[0]._actor.cleaned_up
-    assert len(backend_state._replicas[tag].get()) == 1
-    assert len(
-        backend_state._replicas[tag].get(states=[ReplicaState.STOPPING])) == 1
+    assert backend_state._replicas[tag].count() == 1
+    assert backend_state._replicas[tag].count(
+        states=[ReplicaState.STOPPING]) == 1
     assert not goal_manager.check_complete(delete_goal)
 
     # Once the replica is done stopping, it should be removed.
     replica = backend_state._replicas[tag].get()[0]
     replica._actor.set_done_stopping()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 0
+    assert backend_state._replicas[tag].count() == 0
 
     # TODO(edoakes): can we remove this extra update period for completing it?
     backend_state.update()
@@ -444,10 +452,9 @@ def test_redeploy_same_version(mock_backend_state):
         tag, b_config_1, r_config_1, version="1")
 
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get()[0].version == "1"
+        version="1", states=[ReplicaState.STARTING]) == 1
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
@@ -458,18 +465,16 @@ def test_redeploy_same_version(mock_backend_state):
     assert not goal_manager.check_complete(goal_1)
 
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get()[0].version == "1"
+        version="1", states=[ReplicaState.STARTING]) == 1
 
     # Mark the replica ready. After this, the initial goal should be complete.
     backend_state._replicas[tag].get()[0]._actor.set_ready()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
-    assert backend_state._replicas[tag].get()[0].version == "1"
+        version="1", states=[ReplicaState.RUNNING]) == 1
 
     backend_state.update()
     assert goal_manager.check_complete(goal_1)
@@ -478,10 +483,9 @@ def test_redeploy_same_version(mock_backend_state):
     same_version_goal = backend_state.deploy_backend(
         tag, b_config_1, r_config_1, version="1")
     assert goal_manager.check_complete(same_version_goal)
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
-    assert backend_state._replicas[tag].get()[0].version == "1"
+        version="1", states=[ReplicaState.RUNNING]) == 1
     assert goal_manager.check_complete(goal_2)
     assert len(backend_state._replicas) == 1
 
@@ -498,10 +502,9 @@ def test_redeploy_new_version(mock_backend_state):
         tag, b_config_1, r_config_1, version="1")
 
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get()[0].version == "1"
+        version="1", states=[ReplicaState.STARTING]) == 1
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
@@ -515,33 +518,27 @@ def test_redeploy_new_version(mock_backend_state):
     # The initial replica should be stopping. The new replica shouldn't start
     # until the old one has completely stopped.
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STOPPING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STOPPING])[0].version == "1"
+        version="1", states=[ReplicaState.STOPPING]) == 1
 
     backend_state.update()
     backend_state._replicas[tag].get(
         states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 0
+    assert backend_state._replicas[tag].count() == 0
 
     # Now that the old replica has stopped, the new replica should be started.
     backend_state.update()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STARTING])[0].version == "2"
+        version="2", states=[ReplicaState.STARTING]) == 1
     backend_state._replicas[tag].get(
         states=[ReplicaState.STARTING])[0]._actor.set_ready()
 
     # Check that the new replica has started.
     backend_state.update()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.RUNNING])[0].version == "2"
+        version="2", states=[ReplicaState.RUNNING]) == 1
 
     backend_state.update()
     assert goal_manager.check_complete(goal_2)
@@ -553,32 +550,26 @@ def test_redeploy_new_version(mock_backend_state):
     assert not goal_manager.check_complete(goal_3)
 
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STOPPING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STOPPING])[0].version == "2"
+        version="2", states=[ReplicaState.STOPPING]) == 1
 
     backend_state.update()
     backend_state._replicas[tag].get(
         states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
 
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 0
+    assert backend_state._replicas[tag].count() == 0
 
     backend_state.update()
     backend_state._replicas[tag].get(
         states=[ReplicaState.STARTING])[0]._actor.set_ready()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STARTING])[0].version == "3"
+        version="3", states=[ReplicaState.STARTING]) == 1
 
     backend_state.update()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.RUNNING])[0].version == "3"
+        version="3", states=[ReplicaState.RUNNING]) == 1
 
     backend_state.update()
     assert goal_manager.check_complete(goal_3)
@@ -601,9 +592,9 @@ def test_deploy_new_config_same_version(mock_backend_state):
     backend_state.update()
     backend_state._replicas[tag].get()[0]._actor.set_ready()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
+        version="1", states=[ReplicaState.RUNNING]) == 1
     backend_state.update()
     assert goal_manager.check_complete(create_goal)
 
@@ -612,7 +603,7 @@ def test_deploy_new_config_same_version(mock_backend_state):
     update_goal = backend_state.deploy_backend(
         tag, b_config_2, r_config_1, version="1")
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
         states=[ReplicaState.RUNNING]) == 1
     backend_state.update()
@@ -634,7 +625,7 @@ def test_deploy_new_config_new_version(mock_backend_state):
     backend_state.update()
     backend_state._replicas[tag].get()[0]._actor.set_ready()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
         states=[ReplicaState.RUNNING]) == 1
     backend_state.update()
@@ -647,35 +638,294 @@ def test_deploy_new_config_new_version(mock_backend_state):
 
     # New version shouldn't start until old version is stopped.
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 1
+    assert backend_state._replicas[tag].count() == 1
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STOPPING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STOPPING])[0].version == "1"
+        version="1", states=[ReplicaState.STOPPING]) == 1
 
     backend_state._replicas[tag].get(
         states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
     backend_state.update()
-    assert len(backend_state._replicas[tag].get()) == 0
+    assert backend_state._replicas[tag].count() == 0
 
     # Now the new version should be started.
     backend_state.update()
     backend_state._replicas[tag].get(
         states=[ReplicaState.STARTING])[0]._actor.set_ready()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.STARTING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.STARTING])[0].version == "2"
+        version="2", states=[ReplicaState.STARTING]) == 1
 
     # Check that the new version is now running.
     backend_state.update()
     assert backend_state._replicas[tag].count(
-        states=[ReplicaState.RUNNING]) == 1
-    assert backend_state._replicas[tag].get(
-        states=[ReplicaState.RUNNING])[0].version == "2"
+        version="2", states=[ReplicaState.RUNNING]) == 1
 
     backend_state.update()
     assert goal_manager.check_complete(update_goal)
+
+
+def test_initial_deploy_no_throttling(mock_backend_state):
+    # All replicas should be started at once for a new deployment.
+    backend_state, timer, goal_manager = mock_backend_state
+
+    assert len(backend_state._replicas) == 0
+
+    tag = "tag"
+    b_config_1, r_config_1 = generate_configs(10)
+    goal_1 = backend_state.deploy_backend(
+        tag, b_config_1, r_config_1, version="1")
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STARTING]) == 10
+    assert not goal_manager.check_complete(goal_1)
+
+    for replica in backend_state._replicas[tag].get():
+        replica._actor.set_ready()
+
+    backend_state.update()
+
+    # Check that the new replicas have started.
+    backend_state.update()
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 10
+    assert goal_manager.check_complete(goal_1)
+
+
+def test_new_version_deploy_throttling(mock_backend_state):
+    # All replicas should be started at once for a new deployment.
+    # When the version is updated, it should be throttled.
+    backend_state, timer, goal_manager = mock_backend_state
+
+    assert len(backend_state._replicas) == 0
+
+    tag = "tag"
+    b_config_1, r_config_1 = generate_configs(10)
+    goal_1 = backend_state.deploy_backend(
+        tag, b_config_1, r_config_1, version="1")
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STARTING]) == 10
+    assert not goal_manager.check_complete(goal_1)
+
+    for replica in backend_state._replicas[tag].get():
+        replica._actor.set_ready()
+
+    backend_state.update()
+
+    # Check that the new replicas have started.
+    backend_state.update()
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 10
+    assert goal_manager.check_complete(goal_1)
+
+    # Now deploy a new version. Two old replicas should be stopped.
+    goal_2 = backend_state.deploy_backend(
+        tag, b_config_1, r_config_1, version="2")
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 8
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 2
+    assert not goal_manager.check_complete(goal_2)
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 8
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 2
+    assert not goal_manager.check_complete(goal_2)
+
+    # Mark only one of the replicas as done stopping.
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 9
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 8
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 1
+    assert not goal_manager.check_complete(goal_2)
+
+    # Now one of the new version replicas should start up.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.STARTING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 8
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 1
+    assert not goal_manager.check_complete(goal_2)
+
+    # Mark the new version replica as ready. Another old version replica
+    # should subsequently be stopped.
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    backend_state.update()
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 7
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 2
+    assert not goal_manager.check_complete(goal_2)
+
+    # Mark the old replicas as done stopping.
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STOPPING])[1]._actor.set_done_stopping()
+
+    # Old replicas should be stopped and new versions started in batches of 2.
+    new_replicas = 1
+    old_replicas = 9
+    while old_replicas > 3:
+        backend_state.update()
+        assert backend_state._replicas[tag].count() == 8
+        assert backend_state._replicas[tag].count(
+            version="2", states=[ReplicaState.RUNNING]) == new_replicas
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.RUNNING]) == old_replicas - 2
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.STOPPING]) == 0
+        assert not goal_manager.check_complete(goal_2)
+
+        # Replicas starting up.
+        backend_state.update()
+        assert backend_state._replicas[tag].count() == 10
+        assert backend_state._replicas[tag].count(
+            version="2", states=[ReplicaState.STARTING]) == 2
+        assert backend_state._replicas[tag].count(
+            version="2", states=[ReplicaState.RUNNING]) == new_replicas
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.RUNNING]) == old_replicas - 2
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.STOPPING]) == 0
+        assert not goal_manager.check_complete(goal_2)
+
+        # Set both ready.
+        backend_state._replicas[tag].get(
+            states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        backend_state._replicas[tag].get(
+            states=[ReplicaState.STARTING])[1]._actor.set_ready()
+        new_replicas += 2
+
+        backend_state.update()
+        assert backend_state._replicas[tag].count() == 10
+        assert backend_state._replicas[tag].count(
+            version="2", states=[ReplicaState.RUNNING]) == new_replicas
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.RUNNING]) == old_replicas - 2
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.STOPPING]) == 0
+        assert not goal_manager.check_complete(goal_2)
+
+        # Two more old replicas should be stopped.
+        old_replicas -= 2
+        backend_state.update()
+        assert backend_state._replicas[tag].count() == 10
+        assert backend_state._replicas[tag].count(
+            version="2", states=[ReplicaState.RUNNING]) == new_replicas
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.RUNNING]) == old_replicas - 2
+        assert backend_state._replicas[tag].count(
+            version="1", states=[ReplicaState.STOPPING]) == 2
+        assert not goal_manager.check_complete(goal_2)
+
+        backend_state._replicas[tag].get(
+            states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        backend_state._replicas[tag].get(
+            states=[ReplicaState.STOPPING])[1]._actor.set_done_stopping()
+
+    # 2 left to update.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 8
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 7
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 0
+    assert not goal_manager.check_complete(goal_2)
+
+    # Replicas starting up.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.STARTING]) == 2
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 7
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 0
+    assert not goal_manager.check_complete(goal_2)
+
+    # Set both ready.
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STARTING])[1]._actor.set_ready()
+
+    # One replica remaining to update.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 9
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 0
+    assert not goal_manager.check_complete(goal_2)
+
+    # The last replica should be stopped.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 9
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.RUNNING]) == 0
+    assert backend_state._replicas[tag].count(
+        version="1", states=[ReplicaState.STOPPING]) == 1
+    assert not goal_manager.check_complete(goal_2)
+
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 9
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 9
+    assert not goal_manager.check_complete(goal_2)
+
+    # The last replica should start up.
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.STARTING]) == 1
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 9
+    assert not goal_manager.check_complete(goal_2)
+
+    # Set both ready.
+    backend_state._replicas[tag].get(
+        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+    backend_state.update()
+    assert backend_state._replicas[tag].count() == 10
+    assert backend_state._replicas[tag].count(
+        version="2", states=[ReplicaState.RUNNING]) == 10
+
+    backend_state.update()
+    assert goal_manager.check_complete(goal_2)
 
 
 if __name__ == "__main__":

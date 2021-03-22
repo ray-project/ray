@@ -416,11 +416,14 @@ class ReplicaStateContainer:
         return replicas
 
     def count(self,
+              exclude_version: Optional[str] = None,
               version: Optional[str] = None,
               states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
         Args:
+            exclude_version(str): version to exclude. If not specified, all
+                versions are considered.
             version(str): version to filter to. If not specified, all versions
                 are considered.
             states (str): states to consider. If not specified, all replicas
@@ -429,15 +432,25 @@ class ReplicaStateContainer:
         if states is None:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
+        assert exclude_version is None or isinstance(exclude_version, str)
         assert version is None or isinstance(version, str)
-        if version is None:
+        if exclude_version is None and version is None:
             return sum(len(self._replicas[state]) for state in states)
-        else:
+        elif exclude_version is None and version is not None:
             return sum(
                 len(
                     list(
                         filter(lambda r: r.version == version, self._replicas[
                             state]))) for state in states)
+        elif exclude_version is not None and version is None:
+            return sum(
+                len(
+                    list(
+                        filter(lambda r: r.version != exclude_version,
+                               self._replicas[state]))) for state in states)
+        else:
+            raise ValueError(
+                "Only one of `version` or `exclude_version` may be provided.")
 
     def __str__(self):
         return str(self._replicas)
@@ -601,21 +614,28 @@ class BackendState:
         return new_goal_id
 
     def _stop_wrong_version_replicas(
-            self, backend_tag: BackendTag, target_version: str,
-            graceful_shutdown_timeout_s: float) -> int:
+            self, backend_tag: BackendTag, target_replicas: int,
+            target_version: str, graceful_shutdown_timeout_s: float) -> int:
         # NOTE(edoakes): this short-circuits when using the legacy
         # `create_backend` codepath -- it can be removed once we deprecate
         # that as the version should never be None.
         if target_version is None:
             return
 
-        # Throttle based on the number of correct version replicas starting up.
-        currently_starting_replicas = self._replicas[backend_tag].count(
-            version=target_version,
-            states=[ReplicaState.SHOULD_START, ReplicaState.STARTING])
-        rollout_size = max(int(0.2 * self._target_replicas[backend_tag]), 1)
-        max_to_stop = max(rollout_size - currently_starting_replicas, 0)
+        old_running_replicas = self._replicas[backend_tag].count(
+            exclude_version=target_version,
+            states=[
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
+            ])
+        new_running_replicas = self._replicas[backend_tag].count(
+            version=target_version, states=[ReplicaState.RUNNING])
 
+        pending_replicas = (
+            target_replicas - new_running_replicas - old_running_replicas)
+        rollout_size = max(int(0.2 * target_replicas), 1)
+
+        max_to_stop = max(rollout_size - pending_replicas, 0)
         replicas_to_stop = self._replicas[backend_tag].pop(
             exclude_version=target_version,
             states=[
@@ -659,7 +679,8 @@ class BackendState:
             backend_info.backend_config.
             experimental_graceful_shutdown_timeout_s)
 
-        self._stop_wrong_version_replicas(backend_tag, target_version,
+        self._stop_wrong_version_replicas(backend_tag, target_replicas,
+                                          target_version,
                                           graceful_shutdown_timeout_s)
 
         current_replicas = self._replicas[backend_tag].count(states=[
@@ -672,7 +693,7 @@ class BackendState:
             return False
 
         elif delta_replicas > 0:
-            # XXX: note about the logic here.
+            # Don't ever exceed target_replicas.
             stopping_replicas = self._replicas[backend_tag].count(states=[
                 ReplicaState.SHOULD_STOP,
                 ReplicaState.STOPPING,
