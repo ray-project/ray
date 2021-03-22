@@ -110,6 +110,7 @@ class CollectMetrics:
         res["info"] = info
         res["info"].update(counters)
         res["custom_metrics"] = res.get("custom_metrics", {})
+        res["episode_media"] = res.get("episode_media", {})
         res["custom_metrics"].update(custom_metrics_from_info)
         return res
 

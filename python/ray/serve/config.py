@@ -1,10 +1,10 @@
 import inspect
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import pydantic
-from pydantic import BaseModel, confloat, PositiveFloat, PositiveInt, validator
+from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from pydantic.dataclasses import dataclass
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 from ray.serve.utils import logger
 
@@ -35,6 +35,8 @@ def _callable_is_blocking(backend_def):
 class BackendMetadata:
     accepts_batches: bool = False
     is_blocking: bool = True
+    is_asgi_app: bool = False
+    path_prefix: Optional[str] = None
     autoscaling_config: Optional[Dict[str, Any]] = None
 
 
@@ -71,8 +73,8 @@ class BackendConfig(BaseModel):
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
-    experimental_graceful_shutdown_wait_loop_s: PositiveFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: confloat(ge=0) = 20.0
+    experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
+    experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
     class Config:
         validate_assignment = True
@@ -143,6 +145,8 @@ class ReplicaConfig:
         self.backend_def = backend_def
         self.accepts_batches = _callable_accepts_batch(backend_def)
         self.is_blocking = _callable_is_blocking(backend_def)
+        self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
+        self.path_prefix = getattr(backend_def, "_serve_path_prefix", None)
         self.init_args = list(init_args)
         if ray_actor_options is None:
             self.ray_actor_options = {}
