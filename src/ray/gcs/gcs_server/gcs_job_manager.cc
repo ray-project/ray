@@ -40,6 +40,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
 
   auto iter = jobs_.find(job_id);
   if (iter != jobs_.end()) {
+    // The job already exists, it must be submitted from the dashboard.
     // The job state should be RUNNING or SUBMITTED.
     const auto state = iter->second->state();
     if (iter->second->timestamp() == request.data().timestamp() &&
