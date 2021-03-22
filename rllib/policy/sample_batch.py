@@ -64,8 +64,10 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
-        if self.seq_lens is None and len(args) > 0 and isinstance(args[0], dict):
-            self.seq_lens = args[0].pop("_seq_lens", args[0].pop("seq_lens", None))
+        if self.seq_lens is None and len(args) > 0 and isinstance(
+                args[0], dict):
+            self.seq_lens = args[0].pop("_seq_lens", args[0].pop(
+                "seq_lens", None))
         if isinstance(self.seq_lens, list):
             self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)

@@ -623,7 +623,8 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size)
         self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(self._dummy_batch, explore=False)
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False)
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():

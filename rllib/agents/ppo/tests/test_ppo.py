@@ -90,7 +90,7 @@ class TestPPO(unittest.TestCase):
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
