@@ -1,7 +1,6 @@
 import copy
 from typing import Dict, List, Optional, Union
 
-from ax.exceptions.core import DataRequiredError
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -18,10 +17,11 @@ except ImportError:
 
 # This exception only exists in newer Ax releases for python 3.7
 try:
+    from ax.exceptions.core import DataRequiredError
     from ax.exceptions.generation_strategy import \
         MaxParallelismReachedException
 except ImportError:
-    MaxParallelismReachedException = Exception
+    MaxParallelismReachedException = DataRequiredError = Exception
 
 import logging
 
