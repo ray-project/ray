@@ -790,7 +790,6 @@ class BackendState:
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
-        start = time.time()
         self._scale_all_backends()
 
         for goal_id in self._completed_goals():
