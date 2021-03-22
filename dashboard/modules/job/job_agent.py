@@ -253,7 +253,7 @@ class StartPythonDriver(JobProcessor):
     _template = """import sys
 sys.path.append({import_path})
 import ray
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 ray.init(ignore_reinit_error=True,
          address={redis_address},
          _redis_password={redis_password},
@@ -349,6 +349,12 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
                 error_message=traceback.format_exc())
 
         async def _initialize_job_env():
+            os.makedirs(
+                job_consts.JOB_DIR.format(
+                    temp_dir=job_info.temp_dir(), job_id=job_id),
+                exist_ok=True)
+            await DownloadPackage(job_info,
+                                  self._dashboard_agent.http_session).run()
             if request.start_driver:
                 logger.info("[%s] Starting driver.", job_id)
                 language = job_info.language()

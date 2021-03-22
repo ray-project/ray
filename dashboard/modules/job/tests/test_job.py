@@ -1,8 +1,12 @@
 import os
 import sys
+import copy
 import time
 import logging
 import requests
+import tempfile
+import zipfile
+import shutil
 import traceback
 
 import ray
@@ -11,12 +15,156 @@ from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
+    wait_for_condition,
 )
 import pytest
 
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
-
 logger = logging.getLogger(__name__)
+
+JOB_ROOT_DIR = "/tmp/ray/job"
+TEST_PYTHON_JOB = {
+    "language": "PYTHON",
+    "url": "http://xxx/yyy.zip",
+    "driverEntry": "python_file_name_without_ext",
+}
+
+TEST_PYTHON_JOB_CODE = """
+import os
+import sys
+import ray
+import time
+
+
+@ray.remote
+class Actor:
+    def __init__(self, index):
+        self._index = index
+
+    def foo(self, x):
+        print("worker job dir {}".format(os.environ["RAY_JOB_DIR"]))
+        assert os.environ["RAY_JOB_DIR"] in sys.path
+        return f"Actor {self._index}: {x}"
+
+
+def main():
+    actors = []
+    print("driver job dir {}".format(os.environ["RAY_JOB_DIR"]))
+    assert os.environ["RAY_JOB_DIR"] in sys.path
+    for x in range(2):
+        actors.append(Actor.remote(x))
+
+    counter = 0
+    while True:
+        for a in actors:
+            r = a.foo.remote(counter)
+            print(ray.get(r))
+            counter += 1
+            time.sleep(1)
+
+
+if __name__ == "__main__":
+    ray.init()
+    main()
+"""
+
+
+def _gen_job_zip(job_code, driver_entry):
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+        with zipfile.ZipFile(f, mode="w") as zip_f:
+            with zip_f.open(f"{driver_entry}.py", "w") as driver:
+                driver.write(job_code.encode())
+        return f.name
+
+
+def _gen_url(web_url, path):
+    return f"{web_url}/test/file?path={path}"
+
+
+def _get_python_job(web_url):
+    driver_entry = "simple_job"
+    path = _gen_job_zip(TEST_PYTHON_JOB_CODE, driver_entry)
+    url = _gen_url(web_url, path)
+    job = copy.deepcopy(TEST_PYTHON_JOB)
+    job["url"] = url
+    job["driverEntry"] = driver_entry
+    return job
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard", [{
+        "job_config": ray.job_config.JobConfig(code_search_path=[""]),
+    }],
+    indirect=True)
+def test_submit_job(disable_aiohttp_cache, enable_test_module,
+                    ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    shutil.rmtree(JOB_ROOT_DIR, ignore_errors=True)
+
+    job_id = None
+
+    def _submit_job():
+        try:
+            resp = requests.post(
+                f"{webui_url}/jobs", json=_get_python_job(webui_url))
+            resp.raise_for_status()
+            result = resp.json()
+            assert result["result"] is True, resp.text
+            nonlocal job_id
+            job_id = result["data"]["jobId"]
+            return True
+        except Exception as ex:
+            logger.info(ex)
+            return False
+
+    wait_for_condition(_submit_job, 5)
+
+    def _check_running():
+        resp = requests.get(f"{webui_url}/jobs?view=summary")
+        resp.raise_for_status()
+        result = resp.json()
+        assert result["result"] is True, resp.text
+        summary = result["data"]["summary"]
+        assert len(summary) == 2
+
+        resp = requests.get(f"{webui_url}/jobs/{job_id}")
+        resp.raise_for_status()
+        result = resp.json()
+        assert result["result"] is True, resp.text
+        job_info = result["data"]["detail"]["jobInfo"]
+        assert job_info["jobId"] == job_id
+
+        resp = requests.get(f"{webui_url}/jobs/{job_id}")
+        resp.raise_for_status()
+        result = resp.json()
+        assert result["result"] is True, resp.text
+        job_info = result["data"]["detail"]["jobInfo"]
+        assert job_info["state"] == "RUNNING", job_info["failErrorMessage"]
+        job_actors = result["data"]["detail"]["jobActors"]
+        job_workers = result["data"]["detail"]["jobWorkers"]
+        assert len(job_actors) > 0
+        assert len(job_workers) > 0
+
+    timeout_seconds = 30
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(5)
+        try:
+            _check_running()
+            break
+        except (AssertionError, KeyError, IndexError) as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
 
 
 def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
