@@ -69,7 +69,7 @@ class ConvergenceTest(unittest.TestCase):
         searcher.repeat_float_precision = 5
         searcher = ConcurrencyLimiter(searcher, 1)
 
-        analysis = self._testConvergence(searcher)
+        analysis = self._testConvergence(searcher, patience=100)
 
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
@@ -116,11 +116,11 @@ class ConvergenceTest(unittest.TestCase):
     def testConvergenceOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
 
-        np.random.seed(0)
+        np.random.seed(1)
         searcher = OptunaSearch()
         analysis = self._testConvergence(
             searcher,
-            top=3,
+            top=5,
         )
 
         # This assertion is much weaker than in the BO case, but TPE
