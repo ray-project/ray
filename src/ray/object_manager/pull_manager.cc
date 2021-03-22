@@ -357,7 +357,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // TODO(ekl) should we more directly mark the object as lost in this case?
-  RAY_LOG(ERROR) << "Object neither in memory nor external storage " << object_id.Hex();
+  RAY_LOG(DEBUG) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
