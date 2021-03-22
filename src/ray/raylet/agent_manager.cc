@@ -45,7 +45,7 @@ void AgentManager::InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data,
   auto job_id = JobID::FromBinary(job_data->job_id());
 
   if (options_.agent_commands.empty()) {
-    RAY_LOG(INFO) << "Not to initialize the env for job " << job_id
+    RAY_LOG(INFO) << "Skipped initializing the env for job " << job_id
                   << ", the agent command is empty.";
     return;
   }

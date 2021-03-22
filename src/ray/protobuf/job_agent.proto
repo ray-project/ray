@@ -20,7 +20,8 @@ import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/agent_manager.proto";
 
 message InitializeJobEnvRequest {
-  // Start driver or not.
+  // Whether this job agent should start the driver. 
+  // Note this will be true for only one job agent in the cluster.
   bool start_driver = 1;
   // Job data.
   JobTableData job_data = 2;

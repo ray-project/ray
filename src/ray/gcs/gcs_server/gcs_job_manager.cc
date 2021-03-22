@@ -50,7 +50,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     } else if (state != rpc::JobTableData::SUBMITTED) {
       std::ostringstream ostr;
       ostr << "Failed to add job " << job_id
-           << " as job id conflict or state is unexpected.";
+           << " as job id conflicts or state is unexpected.";
       RAY_LOG(WARNING) << ostr.str();
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ostr.str()));
       return;
@@ -178,9 +178,9 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
 
   auto it = jobs_.find(job_id);
   if (it != jobs_.end()) {
-    RAY_LOG(ERROR) << "Failed to submit job " << job_id << ", job id conflict.";
+    RAY_LOG(ERROR) << "Failed to submit job " << job_id << ", job id conflicts.";
     std::ostringstream ss;
-    ss << "Job id conflict: " << job_id;
+    ss << "Job id conflicts: " << job_id;
     return Status::Invalid(ss.str());
   }
 
