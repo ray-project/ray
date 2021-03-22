@@ -852,6 +852,9 @@ def connect_to_gcs(ip, port, password):
     return GcsClient.make_from_address(ip, port, password)
 
 
+def disconnect_to_gcs(gcs_client):
+    gcs_client.disconnect()
+
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):

@@ -790,12 +790,12 @@ class InternalKVAccessor {
                                     const StatusCallback &callback) = 0;
 
   // These are sync functions of the async above
-  Status InternalKVKeys(const std::string &prefix, std::vector<std::string> &value);
-  Status InternalKVPut(const std::string &key, const std::string &value, bool overwrite,
+  Status Keys(const std::string &prefix, std::vector<std::string> &value);
+  Status Put(const std::string &key, const std::string &value, bool overwrite,
                        bool &added);
-  Status InternalKVGet(const std::string &key, std::string &value);
-  Status InternalKVDel(const std::string &key);
-  Status InternalKVExists(const std::string &key, bool &exist);
+  Status Get(const std::string &key, std::string &value);
+  Status Del(const std::string &key);
+  Status Exists(const std::string &key, bool &exist);
 
  protected:
   InternalKVAccessor() = default;

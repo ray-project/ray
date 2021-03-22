@@ -296,8 +296,8 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsKVManager>(redis_client_);
-  kv_service_ = std::make_unique<rpc::KVGrpcService>(main_service_, *kv_manager_);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
 }
