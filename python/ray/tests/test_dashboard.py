@@ -12,6 +12,7 @@ import ray
 from ray import ray_constants
 
 
+@pytest.mark.skip()
 def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
     subprocess.check_call(["ray", "start", "--head"])
     ray.init(address="auto")
@@ -62,6 +63,7 @@ ray.shutdown()
         """)
 
 
+@pytest.mark.skip()
 def test_port_conflict(shutdown_only):
     sock = socket.socket()
     if hasattr(socket, "SO_REUSEPORT"):
