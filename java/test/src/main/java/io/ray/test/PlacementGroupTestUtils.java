@@ -1,8 +1,8 @@
 package io.ray.test;
 
+import io.ray.api.PlacementGroups;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementGroups;
 import io.ray.api.placementgroup.PlacementStrategy;
 import java.util.ArrayList;
 import java.util.HashMap;

@@ -1,8 +1,8 @@
-package io.ray.api.placementgroup;
+package io.ray.api;
 
-import io.ray.api.Ray;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.PlacementGroupCreationOptions;
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.List;
 
 /** This class contains all public APIs of Placement Group. */
