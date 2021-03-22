@@ -203,12 +203,10 @@ class JobProcessor:
             env={
                 **os.environ,
                 **env,
-                "CMDLINE": cmd_str,
                 "RAY_JOB_DIR": job_package_dir,
             },
             cwd=job_package_dir,
         )
-        proc.cmdline = cmd_str
         logger.info("[%s] Start driver cmd %s with pid %s", job_id,
                     repr(cmd_str), proc.pid)
         return proc
@@ -388,18 +386,15 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
                 error_message=traceback.format_exc())
 
         driver_pid = 0
-        driver_cmdline = ""
         if request.start_driver:
             driver = job_info.driver()
             if driver:
                 driver_pid = driver.pid
-                driver_cmdline = driver.cmdline
 
         logger.info("[%s] Initialize job environment success.", job_id)
         return job_agent_pb2.InitializeJobEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
-            driver_pid=driver_pid,
-            driver_cmdline=driver_cmdline)
+            driver_pid=driver_pid)
 
     async def run(self, server):
         job_agent_pb2_grpc.add_JobAgentServiceServicer_to_server(self, server)

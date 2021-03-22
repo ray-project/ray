@@ -33,8 +33,6 @@ message InitializeJobEnvReply {
   string error_message = 2;
   // The driver pid of job.
   int32 driver_pid = 3;
-  // The driver command line.
-  string driver_cmdline = 4;
 }
 
 // Service for communicating with the job_agent.py process on a remote node.

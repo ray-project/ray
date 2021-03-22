@@ -365,13 +365,10 @@ ray::Status NodeManager::RegisterGcs() {
       HandleJobSubmitted(job_id, job_data);
     } else if (job_data.state() == JobTableData::RUNNING) {
       HandleJobStarted(job_id, job_data);
-    } else if (job_data.state() == JobTableData::FINISHED ||
-               job_data.state() == JobTableData::FAILED ||
-               job_data.state() == JobTableData::CANCEL) {
+    } else if (job_data.state() == JobTableData::FINISHED) {
       HandleJobFinished(job_id, job_data);
     } else {
-      RAY_CHECK(job_data.state() == JobTableData::INIT);
-      // The job state should be INIT, just ignore.
+      // Just ignore.
     }
   };
   RAY_RETURN_NOT_OK(
@@ -1087,7 +1084,6 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     job_table_data->set_driver_ip_address(worker_ip_address);
     job_table_data->set_driver_hostname(string_from_flatbuf(*message->hostname()));
     job_table_data->set_driver_pid(pid);
-    job_table_data->set_driver_cmdline(string_from_flatbuf(*message->cmdline()));
     job_table_data->set_language(language);
     job_table_data->set_timestamp(current_time_ms());
     *job_table_data->mutable_config() = job_config;

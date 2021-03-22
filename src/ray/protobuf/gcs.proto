@@ -277,17 +277,9 @@ message JobConfig {
 
 message JobTableData {
   enum JobState {
-    INIT = 0;
-    SUBMITTED = 1;
-    RUNNING = 2;
-    FINISHED = 3;
-    FAILED = 4;
-    CANCEL = 5;
-  }
-  enum DriverExitState {
-    UNKNOWN = 0;
-    OK = 1;
-    ERROR = 2;
+    SUBMITTED = 0;
+    RUNNING = 1;
+    FINISHED = 2;
   }
   // The job ID.
   bytes job_id = 1;
@@ -301,25 +293,19 @@ message JobTableData {
   string driver_hostname = 5;
   // Process ID of the driver running this job.
   int64 driver_pid = 6;
-  // The driver cmdline.
-  string driver_cmdline = 7;
-  // Driver exit state.
-  DriverExitState driver_exit_state = 8;
   // Raylet which the job's driver belongs to
-  bytes raylet_id = 9;
+  bytes raylet_id = 7;
   // Language the job uses
-  Language language = 10;
+  Language language = 8;
   // The config of this job.
-  JobConfig config = 11;
+  JobConfig config = 9;
   // Job state.
-  JobState state = 12;
+  JobState state = 10;
   // Job payload (The original job request json from dashboard).
-  string job_payload = 13;
-  // The reason for the job failure.
-  string fail_error_message = 14;
+  string job_payload = 11;
   // Whether the job is submitted. This field determines whether
   // to initialize the job environment or not.
-  bool is_submitted = 15;
+  bool is_submitted = 12;
 }
 
 message WorkerTableData {

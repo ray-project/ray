@@ -108,9 +108,6 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
     return;
   }
 
-  // TODO(fyrestone): Set the actual driver exit state.
-  job_table_data->set_driver_exit_state(rpc::JobTableData::OK);
-
   RAY_CHECK_OK(UpdateJobStateToDead(
       job_table_data, [send_reply_callback, reply](const Status &status) {
         RAY_CHECK_OK(status);
@@ -252,19 +249,11 @@ NodeID GcsJobManager::SelectDriver(const rpc::JobTableData &job_data) const {
 Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_table_data,
                                            const ray::gcs::StatusCallback &callback) {
   // Update job state.
-  if (job_table_data->state() != rpc::JobTableData::CANCEL) {
-    if (job_table_data->driver_exit_state() == rpc::JobTableData::OK) {
-      job_table_data->set_state(rpc::JobTableData::FINISHED);
-    } else {
-      job_table_data->set_state(rpc::JobTableData::FAILED);
-    }
-  }
+  job_table_data->set_state(rpc::JobTableData::FINISHED);
   JobID job_id = JobID::FromBinary(job_table_data->job_id());
   RAY_LOG(INFO) << "Updating job state to "
                 << rpc::JobTableData_JobState_Name(job_table_data->state())
-                << ", job id = " << job_id << ", driver exit state = "
-                << rpc::JobTableData_DriverExitState_Name(
-                       job_table_data->driver_exit_state());
+                << ", job id = " << job_id;
   job_table_data->set_is_dead(true);
   auto on_done = [this, callback, job_id, job_table_data](const Status &status) {
     RAY_CHECK_OK(status);
@@ -276,9 +265,7 @@ Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_tab
     }
     RAY_LOG(INFO) << "Finished updating job state to "
                   << rpc::JobTableData_JobState_Name(job_table_data->state())
-                  << ", job id = " << job_id << ", driver exit state = "
-                  << rpc::JobTableData_DriverExitState_Name(
-                         job_table_data->driver_exit_state());
+                  << ", job id = " << job_id;
   };
   return gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
 }

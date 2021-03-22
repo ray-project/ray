@@ -147,12 +147,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id);
 
-  /// If given job is running.
-  ///
-  /// \param job_id ID of the job.
-  /// \return true if given job is running.
-  bool IsJobRunning(const JobID &job_id) const;
-
   /// \brief Get the job config by job id.
   ///
   /// \param job_id ID of the job.
@@ -527,9 +521,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
-
-  /// This map tracks the finished jobs.
-  absl::flat_hash_set<JobID> finished_jobs_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
