@@ -1,10 +1,22 @@
 import inspect
 import logging
-import os
 import weakref
 import _thread
+import os
+import wrapt
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import ray.ray_constants as ray_constants
+from ray.runtime_context import get_runtime_context
 import ray._raylet
 import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
@@ -23,28 +35,14 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-
-import os
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    MutableMapping,
-    Optional,
-    Sequence,
-    Type,
-    Union,
-)
-
+from ray.util.tracing import use_context
+import ray.dict_propagator as dict_propagator
 from opentelemetry import trace
 from opentelemetry.util.types import Attributes
-import ray
-from ray.runtime_context import get_runtime_context
 
-import ray.dict_propagator as dict_propagator
+logger = logging.getLogger(__name__)
 
 _nameable = Union[str, Callable[..., Any]]
-logger = logging.getLogger(__name__)
 
 
 def _hydrate_span_args(class_: _nameable, method: _nameable) -> Attributes:
@@ -103,6 +101,169 @@ def _span_consumer_name(class_: _nameable, method: _nameable) -> str:
     name = args["ray.function"]
 
     return f"{name} ray.remote_worker"
+
+
+@wrapt.decorator
+def actor_class_tracing_local(
+        wrapped: Callable[..., Any],
+        instance: Any,
+        args: Sequence[Any],
+        kwargs: MutableMapping[Any, Any],
+) -> Any:
+    """
+        Make sure we inject our current span context into the kwargs for propagation
+        before running our remote tasks
+        """
+    class_name = instance._wrapped
+    method_name = "__init__"
+
+    # assert "_ray_trace_ctx" not in kwargs
+
+    tracer = trace.get_tracer(__name__)
+    with tracer.start_as_current_span(
+            name=_span_producer_name(class_name, method_name),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_hydrate_span_args(class_name, method_name),
+    ) as span:
+        # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+        # kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+
+        result = wrapped(*args, **kwargs)
+
+        span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
+
+        return result
+
+
+@wrapt.decorator
+def actor_method_tracing_local(
+        wrapped: Callable[..., Any],
+        instance: Any,
+        args: Sequence[Any],
+        kwargs: MutableMapping[Any, Any],
+) -> Any:
+    class_name = (instance._actor_ref()
+                  ._ray_actor_creation_function_descriptor.class_name)
+    method_name = instance._method_name
+
+    # assert "_ray_trace_ctx" not in kwargs
+
+    tracer = trace.get_tracer(__name__)
+    with tracer.start_as_current_span(
+            name=_span_producer_name(class_name, method_name),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_hydrate_span_args(class_name, method_name),
+    ) as span:
+        # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+        # kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+
+        span.set_attribute("ray.actor_id",
+                           instance._actor_ref()._ray_actor_id.hex())
+
+        return wrapped(*args, **kwargs)
+
+
+@wrapt.decorator
+def make_tracing_actor(
+        wrapped: Callable[..., Any],
+        instance: Any,
+        args: Sequence[Any],
+        kwargs: MutableMapping[Any, Any],
+) -> Any:
+    def span_wrapper(method: Callable[..., Any]) -> Any:
+        def _resume_span(
+                self: Any,
+                *_args: Any,
+                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+                **_kwargs: Any,
+        ) -> Any:
+            """
+            Wrap whatever the user's function is with with a function that will
+            extract the trace context
+            """
+            tracer: trace.Tracer = trace.get_tracer(__name__)
+
+            # Set a new context if given a _ray_trace_ctx, or default to current_context
+            # Retrieves the context from the _ray_trace_ctx dictionary we injected
+            if _ray_trace_ctx:
+                with use_context(dict_propagator.extract(
+                        _ray_trace_ctx)), tracer.start_as_current_span(
+                            _span_consumer_name(self._wrapped, method),
+                            kind=trace.SpanKind.CONSUMER,
+                            attributes=_hydrate_span_args(
+                                self._wrapped, method),
+                        ):
+                    return method(self, *_args, **_kwargs)
+            else:
+                with tracer.start_as_current_span(
+                        _span_consumer_name(self._wrapped, method),
+                        kind=trace.SpanKind.CONSUMER,
+                        attributes=_hydrate_span_args(self._wrapped, method),
+                ):
+                    return method(self, *_args, **_kwargs)
+
+        return _resume_span
+
+    def async_span_wrapper(method: Callable[..., Any]) -> Any:
+        async def _resume_span(
+                self: Any,
+                *_args: Any,
+                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+                **_kwargs: Any,
+        ) -> Any:
+            """
+            Wrap whatever the user's function is with with a function that will
+            extract the trace context
+            """
+            tracer = trace.get_tracer(__name__)
+
+            # Set a new context if given a _ray_trace_ctx, or default to current_context
+            # Retrieves the context from the _ray_trace_ctx dictionary we injected
+            if _ray_trace_ctx:
+                with use_context(dict_propagator.extract(
+                        _ray_trace_ctx)), tracer.start_as_current_span(
+                            _span_consumer_name(self._wrapped.__name__,
+                                                method.__name__),
+                            kind=trace.SpanKind.CONSUMER,
+                            attributes=_hydrate_span_args(
+                                self._wrapped.__name__, method.__name__),
+                        ):
+                    return await method(self, *_args, **_kwargs)
+            else:
+                with tracer.start_as_current_span(
+                        _span_consumer_name(self._wrapped.__name__,
+                                            method.__name__),
+                        kind=trace.SpanKind.CONSUMER,
+                        attributes=_hydrate_span_args(self._wrapped.__name__,
+                                                      method.__name__),
+                ):
+                    return await method(self, *_args, **_kwargs)
+
+        return _resume_span
+
+    def _make_actor(_cls: Type[Any], *_args: Any, **_kwargs: Any) -> Any:
+        class TracingWrapper(
+                _cls
+        ):  # type: ignore # I can't figure out how to annotate _cls appropriately to make mypy happy
+            _wrapped = _cls
+
+        # This is here to make it so that when Ray's internals inspect
+        # TracingWrapper they capture the right `class_name`.
+        TracingWrapper.__name__ = _cls.__name__
+
+        methods = inspect.getmembers(TracingWrapper, is_function_or_method)
+        for name, method in methods:
+            if inspect.iscoroutinefunction(method):
+                # If the method was async, convert out sync wrapper into async
+                wrapped_method = async_span_wrapper(method)
+            else:
+                wrapped_method = span_wrapper(method)
+
+            setattr(TracingWrapper, name, wrapped_method)
+
+        return wrapped(TracingWrapper, *_args, **_kwargs)
+
+    return _make_actor(*args, **kwargs)
 
 
 @client_mode_hook
@@ -188,17 +349,7 @@ class ActorMethod:
                         f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-                name=_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(class_name, method_name),
-        ) as span:
-            kwargs[
-                "_ray_trace_ctx"] = dict_propagator.inject_current_context(
-                )
-            span.set_attribute("ray.actor_id", _ray_actor_id.hex())
-            return self._remote(args, kwargs)
+        return self._remote(args, kwargs)
 
     def options(self, **options):
         """Convenience method for executing an actor method call with options.
@@ -220,6 +371,7 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @actor_method_tracing_local
     def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
@@ -499,16 +651,7 @@ class ActorClass:
         Returns:
             A handle to the newly created actor.
         """
-
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-                name=_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_hydrate_span_args(class_name, method_name),
-        ) as span:
-            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
-            span.set_attribute("ray.actor_id", _ray_actor_id.hex())
-            return self._remote(args=args, kwargs=kwargs)
+        return self._remote(args=args, kwargs=kwargs)
 
     def options(self,
                 args=None,
@@ -575,6 +718,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @actor_class_tracing_local
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -1114,6 +1258,7 @@ def modify_class(cls):
     return Class
 
 
+@make_tracing_actor
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries):
     Class = modify_class(cls)
