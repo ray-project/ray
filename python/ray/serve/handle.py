@@ -131,7 +131,11 @@ class RayServeHandle:
             raise AttributeError(
                 f"ServeHandle for endpoint {self.endpoint_name} doesn't have "
                 f"python method {name}. Please check all Python methods via "
-                "`serve.list_endpoints()`.")
+                "`serve.list_endpoints()`. If you used the "
+                f"get_handle('{self.endpoint_name}', missing_ok=True) flag, "
+                f"Serve cannot know all methods for {self.endpoint_name}. "
+                "You can set the method manually via "
+                f"handle.options(method_name='{name}').remote().")
 
         return self.options(method_name=name)
 

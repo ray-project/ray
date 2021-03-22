@@ -139,6 +139,17 @@ def test_deploy_handle_validation(serve_instance):
     with pytest.raises(AttributeError):
         handle.c.remote()
 
+    # Test missing_ok case
+    missing_handle = serve.get_handle("g", missing_ok=True)
+    with pytest.raises(AttributeError):
+        missing_handle.b.remote()
+    serve_instance.deploy("g", A)
+    # Old code path still work
+    assert ray.get(missing_handle.options(method_name="b").remote()) == "hello"
+    # Because the missing_ok flag, handle.b.remote won't work.
+    with pytest.raises(AttributeError):
+        missing_handle.b.remote()
+
 
 if __name__ == "__main__":
     import sys

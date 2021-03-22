@@ -599,10 +599,14 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/advanced.html#sync-and-async-handles")
 
-        python_methods: List[str] = []
-        if not missing_ok:
+        if endpoint_name in all_endpoints:
             this_endpoint = all_endpoints[endpoint_name]
-            python_methods.extend(this_endpoint["python_methods"])
+            python_methods: List[str] = this_endpoint["python_methods"]
+        else:
+            # This can happen in the missing_ok=True case.
+            # handle.method_name.remote won't work and user must
+            # use the legacy handle.options(method).remote().
+            python_methods: List[str] = []
 
         # NOTE(simon): this extra layer of router seems unnecessary
         # BUT it's needed still because of the shared asyncio thread.
