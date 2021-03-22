@@ -420,10 +420,13 @@ def test_task_args_memory_threshold(shutdown_only, reservation):
     a = Signal.remote(num_tasks_expected)
     x = np.zeros(obj_size, dtype=np.uint8)
     objs = [ray.put(x) for _ in range(num_objs)]
+    # The tasks have to fetch the objects to the remote node to run. The remote
+    # node should only fetch objects up to the configured reservation.
     for obj in objs:
         f.remote(a, obj)
-    # Check admission control for tasks.
+    # Check that at least num_tasks_expected tasks are scheduled.
     ray.get(a.wait.remote(), timeout=10)
+    # Check that at most num_tasks_expected tasks are scheduled.
     num_cores = num_objs - num_tasks_expected
     ray.get(empty.options(num_cpus=num_cores).remote(), timeout=10)
 
