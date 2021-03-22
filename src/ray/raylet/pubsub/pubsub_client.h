@@ -113,14 +113,14 @@ class PubsubClient : public PubsubClientInterface {
   /// Private method to handle pubsub server failures.
   void HandleCoordinatorFailure(const rpc::Address &owner_address);
 
-  /// Returns a subscription callback; The first entry indicates if the subscription
-  /// callback exists. The second entry is the callback itself.
-  absl::optional<std::reference_wrapper<SubscriptionCallback>> GetSubscriptionCallback(
+  /// Returns a subscription callback; Returns a nullopt if the object id is not
+  /// subscribed.
+  absl::optional<SubscriptionCallback> GetSubscriptionCallback(
       const rpc::Address &owner_address, const ObjectID &object_id) const;
 
-  /// Returns a owner failure callback; The first entry indicates if the subscription
-  /// callback exists. The second entry is the callback itself.
-  absl::optional<std::reference_wrapper<SubscriptionCallback>> GetFailureCallback(
+  /// Returns a owner failure callback; Returns a nullopt if the object id is not
+  /// subscribed.
+  absl::optional<SubscriptionCallback> GetFailureCallback(
       const rpc::Address &owner_address, const ObjectID &object_id) const;
 
   /// Self node's address information.

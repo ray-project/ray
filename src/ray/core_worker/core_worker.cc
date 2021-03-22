@@ -2376,7 +2376,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   auto long_polling_reply_callback =
-      [reply = std::move(reply), send_reply_callback = std::move(send_reply_callback),
+      [send_reply_callback = std::move(send_reply_callback), reply,
        subscriber_id](const std::vector<ObjectID> &object_ids) {
         RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
         // TODO(sang): The max grpc message size is 100 MB, meaning this operation can

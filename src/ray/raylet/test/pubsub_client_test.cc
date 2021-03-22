@@ -355,9 +355,9 @@ TEST_F(PubsubClientTest, TestUnsubscribeInSubscriptionCallback) {
     pubsub_client_->UnsubscribeObject(owner_addr, object_id);
     object_subscribed_.emplace(object_id);
   };
-  auto failure_callback = [this, owner_addr](const ObjectID &object_id) {
-    object_failed_to_subscribe_.emplace(object_id);
-    pubsub_client_->UnsubscribeObject(owner_addr, object_id);
+  auto failure_callback = [](const ObjectID &object_id) {
+    // This shouldn't be invoked in this test.
+    ASSERT_TRUE(false);
   };
 
   pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,

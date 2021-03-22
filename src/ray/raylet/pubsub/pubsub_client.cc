@@ -54,6 +54,7 @@ void PubsubClient::SubcribeObject(
           auto maybe_failure_callback = GetFailureCallback(owner_address, object_id);
           if (maybe_failure_callback.has_value()) {
             const auto &failure_callback = maybe_failure_callback.value();
+            // If the object id is still subscribed, invoke a failure callback.
             failure_callback(object_id);
             RAY_CHECK(UnsubscribeObject(owner_address, object_id));
           }
@@ -115,8 +116,10 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
     for (const auto &object_id_it : subscription_callback_map) {
       const auto &object_id = object_id_it.first;
       objects_to_unsubscribe.push_back(object_id);
+
       auto maybe_failiure_callback = GetFailureCallback(owner_address, object_id);
       if (maybe_failiure_callback.has_value()) {
+        // If the object id is still subscribed, invoke a failure callback.
         const auto &failure_callback = maybe_failiure_callback.value();
         failure_callback(object_id);
       }
@@ -138,12 +141,12 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
       auto maybe_subscription_callback =
           GetSubscriptionCallback(owner_address, object_id);
       if (maybe_subscription_callback.has_value()) {
+        // If the object id is still subscribed, invoke a subscription callback.
         const auto &subscription_callback = maybe_subscription_callback.value();
         subscription_callback(object_id);
       }
     }
   }
-
   subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it->second.subscription_callback_map_.size() == 0) {
     // If there's no more subscription, Erase the entry. We erase the connection entry
@@ -159,9 +162,8 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
   }
 }
 
-absl::optional<std::reference_wrapper<SubscriptionCallback>>
-PubsubClient::GetSubscriptionCallback(const rpc::Address &owner_address,
-                                      const ObjectID &object_id) const {
+inline absl::optional<SubscriptionCallback> PubsubClient::GetSubscriptionCallback(
+    const rpc::Address &owner_address, const ObjectID &object_id) const {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it == subscription_map_.end()) {
@@ -173,13 +175,11 @@ PubsubClient::GetSubscriptionCallback(const rpc::Address &owner_address,
     return absl::nullopt;
   }
   auto subscription_callback = callback_it->second.first;
-  return absl::optional<std::reference_wrapper<SubscriptionCallback>>{
-      std::ref(subscription_callback)};
+  return absl::optional<SubscriptionCallback>{subscription_callback};
 }
 
-absl::optional<std::reference_wrapper<SubscriptionCallback>>
-PubsubClient::GetFailureCallback(const rpc::Address &owner_address,
-                                 const ObjectID &object_id) const {
+inline absl::optional<SubscriptionCallback> PubsubClient::GetFailureCallback(
+    const rpc::Address &owner_address, const ObjectID &object_id) const {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto subscription_it = subscription_map_.find(owner_worker_id);
   if (subscription_it == subscription_map_.end()) {
@@ -191,8 +191,7 @@ PubsubClient::GetFailureCallback(const rpc::Address &owner_address,
     return absl::nullopt;
   }
   auto subscription_callback = callback_it->second.second;
-  return absl::optional<std::reference_wrapper<SubscriptionCallback>>{
-      std::ref(subscription_callback)};
+  return absl::optional<SubscriptionCallback>{subscription_callback};
 }
 
 }  // namespace ray

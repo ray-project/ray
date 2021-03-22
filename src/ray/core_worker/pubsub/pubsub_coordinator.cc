@@ -127,7 +127,6 @@ bool Subscriber::PublishIfPossible(bool force) {
 
 void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
                                 LongPollConnectCallback long_poll_connect_callback) {
-  absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
@@ -138,6 +137,7 @@ void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
     return;
   }
 
+  absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_node_id);
   if (it == subscribers_.end()) {
     it = subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>()).first;
@@ -152,13 +152,13 @@ void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
 
 void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
                                              const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
   RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
                  << subscriber_node_id;
   if (is_node_dead_(subscriber_node_id)) {
     return;
   }
 
+  absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_node_id) == 0) {
     subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
   }
@@ -174,8 +174,7 @@ void PubsubCoordinator::Publish(const ObjectID &object_id) {
     return;
   }
 
-  for (const auto &subscriber_id :
-       subscription_index_.GetSubscriberIdsByObjectId(object_id).value().get()) {
+  for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
