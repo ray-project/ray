@@ -106,6 +106,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void AddNodeAddedListener(
       std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)> listener) {
     RAY_CHECK(listener);
+    RAY_LOG(ERROR) << "Added listener...";
     node_added_listeners_.emplace_back(std::move(listener));
   }
 

@@ -54,6 +54,8 @@ class GcsResourceReportPoller {
 
   ~GcsResourceReportPoller();
 
+  void Initialize(const GcsInitData &gcs_init_data);
+
   /// Start a thread to poll for resource updates.
   void Start();
 
@@ -61,11 +63,11 @@ class GcsResourceReportPoller {
   void Stop();
 
   /// Event handler when a new node joins the cluster.
-  void HandleNodeAdded(const std::shared_ptr<rpc::GcsNodeInfo> &node_info)
+  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info)
       LOCKS_EXCLUDED(mutex_);
 
   /// Event handler when a node leaves the cluster.
-  void HandleNodeRemoved(const std::shared_ptr<rpc::GcsNodeInfo> &node_info)
+  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info)
       LOCKS_EXCLUDED(mutex_);
 
  private:

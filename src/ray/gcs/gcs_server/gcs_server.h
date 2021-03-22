@@ -115,7 +115,7 @@ class GcsServer {
   void InitStatsHandler();
 
   /// Initialize resource report polling.
-  void InitResourceReportPolling();
+  void InitResourceReportPolling(const GcsInitData &gcs_init_data);
 
   /// Install event listeners.
   void InstallEventListeners();

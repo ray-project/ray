@@ -1197,15 +1197,22 @@ def test_create_placement_group_after_gcs_server_restart(
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
+    print("1")
+
     # Restart gcs server.
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
+
+    time.sleep(0.5)
+    print("2")
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
     ray.get(placement_group2.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
+
+    print("3")
 
     # Create placement group 3.
     # Status is `PENDING` because the cluster resource is insufficient.

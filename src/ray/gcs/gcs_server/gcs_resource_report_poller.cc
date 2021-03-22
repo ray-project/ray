@@ -24,6 +24,12 @@ GcsResourceReportPoller::GcsResourceReportPoller(
 
 GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 
+void GcsResourceReportPoller::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &pair : gcs_init_data.Nodes()) {
+    HandleNodeAdded(pair.second);
+  }
+}
+
 void GcsResourceReportPoller::Start() {
   polling_thread_.reset(new std::thread{[this]() {
     SetThreadName("resource_report_poller");
@@ -48,16 +54,17 @@ void GcsResourceReportPoller::Stop() {
 }
 
 void GcsResourceReportPoller::HandleNodeAdded(
-    const std::shared_ptr<rpc::GcsNodeInfo> &node_info) {
+    const rpc::GcsNodeInfo &node_info) {
+  RAY_LOG(ERROR) << "Entered report poller node added handler";
   absl::MutexLock guard(&mutex_);
 
   rpc::Address address;
-  address.set_raylet_id(node_info->node_id());
-  address.set_ip_address(node_info->node_manager_address());
-  address.set_port(node_info->node_manager_port());
+  address.set_raylet_id(node_info.node_id());
+  address.set_ip_address(node_info.node_manager_address());
+  address.set_port(node_info.node_manager_port());
 
   auto state =
-      std::make_shared<PullState>(NodeID::FromBinary(node_info->node_id()),
+      std::make_shared<PullState>(NodeID::FromBinary(node_info.node_id()),
                                   std::move(address), -1, get_current_time_milli_());
 
   const auto &node_id = state->node_id;
@@ -66,20 +73,20 @@ void GcsResourceReportPoller::HandleNodeAdded(
 
   nodes_[node_id] = state;
   to_pull_queue_.push_front(state);
-  RAY_LOG(DEBUG) << "Node was added with id: " << node_id;
+  RAY_LOG(ERROR) << "Node was added with id: " << node_id;
 
   polling_service_.post([this]() { TryPullResourceReport(); });
 }
 
 void GcsResourceReportPoller::HandleNodeRemoved(
-    const std::shared_ptr<rpc::GcsNodeInfo> &node_info) {
-  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+    const rpc::GcsNodeInfo &node_info) {
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
   {
     absl::MutexLock guard(&mutex_);
     nodes_.erase(node_id);
     RAY_CHECK(!nodes_.count(node_id));
   }
-  RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
+  RAY_LOG(ERROR) << "Node removed (node_id: " << node_id
                  << ")# of remaining nodes: " << nodes_.size();
 }
 
@@ -94,6 +101,7 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
     auto to_pull = to_pull_queue_.front();
     if (cur_time < to_pull->next_pull_time) {
+      RAY_LOG(ERROR) << "Skipping, not time yet";
       break;
     }
 
@@ -110,6 +118,7 @@ void GcsResourceReportPoller::TryPullResourceReport() {
 }
 
 void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
+  RAY_LOG(ERROR) << "Pulling report for " << state->node_id;
   inflight_pulls_++;
 
   request_report_(

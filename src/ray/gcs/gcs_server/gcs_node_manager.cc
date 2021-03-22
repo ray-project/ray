@@ -123,6 +123,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
+    RAY_LOG(ERROR) << "[node manager] node added! " << node_id;
 
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {

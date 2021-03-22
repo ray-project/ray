@@ -102,7 +102,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitStatsHandler();
 
   // Init resource report polling.
-  InitResourceReportPolling();
+  InitResourceReportPolling(gcs_init_data);
 
   // Install event listeners.
   InstallEventListeners();
@@ -291,13 +291,15 @@ void GcsServer::InitTaskInfoHandler() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
-void GcsServer::InitResourceReportPolling() {
+  void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
         gcs_resource_manager_, raylet_client_pool_,
         [this](const rpc::ResourcesData &report) {
           gcs_resource_manager_->UpdateFromResourceReport(report);
         }));
+
+    gcs_resource_report_poller_->Initialize(gcs_init_data);
     gcs_resource_report_poller_->Start();
   }
 }
@@ -322,6 +324,7 @@ void GcsServer::InitGcsWorkerManager() {
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
+                                            RAY_LOG(ERROR) << "[GCS Server] Detected node added.";
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
     gcs_resource_manager_->OnNodeAdd(*node);
@@ -329,7 +332,10 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
     if (config_.pull_based_resource_reporting) {
-      gcs_resource_report_poller_->HandleNodeAdded(node);
+      RAY_LOG(ERROR) << "poller node added handler active!";
+      gcs_resource_report_poller_->HandleNodeAdded(*node);
+    } else {
+      RAY_LOG(ERROR) << "poller node added handler NOT active";
     }
   });
   gcs_node_manager_->AddNodeRemovedListener(
@@ -342,7 +348,7 @@ void GcsServer::InstallEventListeners() {
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         if (config_.pull_based_resource_reporting) {
-          gcs_resource_report_poller_->HandleNodeRemoved(node);
+          gcs_resource_report_poller_->HandleNodeRemoved(*node);
         }
       });
 
