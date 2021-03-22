@@ -1,11 +1,13 @@
 from ray.autoscaler._private import cli_logger
 import pytest
 
+
 def test_colorful_mock_with_style():
     cm = cli_logger._ColorfulMock()
     with cm.with_style("some_style") as c:
         assert c.color_choice("text") == "text"
         assert c.another_color_choice("more_text") == "more_text"
+
 
 def test_colorful_mock_random_function():
     cm = cli_logger._ColorfulMock()
