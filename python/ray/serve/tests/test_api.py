@@ -90,15 +90,16 @@ def test_starlette_response(serve_instance):
                 await asyncio.sleep(0.01)
 
         return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain")
+            slow_numbers(), media_type="text/plain", status_code=418)
 
     serve.create_backend("streaming_response", streaming_response)
     serve.create_endpoint(
         "streaming_response",
         backend="streaming_response",
         route="/streaming_response")
-    assert requests.get(
-        "http://127.0.0.1:8000/streaming_response").text == "123"
+    resp = requests.get("http://127.0.0.1:8000/streaming_response")
+    assert resp.text == "123"
+    assert resp.status_code == 418
 
 
 def test_backend_user_config(serve_instance):

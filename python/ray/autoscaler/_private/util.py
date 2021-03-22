@@ -97,7 +97,14 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "sum of `min_workers` of all the available node types.")
 
 
-def prepare_config(config):
+def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The returned config has the following properties:
+    - Uses the multi-node-type autoscaler configuration.
+    - Merged with the appropriate defaults.yaml
+    - Has a valid Docker configuration if provided.
+    - Has max_worker set for each node type.
+    """
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)

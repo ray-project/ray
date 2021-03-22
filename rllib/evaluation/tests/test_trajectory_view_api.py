@@ -419,9 +419,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         results = None
         for i in range(num_iterations):
             results = trainer.train()
-        self.assertGreater(results["timesteps_total"],
+        self.assertGreater(results["agent_timesteps_total"],
                            num_iterations * config["train_batch_size"])
-        self.assertLess(results["timesteps_total"],
+        self.assertLess(results["agent_timesteps_total"],
                         (num_iterations + 1) * config["train_batch_size"])
         trainer.stop()
 
