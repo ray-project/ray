@@ -1,9 +1,11 @@
 import os
 
 import pytest
+from ray.actor import method
 import requests
 
 import ray
+from ray import serve
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -121,6 +123,22 @@ def test_config_change(serve_instance, use_handle):
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
+
+
+def test_deploy_handle_validation(serve_instance):
+    class A:
+        def b(self, *args):
+            return "hello"
+
+    serve_instance.deploy("f", A)
+    handle = serve.get_handle("f")
+
+    # Legacy code path
+    assert ray.get(handle.options(method_name="b").remote()) == "hello"
+    # New code path
+    assert ray.get(handle.b.remote()) == "hello"
+    with pytest.raises(AttributeError):
+        handle.c.remote()
 
 
 if __name__ == "__main__":

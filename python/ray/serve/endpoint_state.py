@@ -22,6 +22,7 @@ class EndpointState:
         self._long_poll_host = long_poll_host
         self._routes: Dict[str, Tuple[EndpointTag, Any]] = dict()
         self._traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
+        self._python_methods: Dict[EndpointTag, List[str]] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
@@ -48,8 +49,12 @@ class EndpointState:
                     policy,
                 )
 
-    def create_endpoint(self, endpoint: EndpointTag, route: Optional[str],
-                        methods: List[str], traffic_policy: TrafficPolicy):
+    def create_endpoint(self,
+                        endpoint: EndpointTag,
+                        route: Optional[str],
+                        methods: List[str],
+                        traffic_policy: TrafficPolicy,
+                        python_methods: List[str] = []):
         # If this is a headless endpoint with no route, key the endpoint
         # based on its name.
         # TODO(edoakes): we should probably just store routes and endpoints
@@ -72,6 +77,7 @@ class EndpointState:
 
         self._routes[route] = (endpoint, methods)
         self._traffic_policies[endpoint] = traffic_policy
+        self._python_methods[endpoint] = python_methods
 
         self._checkpoint()
         self._notify_route_table_changed()
@@ -116,6 +122,7 @@ class EndpointState:
                 "methods": methods,
                 "traffic": traffic_dict,
                 "shadows": shadow_dict,
+                "python_methods": self._python_methods[endpoint],
             }
         return endpoints
 
@@ -131,6 +138,7 @@ class EndpointState:
 
         del self._routes[route_to_delete]
         del self._traffic_policies[endpoint]
+        del self._python_methods[endpoint]
 
         self._checkpoint()
         self._notify_route_table_changed()

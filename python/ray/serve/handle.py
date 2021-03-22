@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
 from ray.serve.utils import get_random_letters
@@ -55,9 +55,13 @@ class RayServeHandle:
             self,
             router,  # ThreadProxiedRouter
             endpoint_name,
-            handle_options: Optional[HandleOptions] = None):
+            handle_options: Optional[HandleOptions] = None,
+            *,
+            known_python_methods: List[str] = [],
+    ):
         self.router = router
         self.endpoint_name = endpoint_name
+        self.known_python_methods = known_python_methods
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
 
@@ -122,11 +126,14 @@ class RayServeHandle:
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
 
-    def __reduce__(self):
-        deserializer = RayServeHandle
-        serialized_data = (self.router, self.endpoint_name,
-                           self.handle_options)
-        return deserializer, serialized_data
+    def __getattr__(self, name):
+        if name not in self.known_python_methods:
+            raise AttributeError(
+                f"ServeHandle for endpoint {self.endpoint_name} doesn't have "
+                f"python method {name}. Please check all Python methods via "
+                "`serve.list_endpoints()`.")
+
+        return self.options(method_name=name)
 
 
 class RayServeSyncHandle(RayServeHandle):

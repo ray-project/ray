@@ -580,8 +580,8 @@ class Client:
         Returns:
             RayServeHandle
         """
-        if not missing_ok and endpoint_name not in ray.get(
-                self._controller.get_all_endpoints.remote()):
+        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
+        if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
         if asyncio.get_event_loop().is_running() and sync:
@@ -599,13 +599,20 @@ class Client:
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
                 "master/serve/advanced.html#sync-and-async-handles")
 
+        python_methods: List[str] = []
+        if not missing_ok:
+            this_endpoint = all_endpoints[endpoint_name]
+            python_methods.extend(this_endpoint["python_methods"])
+
         # NOTE(simon): this extra layer of router seems unnecessary
         # BUT it's needed still because of the shared asyncio thread.
         router = self._get_proxied_router(sync=sync, endpoint=endpoint_name)
         if sync:
-            handle = RayServeSyncHandle(router, endpoint_name)
+            handle = RayServeSyncHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         else:
-            handle = RayServeHandle(router, endpoint_name)
+            handle = RayServeHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         return handle
 
 

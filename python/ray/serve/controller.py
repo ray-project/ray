@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict
+import inspect
 from typing import Dict, Any, List, Optional
 
 import ray
@@ -265,16 +266,22 @@ class ServeController:
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
+            http_route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-            methods = [
+            http_methods = [
                 "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
                 "TRACE", "PATCH"
             ]
         else:
-            route = replica_config.path_prefix
+            http_route = replica_config.path_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
-            methods = ["GET", "POST"]
+            http_methods = ["GET", "POST"]
+
+        python_methods = []
+        if inspect.isclass(replica_config.backend_def):
+            for method_name, _ in inspect.getmembers(
+                    replica_config.backend_def, inspect.isfunction):
+                python_methods.append(method_name)
 
         async with self.write_lock:
             if version is None:
@@ -291,10 +298,10 @@ class ServeController:
                 name, backend_config, replica_config, version)
             self.endpoint_state.create_endpoint(
                 name,
-                route,
-                methods,
+                http_route,
+                http_methods,
                 TrafficPolicy({
                     name: 1.0
                 }),
-            )
+                python_methods=python_methods)
             return goal_id
