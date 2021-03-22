@@ -169,7 +169,6 @@ matrix:
         - . ./ci/travis/ci.sh init
       before_script:
         - . ./ci/travis/ci.sh lint
-        - . ./ci/travis/ci.sh build
       script:
         - sleep 30  # we still need this block to exist, otherwise it will fall back to the global one
 
