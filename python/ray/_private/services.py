@@ -1133,7 +1133,7 @@ def start_dashboard(require_dashboard,
                     redis_address,
                     temp_dir,
                     logdir,
-                    port=None,
+                    port=ray_constants.DEFAULT_DASHBOARD_PORT,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
@@ -1166,55 +1166,45 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    try:
-        # Make sure port is available.
-        if port is None:
-            port_retries = 50
-            port = ray_constants.DEFAULT_DASHBOARD_PORT
-        else:
-            port_retries = 0
-            port_test_socket = socket.socket()
-            port_test_socket.setsockopt(
-                socket.SOL_SOCKET,
-                socket.SO_REUSEADDR,
-                1,
-            )
-            try:
-                port_test_socket.bind((host, port))
-                port_test_socket.close()
-            except socket.error as e:
-                if e.errno in {48, 98}:  # address already in use.
-                    raise ValueError(
-                        f"Failed to bind to {host}:{port} because it's "
-                        "already occupied. You can use `ray start "
-                        "--dashboard-port ...` or `ray.init(dashboard_port=..."
-                        ")` to select a different port.")
-                else:
-                    raise e
-
-        # Make sure the process can start.
+    port_retries = 10
+    if port != ray_constants.DEFAULT_DASHBOARD_PORT:
+        port_test_socket = socket.socket()
+        port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            import aiohttp  # noqa: F401
-            import grpc  # noqa: F401
-        except ImportError:
-            warning_message = (
-                "Missing dependencies for dashboard. Please run "
-                "pip install aiohttp grpcio'.")
-            raise ImportError(warning_message)
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+        except socket.error:
+            raise ValueError(
+                f"The given dashboard port {port} is already in use")
+        port_retries = 0
 
-        # Start the dashboard process.
-        dashboard_dir = "new_dashboard"
-        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
-                                          "dashboard.py")
-        command = [
-            sys.executable, "-u", dashboard_filepath, f"--host={host}",
-            f"--port={port}", f"--port-retries={port_retries}",
-            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}"
-        ]
-        if redis_password:
-            command += ["--redis-password", redis_password]
+    dashboard_dir = "new_dashboard"
+    dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
+    command = [
+        sys.executable, "-u", dashboard_filepath, f"--host={host}",
+        f"--port={port}", f"--port-retries={port_retries}",
+        f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
+        f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}"
+    ]
+
+    if redis_password:
+        command += ["--redis-password", redis_password]
+
+    dashboard_dependencies_present = True
+    try:
+        import aiohttp  # noqa: F401
+        import grpc  # noqa: F401
+    except ImportError:
+        dashboard_dependencies_present = False
+        warning_message = (
+            "Failed to start the dashboard. The dashboard requires Python 3 "
+            "as well as 'pip install aiohttp grpcio'.")
+        if require_dashboard:
+            raise ImportError(warning_message)
+        else:
+            logger.warning(warning_message)
+    if dashboard_dependencies_present:
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1222,12 +1212,12 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
-        # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
+
         dashboard_url = None
         dashboard_returncode = None
-        for _ in range(200):
+        for _ in range(20):
             dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
@@ -1235,9 +1225,7 @@ def start_dashboard(require_dashboard,
             dashboard_returncode = process_info.process.poll()
             if dashboard_returncode is not None:
                 break
-            # This is often on the critical path of ray.init() and ray start,
-            # so we need to poll often.
-            time.sleep(0.1)
+            time.sleep(1)
         if dashboard_url is None:
             dashboard_log = os.path.join(logdir, "dashboard.log")
             returncode_str = (f", return code {dashboard_returncode}"
@@ -1257,9 +1245,8 @@ def start_dashboard(require_dashboard,
                             lines.append(mm[sep + 1:end].decode("utf-8"))
                             end = sep
                 lines.append(f" The last {n} lines of {dashboard_log}:")
-            except Exception as e:
-                raise Exception(f"Failed to read dashbord log: {e}")
-
+            except Exception:
+                pass
             last_log_str = "\n".join(reversed(lines[-n:]))
             raise Exception("Failed to start the dashboard"
                             f"{returncode_str}.{last_log_str}")
@@ -1269,12 +1256,8 @@ def start_dashboard(require_dashboard,
                     colorama.Fore.RESET, colorama.Style.NORMAL)
 
         return dashboard_url, process_info
-    except Exception as e:
-        if require_dashboard:
-            raise e from e
-        else:
-            logger.error(f"Failed to start the dashboard: {e}")
-            return None, None
+    else:
+        return None, None
 
 
 def start_gcs_server(redis_address,

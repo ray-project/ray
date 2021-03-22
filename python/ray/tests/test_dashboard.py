@@ -1,90 +1,11 @@
 import re
-import socket
-import subprocess
 import sys
 import time
 
 import pytest
 import requests
-from ray.test_utils import run_string_as_driver, wait_for_condition
 
 import ray
-from ray import ray_constants
-
-
-def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
-    subprocess.check_call(["ray", "start", "--head"])
-    ray.init(address="auto")
-    assert str(ray_constants.DEFAULT_DASHBOARD_PORT) in ray.get_dashboard_url()
-
-    try:
-        subprocess.check_output(
-            [
-                "ray",
-                "start",
-                "--head",
-                "--port",
-                "9999",  # use a different gcs port
-            ],
-            stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        assert b"already in use" in e.stderr
-
-
-def test_port_auto_increment(shutdown_only):
-    ray.init()
-    url = ray.get_dashboard_url()
-
-    def dashboard_available():
-        try:
-            requests.get("http://" + url).status_code == 200
-            return True
-        except Exception:
-            return False
-
-    wait_for_condition(dashboard_available)
-
-    run_string_as_driver(f"""
-import ray
-from ray.test_utils import wait_for_condition
-import requests
-ray.init()
-url = ray.get_dashboard_url()
-assert url != "{url}"
-def dashboard_available():
-    try:
-        requests.get("http://"+url).status_code == 200
-        return True
-    except:
-        return False
-wait_for_condition(dashboard_available)
-ray.shutdown()
-        """)
-
-
-def test_port_conflict(shutdown_only):
-    sock = socket.socket()
-    if hasattr(socket, "SO_REUSEPORT"):
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
-    sock.bind(("127.0.0.1", 9999))
-
-    try:
-        subprocess.check_output(
-            [
-                "ray",
-                "start",
-                "--head",
-                "--dashboard-port",
-                "9999",
-            ],
-            stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        assert b"already in use" in e.stderr
-
-    with pytest.raises(ValueError, match="already in use"):
-        ray.init(dashboard_port=9999)
-
-    sock.close()
 
 
 @pytest.mark.skipif(
@@ -119,7 +40,6 @@ def test_dashboard(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))
