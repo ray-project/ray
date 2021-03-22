@@ -51,7 +51,6 @@ cdef class GcsClient:
 
     def kv_del(self, c_string key):
         status = self.inner_.get().InternalKV().Del(key)
-        print("DEL:DBG", key, status.ToString())
         if not status.ok():
             raise IOError("Del failed: {}".format(status.ToString()))
 
@@ -64,7 +63,6 @@ cdef class GcsClient:
             exists = False
         elif not status.ok():
             raise IOError("Get failed: {}".format(status.ToString()))
-        print("GET:DBG", key, len(value), exists, status.ToString())
         return value if exists else None
 
     def kv_keys(self, c_string key):
