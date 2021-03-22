@@ -2020,7 +2020,7 @@ py_test(
 py_test(
     name = "examples/env_rendering_and_recording",
     tags = ["examples", "examples_E"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/env_rendering_and_recording.py"],
     args = ["--stop-iters=2"]
 )
