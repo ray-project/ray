@@ -1,7 +1,6 @@
 import os
 
 import pytest
-from ray.actor import method
 import requests
 
 import ray
