@@ -32,6 +32,7 @@ enum WorkerType {
   // IO worker types.
   SPILL_WORKER = 2;
   RESTORE_WORKER = 3;
+  UTIL_WORKER = 4;
 }
 
 // Type of a task.
@@ -131,6 +132,12 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
+}
+
+/// The runtime environment descrive all the runtime pacakges needed to
+/// run some task or actor.
+message RuntimeEnv {
+  repeated string uris = 1;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -442,6 +449,8 @@ enum WorkerExitType {
   UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
   PLACEMENT_GROUP_REMOVED = 3;
+  // Worker exit due to exceptions in creation task.
+  CREATION_TASK_ERROR = 4;
 }
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following enum to maintain

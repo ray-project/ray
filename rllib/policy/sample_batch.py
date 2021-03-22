@@ -2,19 +2,25 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Dict, Iterable, List, Optional, Set, Union
+from typing import Dict, List, Set, Union
 
+from ray.util import log_once
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.memory import concat_aligned
 from ray.rllib.utils.typing import PolicyID, TensorType
+
+tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class SampleBatch:
+class SampleBatch(dict):
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
@@ -58,35 +64,58 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        if isinstance(self.seq_lens, list):
+            self.seq_lens = np.array(self.seq_lens)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
+                not (tf and tf.is_tensor(self.seq_lens)) and \
                 len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        self.is_training = kwargs.pop("_is_training", None)
 
-        # The actual data, accessible by column name (str).
-        self.data = dict(*args, **kwargs)
+        # Call super constructor. This will make the actual data accessible
+        # by column name (str) via e.g. self["some-col"].
+        dict.__init__(self, *args, **kwargs)
+
+        if self.is_training is None:
+            self.is_training = self.pop("is_training", False)
+        if self.seq_lens is None:
+            self.seq_lens = self.get("seq_lens", None)
+
+        self.accessed_keys = set()
+        self.added_keys = set()
+        self.deleted_keys = set()
+        self.intercepted_values = {}
+
+        self.get_interceptor = None
 
         lengths = []
-        for k, v in self.data.copy().items():
+        copy_ = {k: v for k, v in self.items()}
+        for k, v in copy_.items():
             assert isinstance(k, str), self
-            lengths.append(len(v))
+            len_ = len(v) if isinstance(
+                v,
+                (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
+            lengths.append(len_)
             if isinstance(v, list):
-                self.data[k] = np.array(v)
+                self[k] = np.array(v)
+
         if not lengths:
             raise ValueError("Empty sample batch")
+
         if not self.dont_check_lens:
             assert len(set(lengths)) == 1, \
                 "Data columns must be same length, but lens are " \
                 "{}".format(lengths)
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+
+        if self.seq_lens is not None and \
+                not (tf and tf.is_tensor(self.seq_lens)) and \
+                len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = len(next(iter(self.data.values())))
-
-        # Keeps track of new columns added after initial ones.
-        self.new_columns = []
+            self.count = lengths[0]
 
     @PublicAPI
     def __len__(self):
@@ -164,18 +193,25 @@ class SampleBatch:
         return SampleBatch(out)
 
     @PublicAPI
-    def copy(self) -> "SampleBatch":
+    def copy(self, shallow: bool = False) -> "SampleBatch":
         """Creates a (deep) copy of this SampleBatch and returns it.
+
+        Args:
+            shallow (bool): Whether the copying should be done shallowly.
 
         Returns:
             SampleBatch: A (deep) copy of this SampleBatch object.
         """
-        return SampleBatch(
-            {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()},
+        copy_ = SampleBatch(
+            {
+                k: np.array(v, copy=not shallow)
+                if isinstance(v, np.ndarray) else v
+                for (k, v) in self.items()
+            },
             _seq_lens=self.seq_lens,
-            _dont_check_lens=self.dont_check_lens,
-        )
+            _dont_check_lens=self.dont_check_lens)
+        copy_.set_get_interceptor(self.get_interceptor)
+        return copy_
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
@@ -238,18 +274,26 @@ class SampleBatch:
             List[SampleBatch]: List of batches, one per distinct episode.
         """
 
+        # No eps_id in data -> Make sure there are no "dones" in the middle
+        # and add eps_id automatically.
+        if SampleBatch.EPS_ID not in self:
+            if SampleBatch.DONES in self:
+                assert not any(self[SampleBatch.DONES][:-1])
+            self[SampleBatch.EPS_ID] = np.repeat(0, self.count)
+            return [self]
+
         slices = []
-        cur_eps_id = self.data["eps_id"][0]
+        cur_eps_id = self[SampleBatch.EPS_ID][0]
         offset = 0
         for i in range(self.count):
-            next_eps_id = self.data["eps_id"][i]
+            next_eps_id = self[SampleBatch.EPS_ID][i]
             if next_eps_id != cur_eps_id:
                 slices.append(self.slice(offset, i))
                 offset = i
                 cur_eps_id = next_eps_id
         slices.append(self.slice(offset, self.count))
         for s in slices:
-            slen = len(set(s["eps_id"]))
+            slen = len(set(s[SampleBatch.EPS_ID]))
             assert slen == 1, (s, slen)
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
@@ -274,10 +318,10 @@ class SampleBatch:
                             shape=(-start, ) + v.shape[1:], dtype=v.dtype),
                         v[0:end]
                     ])
-                    for k, v in self.data.items()
+                    for k, v in self.items()
                 }
             else:
-                data = {k: v[start:end] for k, v in self.data.items()}
+                data = {k: v[start:end] for k, v in self.items()}
             # Fix state_in_x data.
             count = 0
             state_start = None
@@ -289,9 +333,8 @@ class SampleBatch:
                     state_key = "state_in_{}".format(state_idx)
                     if state_start is None:
                         state_start = i
-                    while state_key in self.data:
-                        data[state_key] = self.data[state_key][state_start:i +
-                                                               1]
+                    while state_key in self:
+                        data[state_key] = self[state_key][state_start:i + 1]
                         state_idx += 1
                         state_key = "state_in_{}".format(state_idx)
                     seq_lens = list(self.seq_lens[state_start:i]) + [
@@ -312,7 +355,7 @@ class SampleBatch:
         else:
             return SampleBatch(
                 {k: v[start:end]
-                 for k, v in self.data.items()},
+                 for k, v in self.items()},
                 _seq_lens=None,
                 _time_major=self.time_major)
 
@@ -344,12 +387,12 @@ class SampleBatch:
             exclude_states (bool): If False, also zero-pad all `state_in_x`
                 data. If False, leave `state_in_x` keys as-is.
         """
-        for col in self.data.keys():
+        for col in self.keys():
             # Skip state in columns.
             if exclude_states is True and col.startswith("state_in_"):
                 continue
 
-            f = self.data[col]
+            f = self[col]
             # Save unnecessary copy.
             if not isinstance(f, np.ndarray):
                 f = np.array(f)
@@ -371,40 +414,11 @@ class SampleBatch:
                 f_base += len_
             assert f_base == len(f), f
             # Update our data.
-            self.data[col] = f_pad
+            self[col] = f_pad
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
         self.zero_padded = True
         self.max_seq_len = max_seq_len
-
-    @PublicAPI
-    def keys(self) -> Iterable[str]:
-        """
-        Returns:
-            Iterable[str]: The keys() iterable over `self.data`.
-        """
-        return self.data.keys()
-
-    @PublicAPI
-    def items(self) -> Iterable[TensorType]:
-        """
-        Returns:
-            Iterable[TensorType]: The values() iterable over `self.data`.
-        """
-        return self.data.items()
-
-    @PublicAPI
-    def get(self, key: str) -> Optional[TensorType]:
-        """Returns one column (by key) from the data or None if key not found.
-
-        Args:
-            key (str): The key (column name) to return.
-
-        Returns:
-            Optional[TensorType]: The data under the given key. None if key
-                not found in data.
-        """
-        return self.data.get(key)
 
     @PublicAPI
     def size_bytes(self) -> int:
@@ -412,7 +426,7 @@ class SampleBatch:
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.data.values())
+        return sum(sys.getsizeof(d) for d in self.values())
 
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
@@ -424,7 +438,22 @@ class SampleBatch:
         Returns:
             TensorType: The data under the given key.
         """
-        return self.data[key]
+        # Backward compatibility for when "input-dicts" were used.
+        if key == "is_training":
+            if log_once("SampleBatch['is_training']"):
+                deprecation_warning(
+                    old="SampleBatch['is_training']",
+                    new="SampleBatch.is_training",
+                    error=False)
+            return self.is_training
+
+        self.accessed_keys.add(key)
+        value = dict.__getitem__(self, key)
+        if self.get_interceptor is not None:
+            if key not in self.intercepted_values:
+                self.intercepted_values[key] = self.get_interceptor(value)
+            value = self.intercepted_values[key]
+        return value
 
     @PublicAPI
     def __setitem__(self, key, item) -> None:
@@ -434,9 +463,23 @@ class SampleBatch:
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
-        if key not in self.data:
-            self.new_columns.append(key)
-        self.data[key] = item
+        # Defend against creating SampleBatch via pickle (no property
+        # `added_keys` and first item is already set).
+        if not hasattr(self, "added_keys"):
+            dict.__setitem__(self, key, item)
+            return
+
+        if key not in self:
+            self.added_keys.add(key)
+
+        dict.__setitem__(self, key, item)
+        if key in self.intercepted_values:
+            self.intercepted_values[key] = item
+
+    @PublicAPI
+    def __delitem__(self, key):
+        self.deleted_keys.add(key)
+        dict.__delitem__(self, key)
 
     @DeveloperAPI
     def compress(self,
@@ -452,12 +495,11 @@ class SampleBatch:
                 compress the obs and new_obs columns.
         """
         for key in columns:
-            if key in self.data:
+            if key in self.keys():
                 if bulk:
-                    self.data[key] = pack(self.data[key])
+                    self[key] = pack(self[key])
                 else:
-                    self.data[key] = np.array(
-                        [pack(o) for o in self.data[key]])
+                    self[key] = np.array([pack(o) for o in self[key]])
 
     @DeveloperAPI
     def decompress_if_needed(self,
@@ -473,26 +515,20 @@ class SampleBatch:
             SampleBatch: This very SampleBatch.
         """
         for key in columns:
-            if key in self.data:
-                arr = self.data[key]
+            if key in self.keys():
+                arr = self[key]
                 if is_compressed(arr):
-                    self.data[key] = unpack(arr)
+                    self[key] = unpack(arr)
                 elif len(arr) > 0 and is_compressed(arr[0]):
-                    self.data[key] = np.array(
-                        [unpack(o) for o in self.data[key]])
+                    self[key] = np.array([unpack(o) for o in self[key]])
         return self
 
-    def __str__(self):
-        return "SampleBatch({})".format(str(self.data))
+    @DeveloperAPI
+    def set_get_interceptor(self, fn):
+        self.get_interceptor = fn
 
     def __repr__(self):
-        return "SampleBatch({})".format(str(self.data))
-
-    def __iter__(self):
-        return self.data.__iter__()
-
-    def __contains__(self, x):
-        return x in self.data
+        return "SampleBatch({})".format(list(self.keys()))
 
     def _get_slice_indices(self, slice_size):
         i = 0
@@ -519,6 +555,14 @@ class SampleBatch:
                 slices.append((i, i + slice_size))
                 i += slice_size
         return slices
+
+    # TODO: deprecate
+    @property
+    def data(self):
+        if log_once("SampleBatch.data"):
+            deprecation_warning(
+                old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
+        return self
 
 
 @PublicAPI

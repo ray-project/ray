@@ -9,9 +9,10 @@ import ray
 import ray.actor
 import ray.node
 import ray.ray_constants as ray_constants
-import ray.utils
-from ray.parameter import RayParams
-from ray.ray_logging import get_worker_log_file_name, configure_log_file
+import ray._private.utils
+from ray._private.parameter import RayParams
+from ray._private.ray_logging import (get_worker_log_file_name,
+                                      configure_log_file)
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -124,7 +125,8 @@ if __name__ == "__main__":
     # as a step function. For more details, check out
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
-    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
+    ray._private.ray_logging.setup_logger(args.logging_level,
+                                          args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -132,6 +134,8 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
+    elif args.worker_type == "RUNTIME_ENV_WORKER":
+        mode = ray.RUNTIME_ENV_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 

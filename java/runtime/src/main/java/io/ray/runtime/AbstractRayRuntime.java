@@ -21,6 +21,7 @@ import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.config.RayConfig;
+import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
@@ -71,6 +72,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public <T> ObjectRef<T> put(T obj) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Putting Object in Task {}.", workerContext.getCurrentTaskId());
+    }
     ObjectId objectId = objectStore.put(obj);
     return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
@@ -90,21 +94,30 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       objectIds.add(objectRefImpl.getId());
       objectType = objectRefImpl.getType();
     }
+    LOGGER.debug("Getting Objects {}.", objectIds);
     return objectStore.get(objectIds, objectType);
   }
 
   @Override
   public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
-    objectStore.delete(
+    List<ObjectId> objectIds =
         objectRefs.stream()
             .map(ref -> ((ObjectRefImpl<?>) ref).getId())
-            .collect(Collectors.toList()),
-        localOnly);
+            .collect(Collectors.toList());
+    LOGGER.debug("Freeing Objects {}, localOnly = {}.", objectIds, localOnly);
+    objectStore.delete(objectIds, localOnly);
   }
 
   @Override
   public <T> WaitResult<T> wait(
       List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(
+          "Waiting Objects {} with minimum number {} within {} ms.",
+          waitList,
+          numReturns,
+          timeoutMs);
+    }
     return objectStore.wait(waitList, numReturns, timeoutMs, fetchLocal);
   }
 
@@ -259,6 +272,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    if (options == null) {
+      options = new CallOptions.Builder().build();
+    }
     List<ObjectId> returnIds =
         taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
@@ -275,6 +291,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       Object[] args,
       Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("Submitting Actor Task {}.", functionDescriptor);
+    }
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     List<ObjectId> returnIds =
         taskSubmitter.submitActorTask(rayActor, functionDescriptor, functionArgs, numReturns, null);
@@ -288,6 +307,19 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private BaseActorHandle createActorImpl(
       FunctionDescriptor functionDescriptor, Object[] args, ActorCreationOptions options) {
+    if (LOGGER.isDebugEnabled()) {
+      if (options == null) {
+        LOGGER.debug("Creating Actor {} with default options.", functionDescriptor);
+      } else {
+        LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
+      }
+    }
+    if (rayConfig.runMode == RunMode.SINGLE_PROCESS
+        && functionDescriptor.getLanguage() != Language.JAVA) {
+      throw new IllegalArgumentException(
+          "Ray doesn't support cross-language invocation in local mode.");
+    }
+
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));

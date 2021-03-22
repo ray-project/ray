@@ -61,7 +61,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

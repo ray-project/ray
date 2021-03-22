@@ -61,7 +61,7 @@ bool QuotaAwarePolicy::SetClientQuota(Client *client, int64_t output_memory_quot
   // those objects will be lazily evicted on the next call
   cache_.AdjustCapacity(-output_memory_quota);
   per_client_cache_[client] =
-      std::unique_ptr<LRUCache>(new LRUCache(client->name, output_memory_quota));
+      std::make_unique<LRUCache>(client->name, output_memory_quota);
   return true;
 }
 

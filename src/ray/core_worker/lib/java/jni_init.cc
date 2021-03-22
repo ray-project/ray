@@ -56,6 +56,9 @@ jmethodID java_system_gc;
 jclass java_ray_exception_class;
 jclass java_ray_intentional_system_exit_exception_class;
 
+jclass java_ray_actor_exception_class;
+jmethodID java_ray_exception_to_bytes;
+
 jclass java_jni_exception_util_class;
 jmethodID java_jni_exception_util_get_stack_trace;
 
@@ -82,6 +85,8 @@ jfieldID java_base_task_options_resources;
 
 jclass java_call_options_class;
 jfieldID java_call_options_name;
+jfieldID java_task_creation_options_group;
+jfieldID java_task_creation_options_bundle_index;
 
 jclass java_actor_creation_options_class;
 jfieldID java_actor_creation_options_global;
@@ -190,6 +195,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_intentional_system_exit_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
 
+  java_ray_actor_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayActorException");
+
+  java_ray_exception_to_bytes =
+      env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");
+
   java_jni_exception_util_class = LoadClass(env, "io/ray/runtime/util/JniExceptionUtil");
   java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
       java_jni_exception_util_class, "getStackTrace",
@@ -230,6 +241,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
   java_call_options_name =
       env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
+  java_task_creation_options_group = env->GetFieldID(
+      java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
+  java_task_creation_options_bundle_index =
+      env->GetFieldID(java_call_options_class, "bundleIndex", "I");
 
   java_placement_group_class =
       LoadClass(env, "io/ray/runtime/placementgroup/PlacementGroupImpl");
@@ -318,6 +333,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
+  env->DeleteGlobalRef(java_ray_actor_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_abstract_message_lite_class);

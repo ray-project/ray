@@ -74,7 +74,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
-            tmp_dir = ray.utils.tempfile.gettempdir() + tmp_dir[4:]
+            tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             if not os.path.exists(tmp_dir):
                 sys.exit(1)
 
@@ -138,7 +138,7 @@ def learn_test_multi_agent_plus_rollout(algo):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
-            tmp_dir = ray.utils.tempfile.gettempdir() + tmp_dir[4:]
+            tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             if not os.path.exists(tmp_dir):
                 sys.exit(1)
 

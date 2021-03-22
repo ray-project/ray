@@ -467,16 +467,16 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) {
+void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
   // TODO (WangTao): Find a way to check if load changed and combine it with light
   // heartbeat. Now we just report it every time.
-  data->set_resource_load_changed(true);
-  auto resource_loads = data->mutable_resource_load();
+  data.set_resource_load_changed(true);
+  auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
-      data->mutable_resource_load_by_shape()->mutable_resource_demands();
+      data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
   int num_reported = 0;
 

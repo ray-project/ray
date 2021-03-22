@@ -54,7 +54,7 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
                        const std::string node_address, int num_workers_soft_limit,
                        int num_initial_python_workers_for_first_job,
                        int maximum_startup_concurrency, int min_worker_port,
@@ -92,7 +92,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id
   }
   // Initialize free ports list with all ports in the specified range.
   if (!worker_ports.empty()) {
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port : worker_ports) {
       free_ports_->push(port);
     }
@@ -102,7 +102,7 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, const NodeID node_id
     }
     RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
     RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port = min_worker_port; port <= max_worker_port; port++) {
       free_ports_->push(port);
     }
@@ -287,8 +287,8 @@ Process WorkerPool::StartWorkerProcess(
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
 
-  RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc.GetId();
+  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
+                << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   if (IsIOWorkerType(worker_type)) {
@@ -566,6 +566,15 @@ void WorkerPool::PopRestoreWorker(
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
 
+void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::UTIL_WORKER);
+}
+
+void WorkerPool::PopUtilWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+}
+
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
                                       const rpc::WorkerType &worker_type) {
   RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
@@ -650,12 +659,13 @@ void WorkerPool::TryKillingIdleWorkers() {
   int64_t now = get_time_();
   size_t running_size = 0;
   for (const auto &worker : GetAllRegisteredWorkers()) {
-    if (!worker->IsDead()) {
+    if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
       running_size++;
     }
   }
   // Subtract the number of pending exit workers first. This will help us killing more
   // idle workers that it needs to.
+  RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
   running_size -= pending_exit_idle_workers_.size();
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
@@ -707,6 +717,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
 
+    RAY_CHECK(running_size >= workers_in_the_same_process.size());
     if (running_size - workers_in_the_same_process.size() <
         static_cast<size_t>(num_workers_soft_limit_)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
@@ -760,6 +771,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
+        RAY_CHECK(running_size > 0);
         running_size--;
       }
     }
@@ -942,7 +954,8 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER ||
+         worker_type == rpc::WorkerType::UTIL_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1042,6 +1055,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::UTIL_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,

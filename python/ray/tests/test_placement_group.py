@@ -13,7 +13,7 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
-import ray.cluster_utils
+import ray._private.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
@@ -1544,6 +1544,42 @@ def test_placement_group_synchronous_registration(ray_start_cluster):
         return table["state"] == "REMOVED"
 
     wait_for_condition(is_placement_group_removed)
+
+
+def test_placement_group_gpu_set(ray_start_cluster):
+    cluster = ray_start_cluster
+    # One node which only has one CPU.
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{
+            "CPU": 1,
+            "GPU": 1
+        }, {
+            "CPU": 1,
+            "GPU": 1
+        }])
+
+    @ray.remote(num_gpus=1)
+    def get_gpus():
+        return ray.get_gpu_ids()
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+    result = ray.get(result)
+    assert result == [0]
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=1).remote()
+    result = ray.get(result)
+    assert result == [0]
 
 
 if __name__ == "__main__":

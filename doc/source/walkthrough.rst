@@ -26,6 +26,8 @@ Installation
 
     To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
+    Note: To run your Ray Java application, you need to install Ray Python with `pip install -U ray` first. (For Ray Java snapshot versions, install nightly Ray Python wheels.) The versions of Ray Java and Ray Python must match.
+
 Starting Ray
 ------------
 
