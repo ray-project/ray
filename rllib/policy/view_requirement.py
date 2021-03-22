@@ -33,7 +33,7 @@ class ViewRequirement:
                  shift: Union[int, str, List[int]] = 0,
                  index: Optional[int] = None,
                  batch_repeat_value: int = 1,
-                 used_for_compute_actions: bool = False,
+                 used_for_compute_actions: bool = True,
                  used_for_training: bool = True):
         """Initializes a ViewRequirement object.
 

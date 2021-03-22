@@ -90,8 +90,6 @@ class SampleBatch(dict):
 
         if self.is_training is None:
             self.is_training = self.pop("is_training", False)
-        #if self.seq_lens is None:
-        #    self.seq_lens = self.get("seq_lens", None)
 
         lengths = []
         copy_ = {k: v for k, v in self.items()}
