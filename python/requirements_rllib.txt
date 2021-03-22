@@ -4,7 +4,8 @@ gast
 torch>=1.6.0
 # Version requirement to match Tune
 torchvision>=0.6.0
-gym[all]
+# For auto-generating a rendering Window.
+pyglet
 smart_open
 
 # For testing in MuJoCo-like envs (in PyBullet).
