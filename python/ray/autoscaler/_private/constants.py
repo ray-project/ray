@@ -45,6 +45,11 @@ AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 # in more than this interval.
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
                                              30)
+# The maximum number of nodes (including failed nodes) that the autoscaler will
+# track for logging purposes.
+AUTOSCALER_MAX_NODES_TRACKED = 1500
+
+AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
@@ -80,7 +85,7 @@ RAY_PROCESSES = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
-    ["dashboard.py", False],
+    ["new_dashboard/dashboard.py", False],
     ["new_dashboard/agent.py", False],
     ["ray_process_reaper.py", False],
 ]

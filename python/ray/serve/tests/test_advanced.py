@@ -1,7 +1,6 @@
 import asyncio
 import time
 
-import requests
 import pytest
 
 import ray
@@ -11,29 +10,25 @@ from ray.serve.config import BackendConfig
 
 
 def test_serve_forceful_shutdown(serve_instance):
-    client = serve_instance
-
     def sleeper(_):
         while True:
             time.sleep(1000)
 
-    client.create_backend(
+    serve.create_backend(
         "sleeper",
         sleeper,
         config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
-    client.create_endpoint("sleeper", backend="sleeper")
-    handle = client.get_handle("sleeper")
+    serve.create_endpoint("sleeper", backend="sleeper")
+    handle = serve.get_handle("sleeper")
     ref = handle.remote()
-    client.delete_endpoint("sleeper")
-    client.delete_backend("sleeper")
+    serve.delete_endpoint("sleeper")
+    serve.delete_backend("sleeper")
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(ref)
 
 
 def test_serve_graceful_shutdown(serve_instance):
-    client = serve_instance
-
     signal = SignalActor.remote()
 
     class WaitBackend:
@@ -43,7 +38,7 @@ def test_serve_graceful_shutdown(serve_instance):
             await signal_actor.wait.remote()
             return ["" for _ in range(len(requests))]
 
-    client.create_backend(
+    serve.create_backend(
         "wait",
         WaitBackend,
         config=BackendConfig(
@@ -53,8 +48,8 @@ def test_serve_graceful_shutdown(serve_instance):
             experimental_graceful_shutdown_wait_loop_s=0.5,
             experimental_graceful_shutdown_timeout_s=1000,
         ))
-    client.create_endpoint("wait", backend="wait")
-    handle = client.get_handle("wait")
+    serve.create_endpoint("wait", backend="wait")
+    handle = serve.get_handle("wait")
     refs = [handle.remote(signal) for _ in range(10)]
 
     # Wait for all the queries to be enqueued
@@ -63,9 +58,8 @@ def test_serve_graceful_shutdown(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_blocking_delete():
-        client = serve.connect()
-        client.delete_endpoint("wait")
-        client.delete_backend("wait")
+        serve.delete_endpoint("wait")
+        serve.delete_backend("wait")
 
     # Now delete the backend. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
@@ -83,47 +77,7 @@ def test_serve_graceful_shutdown(serve_instance):
     ray.get(delete_ref)
 
 
-def test_multiple_instances():
-    route = "/api"
-    backend = "backend"
-    endpoint = "endpoint"
-
-    client1 = serve.start(http_port=8001)
-
-    def function(_):
-        return "hello1"
-
-    client1.create_backend(backend, function)
-    client1.create_endpoint(endpoint, backend=backend, route=route)
-
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-
-    # Create a second cluster on port 8002. Create an endpoint and backend with
-    # the same names and check that they don't collide.
-    client2 = serve.start(http_port=8002)
-
-    def function(_):
-        return "hello2"
-
-    client2.create_backend(backend, function)
-    client2.create_endpoint(endpoint, backend=backend, route=route)
-
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-    assert requests.get("http://127.0.0.1:8002" + route).text == "hello2"
-
-    # Check that deleting the backend in the current cluster doesn't.
-    client2.delete_endpoint(endpoint)
-    client2.delete_backend(backend)
-    assert requests.get("http://127.0.0.1:8001" + route).text == "hello1"
-
-    # Check that the first client still works.
-    client1.delete_endpoint(endpoint)
-    client1.delete_backend(backend)
-
-
 def test_parallel_start(serve_instance):
-    client = serve_instance
-
     # Test the ability to start multiple replicas in parallel.
     # In the past, when Serve scale up a backend, it does so one by one and
     # wait for each replica to initialize. This test avoid this by preventing
@@ -153,9 +107,9 @@ def test_parallel_start(serve_instance):
             return "Ready"
 
     config = BackendConfig(num_replicas=2)
-    client.create_backend("p:v0", LongStartingServable, config=config)
-    client.create_endpoint("test-parallel", backend="p:v0")
-    handle = client.get_handle("test-parallel")
+    serve.create_backend("p:v0", LongStartingServable, config=config)
+    serve.create_endpoint("test-parallel", backend="p:v0")
+    handle = serve.get_handle("test-parallel")
 
     ray.get(handle.remote(), timeout=10)
 
