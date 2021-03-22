@@ -7,12 +7,13 @@ import logging
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict, Optional
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
 import starlette.requests
+import starlette.responses
 import requests
 import numpy as np
 import pydantic
@@ -365,3 +366,68 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def register_custom_serializers():
+    """Install custom serializers needed for Ray Serve."""
+    import starlette.datastructures
+    import pydantic.fields
+
+    assert ray.is_initialized(
+    ), "This functional must be ran with Ray initialized."
+
+    # Pydantic's Cython validators are not serializable.
+    # https://github.com/cloudpipe/cloudpickle/issues/408
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            pydantic.fields.ModelField,
+            serializer=lambda o: {
+                "name": o.name,
+                "type_": o.type_,
+                "class_validators": o.class_validators,
+                "model_config": o.model_config,
+                "default": o.default,
+                "default_factory": o.default_factory,
+                "required": o.required,
+                "alias": o.alias,
+                "field_info": o.field_info,
+            },
+            deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
+        )
+    )
+
+    # FastAPI's app.state object is not serializable
+    # because it overrides __getattr__
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            starlette.datastructures.State,
+            serializer=lambda s: s._state,
+            deserializer=lambda s: starlette.datastructures.State(s),
+        )
+    )
+
+
+class ASGIHTTPSender:
+    """Implement the interface for ASGI sender, build Starlette Response"""
+
+    def __init__(self) -> None:
+        self.status_code: Optional[int] = 200
+        self.header: Dict[str, str] = {}
+        self.buffer: List[bytes] = []
+
+    async def __call__(self, message):
+        if (message["type"] == "http.response.start"):
+            self.status_code = message["status"]
+            for key, value in message["headers"]:
+                self.header[key.decode()] = value.decode()
+        elif (message["type"] == "http.response.body"):
+            self.buffer.append(message["body"])
+        else:
+            raise ValueError("ASGI type must be one of "
+                             "http.responses.{body,start}.")
+
+    def build_starlette_response(self) -> starlette.responses.Response:
+        return starlette.responses.Response(
+            b"".join(self.buffer),
+            status_code=self.status_code,
+            headers=dict(self.header))

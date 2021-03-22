@@ -2,7 +2,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
-from ray.serve.constants import LongPollKey
+from ray.serve.long_poll import LongPollNamespace
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 
@@ -36,14 +36,17 @@ class EndpointState:
                                           self._traffic_policies)))
 
     def _notify_route_table_changed(self):
-        self._long_poll_host.notify_changed(LongPollKey.ROUTE_TABLE,
+        self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
                                             self._routes)
 
-    def _notify_traffic_policies_changed(self):
-        self._long_poll_host.notify_changed(
-            LongPollKey.TRAFFIC_POLICIES,
-            self._traffic_policies,
-        )
+    def _notify_traffic_policies_changed(
+            self, filter_tag: Optional[EndpointTag] = None):
+        for tag, policy in self._traffic_policies.items():
+            if filter_tag is None or tag == filter_tag:
+                self._long_poll_host.notify_changed(
+                    (LongPollNamespace.TRAFFIC_POLICIES, tag),
+                    policy,
+                )
 
     def create_endpoint(self, endpoint: EndpointTag, route: Optional[str],
                         methods: List[str], traffic_policy: TrafficPolicy):
@@ -72,7 +75,7 @@ class EndpointState:
 
         self._checkpoint()
         self._notify_route_table_changed()
-        self._notify_traffic_policies_changed()
+        self._notify_traffic_policies_changed(endpoint)
 
     def set_traffic_policy(self, endpoint: EndpointTag,
                            traffic_policy: TrafficPolicy):
@@ -83,7 +86,7 @@ class EndpointState:
         self._traffic_policies[endpoint] = traffic_policy
 
         self._checkpoint()
-        self._notify_traffic_policies_changed()
+        self._notify_traffic_policies_changed(endpoint)
 
     def shadow_traffic(self, endpoint: EndpointTag, backend: BackendTag,
                        proportion: float):
@@ -95,7 +98,7 @@ class EndpointState:
         self._traffic_policies[endpoint].set_shadow(backend, proportion)
 
         self._checkpoint()
-        self._notify_traffic_policies_changed()
+        self._notify_traffic_policies_changed(endpoint)
 
     def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         endpoints = {}
