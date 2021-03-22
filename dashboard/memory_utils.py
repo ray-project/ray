@@ -342,7 +342,8 @@ def memory_summary(state,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
                    line_wrap=True,
-                   unit="B") -> str:
+                   unit="B",
+                   num_entries=None) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -391,7 +392,9 @@ def memory_summary(state,
 {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
-        Sorting by {sort_by}...\n\n\n"
+        Sorting by {sort_by}...\
+        Display {num_entries if num_entries is not None else 'all'}\
+entries per group...\n\n\n"
 
     for key, group in memory_table["group"].items():
         # Group summary
@@ -424,7 +427,11 @@ def memory_summary(state,
         mem += f"--- Object references for {group_by}: {key} ---\n"
         mem += object_ref_string\
             .format(*object_ref_labels)
+        n = 0
         for entry in group["entries"]:
+            n += 1
+            if num_entries is not None and n > num_entries:
+                break
             entry["object_size"] = str(
                 entry["object_size"] /
                 units[unit]) + f" {unit}" if entry["object_size"] > -1 else "?"

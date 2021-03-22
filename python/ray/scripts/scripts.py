@@ -1383,15 +1383,21 @@ terminal width is less than 137 characters.")
     is_flag=True,
     default=False,
     help="Display plasma store stats only.")
+@click.option(
+    '--num-entries',
+    '--n',
+    type=int,
+    default=None,
+    help="Specify number of sorted entries per group.")
 def memory(address, redis_password, group_by, sort_by, units, no_format,
-           stats_only):
+           stats_only, num_entries):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by,
-                               units, no_format, stats_only)
+                               units, no_format, stats_only, num_entries)
     print(f"{header}\n{mem_stats}")
 
 
