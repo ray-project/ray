@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import time
 
@@ -203,6 +204,102 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
+
+
+@pytest.mark.parametrize("use_handle", [True, False])
+def test_redeploy_multiple_replicas(serve_instance, use_handle):
+    # Tests that redeploying a deployment with multiple replicas performs
+    # a rolling update.
+    client = serve_instance
+
+    name = "test"
+
+    @ray.remote
+    def call(block=False):
+        if use_handle:
+            ret = ray.get(serve.get_handle(name).remote(block=str(block)))
+        else:
+            ret = requests.get(
+                f"http://localhost:8000/{name}", params={
+                    "block": block
+                }).text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    signal_name = f"signal-{get_random_letters()}"
+    signal = SignalActor.options(name=signal_name).remote()
+
+    async def v1(request):
+        if request.query_params["block"] == "True":
+            signal = ray.get_actor(signal_name)
+            await signal.wait.remote()
+        return f"1|{os.getpid()}"
+
+    def v2(*args):
+        return f"2|{os.getpid()}"
+
+    def make_nonblocking_calls(expected, expect_blocking=False):
+        # Returns dict[val, set(pid)].
+        blocking = []
+        responses = defaultdict(set)
+        start = time.time()
+        while time.time() - start < 2:
+            refs = [call.remote(block=False) for _ in range(10)]
+            ready, not_ready = ray.wait(refs, timeout=0.1)
+            for ref in ready:
+                val, pid = ray.get(ref)
+                responses[val].add(pid)
+            for ref in not_ready:
+                blocking.extend(not_ready)
+
+            if (all(
+                    len(responses[val]) == num
+                    for val, num in expected.items())
+                    and (expect_blocking is False or len(blocking) > 0)):
+                break
+        else:
+            assert False, f"Timed out, responses: {responses}."
+
+        return responses, blocking
+
+    client.deploy(name, v1, version="1", config={"num_replicas": 2})
+    responses1, _ = make_nonblocking_calls({"1": 2})
+    pids1 = responses1["1"]
+
+    # ref2 will block a single replica until the signal is sent. Check that
+    # some requests are now blocking.
+    ref2 = call.remote(block=True)
+    responses2, blocking2 = make_nonblocking_calls(
+        {
+            "1": 1
+        }, expect_blocking=True)
+    assert list(responses2["1"])[0] in pids1
+
+    # Redeploy new version. Since there is one replica blocking, only one new
+    # replica should be started up.
+    goal_ref = client.deploy(
+        name,
+        v2,
+        version="2",
+        config={"num_replicas": 2},
+        _blocking=False,
+    )
+    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    responses3, blocking3 = make_nonblocking_calls(
+        {
+            "1": 1
+        }, expect_blocking=True)
+
+    # Signal the original call to exit.
+    ray.get(signal.send.remote())
+    val, pid = ray.get(ref2)
+    assert val == "1"
+    assert pid in responses1["1"]
+
+    # Now the goal and requests to the new version should complete.
+    # We should have two running replicas of the new version.
+    assert client._wait_for_goal(goal_ref)
+    make_nonblocking_calls({"2": 2})
 
 
 if __name__ == "__main__":

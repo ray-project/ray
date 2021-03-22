@@ -677,8 +677,7 @@ class BackendState:
                 ReplicaState.SHOULD_STOP,
                 ReplicaState.STOPPING,
             ])
-            to_add = delta_replicas - stopping_replicas
-            assert to_add >= 0
+            to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
                 logger.info(f"Adding {to_add} replicas "
                             f"to backend '{backend_tag}'.")
@@ -700,8 +699,6 @@ class BackendState:
                         ReplicaState.RUNNING
                     ],
                     max_replicas=to_remove)
-
-                assert len(replicas_to_stop) == to_remove
 
                 for replica in replicas_to_stop:
                     replica.set_should_stop(graceful_shutdown_timeout_s)
