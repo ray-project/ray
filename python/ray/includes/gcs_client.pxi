@@ -44,7 +44,8 @@ cdef class GcsClient:
 
     def kv_put(self, c_string key, c_string value, c_bool overwrite):
         cdef c_bool added = False
-        status = self.inner_.get().InternalKV().Put(key, value, overwrite, added)
+        status = self.inner_.get().InternalKV().Put(
+            key, value, overwrite, added)
         if not status.ok():
             raise IOError("Put failed: {}".format(status.ToString()))
         return added

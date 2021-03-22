@@ -855,6 +855,7 @@ def connect_to_gcs(ip, port, password):
 def disconnect_to_gcs(gcs_client):
     gcs_client.disconnect()
 
+
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -932,7 +933,6 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
-
 
     def get_gcs_client(self):
         return GcsClient.make_from_existing(

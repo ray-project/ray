@@ -792,7 +792,7 @@ class InternalKVAccessor {
   // These are sync functions of the async above
   Status Keys(const std::string &prefix, std::vector<std::string> &value);
   Status Put(const std::string &key, const std::string &value, bool overwrite,
-                       bool &added);
+             bool &added);
   Status Get(const std::string &key, std::string &value);
   Status Del(const std::string &key);
   Status Exists(const std::string &key, bool &exist);

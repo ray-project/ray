@@ -19,7 +19,7 @@ namespace ray {
 namespace gcs {
 
 Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
-                                         bool overwrite, bool &added) {
+                               bool overwrite, bool &added) {
   std::promise<Status> ret_promise;
   AsyncInternalKVPut(
       key, value, overwrite,
@@ -31,7 +31,7 @@ Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
 }
 
 Status InternalKVAccessor::Keys(const std::string &prefix,
-                                          std::vector<std::string> &value) {
+                                std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
   AsyncInternalKVKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
     value = values.value_or(std::vector<std::string>());

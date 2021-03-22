@@ -124,7 +124,6 @@ class Monitor:
     def __del__(self):
         disconnect_to_gcs(self.gcs_client)
 
-
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
             self.autoscaler = StandardAutoscaler(
