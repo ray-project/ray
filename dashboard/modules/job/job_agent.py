@@ -39,16 +39,16 @@ class JobInfo:
         return self._log_dir
 
     def language(self):
-        """ The job driver language, we use this field to determine how to
-        start the driver. The value is one of the names of enum Language
-        defined in common.proto, e.g. PYTHON
+        """ The job driver language, this field determines how to start the
+        driver. The value is one of the names of enum Language defined in
+        common.proto, e.g. PYTHON
         """
         return self._job_info["language"]
 
     def supported_languages(self):
-        """ The languages are using by the job. We treat the job as
-        multi-languages by default. The value is a list of language names of
-        enum Language defined in common.proto.
+        """ The languages are using by the job. The job is multi-languages
+        by default. The value is a list of language names of enum Language
+        defined in common.proto.
         """
         return self._job_info.get("supportedLanguages", ["PYTHON", "JAVA"])
 

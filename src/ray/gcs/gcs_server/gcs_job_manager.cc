@@ -62,7 +62,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     job_table_data = std::make_shared<JobTableData>();
   }
 
-  // We should reserve these two fields.
+  // Reserve these fields that may be filled when submitting.
   auto is_submitted = job_table_data->is_submitted();
   auto job_payload = job_table_data->job_payload();
 
@@ -108,7 +108,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
     return;
   }
 
-  // TODO(fyrestone): We should set the driver exit state.
+  // TODO(fyrestone): Set the actual driver exit state.
   job_table_data->set_driver_exit_state(rpc::JobTableData::OK);
 
   RAY_CHECK_OK(UpdateJobStateToDead(
@@ -187,16 +187,16 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     return Status::Invalid(ss.str());
   }
 
-  // We should fill in as much information as possible for dashboard
-  // showing job info.
+  // Fill in as much information as possible for the dashboard to
+  // show the job info in SUBMITTED state.
   auto job_table_data = std::make_shared<rpc::JobTableData>();
   job_table_data->set_state(rpc::JobTableData::SUBMITTED);
   job_table_data->set_job_id(request.job_id());
   job_table_data->set_language(request.language());
   // Set the job payload (the json submitted from dashboard).
   job_table_data->set_job_payload(request.job_payload());
-  // Mark the job is submitted, so we know it needs the job environment
-  // initialized before the job task is executed.
+  // Mark the job is submitted, this field determines whether to
+  // initialize the job environement or not.
   job_table_data->set_is_submitted(true);
 
   auto driver_client_id = SelectDriver(*job_table_data);

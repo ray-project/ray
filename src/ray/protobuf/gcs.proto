@@ -317,8 +317,8 @@ message JobTableData {
   string job_payload = 13;
   // The reason for the job failure.
   string fail_error_message = 14;
-  // Whether the job is submitted, so we can initialize 
-  // the job environment for it.
+  // Whether the job is submitted. This field determines whether
+  // to initialize the job environment or not.
   bool is_submitted = 15;
 }
 

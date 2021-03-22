@@ -508,7 +508,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
-    // We should not invoke the send_reply_callback if return !status.ok().
+    // Not to invoke the send_reply_callback if !status.ok().
     return status;
   }
   driver->SetAssignedPort(port);
