@@ -373,9 +373,9 @@ public final class Ray extends RayCall {
   /**
    * Remove a placement group by id. Throw RayException if remove failed.
    *
+   * @param id Id of the placement group.
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
    *     PlacementGroups#removePlacementGroup(PlacementGroupId)} instead.
-   * @param id Id of the placement group.
    */
   public static void removePlacementGroup(PlacementGroupId id) {
     PlacementGroups.removePlacementGroup(id);
