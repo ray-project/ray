@@ -7,7 +7,7 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-
+from contextlib import contextmanager
 import sys
 import logging
 import inspect
@@ -51,6 +51,17 @@ except ModuleNotFoundError:
             pass
 
         def __getattr__(self, name):
+            if name == "with_style":
+
+                @contextmanager
+                def wrapper(x):
+                    class identityClass:
+                        def __getattr__(self, name):
+                            return lambda y: y
+
+                    yield identityClass()
+
+                return wrapper
             return self.identity
 
     _cf = _ColorfulMock()
