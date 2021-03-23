@@ -807,6 +807,18 @@ cc_test(
 )
 
 cc_test(
+    name = "scheduling_policy_test",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_task_manager_test",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",

@@ -43,6 +43,9 @@ std::vector<double> VectorFixedPointToVectorDouble(
 struct ResourceCapacity {
   FixedPoint total;
   FixedPoint available;
+  ResourceCapacity() {}
+  ResourceCapacity(FixedPoint &&_available, FixedPoint &&_total)
+      : total(_total), available(_available) {}
 };
 
 /// Capacities of each instance of a resource.
@@ -161,6 +164,12 @@ class NodeResources {
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Calculate the utilization percentage of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
+  /// Returns true if the node has the available resources to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  bool IsAvailable(const TaskRequest &task_req) const;
+  /// Returns true if the node's total resources are enough to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  bool IsFeasible(const TaskRequest &task_req) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
@@ -171,7 +180,7 @@ class NodeResources {
 };
 
 /// Total and available capacities of each resource instance.
-/// This is used to describe the resources of the local node.
+
 class NodeResourceInstances {
  public:
   /// Available and total capacities for each instance of a predefined resource.
@@ -185,6 +194,32 @@ class NodeResourceInstances {
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
+};
+
+struct Node {
+  Node(const NodeResources &resources)
+      : last_reported_(resources), local_view_(resources) {}
+
+  void ResetLocalView() { local_view_ = last_reported_; }
+
+  NodeResources *GetMutableLocalView() { return &local_view_; }
+
+  const NodeResources &GetLocalView() const { return local_view_; }
+
+ private:
+  /// The resource information according to the last heartbeat reported by
+  /// this node.
+  /// NOTE(swang): For the local node, this field should be ignored because
+  /// we do not receive heartbeats from ourselves and the local view is
+  /// therefore always the most up-to-date.
+  NodeResources last_reported_;
+  /// Our local view of the remote node's resources. This may be dirty
+  /// because it includes any resource requests that we allocated to this
+  /// node through spillback since our last heartbeat tick. This view will
+  /// get overwritten by the last reported view on each heartbeat tick, to
+  /// make sure that our local view does not skew too much from the actual
+  /// resources when light heartbeats are enabled.
+  NodeResources local_view_;
 };
 
 /// \request Conversion result to a TaskRequest data structure.

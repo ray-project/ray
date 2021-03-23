@@ -16,6 +16,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
 
@@ -344,63 +345,13 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                         total_violations, is_infeasible);
   }
 
-  std::vector<int64_t> round;
-  {
-    round.push_back(local_node_id_);
-    for (const auto &pair : nodes_) {
-      if (pair.first != local_node_id_) {
-        round.push_back(pair.first);
-      }
-    }
-    auto begin = round.begin();
-    // Make the local node the first item, and skip it when sorting.
-    begin++;
-    std::sort(begin, round.end());
-  }
-
-  int64_t best_node_id = -1;
-  float best_utilization_score = 1.0;
-  bool best_is_available = false;
-
-  for (auto node_id : round) {
-    const auto &it = nodes_.find(node_id);
-    RAY_CHECK(it != nodes_.end());
-    const auto &node = it->second;
-    if (!IsFeasible(task_req, node.GetLocalView())) {
-      continue;
-    }
-
-    int64_t violations = IsSchedulable(task_req, node_id, node.GetLocalView());
-    bool is_available = violations != -1;
-    float critical_resource_utilization =
-        node.GetLocalView().CalculateCriticalResourceUtilization();
-    if (critical_resource_utilization < hybrid_threshold_) {
-      critical_resource_utilization = 0;
-    }
-
-    bool update_best_node = false;
-
-    if (is_available) {
-      // We can schedule on this node.
-      if (!best_is_available) {
-        update_best_node = true;
-      } else if (critical_resource_utilization < best_utilization_score) {
-        update_best_node = true;
-      }
-    } else if (!best_is_available &&
-               critical_resource_utilization < best_utilization_score) {
-      update_best_node = true;
-    }
-
-    if (update_best_node) {
-      best_node_id = node_id;
-      best_utilization_score = critical_resource_utilization;
-      best_is_available = is_available;
-      *total_violations = violations;
-    }
-  }
-
+  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
+      task_req, local_node_id_, nodes_, hybrid_threshold_);
   *is_infeasible = best_node_id == -1;
+  if (!*is_infeasible) {
+    // TODO (Alex): Support soft constraints if needed later.
+    *total_violations = 0;
+  }
   return best_node_id;
 }
 

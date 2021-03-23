@@ -166,23 +166,73 @@ NodeResources ResourceMapToNodeResources(
 
 float NodeResources::CalculateCriticalResourceUtilization() const {
   float highest = 0;
+  for (const auto &i : {CPU, MEM, OBJECT_STORE_MEM}) {
+    if (i >= this->predefined_resources.size()) {
+      continue;
+    }
+    const auto &capacity = this->predefined_resources[i];
+    if (capacity.total == 0) {
+      continue;
+    }
 
-  for (const auto &capacity : predefined_resources) {
     float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
     if (utilization > highest) {
+      RAY_LOG(ERROR) << "Utilization: " << utilization << " from: " << i << ". "
+                     << capacity.available << "/" << capacity.total;
       highest = utilization;
     }
   }
-
-  for (const auto &pair : custom_resources) {
-    const auto &capacity = pair.second;
-    float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
-    if (utilization > highest) {
-      highest = utilization;
-    }
-  }
-
   return highest;
+}
+
+bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
+  // First, check predefined resources.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    const auto &resource = this->predefined_resources[i].available;
+    const auto &demand = task_req.predefined_resources[i].demand;
+    bool is_soft = task_req.predefined_resources[i].soft;
+
+    if (resource < demand && !is_soft) {
+      return false;
+    }
+  }
+
+  // Now check custom resources.
+  for (const auto &task_req_custom_resource : task_req.custom_resources) {
+    bool is_soft = task_req_custom_resource.soft;
+    auto it = this->custom_resources.find(task_req_custom_resource.id);
+    if (it == this->custom_resources.end() && !is_soft) {
+      return false;
+    } else if (task_req_custom_resource.demand > it->second.available && !is_soft) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool NodeResources::IsFeasible(const TaskRequest &task_req) const {
+  // First, check predefined resources.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    const auto &resource = this->predefined_resources[i].total;
+    const auto &demand = task_req.predefined_resources[i].demand;
+    bool is_soft = task_req.predefined_resources[i].soft;
+
+    if (resource < demand && !is_soft) {
+      return false;
+    }
+  }
+
+  // Now check custom resources.
+  for (const auto &task_req_custom_resource : task_req.custom_resources) {
+    bool is_soft = task_req_custom_resource.soft;
+    auto it = this->custom_resources.find(task_req_custom_resource.id);
+    if (it == this->custom_resources.end() && !is_soft) {
+      return false;
+    } else if (task_req_custom_resource.demand > it->second.total && !is_soft) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool NodeResources::operator==(const NodeResources &other) {
