@@ -173,9 +173,9 @@ def _tracing_wrap_function(function):
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
         with use_context(DictPropagator.extract(
                 _ray_trace_ctx)), tracer.start_as_current_span(
-                    _function_span_consumer_name(function.__name__),
+                    _function_span_consumer_name(_function_name),
                     kind=trace.SpanKind.CONSUMER,
-                    attributes=_function_hydrate_span_args(function.__name__),
+                    attributes=_function_hydrate_span_args(_function_name),
                 ):
             return function(*args, **kwargs)
 
