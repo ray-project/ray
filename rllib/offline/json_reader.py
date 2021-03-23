@@ -135,7 +135,7 @@ class JsonReader(InputReader):
         # start with a different one if possible.
         if self.cur_file is None and self.ioctx.worker is not None:
             idx = self.ioctx.worker.worker_index
-            total = self.ioctx.worker.num_workers
+            total = self.ioctx.worker.num_workers or 1
             path = self.files[round((len(self.files) - 1) * (idx / total))]
         # After the first file, pick all others randomly.
         else:
