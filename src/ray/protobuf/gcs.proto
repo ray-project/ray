@@ -292,7 +292,7 @@ message JobTableData {
   int64 timestamp = 3;
   // IP address of the driver that started this job.
   string driver_ip_address = 4;
-  // Hostname of the node this job was started on.
+  // Host name of the node which the driver was started on.
   string driver_hostname = 5;
   // Process ID of the driver running this job.
   int64 driver_pid = 6;

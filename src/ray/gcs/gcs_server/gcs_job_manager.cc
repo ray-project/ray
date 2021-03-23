@@ -96,15 +96,17 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   RAY_LOG(INFO) << "Received driver exit notification, job id = " << job_id;
   auto iter = jobs_.find(job_id);
   if (iter == jobs_.end()) {
-    RAY_LOG(WARNING) << "Failed to handle the notification of driver exit. job id = "
-                     << job_id;
+    RAY_LOG(WARNING)
+        << "Received a MarkJobFinished request for a job that doesn't exist, job id = "
+        << job_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Invalid job id."));
     return;
   }
   auto job_table_data = iter->second;
   if (job_table_data->is_dead()) {
-    RAY_LOG(INFO) << "Job is already dead, just ignore this notification, job id = "
-                  << job_id;
+    RAY_LOG(INFO)
+        << "Job is already dead, ignoring this MarkJobFinished request, job id = "
+        << job_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     return;
   }
@@ -179,50 +181,49 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
 
   auto it = jobs_.find(job_id);
   if (it != jobs_.end()) {
-    RAY_LOG(ERROR) << "Failed to submit job " << job_id << ", job id conflicts.";
     std::ostringstream ss;
-    ss << "Job id conflicts: " << job_id;
+    ss << "Failed to submit job " << job_id << ", job id conflicts.";
+    RAY_LOG(ERROR) << ss.str();
     return Status::Invalid(ss.str());
   }
 
-  // Fill in as much information as possible for the dashboard to
-  // show the job info in SUBMITTED state.
+  // Set all the fields that we can get from the SubmitJobRequest.
+  // So the dashboard can show necessary information even for the jobs
+  // that haven't started running yet (still in SUBMITTED state).
   auto job_table_data = std::make_shared<rpc::JobTableData>();
   job_table_data->set_state(rpc::JobTableData::SUBMITTED);
   job_table_data->set_job_id(request.job_id());
   job_table_data->set_language(request.language());
   // Set the job payload (the json submitted from dashboard).
   job_table_data->set_job_payload(request.job_payload());
-  // Mark the job is submitted, this field determines whether to
-  // initialize the job environement or not.
+  // This flag is used to determine whether we need to initialize
+  // the job environment or not.
   job_table_data->set_is_submitted_from_dashboard(true);
 
-  auto driver_client_id = SelectDriver(*job_table_data);
-  if (driver_client_id.IsNil()) {
-    RAY_LOG(ERROR) << "Failed to submit job " << job_id
-                   << ", can't select a node for driver.";
+  auto maybe_node = SelectDriver(*job_table_data);
+  if (!maybe_node.has_value()) {
     std::ostringstream ss;
-    ss << "Can't select a node for driver, job id: " << job_id;
+    ss << "Failed to submit job " << job_id << ", as there is no available node in the "
+       << "cluster to run the driver.";
+    RAY_LOG(ERROR) << ss.str();
     return Status::Invalid(ss.str());
   }
 
-  job_table_data->set_raylet_id(driver_client_id.Binary());
-  auto maybe_node = gcs_node_manager_->GetAliveNode(driver_client_id);
-  if (maybe_node.has_value()) {
-    auto node = maybe_node.value();
-    // The hostname and ip address of the node are the same as the driver.
-    job_table_data->set_driver_hostname(node->node_manager_hostname());
-    job_table_data->set_driver_ip_address(node->node_manager_address());
-  }
+  auto driver_node = maybe_node.value();
+  auto driver_node_id = NodeID::FromBinary(driver_node->node_id());
+
+  job_table_data->set_raylet_id(driver_node->node_id());
+  // The hostname and ip address of the node are the same as the driver.
+  job_table_data->set_driver_hostname(driver_node->node_manager_hostname());
+  job_table_data->set_driver_ip_address(driver_node->node_manager_address());
 
   RAY_LOG(INFO) << "Submitting job, job id = " << job_id << ", config is "
                 << job_table_data->config().DebugString();
-  auto on_done = [this, driver_client_id, job_id, job_table_data,
-                  callback](Status status) {
+  auto on_done = [this, driver_node_id, job_id, job_table_data, callback](Status status) {
     RAY_CHECK(jobs_.emplace(job_id, job_table_data).second);
     RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
-    driver_node_to_jobs_[driver_client_id].emplace(job_id);
+    driver_node_to_jobs_[driver_node_id].emplace(job_id);
     if (callback) {
       callback(status);
     }
@@ -231,20 +232,28 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   return gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
 }
 
-NodeID GcsJobManager::SelectDriver(const rpc::JobTableData &job_data) const {
-  std::vector<NodeID> alive_nodes;
-  for (auto &entry : gcs_node_manager_->GetAllAliveNodes()) {
-    alive_nodes.emplace_back(entry.first);
-  }
-
-  if (alive_nodes.empty()) {
-    return NodeID::Nil();
-  }
-
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsJobManager::SelectDriver(
+    const rpc::JobTableData &job_data) const {
   static std::mt19937_64 gen_(
       std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
-  return alive_nodes[distribution(gen_)];
+  auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+  if (all_alive_nodes.size() <= 0) {
+    return {};
+  }
+
+  std::uniform_int_distribution<int> distribution(0, all_alive_nodes.size() - 1);
+  const auto index = distribution(gen_);
+
+  int count = 0;
+  for (auto &entry : gcs_node_manager_->GetAllAliveNodes()) {
+    if (index == count) {
+      return entry.second;
+    }
+    ++count;
+  }
+
+  RAY_CHECK(false);
+  return {};
 }
 
 Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_table_data,
