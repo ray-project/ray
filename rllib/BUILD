@@ -2018,14 +2018,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/env_rendering_and_recording",
-    tags = ["examples", "examples_E"],
-    size = "medium",
-    srcs = ["examples/env_rendering_and_recording.py"],
-    args = ["--stop-iters=2"]
-)
-
-py_test(
     name = "examples/hierarchical_training_tf",
     main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
