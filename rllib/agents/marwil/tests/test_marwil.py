@@ -37,10 +37,9 @@ class TestMARWIL(unittest.TestCase):
         print("rllib dir={}".format(rllib_dir))
         data_files = [
             os.path.join(rllib_dir, "tests/data/cartpole/large.json"),
-            os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
         ]
-        print("data_files={} exists={}".format(data_files,
-                                               os.path.isfile(data_files[0])))
+        print("data_file={} exists={}".format(data_files[0],
+                                              os.path.isfile(data_files[0])))
 
         config = marwil.DEFAULT_CONFIG.copy()
         # Run with n RolloutWorkers (reading the input-file at the same time,
