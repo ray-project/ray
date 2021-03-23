@@ -5,6 +5,7 @@ import logging
 import pickle
 import platform
 import os
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -159,7 +160,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_config: TrainerConfigDict = None,
             worker_index: int = 0,
             num_workers: int = 0,
-            monitor_path: str = None,
+            record_env: Union[bool, str] = False,
             log_dir: str = None,
             log_level: str = None,
             callbacks: Type["DefaultCallbacks"] = None,
@@ -182,6 +183,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
+            monitor_path=None,
     ):
         """Initialize a rollout worker.
 
@@ -258,8 +260,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 through EnvContext so that envs can be configured per worker.
             num_workers (int): For remote workers, how many workers altogether
                 have been created?
-            monitor_path (str): Write out episode stats and videos to this
-                directory if specified.
+            record_env (Union[bool, str]): Write out episode stats and videos
+                using gym.wrappers.Monitor to this directory if specified. If
+                True, use the default output dir in ~/ray_results/.... If
+                False, do not record anything.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
             callbacks (Type[DefaultCallbacks]): Custom sub-class of
@@ -303,13 +307,17 @@ class RolloutWorker(ParallelIteratorWorker):
             _use_trajectory_view_api (bool): Whether to collect samples through
                 the experimental Trajectory View API.
             policy: Obsoleted arg. Use `policy_spec` instead.
+            monitor_path: Obsoleted arg. Use `record_env` instead.
         """
-        # Deprecated arg.
+        # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
             policy_spec = policy
         assert policy_spec is not None, "Must provide `policy_spec` when " \
                                         "creating RolloutWorker!"
+        if monitor_path is not None:
+            deprecation_warning("monitor_path", "record_env", error=False)
+            record_env = monitor_path
 
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
@@ -419,16 +427,44 @@ class RolloutWorker(ParallelIteratorWorker):
                         dim=model_config.get("dim"),
                         framestack=framestack,
                         framestack_via_traj_view_api=framestack_traj_view)
-                    if monitor_path:
+                    if record_env:
                         from gym import wrappers
-                        env = wrappers.Monitor(env, monitor_path, resume=True)
+                        path_ = record_env if isinstance(record_env,
+                                                         str) else log_dir
+                        # Relative path: Add logdir here, otherwise, this would
+                        # not work for non-local workers.
+                        if not re.search("[/\\\]", path_):
+                            path_ = os.path.join(log_dir, path_)
+                        print(f"Setting the path for recording to {path_}")
+                        env = wrappers.Monitor(
+                            env,
+                            path_,
+                            resume=True,
+                            force=True,
+                            video_callable=lambda _: True,
+                            mode="evaluation"
+                            if policy_config["in_evaluation"] else "training")
                     return env
             else:
 
                 def wrap(env):
-                    if monitor_path:
+                    if record_env:
                         from gym import wrappers
-                        env = wrappers.Monitor(env, monitor_path, resume=True)
+                        path_ = record_env if isinstance(record_env,
+                                                         str) else log_dir
+                        # Relative path: Add logdir here, otherwise, this would
+                        # not work for non-local workers.
+                        if not re.search("[/\\\]", path_):
+                            path_ = os.path.join(log_dir, path_)
+                        print(f"Setting the path for recording to {path_}")
+                        env = wrappers.Monitor(
+                            env,
+                            path_,
+                            resume=True,
+                            force=True,
+                            video_callable=lambda _: True,
+                            mode="evaluation"
+                            if policy_config["in_evaluation"] else "training")
                     return env
 
             self.env: EnvType = wrap(self.env)
@@ -921,6 +957,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Get metrics from our reward-estimators (if any).
         for m in self.reward_estimators:
             out.extend(m.get_metrics())
+
         return out
 
     @DeveloperAPI

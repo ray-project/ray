@@ -133,12 +133,13 @@ class SampleCollector(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def episode_step(self, episode_id: EpisodeID) -> None:
+    def episode_step(self, episode: MultiAgentEpisode) -> None:
         """Increases the episode step counter (across all agents) by one.
 
         Args:
-            episode_id (EpisodeID): Unique id for the episode we are stepping
-                through (across all agents in that episode).
+            episode (MultiAgentEpisode): Episode we are stepping through.
+                Useful for handling counting b/c it is called once across
+                all agents that are inside this episode.
         """
         raise NotImplementedError
 

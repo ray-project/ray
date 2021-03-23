@@ -68,6 +68,7 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
+    WORKER_TYPE_UTIL_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -601,6 +602,8 @@ cdef CRayStatus task_execution_handler(
                 if isinstance(e, RayActorError) and \
                    e.has_creation_task_error():
                     traceback_str = str(e)
+                    logger.error("Exception raised "
+                                 f"in creation task: {traceback_str}")
                     # Cython's bug that doesn't allow reference assignment,
                     # this is a workaroud.
                     # See https://github.com/cython/cython/issues/1863
@@ -746,6 +749,11 @@ cdef void delete_spilled_objects_handler(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
                 proctitle = (
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE)
+            elif <int> worker_type == <int> WORKER_TYPE_UTIL_WORKER:
+                original_proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_UTIL_WORKER_IDLE)
+                proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_UTIL_WORKER_DELETE)
             else:
                 assert False, ("This line shouldn't be reachable.")
 
@@ -867,6 +875,9 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
+        elif worker_type == ray.UTIL_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_UTIL_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -899,6 +910,7 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
+        options.connect_on_start = False
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -910,6 +922,10 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
+
+    def notify_raylet(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ConnectToRaylet()
 
     def run_task_loop(self):
         with nogil:
