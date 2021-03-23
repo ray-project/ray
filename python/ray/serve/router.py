@@ -9,6 +9,7 @@ from ray.serve.config import BackendConfig
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
+from ray.serve.exceptions import RayServeException
 
 import ray
 from ray.util import metrics
@@ -255,11 +256,17 @@ class Router:
         )
 
         if not self._pending_endpoint_registered.is_set():
-            logger.info(
-                f"Endpoint {endpoint} doesn't exist, waiting for registration."
-            )
-            await self._pending_endpoint_registered.wait()
-            logger.info(f"Endpoint {endpoint} registered.")
+            # This can happen when the router is created but the endpoint
+            # information hasn't been retrieved via long-poll yet.
+            try:
+                await asyncio.wait_for(
+                    self._pending_endpoint_registered.wait(),
+                    timeout=5,
+                )
+            except asyncio.TimeoutError:
+                raise RayServeException(
+                    f"Endpoint {endpoint} doesn't exist after 5s timeout. "
+                    "Marking the query failed.")
 
         chosen_backend, *shadow_backends = self.endpoint_policy.assign(query)
 
