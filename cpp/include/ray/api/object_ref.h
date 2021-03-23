@@ -63,9 +63,11 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
     bool has_error = Serializer::HasError(packed_object->data(), packed_object->size());
     if (has_error) {
-      std::string err_msg = Serializer::Deserialize<std::string>(
+      auto tp = Serializer::Deserialize<std::tuple<int, std::string>>(
           packed_object->data(), packed_object->size(), 1);
-      RAY_LOG(WARNING) << "Exception message: " << err_msg;
+      std::string err_msg = std::get<1>(tp);
+      RAY_LOG(WARNING) << "Exception code: " << std::get<0>(tp)
+                       << ", Exception message: " << err_msg;
       throw RayException(err_msg);
     }
   }
@@ -138,9 +140,11 @@ class ObjectRef<void> {
     auto packed_object = internal::RayRuntime()->Get(id_);
     bool has_error = Serializer::HasError(packed_object->data(), packed_object->size());
     if (has_error) {
-      std::string err_msg = Serializer::Deserialize<std::string>(
+      auto tp = Serializer::Deserialize<std::tuple<int, std::string>>(
           packed_object->data(), packed_object->size(), 1);
-      RAY_LOG(WARNING) << "Exception message: " << err_msg;
+      std::string err_msg = std::get<1>(tp);
+      RAY_LOG(WARNING) << "Exception code: " << std::get<0>(tp)
+                       << ", Exception message: " << err_msg;
       throw RayException(err_msg);
     }
   }
