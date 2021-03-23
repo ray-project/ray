@@ -19,7 +19,8 @@ from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupManager
+from ray.tune.utils.placement_groups import PlacementGroupManager, \
+    get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
@@ -160,8 +161,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
-        self._pg_manager = PlacementGroupManager(
-            prefix=os.getenv("TUNE_PLACEMENT_GROUP_PREFIX", "__tune__"))
+        self._pg_manager = PlacementGroupManager(prefix=get_tune_pg_prefix())
         self._staged_trials = set()
         self._just_staged_trials = set()
         self._trial_just_finished = False

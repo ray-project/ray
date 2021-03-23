@@ -768,9 +768,8 @@ These are the environment variables Ray Tune currently considers:
   done in the same script. You might want to disable this if you run multiple Tune runs in
   parallel from different scripts. Set to 1 to disable.
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
-  e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. If you want to
-  run more than one Ray Tune experiment in parallel, each of the parallel runs should set this to a different
-  unique value.
+  e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
+  initialized to a unique name at the start of the first run.
 * **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
   groups to be placed before continuing the tuning loop. Setting this to a float
   will block for that many seconds. This is mostly used for testing purposes. Defaults

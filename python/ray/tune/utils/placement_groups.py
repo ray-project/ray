@@ -18,6 +18,34 @@ if TYPE_CHECKING:
 
 TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
 
+_tune_pg_prefix = None
+
+
+def get_tune_pg_prefix():
+    """Get the tune placement group name prefix.
+
+    This will store the prefix in a global variable so that subsequent runs
+    can use this identifier to clean up placement groups before starting their
+    run.
+
+    Can be overwritten with the ``TUNE_PLACEMENT_GROUP_PREFIX`` env variable.
+    """
+    global _tune_pg_prefix
+
+    if _tune_pg_prefix:
+        return _tune_pg_prefix
+
+    # Else: check env variable
+    env_prefix = os.getenv("TUNE_PLACEMENT_GROUP_PREFIX", "")
+
+    if env_prefix:
+        _tune_pg_prefix = env_prefix
+        return _tune_pg_prefix
+
+    # Else: create and store unique prefix
+    _tune_pg_prefix = f"__tune_{uuid.uuid4().hex[:8]}__"
+    return _tune_pg_prefix
+
 
 class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
@@ -186,7 +214,7 @@ class PlacementGroupManager:
         prefix (str): Prefix for the placement group names that are created.
     """
 
-    def __init__(self, prefix: str = "_tune__", max_staging: int = 1000):
+    def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
         self._prefix = prefix
 
         # Sets of staged placement groups by factory
