@@ -92,7 +92,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
   }
   // Initialize free ports list with all ports in the specified range.
   if (!worker_ports.empty()) {
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port : worker_ports) {
       free_ports_->push(port);
     }
@@ -102,7 +102,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
     }
     RAY_CHECK(min_worker_port > 0 && min_worker_port <= 65535);
     RAY_CHECK(max_worker_port >= min_worker_port && max_worker_port <= 65535);
-    free_ports_ = std::unique_ptr<std::queue<int>>(new std::queue<int>());
+    free_ports_ = std::make_unique<std::queue<int>>();
     for (int port = min_worker_port; port <= max_worker_port; port++) {
       free_ports_->push(port);
     }
@@ -286,8 +286,8 @@ Process WorkerPool::StartWorkerProcess(
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
 
-  RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc.GetId();
+  RAY_LOG(INFO) << "Started worker process of " << workers_to_start
+                << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
   if (IsIOWorkerType(worker_type)) {
@@ -561,6 +561,15 @@ void WorkerPool::PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worke
 }
 
 void WorkerPool::PopRestoreWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+}
+
+void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::UTIL_WORKER);
+}
+
+void WorkerPool::PopUtilWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
   PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
 }
@@ -944,7 +953,8 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
 
 inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
-         worker_type == rpc::WorkerType::RESTORE_WORKER;
+         worker_type == rpc::WorkerType::RESTORE_WORKER ||
+         worker_type == rpc::WorkerType::UTIL_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -1044,6 +1054,7 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::UTIL_WORKER);
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language,

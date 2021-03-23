@@ -1,5 +1,6 @@
 import binascii
 import errno
+import functools
 import hashlib
 import logging
 import math
@@ -13,7 +14,9 @@ import threading
 import time
 from typing import Optional
 import uuid
+import warnings
 
+import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
@@ -869,9 +872,8 @@ def get_conda_env_dir(env_name):
         # support this case.
         conda_exe = os.environ.get("CONDA_EXE")
         if conda_exe is None:
-            raise ValueError(
-                "Ray Serve cannot find environment variables set by conda. "
-                "Please verify conda is installed.")
+            raise ValueError("Cannot find environment variables set by conda. "
+                             "Please verify conda is installed.")
         # Example: CONDA_EXE=$HOME/anaconda3/bin/python
         # Strip out /bin/python by going up two parent directories.
         conda_prefix = str(Path(conda_exe).parent.parent)
@@ -880,15 +882,21 @@ def get_conda_env_dir(env_name):
     # 1. We are in a conda (base) env: CONDA_DEFAULT_ENV=base and
     #    CONDA_PREFIX=$HOME/anaconda3
     # 2. We are in a user-created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$current_env_name
     if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
+        # Caller's curent environment is (base).
         # Not recommended by conda, but we can still support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
+        if (env_name == "base"):
+            # Desired environment is (base), located at e.g. $HOME/anaconda3
+            env_dir = conda_prefix
+        else:
+            # Desired environment is user-created, e.g.
+            # $HOME/anaconda3/envs/$env_name
+            env_dir = os.path.join(conda_prefix, "envs", env_name)
     else:
         # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
+        # $HOME/anaconda3/envs/$current_env_name
+        # We want to replace the last component with the desired env name.
         conda_envs_dir = os.path.split(conda_prefix)[0]
         env_dir = os.path.join(conda_envs_dir, env_name)
     if not os.path.isdir(env_dir):
@@ -897,3 +905,82 @@ def get_conda_env_dir(env_name):
             " not found in conda envs directory. Run `conda env list` to " +
             "verify the name is correct.")
     return env_dir
+
+
+def get_call_location(back=1):
+    """
+    Get the location (filename and line number) of a function caller, `back`
+    frames up the stack.
+
+    Args:
+        back (int): The number of frames to go up the stack, not including this
+            function.
+    """
+    stack = inspect.stack()
+    try:
+        frame = stack[back + 1]
+        return f"{frame.filename}:{frame.lineno}"
+    except IndexError:
+        return "UNKNOWN"
+
+
+# Used to only print a deprecation warning once for a given function if we
+# don't wish to spam the caller.
+_PRINTED_WARNING = set()
+
+
+# The following is inspired by
+# https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
+def deprecated(instructions=None,
+               removal_release=None,
+               removal_date=None,
+               warn_once=True):
+    """
+    Creates a decorator for marking functions as deprecated. The decorator
+    will log a deprecation warning on the first (or all, see `warn_once` arg)
+    invocations, and will otherwise leave the wrapped function unchanged.
+
+    Args:
+        instructions (str): Instructions for the caller to update their code.
+        removal_release (str): The release in which this deprecated function
+            will be removed. Only one of removal_release and removal_date
+            should be specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        removal_date (str): The date on which this deprecated function will be
+            removed. Only one of removal_release and removal_date should be
+            specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        warn_once (bool): If true, the deprecation warning will only be logged
+            on the first invocation. Otherwise, the deprecation warning will
+            be logged on every invocation. Defaults to True.
+
+    Returns:
+        A decorator to be used for wrapping deprecated functions.
+    """
+    if removal_release is not None and removal_date is not None:
+        raise ValueError(
+            "Only one of removal_release and removal_date should be specified."
+        )
+
+    def deprecated_wrapper(func):
+        @functools.wraps(func)
+        def new_func(*args, **kwargs):
+            global _PRINTED_WARNING
+            if func not in _PRINTED_WARNING:
+                if warn_once:
+                    _PRINTED_WARNING.add(func)
+                msg = ("From {}: {} (from {}) is deprecated and will ".format(
+                    get_call_location(), func.__name__,
+                    func.__module__) + "be removed " +
+                       (f"in version {removal_release}."
+                        if removal_release is not None else
+                        f"after {removal_date}"
+                        if removal_date is not None else "in a future version")
+                       + (f" {instructions}"
+                          if instructions is not None else ""))
+                warnings.warn(msg)
+            return func(*args, **kwargs)
+
+        return new_func
+
+    return deprecated_wrapper

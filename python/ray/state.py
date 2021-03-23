@@ -91,7 +91,7 @@ class GlobalState:
         self.redis_client = services.create_redis_client(
             self.redis_address, self.redis_password)
         self.global_state_accessor = GlobalStateAccessor(
-            self.redis_address, self.redis_password, False)
+            self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
         start_time = time.time()
 
@@ -896,8 +896,7 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return (ray.resource_spec.NODE_ID_PREFIX +
-            ray._private.services.get_node_ip_address())
+    return (ray.resource_spec.NODE_ID_PREFIX + ray.util.get_node_ip_address())
 
 
 def node_ids():

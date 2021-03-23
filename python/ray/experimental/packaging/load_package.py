@@ -43,7 +43,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
         >>> print(my_pkg._runtime_env)
         ... {"conda": {...},
         ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
-        ...  "files": "https://github.com/demo/foo/blob/v3.0/project/"}
+        ...  "working_dir": "https://github.com/demo/foo/blob/v3.0/project/"}
 
         >>> # Run remote functions from the package.
         >>> my_pkg.my_func.remote(1, 2)
@@ -67,7 +67,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "files" not in runtime_env:
+    if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
             working_dir=base_dir, modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
@@ -88,7 +88,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["files"] = pkg_uri
+        runtime_env["working_dir"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -98,10 +98,17 @@ def load_package(config_path: str) -> "_RuntimePackage":
                 "Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
+    if "stub_file" in config:
+        # TODO(ekl) remove this path
+        print("Warning: stub_file is deprecated, use interface_file instead")
+        interface_file = config["stub_file"]
+    else:
+        interface_file = config["interface_file"]
+
     pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
-        stub_file=os.path.join(base_dir, config["stub_file"]),
+        interface_file=os.path.join(base_dir, interface_file),
         runtime_env=runtime_env)
     return pkg
 
@@ -159,21 +166,21 @@ def _download_from_github_if_needed(config_path: str) -> str:
 class _RuntimePackage:
     """Represents a Ray package loaded via ``load_package()``.
 
-    This class provides access to the symbols defined by the stub file of the
-    package (e.g., remote functions and actor definitions). You can also
+    This class provides access to the symbols defined by the interface file of
+    the package (e.g., remote functions and actor definitions). You can also
     access the raw runtime env defined by the package via ``pkg._runtime_env``.
     """
 
-    def __init__(self, name: str, desc: str, stub_file: str,
+    def __init__(self, name: str, desc: str, interface_file: str,
                  runtime_env: dict):
         self._name = name
         self._description = desc
-        self._stub_file = stub_file
+        self._interface_file = interface_file
         self._runtime_env = runtime_env
-        _validate_stub_file(self._stub_file)
+        _validate_interface_file(self._interface_file)
 
         spec = importlib.util.spec_from_file_location(self._name,
-                                                      self._stub_file)
+                                                      self._interface_file)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self._module = module
@@ -183,30 +190,24 @@ class _RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    # TODO(ekl) use the runtime_env option here instead of
-                    # the override env vars. Currently this doesn't work since
-                    # there is no way to define per-task job config.
                     setattr(
-                        self,
-                        symbol,
-                        value.options(override_environment_variables={
-                            "RAY_RUNTIME_ENV_FILES": runtime_env["files"]
-                        }))
+                        self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(
             self._module, self._runtime_env)
 
 
-def _validate_stub_file(stub_file: str):
-    if not os.path.exists(stub_file):
-        raise ValueError("Stub file does not exist: {}".format(stub_file))
-    for line in open(stub_file):
+def _validate_interface_file(interface_file: str):
+    if not os.path.exists(interface_file):
+        raise ValueError(
+            "Interface file does not exist: {}".format(interface_file))
+    for line in open(interface_file):
         line = line.replace("\n", "")
         if line.startswith("import ") or line.startswith("from "):
             if line != "import ray" and "noqa" not in line:
                 raise ValueError(
-                    "Stub files are only allowed to import `ray` "
+                    "Interface files are only allowed to import `ray` "
                     "at top-level, found `{}`. Please either remove or "
                     "change this into a lazy import. To unsafely allow "
                     "this import, add `# noqa` to the line "
