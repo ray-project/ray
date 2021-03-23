@@ -688,4 +688,4 @@ SACTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False)
+)
