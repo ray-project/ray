@@ -818,7 +818,7 @@ class GlobalState:
         # Update nodes in cluster.
         node_ids = self._live_node_ids()
         # Remove disconnected nodes.
-        for node_id in available_resources_by_id.keys():
+        for node_id in list(available_resources_by_id.keys()):
             if node_id not in node_ids:
                 del available_resources_by_id[node_id]
 
