@@ -9,6 +9,7 @@ import ray
 from ray._raylet import (TaskID, ActorID, JobID)
 from ray.internal.internal_api import node_stats
 import logging
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -331,10 +332,16 @@ def construct_memory_table(workers_stats: List,
 def track_reference_size(group):
     """Returns dictionary mapping reference type
     to memory usage for a given memory table group."""
-    from collections import defaultdict
     d = defaultdict(int)
+    table_name = {
+        "LOCAL_REFERENCE": "total_local_ref_count",
+        "PINNED_IN_MEMORY": "total_pinned_in_memory",
+        "USED_BY_PENDING_TASK": "total_used_by_pending_task",
+        "CAPTURED_IN_OBJECT": "total_captured_in_objects",
+        "ACTOR_HANDLE": "total_actor_handles"
+    }
     for entry in group["entries"]:
-        d[entry["reference_type"]] += entry["object_size"]
+        d[table_name[entry["reference_type"]]] += entry["object_size"]
     return d
 
 
@@ -400,23 +407,12 @@ entries per group...\n\n\n"
         # Group summary
         summary = group["summary"]
         ref_size = track_reference_size(group)
-        summary["total_object_size"] = str(
-            summary["total_object_size"] / units[unit]) + f" {unit}"
-        summary["total_local_ref_count"] = str(
-            summary["total_local_ref_count"]
-        ) + f", ({ref_size['LOCAL_REFERENCE'] / units[unit]} {unit})"
-        summary["total_pinned_in_memory"] = str(
-            summary["total_pinned_in_memory"]
-        ) + f", ({ref_size['PINNED_IN_MEMORY'] / units[unit]} {unit})"
-        summary["total_used_by_pending_task"] = str(
-            summary["total_used_by_pending_task"]
-        ) + f", ({ref_size['USED_BY_PENDING_TASK'] / units[unit]} {unit})"
-        summary["total_captured_in_objects"] = str(
-            summary["total_captured_in_objects"]) + (
-                f", ({ref_size['CAPTURED_IN_OBJECT'] / units[unit]} {unit})")
-        summary["total_actor_handles"] = str(
-            summary["total_actor_handles"]
-        ) + f", ({ref_size['ACTOR_HANDLE'] / units[unit]} {unit})"
+        for key in summary:
+            if key == "total_object_size":
+                summary[key] = str(summary[key] / units[unit]) + f" {unit}"
+            else:
+                summary[key] = str(
+                    summary[key]) + f", ({ref_size[key] / units[unit]} {unit})"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
@@ -427,9 +423,8 @@ entries per group...\n\n\n"
         mem += f"--- Object references for {group_by}: {key} ---\n"
         mem += object_ref_string\
             .format(*object_ref_labels)
-        n = 0
+        n = 1  # Counter for num entries per group
         for entry in group["entries"]:
-            n += 1
             if num_entries is not None and n > num_entries:
                 break
             entry["object_size"] = str(
@@ -460,5 +455,6 @@ entries per group...\n\n\n"
                 mem += object_ref_string\
                     .format(*row)
             mem += "\n"
+            n += 1
         mem += "\n\n"
     return mem
