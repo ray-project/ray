@@ -347,7 +347,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (can_restore_directly) {
     UpdateRetryTimer(request);
     restore_spilled_object_(object_id, request.spilled_url,
-                            [this, object_id](const ray::Status &status) {
+                            [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id.Hex()
                                                << " failed, will retry later: " << status;
