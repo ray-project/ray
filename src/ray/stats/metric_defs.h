@@ -65,24 +65,35 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "requests");
 
 static Gauge ObjectDirectoryLocationSubscriptions(
-    "object_directory_subscriptions", "Number of object location subscriptions.",
+    "object_directory_subscriptions",
+    "Number of object location subscriptions. If this is high, the raylet is attempting "
+    "to pull a lot of objects.",
     "subscriptions");
 
 static Gauge ObjectDirectoryLocationUpdates(
-    "object_directory_updates", "Number of object location updates per second.",
+    "object_directory_updates",
+    "Number of object location updates per second., If this is high, the raylet is "
+    "attempting to pull a lot of objects and/or the locations for objects are frequently "
+    "changing (e.g. due to many object copies or evictions).",
     "updates");
 
 static Gauge ObjectDirectoryLocationLookups(
-    "object_directory_lookups", "Number of object location lookups per second.",
+    "object_directory_lookups",
+    "Number of object location lookups per second. If this is high, the raylet is "
+    "waiting on a lot of objects.",
     "lookups");
 
-static Gauge ObjectDirectoryAddedLocations("object_directory_added_locations",
-                                           "Number of object locations added per second.",
-                                           "additions");
+static Gauge ObjectDirectoryAddedLocations(
+    "object_directory_added_locations",
+    "Number of object locations added per second., If this is high, a lot of objects "
+    "have been added on this node.",
+    "additions");
 
 static Gauge ObjectDirectoryRemovedLocations(
     "object_directory_removed_locations",
-    "Number of object locations removed per second.", "removals");
+    "Number of object locations removed per second. If this is high, a lot of objects "
+    "have been removed from this node.",
+    "removals");
 
 static Gauge NumInfeasibleTasks(
     "num_infeasible_tasks",
