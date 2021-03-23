@@ -776,26 +776,90 @@ class InternalKVAccessor {
  public:
   virtual ~InternalKVAccessor() = default;
 
+  /// Asynchronously list keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param callback Callback that will be called after scanning.
+  /// \return Status
   virtual Status AsyncInternalKVKeys(
       const std::string &prefix,
       const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
+
+  /// Asynchronously get the value for a given key.
+  ///
+  /// \param key The key to lookup.
+  /// \param callback Callback that will be called after get the value.
   virtual Status AsyncInternalKVGet(
       const std::string &key, const OptionalItemCallback<std::string> &callback) = 0;
-  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+
+  /// Asynchronously set the value for a given key.
+  ///
+  /// \param key The key in <key, value> pair
+  /// \param value The value associated with the key
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+ virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
                                     bool overwrite,
                                     const OptionalItemCallback<int> &callback) = 0;
+
+  /// Asynchronously check the existence of a given key
+  ///
+  /// \param key The key to check
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
   virtual Status AsyncInternalKVExists(const std::string &key,
                                        const OptionalItemCallback<bool> &callback) = 0;
+
+  /// Asynchronously delete a key
+  ///
+  /// \param key The key to delete
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
   virtual Status AsyncInternalKVDel(const std::string &key,
                                     const StatusCallback &callback) = 0;
 
   // These are sync functions of the async above
+
+  /// List keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param value It's an output parameter. It'll be set to the keys with `prefix`
+  /// \return Status
   Status Keys(const std::string &prefix, std::vector<std::string> &value);
+
+
+  /// Set the <key, value> in the store
+  ///
+  /// \param key The key of the pair
+  /// \param value The value of the pair
+  /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
+  ///     exists.
+  /// \param added It's an output parameter. It'll be set to be true if
+  ///     any row is added.
+  /// \return Status
   Status Put(const std::string &key, const std::string &value, bool overwrite,
              bool &added);
+
+  /// Retrive the value associated with a key
+  ///
+  /// \param key The key to lookup
+  /// \param value It's an output parameter. It'll be set to the value of the key
+  /// \return Status
   Status Get(const std::string &key, std::string &value);
+
+  /// Delete the key
+  ///
+  /// \param key The key to delete
+  /// \return Status
   Status Del(const std::string &key);
-  Status Exists(const std::string &key, bool &exist);
+
+  /// Check existence of a key in the store
+  ///
+  /// \param key The key to check
+  /// \param exist It's an output parameter. It'll be true if the key exists in the
+  ///    system. Otherwise, it'll be set to be false.
+  /// \return Status
+Status Exists(const std::string &key, bool &exist);
 
  protected:
   InternalKVAccessor() = default;
