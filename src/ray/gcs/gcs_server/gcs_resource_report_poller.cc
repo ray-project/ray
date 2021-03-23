@@ -82,9 +82,9 @@ void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_inf
     absl::MutexLock guard(&mutex_);
     nodes_.erase(node_id);
     RAY_CHECK(!nodes_.count(node_id));
+    RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
+                   << ")# of remaining nodes: " << nodes_.size();
   }
-  RAY_LOG(DEBUG) << "Node removed (node_id: " << node_id
-                 << ")# of remaining nodes: " << nodes_.size();
 }
 
 void GcsResourceReportPoller::TryPullResourceReport() {
