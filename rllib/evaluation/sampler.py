@@ -143,7 +143,6 @@ class SyncSampler(SamplerInput):
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             observation_fn: "ObservationFunction" = None,
-            _use_trajectory_view_api: bool = False,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
     ):
@@ -183,9 +182,6 @@ class SyncSampler(SamplerInput):
             observation_fn (Optional[ObservationFunction]): Optional
                 multi-agent observation func to use for preprocessing
                 observations.
-            _use_trajectory_view_api (bool): Whether to use the (experimental)
-                `_use_trajectory_view_api` to make generic trajectory views
-                available to Models. Default: False.
             sample_collector_class (Optional[Type[SampleCollector]]): An
                 optional Samplecollector sub-class to use to collect, store,
                 and retrieve environment-, model-, and sampler data.
@@ -202,18 +198,15 @@ class SyncSampler(SamplerInput):
         self.obs_filters = obs_filters
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
-        if _use_trajectory_view_api:
-            if not sample_collector_class:
-                sample_collector_class = SimpleListCollector
-            self.sample_collector = sample_collector_class(
-                policies,
-                clip_rewards,
-                callbacks,
-                multiple_episodes_in_batch,
-                rollout_fragment_length,
-                count_steps_by=count_steps_by)
-        else:
-            self.sample_collector = None
+        if not sample_collector_class:
+            sample_collector_class = SimpleListCollector
+        self.sample_collector = sample_collector_class(
+            policies,
+            clip_rewards,
+            callbacks,
+            multiple_episodes_in_batch,
+            rollout_fragment_length,
+            count_steps_by=count_steps_by)
         self.render = render
 
         # Create the rollout generator to use for calls to `get_data()`.
@@ -223,7 +216,7 @@ class SyncSampler(SamplerInput):
             self.preprocessors, self.obs_filters, clip_rewards, clip_actions,
             multiple_episodes_in_batch, callbacks, tf_sess, self.perf_stats,
             soft_horizon, no_done_at_end, observation_fn,
-            _use_trajectory_view_api, self.sample_collector, self.render)
+            self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
     @override(SamplerInput)
@@ -286,7 +279,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             soft_horizon: bool = False,
             no_done_at_end: bool = False,
             observation_fn: "ObservationFunction" = None,
-            _use_trajectory_view_api: bool = False,
             sample_collector_class: Optional[Type[SampleCollector]] = None,
             render: bool = False,
     ):
@@ -330,9 +322,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             observation_fn (Optional[ObservationFunction]): Optional
                 multi-agent observation func to use for preprocessing
                 observations.
-            _use_trajectory_view_api (bool): Whether to use the (experimental)
-                `_use_trajectory_view_api` to make generic trajectory views
-                available to Models. Default: False.
             sample_collector_class (Optional[Type[SampleCollector]]): An
                 optional Samplecollector sub-class to use to collect, store,
                 and retrieve environment-, model-, and sampler data.
@@ -366,20 +355,16 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.perf_stats = _PerfStats()
         self.shutdown = False
         self.observation_fn = observation_fn
-        self._use_trajectory_view_api = _use_trajectory_view_api
         self.render = render
-        if _use_trajectory_view_api:
-            if not sample_collector_class:
-                sample_collector_class = SimpleListCollector
-            self.sample_collector = sample_collector_class(
-                policies,
-                clip_rewards,
-                callbacks,
-                multiple_episodes_in_batch,
-                rollout_fragment_length,
-                count_steps_by=count_steps_by)
-        else:
-            self.sample_collector = None
+        if not sample_collector_class:
+            sample_collector_class = SimpleListCollector
+        self.sample_collector = sample_collector_class(
+            policies,
+            clip_rewards,
+            callbacks,
+            multiple_episodes_in_batch,
+            rollout_fragment_length,
+            count_steps_by=count_steps_by)
 
     @override(threading.Thread)
     def run(self):
@@ -403,8 +388,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.preprocessors, self.obs_filters, self.clip_rewards,
             self.clip_actions, self.multiple_episodes_in_batch, self.callbacks,
             self.tf_sess, self.perf_stats, self.soft_horizon,
-            self.no_done_at_end, self.observation_fn,
-            self._use_trajectory_view_api, self.sample_collector, self.render)
+            self.no_done_at_end, self.observation_fn, self.sample_collector,
+            self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -468,7 +453,6 @@ def _env_runner(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        _use_trajectory_view_api: bool = False,
         sample_collector: Optional[SampleCollector] = None,
         render: bool = None,
 ) -> Iterable[SampleBatchType]:
@@ -506,9 +490,6 @@ def _env_runner(
             and instead record done=False.
         observation_fn (ObservationFunction): Optional multi-agent
             observation func to use for preprocessing observations.
-        _use_trajectory_view_api (bool): Whether to use the (experimental)
-            `_use_trajectory_view_api` to make generic trajectory views
-            available to Models. Default: False.
         sample_collector (Optional[SampleCollector]): An optional
             SampleCollector object to use.
         render (bool): Whether to try to render the environment after each
@@ -561,11 +542,8 @@ def _env_runner(
     def get_batch_builder():
         if batch_builder_pool:
             return batch_builder_pool.pop()
-        elif _use_trajectory_view_api:
-            return None
         else:
-            return MultiAgentSampleBatchBuilder(policies, clip_rewards,
-                                                callbacks)
+            return None
 
     def new_episode(env_id):
         episode = MultiAgentEpisode(
@@ -613,33 +591,11 @@ def _env_runner(
         t1 = time.time()
         # type: Set[EnvID], Dict[PolicyID, List[PolicyEvalData]],
         #       List[Union[RolloutMetrics, SampleBatchType]]
-        if _use_trajectory_view_api:
-            active_envs, to_eval, outputs = \
-                _process_observations_w_trajectory_view_api(
-                    worker=worker,
-                    base_env=base_env,
-                    policies=policies,
-                    active_episodes=active_episodes,
-                    unfiltered_obs=unfiltered_obs,
-                    rewards=rewards,
-                    dones=dones,
-                    infos=infos,
-                    horizon=horizon,
-                    preprocessors=preprocessors,
-                    obs_filters=obs_filters,
-                    multiple_episodes_in_batch=multiple_episodes_in_batch,
-                    callbacks=callbacks,
-                    soft_horizon=soft_horizon,
-                    no_done_at_end=no_done_at_end,
-                    observation_fn=observation_fn,
-                    sample_collector=sample_collector,
-                )
-        else:
-            active_envs, to_eval, outputs = _process_observations(
+        active_envs, to_eval, outputs = \
+            _process_observations_w_trajectory_view_api(
                 worker=worker,
                 base_env=base_env,
                 policies=policies,
-                batch_builder_pool=batch_builder_pool,
                 active_episodes=active_episodes,
                 unfiltered_obs=unfiltered_obs,
                 rewards=rewards,
@@ -648,12 +604,12 @@ def _env_runner(
                 horizon=horizon,
                 preprocessors=preprocessors,
                 obs_filters=obs_filters,
-                rollout_fragment_length=rollout_fragment_length,
                 multiple_episodes_in_batch=multiple_episodes_in_batch,
                 callbacks=callbacks,
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
+                sample_collector=sample_collector,
             )
         perf_stats.raw_obs_processing_time += time.time() - t1
         for o in outputs:
@@ -662,21 +618,13 @@ def _env_runner(
         # Do batched policy eval (accross vectorized envs).
         t2 = time.time()
         # type: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
-        if _use_trajectory_view_api:
-            eval_results = _do_policy_eval_w_trajectory_view_api(
-                to_eval=to_eval,
-                policies=policies,
-                sample_collector=sample_collector,
-                active_episodes=active_episodes,
-                tf_sess=tf_sess,
-            )
-        else:
-            eval_results = _do_policy_eval(
-                to_eval=to_eval,
-                policies=policies,
-                active_episodes=active_episodes,
-                tf_sess=tf_sess,
-            )
+        eval_results = _do_policy_eval_w_trajectory_view_api(
+            to_eval=to_eval,
+            policies=policies,
+            sample_collector=sample_collector,
+            active_episodes=active_episodes,
+            tf_sess=tf_sess,
+        )
         perf_stats.inference_time += time.time() - t2
 
         # Process results and update episode state.
@@ -690,7 +638,6 @@ def _env_runner(
                 off_policy_actions=off_policy_actions,
                 policies=policies,
                 clip_actions=clip_actions,
-                _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector=sample_collector,
             )
         perf_stats.action_processing_time += time.time() - t3
@@ -1391,7 +1338,6 @@ def _process_policy_eval_results(
         off_policy_actions: MultiEnvDict,
         policies: Dict[PolicyID, Policy],
         clip_actions: bool,
-        _use_trajectory_view_api: bool = False,
         sample_collector=None,
 ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
@@ -1412,9 +1358,6 @@ def _process_policy_eval_results(
         policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy.
         clip_actions (bool): Whether to clip actions to the action space's
             bounds.
-        _use_trajectory_view_api (bool): Whether to use the (experimental)
-            `_use_trajectory_view_api` to make generic trajectory views
-            available to Models. Default: False.
 
     Returns:
         actions_to_send: Nested dict of env id -> agent id -> actions to be
@@ -1442,21 +1385,8 @@ def _process_policy_eval_results(
             actions = np.array(actions)
 
         # Store RNN state ins/outs and extra-action fetches to episode.
-        if _use_trajectory_view_api:
-            for f_i, column in enumerate(rnn_out_cols):
-                pi_info_cols["state_out_{}".format(f_i)] = column
-        else:
-            rnn_in_cols: StateBatch = _to_column_format(
-                [t.rnn_state for t in eval_data])
-
-            if len(rnn_in_cols) != len(rnn_out_cols):
-                raise ValueError(
-                    "Length of RNN in did not match RNN out, got: "
-                    "{} vs {}".format(rnn_in_cols, rnn_out_cols))
-            for f_i, column in enumerate(rnn_in_cols):
-                pi_info_cols["state_in_{}".format(f_i)] = column
-            for f_i, column in enumerate(rnn_out_cols):
-                pi_info_cols["state_out_{}".format(f_i)] = column
+        for f_i, column in enumerate(rnn_out_cols):
+            pi_info_cols["state_out_{}".format(f_i)] = column
 
         policy: Policy = _get_or_raise(policies, policy_id)
         # Split action-component batches into single action rows.

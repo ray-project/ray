@@ -212,5 +212,4 @@ SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
     extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False,
     mixins=[TargetNetworkMixin])
