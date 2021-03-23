@@ -201,7 +201,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     name = "test"
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def call(block=False):
         if use_handle:
             handle = serve.get_handle(name, missing_ok=True)
