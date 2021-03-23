@@ -126,6 +126,15 @@ class RayServeHandle:
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
 
+    def __reduce__(self):
+        serialized_data = {
+            "router": self.router,
+            "endpoint_name": self.endpoint_name,
+            "handle_options": self.handle_options,
+            "known_python_methods": self.known_python_methods
+        }
+        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
+
     def __getattr__(self, name):
         if name not in self.known_python_methods:
             raise AttributeError(
@@ -167,7 +176,10 @@ class RayServeSyncHandle(RayServeHandle):
         return future.result()
 
     def __reduce__(self):
-        deserializer = RayServeSyncHandle
-        serialized_data = (self.router, self.endpoint_name,
-                           self.handle_options)
-        return deserializer, serialized_data
+        serialized_data = {
+            "router": self.router,
+            "endpoint_name": self.endpoint_name,
+            "handle_options": self.handle_options,
+            "known_python_methods": self.known_python_methods
+        }
+        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )
