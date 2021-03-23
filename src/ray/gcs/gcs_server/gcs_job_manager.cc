@@ -164,17 +164,6 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
 void GcsJobManager::HandleSubmitJob(const rpc::SubmitJobRequest &request,
                                     rpc::SubmitJobReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  auto on_done = [reply, send_reply_callback](const Status &status) {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  auto status = SubmitJob(request, on_done);
-  if (!status.ok()) {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  }
-}
-
-Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
-                                const ray::gcs::StatusCallback &callback) {
   auto job_id = JobID::FromBinary(request.job_id());
 
   RAY_LOG(INFO) << "Submitting job " << job_id;
@@ -184,7 +173,8 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     std::ostringstream ss;
     ss << "Failed to submit job " << job_id << ", job id conflicts.";
     RAY_LOG(ERROR) << ss.str();
-    return Status::Invalid(ss.str());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ss.str()));
+    return;
   }
 
   // Set all the fields that we can get from the SubmitJobRequest.
@@ -206,7 +196,8 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     ss << "Failed to submit job " << job_id << ", as there is no available node in the "
        << "cluster to run the driver.";
     RAY_LOG(ERROR) << ss.str();
-    return Status::Invalid(ss.str());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid(ss.str()));
+    return;
   }
 
   auto driver_node = maybe_node.value();
@@ -219,17 +210,16 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
 
   RAY_LOG(INFO) << "Submitting job, job id = " << job_id << ", config is "
                 << job_table_data->config().DebugString();
-  auto on_done = [this, driver_node_id, job_id, job_table_data, callback](Status status) {
+  auto on_done = [this, driver_node_id, job_id, job_table_data, reply,
+                  send_reply_callback](Status status) {
     RAY_CHECK(jobs_.emplace(job_id, job_table_data).second);
     RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
     driver_node_to_jobs_[driver_node_id].emplace(job_id);
-    if (callback) {
-      callback(status);
-    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     RAY_LOG(INFO) << "Finished submitting job, job id = " << job_id;
   };
-  return gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done);
+  RAY_CHECK_OK(gcs_table_storage_->JobTable().Put(job_id, *job_table_data, on_done));
 }
 
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsJobManager::SelectDriver(

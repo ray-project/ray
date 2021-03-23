@@ -77,9 +77,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void ClearJobInfos(const JobID &job_id);
 
-  Status SubmitJob(const rpc::SubmitJobRequest &request,
-                   const ray::gcs::StatusCallback &callback);
-
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> SelectDriver(
       const rpc::JobTableData &job_data) const;
 
