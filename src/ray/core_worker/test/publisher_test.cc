@@ -155,6 +155,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
     subscription_index.EraseEntry(oid, node_id);
   }
   ASSERT_FALSE(subscription_index.HasObjectId(oid));
+  ASSERT_TRUE(subscription_index.AssertNoLeak());
 }
 
 TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
@@ -178,6 +179,11 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   const auto &subscribers_from_index =
       subscription_index.GetSubscriberIdsByObjectId(oid).value().get();
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
+
+  for (int i = 1; i < 6; i++) {
+    subscription_index.EraseSubscriber(node_ids[i]);
+  }
+  ASSERT_TRUE(subscription_index.AssertNoLeak());
 }
 
 TEST_F(PublisherTest, TestSubscriber) {
@@ -222,6 +228,7 @@ TEST_F(PublisherTest, TestSubscriber) {
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.count(oid) > 0);
   }
+  ASSERT_TRUE(subscriber.AssertNoLeak());
 }
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {
@@ -459,6 +466,9 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
                                                              ObjectID::FromRandom()),
             0);
   ASSERT_EQ(long_polling_connection_replied, false);
+  // Metadata won't be removed until we unregsiter the subscriber.
+  object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
 }
 
 // Unregistration a subscriber.
@@ -493,6 +503,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
 }
 
 }  // namespace ray

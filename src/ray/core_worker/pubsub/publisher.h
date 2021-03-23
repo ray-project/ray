@@ -51,6 +51,9 @@ class SubscriptionIndex {
   /// Return true if the object id exists in the index.
   bool HasObjectId(const ObjectID &object_id) const;
 
+  /// Testing only. Return true if there's no metadata remained in the private attribute.
+  bool AssertNoLeak() const;
+
  private:
   FRIEND_TEST(PublisherTest, TestSubscriptionIndexErase);
   FRIEND_TEST(PublisherTest, TestSubscriptionIndexEraseSubscriber);
@@ -90,6 +93,9 @@ class Subscriber {
   /// message.
   /// \return True if it publishes. False otherwise.
   bool PublishIfPossible(bool force = false);
+
+  /// Testing only. Return true if there's no metadata remained in the private attribute.
+  bool AssertNoLeak() const;
 
  private:
   /// Cached long polling reply callback.
@@ -143,6 +149,9 @@ class Publisher {
   /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const NodeID &subscriber_node_id,
                               const ObjectID &object_id);
+
+  /// Testing only. Return true if there's no metadata remained in the private attribute.
+  bool AssertNoLeak() const;
 
  private:
   /// Protects below fields. Since the coordinator runs in a core worker, it should be

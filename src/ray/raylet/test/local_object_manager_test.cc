@@ -57,6 +57,8 @@ class MockSubscriber : public SubscriberInterface {
   MOCK_METHOD2(UnsubscribeObject,
                bool(const rpc::Address &owner_address, const ObjectID &object_id));
 
+  bool AssertNoLeak() const override { return true; }
+
   std::deque<std::pair<ObjectID, SubscriptionCallback>> callbacks;
 };
 

@@ -194,4 +194,13 @@ inline absl::optional<SubscriptionCallback> Subscriber::GetFailureCallback(
   return absl::optional<SubscriptionCallback>{subscription_callback};
 }
 
+bool Subscriber::AssertNoLeak() const {
+  for (const auto &subscription : subscription_map_) {
+    if (subscription.second.subscription_callback_map_.size() != 0) {
+      return false;
+    }
+  }
+  return subscription_map_.size() == 0;
+}
+
 }  // namespace ray

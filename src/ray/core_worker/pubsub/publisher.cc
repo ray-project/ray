@@ -97,6 +97,10 @@ bool SubscriptionIndex::EraseEntry(const ObjectID &object_id,
   return true;
 }
 
+bool SubscriptionIndex::AssertNoLeak() const {
+  return objects_to_subscribers_.size() == 0 && subscribers_to_objects_.size() == 0;
+}
+
 bool Subscriber::Connect(LongPollConnectCallback long_polling_reply_callback) {
   if (long_polling_reply_callback_ == nullptr) {
     long_polling_reply_callback_ = long_polling_reply_callback;
@@ -123,6 +127,10 @@ bool Subscriber::PublishIfPossible(bool force) {
     return true;
   }
   return false;
+}
+
+bool Subscriber::AssertNoLeak() const {
+  return long_polling_reply_callback_ == nullptr && mailbox_.size() == 0;
 }
 
 void Publisher::Connect(const NodeID &subscriber_node_id,
@@ -201,6 +209,16 @@ bool Publisher::UnregisterSubscription(const NodeID &subscriber_node_id,
                                        const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_.EraseEntry(object_id, subscriber_node_id);
+}
+
+bool Publisher::AssertNoLeak() const {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &subscriber : subscribers_) {
+    if (!subscriber.second->AssertNoLeak()) {
+      return false;
+    }
+  }
+  return subscription_index_.AssertNoLeak();
 }
 
 }  // namespace ray

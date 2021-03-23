@@ -54,6 +54,9 @@ class SubscriberInterface {
   virtual bool UnsubscribeObject(const rpc::Address &owner_address,
                                  const ObjectID &object_id) = 0;
 
+  /// Testing only. Return true if there's no metadata remained in the private attribute.
+  virtual bool AssertNoLeak() const = 0;
+
   virtual ~SubscriberInterface() {}
 };
 
@@ -75,6 +78,8 @@ class Subscriber : public SubscriberInterface {
 
   bool UnsubscribeObject(const rpc::Address &owner_address,
                          const ObjectID &object_id) override;
+
+  bool AssertNoLeak() const override;
 
  private:
   /// Encapsulates the subscription information such as subscribed object ids ->
