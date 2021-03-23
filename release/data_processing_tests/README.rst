@@ -25,3 +25,4 @@ Success Criteria
 For `streaming_shuffle.py`, make sure to include the output string to the release logs.
 
 For `dask_on_ray_large_scale_test.py`, make sure the test runs for at least for an hour. This test should succeed, otherwise, it is a release blocker.
+Check out https://github.com/ray-project/ray/pull/14340#discussion_r599271079 to learn the success condition of this test.
