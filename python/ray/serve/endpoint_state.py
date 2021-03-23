@@ -122,7 +122,7 @@ class EndpointState:
                 "methods": methods,
                 "traffic": traffic_dict,
                 "shadows": shadow_dict,
-                "python_methods": self._python_methods[endpoint],
+                "python_methods": self._python_methods.get(endpoint, []),
             }
         return endpoints
 
