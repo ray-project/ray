@@ -355,7 +355,6 @@ class WorkerSet:
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
-            _use_trajectory_view_api=config["_use_trajectory_view_api"],
         )
 
         return worker
