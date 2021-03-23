@@ -131,8 +131,8 @@ class JsonReader(InputReader):
         return line
 
     def _next_file(self) -> FileType:
-        # If this is the first time, we open a file, make sure all workers start 
-        # with a different one if possible.
+        # If this is the first time, we open a file, make sure all workers
+        # start with a different one if possible.
         if self.cur_file is None and self.ioctx.worker is not None:
             idx = self.ioctx.worker.worker_index
             total = self.ioctx.worker.num_workers

@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -35,20 +35,23 @@ class TestMARWIL(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        data_files = [
+            os.path.join(rllib_dir, "tests/data/cartpole/large.json"),
+            os.path.join(rllib_dir, "tests/data/cartpole/small.json"),
+        ]
+        print("data_files={} exists={}".format(data_files,
+                                               os.path.isfile(data_files[0])))
 
         config = marwil.DEFAULT_CONFIG.copy()
-        # Run with n RolloutWorkers (reading the input-file at the same time, but
-        # starting from different positions in the file).
+        # Run with n RolloutWorkers (reading the input-file at the same time,
+        # but starting from different positions in the file).
         config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 1
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
-        config["input"] = [data_file]
+        config["input"] = data_files
         num_iterations = 350
         min_reward = 70.0
 
