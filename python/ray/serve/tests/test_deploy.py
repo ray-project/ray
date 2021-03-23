@@ -217,7 +217,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     @ray.remote
     def call(block=False):
         if use_handle:
-            ret = ray.get(serve.get_handle(name).remote(block=str(block)))
+            handle = serve.get_handle(name, missing_ok=True)
+            ret = ray.get(handle.remote(block=str(block)))
         else:
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={
