@@ -11,6 +11,49 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_WITH_NAME, DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES
 
 
+def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # Add a response with a thousand subnets all in different VPCs.
+    # After filtering, only subnet in one particular VPC should remain.
+    # Thus head_node.SubnetIds and worker_nodes.SubnetIds should end up as
+    # being length-one lists after the bootstrap_config.
+    stubs.describe_a_thousand_subnets_in_different_vpcs(ec2_client_stub)
+    # describe the subnet in use while determining its vpc
+    stubs.describe_subnets_echo(ec2_client_stub, DEFAULT_SUBNET)
+    # given no existing security groups within the VPC...
+    stubs.describe_no_security_groups(ec2_client_stub)
+    # expect to create a security group on the VPC
+    stubs.create_sg_echo(ec2_client_stub, DEFAULT_SG)
+    # expect new security group details to be retrieved after creation
+    stubs.describe_sgs_on_vpc(
+        ec2_client_stub,
+        [DEFAULT_SUBNET["VpcId"]],
+        [DEFAULT_SG],
+    )
+
+    # given no existing default security group inbound rules...
+    # expect to authorize all default inbound rules
+    stubs.authorize_sg_ingress(
+        ec2_client_stub,
+        DEFAULT_SG_WITH_NAME_AND_RULES,
+    )
+
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file("example-full.yaml")
+
+    # We've filtered down to only one subnet id.
+    assert config["head_node"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+    assert config["worker_nodes"]["SubnetIds"] == [DEFAULT_SUBNET["SubnetId"]]
+    # Check that the security group has been filled correctly.
+    assert config["head_node"]["SecurityGroupIds"] == [DEFAULT_SG["GroupId"]]
+    assert config["worker_nodes"]["SecurityGroupIds"] == [
+        DEFAULT_SG["GroupId"]
+    ]
+
+
 def test_create_sg_different_vpc_same_rules(iam_client_stub, ec2_client_stub):
     # use default stubs to skip ahead to security group configuration
     stubs.skip_to_configure_sg(ec2_client_stub, iam_client_stub)
