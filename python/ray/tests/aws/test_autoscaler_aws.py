@@ -270,6 +270,13 @@ def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
     assert bootstrapped_config["head_node"]["SecurityGroupIds"] == [sg_id]
     assert bootstrapped_config["worker_nodes"]["SecurityGroupIds"] == [sg_id]
 
+    # Confirm security group is in the right VPC.
+    # (Doesn't really confirm anything except for the structure of this test
+    # data.)
+    assert DEFAULT_SG["VpcId"] == DEFAULT_SUBNET["VpcId"]
+    assert DEFAULT_SUBNET["SubnetId"] ==\
+        bootstrapped_config["head_node"]["SubnetIds"][0]
+
     # expect no pending responses left in IAM or EC2 client stub queues
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
