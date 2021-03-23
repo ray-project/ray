@@ -7,7 +7,6 @@ import json
 import logging
 import time
 import uuid
-import pickle
 from collections import defaultdict
 from typing import Any
 from typing import Dict
@@ -63,7 +62,6 @@ def backoff(timeout: int) -> int:
 class Worker:
     def __init__(self,
                  conn_str: str = "",
-                 job_config: JobConfig = None,
                  secure: bool = False,
                  metadata: List[Tuple[str, str]] = None,
                  connection_retries: int = 3):
@@ -148,8 +146,6 @@ class Worker:
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
-
-        self._server_init(job_config)
 
         self.closed = False
 
@@ -400,6 +396,11 @@ class Worker:
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
 
+    def internal_kv_exists(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
@@ -439,31 +440,39 @@ class Worker:
 
     def _server_init(self, job_config: JobConfig):
         import ray._private.runtime_env as runtime_env
-        # Generate the uri for runtime env
-        if job_config is None:
-            job_config = JobConfig()
-        runtime_env.rewrite_working_dir_uri(job_config)
-        init_req = ray_client_pb2.InitRequest(
-            job_config=pickle.dumps(job_config))
-        try:
-            init_ret = self.data_client.Init(init_req)
-            if init_ret.status == ray_client_pb2.InitResponse.Status.OK:
-                return
-            elif init_ret.status == ray_client_pb2.InitResponse.Status.INCOMPATIBLE_RUNTIME_ENV:
-                raise RuntimeError("Client's runtime env is not the same as server's")
-            elif init_ret.status == ray_client_pb2.InitResponse.Status.MISSING_URIS:
-                runtime_env.upload_runtime_env_package_if_needed(job_config)
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest(
-                    job_config.get_proto_job_config().runtime_env
-                )
-                prep_ret = self.data_client.PrepRuntimeEnv(prep_req)
-                if not prep_ret.ok:
-                    raise RuntimeError("Failed to prepare runtime environment", prep_ret.msg)
-            else:
-                raise RuntimeError("Unknown type: ", init_req.status)
-        except grpc.RpcError as e:
-            raise decode_exception(e.details())
-
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            if runtime_env.PKG_DIR is None:
+                runtime_env.PKG_DIR = tmp_dir
+            # Generate the uri for runtime env
+            if job_config is None:
+                job_config = JobConfig()
+            runtime_env.rewrite_working_dir_uri(job_config)
+            init_req = ray_client_pb2.InitRequest(
+                job_config=pickle.dumps(job_config))
+            try:
+                init_ret = self.data_client.Init(init_req)
+                Status = ray_client_pb2.InitResponse.Status
+                if init_ret.status == Status.OK:
+                    return
+                elif init_ret.status == Status.INCOMPATIBLE_RUNTIME_ENV:
+                    raise RuntimeError(
+                        "Client's runtime env is not the same as server's")
+                elif init_ret.status == Status.MISSING_URIS:
+                    runtime_env.upload_runtime_env_package_if_needed(
+                        job_config)
+                    prep_req = ray_client_pb2.PrepRuntimeEnvRequest(
+                        runtime_env=job_config.get_proto_job_config()
+                        .runtime_env)
+                    prep_ret = self.data_client.PrepRuntimeEnv(prep_req)
+                    if not prep_ret.ok:
+                        raise RuntimeError(
+                            "Failed to prepare runtime environment",
+                            prep_ret.msg)
+                else:
+                    raise RuntimeError("Unknown type: ", init_req.status)
+            except grpc.RpcError as e:
+                raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

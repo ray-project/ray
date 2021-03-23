@@ -8,7 +8,6 @@ from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.job_config import JobConfig
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
@@ -26,7 +25,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
 
-
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata["client_id"]
@@ -40,27 +38,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
-                    with self.clients_lock:
-                        threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
-                        if self.num_clients >= threshold:
-                            context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
-                            logger.warning(
-                                f"[Data Servicer]: Num clients {self.num_clients} "
-                                f"has reached the threshold {threshold}. "
-                                f"Rejecting client: {metadata['client_id']}. ")
-                            if log_once("client_threshold"):
-                                logger.warning(
-                                    "You can configure the client connection "
-                                    "threshold by setting the "
-                                    "RAY_CLIENT_SERVER_MAX_THREADS env var "
-                                    f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
-                            return
-                        resp_init = self.basic_service.Init(req.init)
-                        self.num_clients += 1
-                        logger.debug(f"Accepted data connection from {client_id}. "
-                                     f"Total clients: {self.num_clients}")
-                        resp = ray_client_pb2.DataResponse(init=resp_init, )
-                        accepted_connection = True
+                    resp = self._init(req.init, client_id)
+                    if resp is None:
+                        context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+                        return
+                    logger.debug(f"Accepted data connection from {client_id}. "
+                                 f"Total clients: {self.num_clients}")
+                    accepted_connection = True
                 else:
                     assert accepted_connection
                     if req_type == "get":
@@ -77,13 +61,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             rel = self.basic_service.release(client_id, rel_id)
                             released.append(rel)
                         resp = ray_client_pb2.DataResponse(
-                            release=ray_client_pb2.ReleaseResponse(ok=released))
+                            release=ray_client_pb2.ReleaseResponse(
+                                ok=released))
                     elif req_type == "connection_info":
                         resp = ray_client_pb2.DataResponse(
                             connection_info=self._build_connection_response())
                     elif req_type == "prep_runtime_env":
                         with self.clients_lock:
-                            resp = self.basic_service.PrepRuntimeEnv(req)
+                            resp_prep = self.basic_service.PrepRuntimeEnv(
+                                req.prep_runtime_env)
+                            resp = ray_client_pb2.DataResponse(
+                                prep_runtime_env=resp_prep)
                     else:
                         raise Exception(f"Unreachable code: Request type "
                                         f"{req_type} not handled in Datapath")
@@ -107,6 +95,25 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     if self.num_clients == 0:
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
+
+    def _init(self, req_init, client_id):
+        with self.clients_lock:
+            threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
+            if self.num_clients >= threshold:
+                logger.warning(
+                    f"[Data Servicer]: Num clients {self.num_clients} "
+                    f"has reached the threshold {threshold}. "
+                    f"Rejecting client: {client_id}. ")
+                if log_once("client_threshold"):
+                    logger.warning(
+                        "You can configure the client connection "
+                        "threshold by setting the "
+                        "RAY_CLIENT_SERVER_MAX_THREADS env var "
+                        f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
+                return None
+            resp_init = self.basic_service.Init(req_init)
+            self.num_clients += 1
+            return ray_client_pb2.DataResponse(init=resp_init, )
 
     def _build_connection_response(self):
         with self.clients_lock:

@@ -123,8 +123,9 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.init
 
-    def PrepRuntimeEnv(self, request: ray_client_pb2.PrepRuntimeEnvRequest,
-                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
+    def PrepRuntimeEnv(self,
+                       request: ray_client_pb2.PrepRuntimeEnvRequest,
+                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
         datareq = ray_client_pb2.DataRequest(prep_runtime_env=request, )
         resp = self._blocking_send(datareq)
         return resp.prep_runtime_env

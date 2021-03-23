@@ -198,6 +198,15 @@ message TerminateResponse {
   bool ok = 1;
 }
 
+
+message KVExistsRequest {
+  bytes key = 1;
+}
+
+message KVExistsResponse {
+  bool exists = 1;
+}
+
 message KVGetRequest {
   bytes key = 1;
 }
@@ -278,6 +287,8 @@ service RayletDriver {
   rpc KVDel(KVDelRequest) returns (KVDelResponse) {
   }
   rpc KVList(KVListRequest) returns (KVListResponse) {
+  }
+  rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {
   }
 }
 

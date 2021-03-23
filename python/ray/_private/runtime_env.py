@@ -230,7 +230,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     """Fetch a package from a given uri.
 
     This function is used to fetch a pacakge from the given uri to local
-    filesystem.
+    filesystem. If it exists, it'll just return
 
     Args:
         pkg_uri (str): The uri of the package to download.
@@ -242,6 +242,8 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     """
     if pkg_file is None:
         pkg_file = Path(_get_local_path(pkg_uri))
+    if pkg_file.exists():
+        return 0
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         code = _internal_kv_get(pkg_uri)
@@ -372,7 +374,8 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
                         f"{pkg_uri} has existed locally, skip downloading")
                 else:
                     pkg_size = fetch_package(pkg_uri, pkg_file)
-                    logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
+                    logger.debug(
+                        f"Downloaded {pkg_size} bytes into {pkg_file}")
             sys.path.insert(0, str(pkg_file))
         except IOError as e:
             logger.error(e)

@@ -64,21 +64,28 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if current_job_config and set(job_config.runtime_env.uris) != set(current_job_config.runtime_env.uris):
-            return ray_client_pb2.InitResponse(status=ray_client_pb2.InitResponse.Status.INCOMPATIBLE_RUNTIME_ENV)
+        if current_job_config and set(job_config.runtime_env.uris) != set(
+                current_job_config.runtime_env.uris):
+            return ray_client_pb2.InitResponse(
+                status=ray_client_pb2.InitResponse.Status.
+                INCOMPATIBLE_RUNTIME_ENV)
         # We also need to check whether there are any uris missing
         missing_uris = self._prepare_runtime_env(job_config.runtime_env)
         if len(missing_uris) == 0:
-            return ray_client_pb2.InitResponse(status=ray_client_pb2.InitResponse.Status.OK)
+            return ray_client_pb2.InitResponse(
+                status=ray_client_pb2.InitResponse.Status.OK)
         else:
-            return ray_client_pb2.InitResponse(status=ray_client_pb2.InitResponse.Status.MISSING_URIS)
+            return ray_client_pb2.InitResponse(
+                status=ray_client_pb2.InitResponse.Status.MISSING_URIS)
 
-    def PrepRuntimeEnv(self, request, context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
+    def PrepRuntimeEnv(self, request,
+                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
         missing_uris = self._prepare_runtime_env(request.runtime_env)
         if len(missing_uris) == 0:
             return ray_client_pb2.PrepRuntimeEnvResponse(ok=True)
         else:
-            return ray_client_pb2.PrepRuntimeEnvResponse(ok=False, msg=f"Failed to fetch uris: {missing_uris}")
+            return ray_client_pb2.PrepRuntimeEnvResponse(
+                ok=False, msg=f"Failed to fetch uris: {missing_uris}")
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -101,6 +108,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             keys = ray.experimental.internal_kv._internal_kv_list(
                 request.prefix)
         return ray_client_pb2.KVListResponse(keys=keys)
+
+    def KVExists(self, request,
+                 context=None) -> ray_client_pb2.KVExistsResponse:
+        with disable_client_hook():
+            exists = ray.experimental.internal_kv._internal_kv_exists(
+                request.key)
+        return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
@@ -411,8 +425,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             for uri in uris:
                 try:
-                    if not runtime_env.package_exists(uri):
-                        runtime_env.fetch_package(uri)
+                    runtime_env.fetch_package(uri)
+                    print("Adding!: ", runtime_env._get_local_path(uri))
                     sys.path.insert(0, str(runtime_env._get_local_path(uri)))
                 except IOError:
                     missing_uris.append(uri)
@@ -565,9 +579,7 @@ def create_ray_handler(redis_address, redis_password):
                     _redis_password=redis_password,
                     job_config=job_config)
             else:
-                ray.init(
-                    address=redis_address,
-                    job_config=job_config)
+                ray.init(address=redis_address, job_config=job_config)
         else:
             ray.init(job_config=job_config)
 

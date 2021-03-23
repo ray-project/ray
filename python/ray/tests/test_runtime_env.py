@@ -120,8 +120,6 @@ sleep(5)
     script = driver_script.format(**locals())
     out = run_string_as_driver(script)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
-    assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

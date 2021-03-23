@@ -64,11 +64,11 @@ class RayAPIStub:
         try:
             self.client_worker = Worker(
                 conn_str,
-                job_config=job_config,
                 secure=secure,
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
+            self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
             return conn_info
