@@ -130,7 +130,13 @@ def cli(logging_level, logging_format):
     type=int,
     default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
-def dashboard(cluster_config_file, cluster_name, port, remote_port):
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+def dashboard(cluster_config_file, cluster_name, port, remote_port,
+              no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
@@ -147,7 +153,8 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
         exec_cluster(
             cluster_config_file,
             override_cluster_name=cluster_name,
-            port_forward=port_forward)
+            port_forward=port_forward,
+            no_config_cache=no_config_cache)
         click.echo("Successfully established connection.")
     except Exception as e:
         raise click.ClickException(

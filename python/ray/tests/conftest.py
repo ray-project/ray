@@ -7,7 +7,7 @@ import pytest
 import subprocess
 
 import ray
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
 
@@ -32,6 +32,7 @@ def get_default_fixture_ray_kwargs():
     ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
+        "dashboard_port": None,
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -52,6 +53,7 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
+
     with _ray_start(
             num_cpus=1, include_dashboard=True, **param) as address_info:
         yield address_info
@@ -217,7 +219,7 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
-    cluster = ray._private.cluster_utils.Cluster(
+    cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
