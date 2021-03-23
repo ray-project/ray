@@ -1051,7 +1051,7 @@ def _process_observations_w_trajectory_view_api(
         episode: MultiAgentEpisode = active_episodes[env_id]
 
         if not is_new_episode:
-            sample_collector.episode_step(episode.episode_id)
+            sample_collector.episode_step(episode)
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
