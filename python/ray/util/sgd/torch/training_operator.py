@@ -16,7 +16,6 @@ from ray.util.sgd.torch.constants import (
 )
 
 from torch.nn.parallel import DistributedDataParallel
-from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
 logger = logging.getLogger(__name__)
@@ -162,15 +161,11 @@ class TrainingOperator:
             for model in models
         ]
 
-    def _return_items(self, items, original_items, cls):
+    def _return_items(self, items, original_items):
         """Helper method to return items in same format as original_items."""
         if isinstance(original_items, tuple):
             return tuple(items)
-        elif isinstance(original_items, Iterable):
-            if isinstance(original_items, cls):
-                assert len(items) == 1
-                return items[0]
-
+        elif isinstance(original_items, list):
             # Items is already a list.
             return items
         else:
@@ -334,10 +329,9 @@ class TrainingOperator:
             self._models = self._original_models
 
         return_vals.append(
-            self._return_items(self._models, models, torch.nn.Module))
+            self._return_items(self._models, models))
         return_vals.append(
-            self._return_items(self._optimizers, optimizers,
-                               torch.optim.Optimizer))
+            self._return_items(self._optimizers, optimizers))
 
         if self._criterion is not None:
             return_vals.append(self._criterion)
@@ -350,7 +344,7 @@ class TrainingOperator:
                                  "'manual' if you will be manually stepping "
                                  "the schedulers.")
             return_vals.append(
-                self._return_items(self._schedulers, schedulers, _LRScheduler))
+                self._return_items(self._schedulers, schedulers))
 
         return tuple(return_vals)
 
