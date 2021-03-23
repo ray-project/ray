@@ -188,6 +188,13 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
 bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (i >= this->predefined_resources.size()) {
+      if (task_req.predefined_resources[i].demand != 0) {
+        return false;
+      }
+      continue;
+    }
+
     const auto &resource = this->predefined_resources[i].available;
     const auto &demand = task_req.predefined_resources[i].demand;
     bool is_soft = task_req.predefined_resources[i].soft;
@@ -213,6 +220,12 @@ bool NodeResources::IsAvailable(const TaskRequest &task_req) const {
 bool NodeResources::IsFeasible(const TaskRequest &task_req) const {
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (i >= this->predefined_resources.size()) {
+      if (task_req.predefined_resources[i].demand != 0) {
+        return false;
+      }
+      continue;
+    }
     const auto &resource = this->predefined_resources[i].total;
     const auto &demand = task_req.predefined_resources[i].demand;
     bool is_soft = task_req.predefined_resources[i].soft;
