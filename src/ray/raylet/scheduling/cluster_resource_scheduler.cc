@@ -342,7 +342,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool *is_infeasible) {
   if (!hybrid_spillback_) {
     return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
-                                        total_violations, is_infeasible);
+                                               total_violations, is_infeasible);
   }
 
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(

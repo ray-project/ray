@@ -42,7 +42,6 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
       critical_resource_utilization = 0;
     }
 
-
     bool update_best_node = false;
 
     if (is_available) {

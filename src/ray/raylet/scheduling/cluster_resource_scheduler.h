@@ -149,8 +149,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNodeSimpleBinPack(const TaskRequest &task_request,
-                                       bool actor_creation, bool force_spillback,
-                                       int64_t *violations, bool *is_infeasible);
+                                              bool actor_creation, bool force_spillback,
+                                              int64_t *violations, bool *is_infeasible);
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
