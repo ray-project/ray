@@ -63,7 +63,7 @@ void Subscriber::SubcribeObject(
 }
 
 bool Subscriber::UnsubscribeObject(const rpc::Address &owner_address,
-                                     const ObjectID &object_id) {
+                                   const ObjectID &object_id) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id << " from "
                  << owner_worker_id;
@@ -80,8 +80,8 @@ bool Subscriber::UnsubscribeObject(const rpc::Address &owner_address,
   return true;
 }
 
-void Subscriber::MakeLongPollingPubsubConnection(
-    const rpc::Address &owner_address, const rpc::Address &subscriber_address) {
+void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
+                                                 const rpc::Address &subscriber_address) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << owner_worker_id;
 
@@ -97,9 +97,9 @@ void Subscriber::MakeLongPollingPubsubConnection(
 }
 
 void Subscriber::HandleLongPollingResponse(const rpc::Address &owner_address,
-                                             const rpc::Address &subscriber_address,
-                                             const Status &status,
-                                             const rpc::PubsubLongPollingReply &reply) {
+                                           const rpc::Address &subscriber_address,
+                                           const Status &status,
+                                           const rpc::PubsubLongPollingReply &reply) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << owner_worker_id;
 

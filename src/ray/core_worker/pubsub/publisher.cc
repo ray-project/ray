@@ -126,7 +126,7 @@ bool Subscriber::PublishIfPossible(bool force) {
 }
 
 void Publisher::Connect(const NodeID &subscriber_node_id,
-                                LongPollConnectCallback long_poll_connect_callback) {
+                        LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
@@ -151,7 +151,7 @@ void Publisher::Connect(const NodeID &subscriber_node_id,
 }
 
 void Publisher::RegisterSubscription(const NodeID &subscriber_node_id,
-                                             const ObjectID &object_id) {
+                                     const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
                  << subscriber_node_id;
   if (is_node_dead_(subscriber_node_id)) {
@@ -198,7 +198,7 @@ bool Publisher::UnregisterSubscriber(const NodeID &subscriber_node_id) {
 }
 
 bool Publisher::UnregisterSubscription(const NodeID &subscriber_node_id,
-                                               const ObjectID &object_id) {
+                                       const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_.EraseEntry(object_id, subscriber_node_id);
 }

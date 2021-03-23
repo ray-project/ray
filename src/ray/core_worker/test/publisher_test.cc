@@ -451,11 +451,12 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
 
   // Make sure when the entries don't exist, it doesn't delete anything.
   ASSERT_EQ(object_status_publisher_->UnregisterSubscription(subscriber_node_id,
-                                                        ObjectID::FromRandom()),
+                                                             ObjectID::FromRandom()),
             0);
-  ASSERT_EQ(object_status_publisher_->UnregisterSubscription(NodeID::FromRandom(), oid), 0);
+  ASSERT_EQ(object_status_publisher_->UnregisterSubscription(NodeID::FromRandom(), oid),
+            0);
   ASSERT_EQ(object_status_publisher_->UnregisterSubscription(NodeID::FromRandom(),
-                                                        ObjectID::FromRandom()),
+                                                             ObjectID::FromRandom()),
             0);
   ASSERT_EQ(long_polling_connection_replied, false);
 }

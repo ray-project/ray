@@ -61,8 +61,8 @@ class SubscriberInterface {
 class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(const NodeID self_node_id, const std::string self_node_address,
-                        const int self_node_port,
-                        rpc::CoreWorkerClientPool &owner_client_pool)
+                      const int self_node_port,
+                      rpc::CoreWorkerClientPool &owner_client_pool)
       : self_node_id_(self_node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
