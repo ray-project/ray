@@ -328,10 +328,8 @@ class TrainingOperator:
         else:
             self._models = self._original_models
 
-        return_vals.append(
-            self._return_items(self._models, models))
-        return_vals.append(
-            self._return_items(self._optimizers, optimizers))
+        return_vals.append(self._return_items(self._models, models))
+        return_vals.append(self._return_items(self._optimizers, optimizers))
 
         if self._criterion is not None:
             return_vals.append(self._criterion)
