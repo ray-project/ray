@@ -194,8 +194,7 @@ class RemoteFunction:
             # Set a new context if given a _ray_trace_ctx, or default to current_context
             # Retrieves the context from the _ray_trace_ctx dictionary we injected
             with use_context(
-                    dict_propagator.extract(kwargs[
-                        "_ray_trace_ctx"])), tracer.start_as_current_span(
+                    kwargs["_ray_trace_ctx"]), tracer.start_as_current_span(
                             _span_consumer_name(function.__name__),
                             kind=trace.SpanKind.CONSUMER,
                             attributes=_hydrate_span_args(function.__name__),
@@ -276,9 +275,11 @@ class RemoteFunction:
             kwargs: MutableMapping[Any, Any],
     ) -> Any:
         """
-        Make sure we inject our current span context into the kwargs for propigation
+        Make sure we inject our current span context into the kwargs for propagation
         before running our remote tasks
         """
+        print("propagate trace args:" + str(args))
+        print("propagate trace kwargs:" + str(kwargs))
 
         def _start_remote_span(
                 args: Any,
@@ -295,12 +296,50 @@ class RemoteFunction:
                     attributes=_hydrate_span_args(instance._function_name),
             ):
                 # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-                kwargs["_ray_trace_ctx"] = (  # YAPF formatting
-                    dict_propagator.inject_current_context())
-                print(kwargs)
+                kwargs["_ray_trace_ctx"] = {"trace_id": "asdf"}
+                # (  # YAPF formatting
+                #     dict_propagator.inject_current_context())
+                print("start remote span args" + str(args))
+                print("start remote span kwargs" + str(kwargs))
+                print("start remote span _args" + str(_args))
+                print("start remote span _kwargs" + str(_kwargs))
                 return wrapped(args, kwargs, *_args, **_kwargs)
 
         return _start_remote_span(*args, **kwargs)
+
+    # def _propagate_trace(self,
+    #                      args=None,
+    #                      kwargs=None,
+    #                      num_returns=None,
+    #                      num_cpus=None,
+    #                      num_gpus=None,
+    #                      memory=None,
+    #                      object_store_memory=None,
+    #                      accelerator_type=None,
+    #                      resources=None,
+    #                      max_retries=None,
+    #                      placement_group=None,
+    #                      placement_group_bundle_index=-1,
+    #                      placement_group_capture_child_tasks=None,
+    #                      runtime_env=None,
+    #                      override_environment_variables=None,
+    #                      name=""):
+    #     assert "_ray_trace_ctx" not in kwargs
+    #     tracer = trace.get_tracer(__name__)
+    #     with tracer.start_as_current_span(
+    #             _span_producer_name(self._function_name),
+    #             kind=trace.SpanKind.PRODUCER,
+    #             attributes=_hydrate_span_args(self._function_name),
+    #     ):
+    #         # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+    #         kwargs["_ray_trace_ctx"] = (
+    #             dict_propagator.inject_current_context())
+    #         return self._remote(
+    #             args, kwargs, num_returns, num_cpus, num_gpus, memory,
+    #             object_store_memory, accelerator_type, resources, max_retries,
+    #             placement_group, placement_group_bundle_index,
+    #             placement_group_capture_child_tasks, runtime_env,
+    #             override_environment_variables, name)
 
     @_propagate_trace
     def _remote(self,
@@ -321,6 +360,8 @@ class RemoteFunction:
                 override_environment_variables=None,
                 name=""):
         """Submit the remote function for execution."""
+        print("_remote args" + str(args))
+        print("_remote kwargs" + str(kwargs))
         if client_mode_should_convert():
             return client_mode_convert_function(
                 self,
@@ -401,6 +442,7 @@ class RemoteFunction:
                 override_environment_variables)
 
         def invocation(args, kwargs):
+            print("invocation kwargs" + str(kwargs))
             if self._is_cross_language:
                 list_args = cross_language.format_args(worker, args, kwargs)
             elif not args and not kwargs and not self._function_signature:
@@ -408,6 +450,8 @@ class RemoteFunction:
             else:
                 list_args = ray._private.signature.flatten_args(
                     self._function_signature, args, kwargs)
+
+            print("list args" + str(list_args))
 
             if worker.mode == ray.worker.LOCAL_MODE:
                 assert not self._is_cross_language, \
