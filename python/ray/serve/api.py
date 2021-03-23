@@ -1154,7 +1154,7 @@ def deployment(name: str,
                version: Optional[str] = None,
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-               ) -> Callable:
+               ) -> Callable[[Callable], ServeDeployment]:
     """Define a Serve deployment.
 
     Args:
