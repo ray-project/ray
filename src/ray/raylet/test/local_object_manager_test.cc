@@ -19,7 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
-#include "ray/raylet/pubsub/pubsub_client.h"
+#include "ray/raylet/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -34,7 +34,7 @@ namespace raylet {
 
 using ::testing::_;
 
-class MockPubsubClient : public PubsubClientInterface {
+class MockSubscriber : public SubscriberInterface {
  public:
   void SubcribeObject(
       const rpc::Address &owner_address, const ObjectID &object_id,
@@ -294,7 +294,7 @@ class MockObjectBuffer : public Buffer {
 class LocalObjectManagerTest : public ::testing::Test {
  public:
   LocalObjectManagerTest()
-      : pubsub_client_(std::make_shared<MockPubsubClient>()),
+      : subscriber_(std::make_shared<MockSubscriber>()),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
@@ -323,7 +323,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                   }
                   remote_node_set_restore_requested_[node_id].emplace(object_id);
                 },
-                /*core_worker_pubsub_client=*/pubsub_client_),
+                /*core_worker_subscriber=*/subscriber_),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize("object_spilling_config,YQ==");
   }
@@ -340,7 +340,7 @@ class LocalObjectManagerTest : public ::testing::Test {
 
   instrumented_io_context io_service_;
   size_t free_objects_batch_size = 3;
-  std::shared_ptr<MockPubsubClient> pubsub_client_;
+  std::shared_ptr<MockSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
@@ -380,7 +380,7 @@ TEST_F(LocalObjectManagerTest, TestPin) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
@@ -860,7 +860,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -909,7 +909,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   // // Make sure all spilled objects are deleted.
@@ -965,7 +965,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -973,7 +973,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // The last reference is deleted.
-  ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+  ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Now the object is deleted.
@@ -1023,7 +1023,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   }
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // // Now, deletion queue would process only the first object. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
@@ -1094,7 +1094,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
-    ASSERT_TRUE(pubsub_client_->PublishObjectEviction());
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   // The spilled objects should be deleted as number of spilled urls exceeds the batch

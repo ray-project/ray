@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/pubsub/pubsub_coordinator.h"
+#include "ray/core_worker/pubsub/publisher.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -21,15 +21,15 @@ namespace ray {
 
 using ::testing::_;
 
-class PubsubCoordinatorTest : public ::testing::Test {
+class PublisherTest : public ::testing::Test {
  public:
-  PubsubCoordinatorTest() {}
+  PublisherTest() {}
 
-  ~PubsubCoordinatorTest() {}
+  ~PublisherTest() {}
 
   void SetUp() {
     dead_nodes_.clear();
-    pubsub_coordinator_ = std::shared_ptr<PubsubCoordinator>(new PubsubCoordinator(
+    object_status_publisher_ = std::shared_ptr<Publisher>(new Publisher(
         [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; }));
   }
 
@@ -38,11 +38,11 @@ class PubsubCoordinatorTest : public ::testing::Test {
   void RegisterDeadNode(const NodeID &node_id) { dead_nodes_.emplace(node_id); }
 
   std::unordered_set<NodeID> dead_nodes_;
-  std::shared_ptr<PubsubCoordinator> pubsub_coordinator_;
+  std::shared_ptr<Publisher> object_status_publisher_;
   std::unordered_map<ObjectID, std::unordered_set<NodeID>> subscribers_map_;
 };
 
-TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexSingeNodeSingleObject) {
+TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   auto node_id = NodeID::FromRandom();
   auto oid = ObjectID::FromRandom();
   auto &subscribers = subscribers_map_[oid];
@@ -61,7 +61,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexSingeNodeSingleObject) {
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
+TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
   ///
   /// Test single object id & multi nodes
   ///
@@ -108,7 +108,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexMultiNodeSingleObject) {
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexErase) {
+TEST_F(PublisherTest, TestSubscriptionIndexErase) {
   ///
   /// Test erase entry.
   ///
@@ -157,7 +157,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexErase) {
   ASSERT_FALSE(subscription_index.HasObjectId(oid));
 }
 
-TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
+TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
   ///
@@ -180,7 +180,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber) {
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
 }
 
-TEST_F(PubsubCoordinatorTest, TestSubscriber) {
+TEST_F(PublisherTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   LongPollConnectCallback reply =
       [&object_ids_published](const std::vector<ObjectID> &object_ids) {
@@ -224,7 +224,7 @@ TEST_F(PubsubCoordinatorTest, TestSubscriber) {
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
+TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
@@ -234,13 +234,13 @@ TEST_F(PubsubCoordinatorTest, TestBasicSingleSubscriber) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-  pubsub_coordinator_->Publish(oid);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Publish(oid);
   ASSERT_EQ(batched_ids[0], oid);
 }
 
-TEST_F(PubsubCoordinatorTest, TestNoConnectionWhenRegistered) {
+TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
@@ -250,16 +250,16 @@ TEST_F(PubsubCoordinatorTest, TestNoConnectionWhenRegistered) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-  pubsub_coordinator_->Publish(oid);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Publish(oid);
   // Nothing has been published because there's no connection.
   ASSERT_EQ(batched_ids.size(), 0);
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   // When the connection is coming, it should be published.
   ASSERT_EQ(batched_ids[0], oid);
 }
 
-TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
+TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.begin();
@@ -272,13 +272,13 @@ TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
-    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-    pubsub_coordinator_->Publish(oid);
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+    object_status_publisher_->Publish(oid);
   }
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -286,7 +286,7 @@ TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromSingleNode) {
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromMultiNodes) {
+TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
     auto it = batched_ids.end();
@@ -305,22 +305,22 @@ TEST_F(PubsubCoordinatorTest, TestMultiObjectsFromMultiNodes) {
   for (int i = 0; i < num_nodes; i++) {
     const auto oid = oids[i];
     const auto subscriber_node_id = subscribers[i];
-    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-    pubsub_coordinator_->Publish(oid);
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+    object_status_publisher_->Publish(oid);
   }
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
     const auto subscriber_node_id = subscribers[i];
-    pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+    object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
     ASSERT_EQ(oid_test, published_oid);
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestBatch) {
+TEST_F(PublisherTest, TestBatch) {
   // Test if published objects are batched properly.
   std::vector<ObjectID> batched_ids;
   auto long_polling_connect = [&batched_ids](const std::vector<ObjectID> &object_ids) {
@@ -334,13 +334,13 @@ TEST_F(PubsubCoordinatorTest, TestBatch) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
-    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-    pubsub_coordinator_->Publish(oid);
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+    object_status_publisher_->Publish(oid);
   }
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -353,10 +353,10 @@ TEST_F(PubsubCoordinatorTest, TestBatch) {
   for (int i = 0; i < num_oids; i++) {
     const auto oid = ObjectID::FromRandom();
     oids.push_back(oid);
-    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-    pubsub_coordinator_->Publish(oid);
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+    object_status_publisher_->Publish(oid);
   }
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -364,7 +364,7 @@ TEST_F(PubsubCoordinatorTest, TestBatch) {
   }
 }
 
-TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
+TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
       [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
@@ -373,21 +373,21 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionExisted) {
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   dead_nodes_.emplace(subscriber_node_id);
   // All these ops should be no-op.
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   // Note if the Publish function is called here, it will cause check failure. Application
   // code must ensure publish won't be called without registration.
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connection should be replied (removed) when the subscriber is unregistered.
-  int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
 }
 
-TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
+TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
       [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
@@ -399,20 +399,20 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
   ///
   auto subscriber_node_id = NodeID::FromRandom();
   auto oid = ObjectID::FromRandom();
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-  pubsub_coordinator_->Publish(oid);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Publish(oid);
 
   // Node is dead before connection is made.
   dead_nodes_.emplace(subscriber_node_id);
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connect should reply right away to avoid memory leak.
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   ASSERT_EQ(long_polling_connection_replied, true);
   long_polling_connection_replied = false;
 
   // Connection should be replied (removed) when the subscriber is unregistered.
-  auto erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  auto erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   // Since there was no connection, long polling shouldn't have been replied.
   ASSERT_EQ(long_polling_connection_replied, false);
   ASSERT_TRUE(erased);
@@ -422,16 +422,16 @@ TEST_F(PubsubCoordinatorTest, TestNodeFailureWhenConnectionDoesntExist) {
   ///
   subscriber_node_id = NodeID::FromRandom();
   oid = ObjectID::FromRandom();
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
   dead_nodes_.emplace(subscriber_node_id);
-  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_EQ(long_polling_connection_replied, true);
   // Since there was no registration, nothing was erased.
   ASSERT_FALSE(erased);
 }
 
 // Unregistration an entry.
-TEST_F(PubsubCoordinatorTest, TestUnregisterSubscription) {
+TEST_F(PublisherTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
       [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
@@ -440,28 +440,28 @@ TEST_F(PubsubCoordinatorTest, TestUnregisterSubscription) {
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connection should be replied (removed) when the subscriber is unregistered.
-  int erased = pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, oid);
+  int erased = object_status_publisher_->UnregisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(erased, 1);
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Make sure when the entries don't exist, it doesn't delete anything.
-  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(subscriber_node_id,
+  ASSERT_EQ(object_status_publisher_->UnregisterSubscription(subscriber_node_id,
                                                         ObjectID::FromRandom()),
             0);
-  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(NodeID::FromRandom(), oid), 0);
-  ASSERT_EQ(pubsub_coordinator_->UnregisterSubscription(NodeID::FromRandom(),
+  ASSERT_EQ(object_status_publisher_->UnregisterSubscription(NodeID::FromRandom(), oid), 0);
+  ASSERT_EQ(object_status_publisher_->UnregisterSubscription(NodeID::FromRandom(),
                                                         ObjectID::FromRandom()),
             0);
   ASSERT_EQ(long_polling_connection_replied, false);
 }
 
 // Unregistration a subscriber.
-TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
+TEST_F(PublisherTest, TestUnregisterSubscriber) {
   bool long_polling_connection_replied = false;
   auto long_polling_connect =
       [&long_polling_connection_replied](const std::vector<ObjectID> &object_ids) {
@@ -471,25 +471,25 @@ TEST_F(PubsubCoordinatorTest, TestUnregisterSubscriber) {
   // Test basic.
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(long_polling_connection_replied, false);
-  int erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
   // Make sure the long polling request is replied to avoid memory leak.
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // Test when registration wasn't done.
   long_polling_connection_replied = false;
-  pubsub_coordinator_->Connect(subscriber_node_id, long_polling_connect);
-  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
 
   // Test when connect wasn't done.
   long_polling_connection_replied = false;
-  pubsub_coordinator_->RegisterSubscription(subscriber_node_id, oid);
-  erased = pubsub_coordinator_->UnregisterSubscriber(subscriber_node_id);
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
 }

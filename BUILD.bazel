@@ -759,8 +759,8 @@ cc_test(
 )
 
 cc_test(
-    name = "pubsub_coordinator_test",
-    srcs = ["src/ray/core_worker/test/pubsub_coordinator_test.cc"],
+    name = "publisher_test",
+    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",
@@ -845,9 +845,9 @@ cc_test(
 )
 
 cc_test(
-    name = "pubsub_client_test",
+    name = "subscriber_test",
     srcs = [
-        "src/ray/raylet/test/pubsub_client_test.cc",
+        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [

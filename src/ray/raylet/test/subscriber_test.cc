@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/pubsub/pubsub_client.h"
+#include "ray/raylet/pubsub/subscriber.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -68,20 +68,20 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
 };
 
-class PubsubClientTest : public ::testing::Test {
+class SubscriberTest : public ::testing::Test {
  public:
-  PubsubClientTest()
+  SubscriberTest()
       : self_node_id_(NodeID::FromRandom()),
         self_node_address_("address"),
         self_node_port_(1234),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }) {}
-  ~PubsubClientTest() {}
+  ~SubscriberTest() {}
 
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    pubsub_client_ = std::shared_ptr<PubsubClient>(new PubsubClient(
+    subscriber_ = std::shared_ptr<Subscriber>(new Subscriber(
         self_node_id_, self_node_address_, self_node_port_, client_pool));
   }
 
@@ -104,12 +104,12 @@ class PubsubClientTest : public ::testing::Test {
   const int self_node_port_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
-  std::shared_ptr<PubsubClient> pubsub_client_;
+  std::shared_ptr<Subscriber> subscriber_;
   std::unordered_set<ObjectID> object_subscribed_;
   std::unordered_set<ObjectID> object_failed_to_subscribe_;
 };
 
-TEST_F(PubsubClientTest, TestBasicSubscription) {
+TEST_F(SubscriberTest, TestBasicSubscription) {
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
   };
@@ -119,14 +119,14 @@ TEST_F(PubsubClientTest, TestBasicSubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  ASSERT_FALSE(pubsub_client_->UnsubscribeObject(owner_addr, object_id));
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  ASSERT_FALSE(subscriber_->UnsubscribeObject(owner_addr, object_id));
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(owner_client->ReplyLongPolling(objects_batched));
-  ASSERT_TRUE(pubsub_client_->UnsubscribeObject(owner_addr, object_id));
+  ASSERT_TRUE(subscriber_->UnsubscribeObject(owner_addr, object_id));
 
   // Make sure the long polling batch works as expected.
   for (const auto &object_id : objects_batched) {
@@ -134,7 +134,7 @@ TEST_F(PubsubClientTest, TestBasicSubscription) {
   }
 }
 
-TEST_F(PubsubClientTest, TestSingleLongPollingWithMultipleSubscriptions) {
+TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   // Make sure long polling is called only once with multiple subscription.
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
@@ -149,7 +149,7 @@ TEST_F(PubsubClientTest, TestSingleLongPollingWithMultipleSubscriptions) {
   for (int i = 0; i < 5; i++) {
     const auto object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
-    pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+    subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                    failure_callback);
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
     objects_batched.push_back(object_id);
@@ -164,7 +164,7 @@ TEST_F(PubsubClientTest, TestSingleLongPollingWithMultipleSubscriptions) {
   }
 }
 
-TEST_F(PubsubClientTest, TestMultiLongPollingWithTheSameSubscription) {
+TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   // Make sure long polling will keep working as long as subscription is not unsubscribed.
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
@@ -175,7 +175,7 @@ TEST_F(PubsubClientTest, TestMultiLongPollingWithTheSameSubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
@@ -195,7 +195,7 @@ TEST_F(PubsubClientTest, TestMultiLongPollingWithTheSameSubscription) {
   ASSERT_TRUE(object_subscribed_.count(object_id) > 0);
 }
 
-TEST_F(PubsubClientTest, TestCallbackNotInvokedForNonSubscribedObject) {
+TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   // Make sure the non-subscribed object's subscription callback is not called.
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
@@ -207,7 +207,7 @@ TEST_F(PubsubClientTest, TestCallbackNotInvokedForNonSubscribedObject) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   const auto object_id_not_subscribed = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
 
@@ -220,7 +220,7 @@ TEST_F(PubsubClientTest, TestCallbackNotInvokedForNonSubscribedObject) {
   ASSERT_EQ(object_subscribed_.count(object_id_not_subscribed), 0);
 }
 
-TEST_F(PubsubClientTest, TestIgnoreBatchAfterUnsubscription) {
+TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   // Make sure long polling is ignored after unsubscription.
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
@@ -231,10 +231,10 @@ TEST_F(PubsubClientTest, TestIgnoreBatchAfterUnsubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
-  ASSERT_TRUE(pubsub_client_->UnsubscribeObject(owner_addr, object_id));
+  ASSERT_TRUE(subscriber_->UnsubscribeObject(owner_addr, object_id));
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(owner_client->ReplyLongPolling(objects_batched));
@@ -246,7 +246,7 @@ TEST_F(PubsubClientTest, TestIgnoreBatchAfterUnsubscription) {
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
 }
 
-TEST_F(PubsubClientTest, TestSubscriptionFailure) {
+TEST_F(SubscriberTest, TestSubscriptionFailure) {
   // Test the case the subscription failed due to node failure.
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
@@ -257,7 +257,7 @@ TEST_F(PubsubClientTest, TestSubscriptionFailure) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction(Status::NotFound("")));
 
@@ -266,7 +266,7 @@ TEST_F(PubsubClientTest, TestSubscriptionFailure) {
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
 }
 
-TEST_F(PubsubClientTest, TestSubscriptionAndLongPollingFailure) {
+TEST_F(SubscriberTest, TestSubscriptionAndLongPollingFailure) {
   // Make sure when both long polling and subsription are failed due to node failure,
   // there's no problem.
   auto subscription_callback = [this](const ObjectID &object_id) {
@@ -278,7 +278,7 @@ TEST_F(PubsubClientTest, TestSubscriptionAndLongPollingFailure) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   std::vector<ObjectID> objects_batched;
   ASSERT_TRUE(owner_client->ReplyLongPolling(objects_batched, Status::NotFound("")));
@@ -292,7 +292,7 @@ TEST_F(PubsubClientTest, TestSubscriptionAndLongPollingFailure) {
   ASSERT_EQ(object_failed_to_subscribe_.count(object_id), 0);
 }
 
-TEST_F(PubsubClientTest, TestLongPollingSucceedSubscriptionFailed) {
+TEST_F(SubscriberTest, TestLongPollingSucceedSubscriptionFailed) {
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
   };
@@ -302,7 +302,7 @@ TEST_F(PubsubClientTest, TestLongPollingSucceedSubscriptionFailed) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   // Since subscription is not replied, there's no published object.
   std::vector<ObjectID> objects_batched;
@@ -321,7 +321,7 @@ TEST_F(PubsubClientTest, TestLongPollingSucceedSubscriptionFailed) {
   ASSERT_EQ(object_failed_to_subscribe_.count(object_id), 0);
 }
 
-TEST_F(PubsubClientTest, TestSubscriptionSucceedLongPollingFailed) {
+TEST_F(SubscriberTest, TestSubscriptionSucceedLongPollingFailed) {
   auto subscription_callback = [this](const ObjectID &object_id) {
     object_subscribed_.emplace(object_id);
   };
@@ -331,7 +331,7 @@ TEST_F(PubsubClientTest, TestSubscriptionSucceedLongPollingFailed) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
 
@@ -347,12 +347,12 @@ TEST_F(PubsubClientTest, TestSubscriptionSucceedLongPollingFailed) {
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
 }
 
-TEST_F(PubsubClientTest, TestUnsubscribeInSubscriptionCallback) {
+TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   // Test unsubscription call inside the subscription callback doesn't break raylet.
   auto subscription_callback = [this, owner_addr](const ObjectID &object_id) {
-    pubsub_client_->UnsubscribeObject(owner_addr, object_id);
+    subscriber_->UnsubscribeObject(owner_addr, object_id);
     object_subscribed_.emplace(object_id);
   };
   auto failure_callback = [](const ObjectID &object_id) {
@@ -360,7 +360,7 @@ TEST_F(PubsubClientTest, TestUnsubscribeInSubscriptionCallback) {
     ASSERT_TRUE(false);
   };
 
-  pubsub_client_->SubcribeObject(owner_addr, object_id, subscription_callback,
+  subscriber_->SubcribeObject(owner_addr, object_id, subscription_callback,
                                  failure_callback);
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
   std::vector<ObjectID> objects_batched;

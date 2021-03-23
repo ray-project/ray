@@ -22,7 +22,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/gcs/accessor.h"
 #include "ray/object_manager/common.h"
-#include "ray/raylet/pubsub/pubsub_client.h"
+#include "ray/raylet/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/util.h"
@@ -48,7 +48,7 @@ class LocalObjectManager {
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       std::function<void(const ObjectID &, const std::string &, const NodeID &)>
           restore_object_from_remote_node,
-      std::shared_ptr<PubsubClientInterface> core_worker_pubsub_client)
+      std::shared_ptr<SubscriberInterface> core_worker_subscriber)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -66,7 +66,7 @@ class LocalObjectManager {
         is_plasma_object_spillable_(is_plasma_object_spillable),
         restore_object_from_remote_node_(restore_object_from_remote_node),
         is_external_storage_type_fs_(is_external_storage_type_fs),
-        core_worker_pubsub_client_(core_worker_pubsub_client) {}
+        core_worker_subscriber_(core_worker_subscriber) {}
 
   /// Pin objects.
   ///
@@ -292,7 +292,7 @@ class LocalObjectManager {
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<PubsubClientInterface> core_worker_pubsub_client_;
+  std::shared_ptr<SubscriberInterface> core_worker_subscriber_;
 
   ///
   /// Stats

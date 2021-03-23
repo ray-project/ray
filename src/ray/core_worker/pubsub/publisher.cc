@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/pubsub/pubsub_coordinator.h"
+#include "ray/core_worker/pubsub/publisher.h"
 
 namespace ray {
 
@@ -125,7 +125,7 @@ bool Subscriber::PublishIfPossible(bool force) {
   return false;
 }
 
-void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
+void Publisher::Connect(const NodeID &subscriber_node_id,
                                 LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
@@ -150,7 +150,7 @@ void PubsubCoordinator::Connect(const NodeID &subscriber_node_id,
   subscriber->PublishIfPossible();
 }
 
-void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
+void Publisher::RegisterSubscription(const NodeID &subscriber_node_id,
                                              const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
                  << subscriber_node_id;
@@ -165,7 +165,7 @@ void PubsubCoordinator::RegisterSubscription(const NodeID &subscriber_node_id,
   subscription_index_.AddEntry(object_id, subscriber_node_id);
 }
 
-void PubsubCoordinator::Publish(const ObjectID &object_id) {
+void Publisher::Publish(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
@@ -182,7 +182,7 @@ void PubsubCoordinator::Publish(const ObjectID &object_id) {
   }
 }
 
-bool PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
+bool Publisher::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   absl::MutexLock lock(&mutex_);
   int erased = subscription_index_.EraseSubscriber(subscriber_node_id);
   // Publish messages before removing the entry. Otherwise, it can have memory leak.
@@ -197,7 +197,7 @@ bool PubsubCoordinator::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   return erased;
 }
 
-bool PubsubCoordinator::UnregisterSubscription(const NodeID &subscriber_node_id,
+bool Publisher::UnregisterSubscription(const NodeID &subscriber_node_id,
                                                const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_.EraseEntry(object_id, subscriber_node_id);

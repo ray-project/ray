@@ -564,7 +564,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
-  pubsub_coordinator_ = std::make_shared<PubsubCoordinator>(
+  object_status_publisher_ = std::make_shared<Publisher>(
       /*is_node_dead=*/[this](const NodeID &node_id) {
         if (auto node_info =
                 gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false)) {
@@ -788,7 +788,7 @@ void CoreWorker::RunIOService() {
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node failure " << node_id;
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
-  pubsub_coordinator_->UnregisterSubscriber(node_id);
+  object_status_publisher_->UnregisterSubscriber(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
   // will eventually be stored for the objects (either an
@@ -2352,8 +2352,8 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
-    pubsub_coordinator_->Publish(object_id);
-    pubsub_coordinator_->UnregisterSubscription(subscriber_node_id, object_id);
+    object_status_publisher_->Publish(object_id);
+    object_status_publisher_->UnregisterSubscription(subscriber_node_id, object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -2366,7 +2366,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    pubsub_coordinator_->RegisterSubscription(subscriber_node_id, object_id);
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
@@ -2388,7 +2388,8 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
-  pubsub_coordinator_->Connect(subscriber_id, std::move(long_polling_reply_callback));
+  object_status_publisher_->Connect(subscriber_id,
+                                    std::move(long_polling_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(

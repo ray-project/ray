@@ -52,8 +52,8 @@ class SubscriptionIndex {
   bool HasObjectId(const ObjectID &object_id) const;
 
  private:
-  FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexErase);
-  FRIEND_TEST(PubsubCoordinatorTest, TestSubscriptionIndexEraseSubscriber);
+  FRIEND_TEST(PublisherTest, TestSubscriptionIndexErase);
+  FRIEND_TEST(PublisherTest, TestSubscriptionIndexEraseSubscriber);
 
   /// Returns true if object id or subscriber id exists in the index.
   bool HasSubscriber(const NodeID &subscriber_id) const;
@@ -99,15 +99,15 @@ class Subscriber {
 };
 
 /// Pubsub server.
-class PubsubCoordinator {
+class Publisher {
  public:
   /// Pubsub coordinator constructor.
   ///
   /// \param is_node_dead A callback that returns true if the given node id is dead.
-  explicit PubsubCoordinator(std::function<bool(const NodeID &)> is_node_dead)
+  explicit Publisher(std::function<bool(const NodeID &)> is_node_dead)
       : is_node_dead_(is_node_dead) {}
 
-  ~PubsubCoordinator() = default;
+  ~Publisher() = default;
 
   ///
   // TODO(sang): Currently, we need to pass the callback for connection because we are

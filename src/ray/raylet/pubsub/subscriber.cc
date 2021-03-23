@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/pubsub/pubsub_client.h"
+#include "ray/raylet/pubsub/subscriber.h"
 
 namespace ray {
 
-void PubsubClient::SubcribeObject(
+void Subscriber::SubcribeObject(
     const rpc::Address &owner_address, const ObjectID &object_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
@@ -62,7 +62,7 @@ void PubsubClient::SubcribeObject(
       });
 }
 
-bool PubsubClient::UnsubscribeObject(const rpc::Address &owner_address,
+bool Subscriber::UnsubscribeObject(const rpc::Address &owner_address,
                                      const ObjectID &object_id) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id << " from "
@@ -80,7 +80,7 @@ bool PubsubClient::UnsubscribeObject(const rpc::Address &owner_address,
   return true;
 }
 
-void PubsubClient::MakeLongPollingPubsubConnection(
+void Subscriber::MakeLongPollingPubsubConnection(
     const rpc::Address &owner_address, const rpc::Address &subscriber_address) {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << owner_worker_id;
@@ -96,7 +96,7 @@ void PubsubClient::MakeLongPollingPubsubConnection(
       });
 }
 
-void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
+void Subscriber::HandleLongPollingResponse(const rpc::Address &owner_address,
                                              const rpc::Address &subscriber_address,
                                              const Status &status,
                                              const rpc::PubsubLongPollingReply &reply) {
@@ -117,18 +117,18 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
       const auto &object_id = object_id_it.first;
       objects_to_unsubscribe.push_back(object_id);
 
-      auto maybe_failiure_callback = GetFailureCallback(owner_address, object_id);
-      if (maybe_failiure_callback.has_value()) {
+      auto maybe_failure_callback = GetFailureCallback(owner_address, object_id);
+      if (maybe_failure_callback.has_value()) {
         // If the object id is still subscribed, invoke a failure callback.
-        const auto &failure_callback = maybe_failiure_callback.value();
+        const auto &failure_callback = maybe_failure_callback.value();
         failure_callback(object_id);
       }
     }
 
-    for (const auto &object_id_to_unsubscrbie : objects_to_unsubscribe) {
+    for (const auto &object_id_to_unsubscribe : objects_to_unsubscribe) {
       // If the owner is failed, we automatically unsubscribe objects from this owner.
       // If the failure callback called UnsubscribeObject, this will raise check failures.
-      RAY_CHECK(UnsubscribeObject(owner_address, object_id_to_unsubscrbie))
+      RAY_CHECK(UnsubscribeObject(owner_address, object_id_to_unsubscribe))
           << "Calling UnsubscribeObject inside a failure callback is not allowed.";
     }
   } else {
@@ -162,7 +162,7 @@ void PubsubClient::HandleLongPollingResponse(const rpc::Address &owner_address,
   }
 }
 
-inline absl::optional<SubscriptionCallback> PubsubClient::GetSubscriptionCallback(
+inline absl::optional<SubscriptionCallback> Subscriber::GetSubscriptionCallback(
     const rpc::Address &owner_address, const ObjectID &object_id) const {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto subscription_it = subscription_map_.find(owner_worker_id);
@@ -178,7 +178,7 @@ inline absl::optional<SubscriptionCallback> PubsubClient::GetSubscriptionCallbac
   return absl::optional<SubscriptionCallback>{subscription_callback};
 }
 
-inline absl::optional<SubscriptionCallback> PubsubClient::GetFailureCallback(
+inline absl::optional<SubscriptionCallback> Subscriber::GetFailureCallback(
     const rpc::Address &owner_address, const ObjectID &object_id) const {
   const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
   auto subscription_it = subscription_map_.find(owner_worker_id);

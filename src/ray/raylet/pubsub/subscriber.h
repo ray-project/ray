@@ -24,7 +24,7 @@ using SubscriptionCallback = std::function<void(const ObjectID &)>;
 using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 
 /// Interface for the pubsub client.
-class PubsubClientInterface {
+class SubscriberInterface {
  public:
   /// Subscribe to the object.
   ///
@@ -54,20 +54,20 @@ class PubsubClientInterface {
   virtual bool UnsubscribeObject(const rpc::Address &owner_address,
                                  const ObjectID &object_id) = 0;
 
-  virtual ~PubsubClientInterface() {}
+  virtual ~SubscriberInterface() {}
 };
 
 /// The pubsub client implementation.
-class PubsubClient : public PubsubClientInterface {
+class Subscriber : public SubscriberInterface {
  public:
-  explicit PubsubClient(const NodeID self_node_id, const std::string self_node_address,
+  explicit Subscriber(const NodeID self_node_id, const std::string self_node_address,
                         const int self_node_port,
                         rpc::CoreWorkerClientPool &owner_client_pool)
       : self_node_id_(self_node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
         owner_client_pool_(owner_client_pool) {}
-  ~PubsubClient() = default;
+  ~Subscriber() = default;
 
   void SubcribeObject(const rpc::Address &owner_address, const ObjectID &object_id,
                       SubscriptionCallback subscription_callback,
@@ -109,9 +109,6 @@ class PubsubClient : public PubsubClientInterface {
                                  const rpc::Address &subscriber_address,
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
-
-  /// Private method to handle pubsub server failures.
-  void HandleCoordinatorFailure(const rpc::Address &owner_address);
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
