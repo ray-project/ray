@@ -437,22 +437,21 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _server_init(job_config: JobConfig):
+    def _server_init(self, job_config: JobConfig):
         import ray._private.runtime_env as runtime_env
         # Generate the uri for runtime env
         if job_config is None:
             job_config = JobConfig()
         runtime_env.rewrite_working_dir_uri(job_config)
         init_req = ray_client_pb2.InitRequest(
-            job_config=pickle.dumpd(job_config))
+            job_config=pickle.dumps(job_config))
         try:
             init_ret = self.data_client.Init(init_req)
-            from ray_client_pb2.InitResponse import Status
-            if init_req.status == Status.OK:
+            if init_ret.status == ray_client_pb2.InitResponse.Status.OK:
                 return
-            elif init_req.status == Status.INCOMPATIBLE_RUNTIME_ENV:
+            elif init_ret.status == ray_client_pb2.InitResponse.Status.INCOMPATIBLE_RUNTIME_ENV:
                 raise RuntimeError("Client's runtime env is not the same as server's")
-            elif init_req.status == Status.MISSING_URIS:
+            elif init_ret.status == ray_client_pb2.InitResponse.Status.MISSING_URIS:
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 prep_req = ray_client_pb2.PrepRuntimeEnvRequest(
                     job_config.get_proto_job_config().runtime_env
@@ -462,7 +461,8 @@ class Worker:
                     raise RuntimeError("Failed to prepare runtime environment", prep_ret.msg)
             else:
                 raise RuntimeError("Unknown type: ", init_req.status)
-
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
 
     def _convert_actor(self, actor: "ActorClass") -> str:

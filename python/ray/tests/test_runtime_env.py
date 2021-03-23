@@ -82,6 +82,49 @@ def test_single_node(ray_start_cluster_head, working_dir):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_single_node_client(working_dir):
+    # cluster = ray_start_cluster_head
+    # redis_address = cluster.address
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    driver_script = """
+import sys
+import logging
+sys.path.insert(0, "{working_dir}")
+import test_module
+import ray
+
+job_config = ray.job_config.JobConfig(
+    runtime_env={runtime_env}
+)
+
+ray.util.connect("localhost:10002", job_config=job_config)
+
+
+@ray.remote
+def run_test():
+    return test_module.one()
+
+@ray.remote
+class TestActor(object):
+    @ray.method(num_returns=1)
+    def one(self):
+        return test_module.one()
+
+{execute_statement}
+
+ray.shutdown()
+from time import sleep
+sleep(5)
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script)
+    assert out.strip().split()[-1] == "1000"
+    from ray._private.runtime_env import PKG_DIR
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_two_node(two_node_cluster, working_dir):
     cluster, _ = two_node_cluster
     redis_address = cluster.address

@@ -246,7 +246,7 @@ message InitResponse {
 }
 
 message PrepRuntimeEnvRequest {
-  RuntimeEnv runtime_env = 1
+  RuntimeEnv runtime_env = 1;
 }
 
 message PrepRuntimeEnvResponse {

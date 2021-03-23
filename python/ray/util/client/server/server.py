@@ -4,13 +4,14 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
-
+import sys
 import threading
 from typing import Any
+from typing import List
 from typing import Dict
 from typing import Set
 from typing import Optional
-
+from typing import Callable
 from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
@@ -50,6 +51,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.ray_connect_handler = ray_connect_handler
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
+        import pickle
         job_config = pickle.loads(request.job_config)
         job_config.client_job = True
         current_job_config = None
@@ -58,7 +60,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 worker = ray.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
-                ray_connect_handler(job_config)
+                self.ray_connect_handler(job_config)
+        job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config and set(job_config.runtime_env.uris) != set(current_job_config.runtime_env.uris):
@@ -401,17 +404,18 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
 
-    def _prepare_runtime_env(self, job_runtime_env): -> List[str]
+    def _prepare_runtime_env(self, job_runtime_env) -> List[str]:
         missing_uris = []
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
             for uri in uris:
-                if not runtime_env.package_exists(uri):
-                    try:
+                try:
+                    if not runtime_env.package_exists(uri):
                         runtime_env.fetch_package(uri)
-                    except IOError:
-                        missing_uris.add(uri)
+                    sys.path.insert(0, str(runtime_env._get_local_path(uri)))
+                except IOError:
+                    missing_uris.append(uri)
         return missing_uris
 
     def lookup_or_register_func(
@@ -509,8 +513,7 @@ def serve(connection_str, ray_connect_handler=None):
             ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
         ])
     task_servicer = RayletServicer(ray_connect_handler)
-    data_servicer = DataServicer(
-        task_servicer, ray_connect_handler=ray_connect_handler)
+    data_servicer = DataServicer(task_servicer)
     logs_servicer = LogstreamServicer()
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)

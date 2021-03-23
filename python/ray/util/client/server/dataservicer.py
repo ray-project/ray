@@ -3,7 +3,7 @@ import logging
 import grpc
 import sys
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 from threading import Lock
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -21,12 +21,11 @@ logger = logging.getLogger(__name__)
 
 
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
-    def __init__(self, basic_service: "RayletServicer",
-                 ray_connect_handler: Callable):
+    def __init__(self, basic_service: "RayletServicer"):
         self.basic_service = basic_service
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
-        self.ray_connect_handler = ray_connect_handler
+
 
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
@@ -56,10 +55,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                                     "RAY_CLIENT_SERVER_MAX_THREADS env var "
                                     f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
                             return
-                        resp = self.basic_service._init(init_request)
+                        resp_init = self.basic_service.Init(req.init)
                         self.num_clients += 1
                         logger.debug(f"Accepted data connection from {client_id}. "
                                      f"Total clients: {self.num_clients}")
+                        resp = ray_client_pb2.DataResponse(init=resp_init, )
                         accepted_connection = True
                 else:
                     assert accepted_connection
@@ -107,12 +107,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     if self.num_clients == 0:
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
-
-    def _ray_init(self, init_request, context):
-        with disable_client_hook():
-            # It's important to keep the ray initialization call
-            # within this locked context or else Ray could hang.
-
 
     def _build_connection_response(self):
         with self.clients_lock:

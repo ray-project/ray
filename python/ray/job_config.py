@@ -57,6 +57,7 @@ class JobConfig:
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
         job_config.runtime_env.CopyFrom(self._get_proto_runtime())
+        return job_config
 
     def get_runtime_env_uris(self):
         if self.runtime_env.get("working_dir_uri"):
