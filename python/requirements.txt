@@ -37,7 +37,7 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic<1.7
+pydantic
 dataclasses; python_version < '3.7'
 starlette
 
@@ -76,5 +76,6 @@ testfixtures
 werkzeug
 xlrd
 starlette
+fastapi
 smart_open[s3]
 tqdm
