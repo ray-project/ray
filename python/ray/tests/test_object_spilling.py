@@ -7,69 +7,12 @@ import sys
 import numpy as np
 import pytest
 import ray
+from ray.tests.conftest import (file_system_object_spilling_config,
+                                mock_distributed_fs_object_spilling_config)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
-
-# -- Smart open param --
-bucket_name = "object-spilling-test"
-
-# -- File system param --
-spill_local_path = "/tmp/spill"
-
-# -- Spilling configs --
-file_system_object_spilling_config = {
-    "type": "filesystem",
-    "params": {
-        "directory_path": spill_local_path
-    }
-}
-# Since we have differet protocol for a local external storage (e.g., fs)
-# and distributed external storage (e.g., S3), we need to test both cases.
-# This mocks the distributed fs with cluster utils.
-mock_distributed_fs_object_spilling_config = {
-    "type": "mock_distributed_fs",
-    "params": {
-        "directory_path": spill_local_path
-    }
-}
-smart_open_object_spilling_config = {
-    "type": "smart_open",
-    "params": {
-        "uri": f"s3://{bucket_name}/"
-    }
-}
-
-
-def create_object_spilling_config(request, tmp_path):
-    temp_folder = tmp_path / "spill"
-    temp_folder.mkdir()
-    if (request.param["type"] == "filesystem"
-            or request.param["type"] == "mock_distributed_fs"):
-        request.param["params"]["directory_path"] = str(temp_folder)
-    return json.dumps(request.param), temp_folder
-
-
-@pytest.fixture(
-    scope="function",
-    params=[
-        file_system_object_spilling_config,
-        # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
-    ])
-def object_spilling_config(request, tmp_path):
-    yield create_object_spilling_config(request, tmp_path)
-
-
-@pytest.fixture(
-    scope="function",
-    params=[
-        file_system_object_spilling_config,
-        mock_distributed_fs_object_spilling_config
-    ])
-def multi_node_object_spilling_config(request, tmp_path):
-    yield create_object_spilling_config(request, tmp_path)
 
 
 def run_basic_workload():
