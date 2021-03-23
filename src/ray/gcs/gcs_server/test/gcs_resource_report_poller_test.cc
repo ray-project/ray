@@ -51,7 +51,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
 
   void Tick(int64_t inc) {
     current_time_ += inc;
-    gcs_resource_report_poller_.Tick();
+    gcs_resource_report_poller_.TryPullResourceReport();
   }
 
   int64_t current_time_;
@@ -78,7 +78,7 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
       };
 
   auto node_info = Mocker::GenNodeInfo();
-  gcs_resource_report_poller_.HandleNodeAdded(node_info);
+  gcs_resource_report_poller_.HandleNodeAdded(*node_info);
   // We try to send the rpc from the polling service.
   ASSERT_FALSE(rpc_sent);
   RunPollingService();
@@ -110,7 +110,7 @@ TEST_F(GcsResourceReportPollerTest, TestFailedRpc) {
       };
 
   auto node_info = Mocker::GenNodeInfo();
-  gcs_resource_report_poller_.HandleNodeAdded(node_info);
+  gcs_resource_report_poller_.HandleNodeAdded(*node_info);
   // We try to send the rpc from the polling service.
   ASSERT_FALSE(rpc_sent);
   RunPollingService();
@@ -148,7 +148,7 @@ TEST_F(GcsResourceReportPollerTest, TestMaxInFlight) {
       };
 
   for (const auto &node : nodes) {
-    gcs_resource_report_poller_.HandleNodeAdded(node);
+    gcs_resource_report_poller_.HandleNodeAdded(*node);
   }
   RunPollingService();
   ASSERT_EQ(num_rpcs_sent, 100);
@@ -183,7 +183,7 @@ TEST_F(GcsResourceReportPollerTest, TestNodeRemoval) {
       };
 
   for (const auto &node : nodes) {
-    gcs_resource_report_poller_.HandleNodeAdded(node);
+    gcs_resource_report_poller_.HandleNodeAdded(*node);
   }
   RunPollingService();
   ASSERT_EQ(num_rpcs_sent, 100);
@@ -195,7 +195,7 @@ TEST_F(GcsResourceReportPollerTest, TestNodeRemoval) {
   // Remove the nodes while there are inflight rpcs.
   // Since we added all the nodes at once, the request order is LIFO.
   for (int i = 199; i >= 100; i--) {
-    gcs_resource_report_poller_.HandleNodeRemoved(nodes[i]);
+    gcs_resource_report_poller_.HandleNodeRemoved(*nodes[i]);
   }
 
   for (int i = 0; i < 100; i++) {
@@ -232,7 +232,7 @@ TEST_F(GcsResourceReportPollerTest, TestPrioritizeNewNodes) {
 
   for (int i = 0; i < 100; i++) {
     const auto &node = nodes[i];
-    gcs_resource_report_poller_.HandleNodeAdded(node);
+    gcs_resource_report_poller_.HandleNodeAdded(*node);
   }
   RunPollingService();
   ASSERT_EQ(num_rpcs_sent, 100);
@@ -260,7 +260,7 @@ TEST_F(GcsResourceReportPollerTest, TestPrioritizeNewNodes) {
   // We shouuld now request from the new nodes before repeating the first wave of nodes.
   for (int i = 100; i < 200; i++) {
     const auto &node = nodes[i];
-    gcs_resource_report_poller_.HandleNodeAdded(node);
+    gcs_resource_report_poller_.HandleNodeAdded(*node);
   }
   RunPollingService();
   ASSERT_EQ(num_rpcs_sent, 200);
