@@ -153,22 +153,22 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                                        int64_t *violations, bool *is_infeasible);
 
   ///  Find a node in the cluster on which we can schedule a given task request.
-  ///  If `hybrid_policy` is False, see GetBestSchedulableNodeLegacy for the policy.
+  ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
+  ///  In legacy mode, see `GetBestSchedulableNodeLegacy` for a description of the policy.
   ///
-  ///  In the language of https://sre.google/sre-book/load-balancing-datacenter/
-  ///  the policy works as follows:
-  ///    * The subset size is the cluster size.
-  ///    * There is a globally fixed order within the round, with the exception that the
-  ///    local node is always first.
-  ///    * Run a weighted round robin (capability score described below).
-  ///    * Ties are broken by traversal order.
+  ///  \param task_request: Task to be scheduled.
+  ///  \param actor_creation: True if this is an actor creation task.
+  ///  \param force_spillback For non-actor creation requests, pick a remote
+  ///  feasible node. If this is false, then the task may be scheduled to the
+  ///  local node.
+  ///  \param violations: The number of soft constraint violations associated
+  ///                     with the node returned by this function (assuming
+  ///                     a node that can schedule task_req is found).
+  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
   ///
-  ///  The capability score is calculated as follows:
-  ///    * Calculate the critical resource utilization.
-  ///    * If the critical resource utilization ratio is less than `hybrid_threshold_`,
-  ///    the score is 0, else the score is the critical utilization ratio.
-  /// The critical resource utilization is the max(used[resource]/total[resource] for all
-  /// resources on the node).
+  ///  \return -1, if no node can schedule the current request; otherwise,
+  ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
                                  bool force_spillback, int64_t *violations,
                                  bool *is_infeasible);

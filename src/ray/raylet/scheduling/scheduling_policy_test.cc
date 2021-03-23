@@ -110,6 +110,37 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
   ASSERT_EQ(to_schedule, remote_node);
 }
 
+TEST_F(SchedulingPolicyTest, InfeasibleTest) {
+  // All the nodes are infeasible, so we return -1.
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 0, 0));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50);
+  ASSERT_EQ(to_schedule, -1);
+}
+
+TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
+  // Same as AvailableTruncationTest except now none of the nodes are available, but the
+  // tie break logic should apply to feasible nodes too.
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 1));
+  nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 1));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51);
+  ASSERT_EQ(to_schedule, local_node);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -162,7 +162,8 @@ class NodeResources {
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
-  /// Calculate the utilization percentage of each resource and return the highest.
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
