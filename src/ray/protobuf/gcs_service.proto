@@ -523,6 +523,14 @@ service PlacementGroupInfoGcsService {
       returns (WaitPlacementGroupUntilReadyReply);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+/* Please do not modify/remove/change the following messages to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
 message InternalKVGetRequest {
   bytes key = 1;
 }
@@ -580,14 +588,6 @@ service InternalKVGcsService {
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
-
-///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following messages to maintain
-backwards compatibility in autoscaler. This is necessary to make sure we can
-run autoscaler with any version of ray. For example, the K8s operator runs
-autoscaler in a separate pod, if the user upgrades the ray version on the head
-pod autoscaler can crash (if the newer version of ray modified the messages
-below). */
 
 message GetAllResourceUsageRequest {
 }
