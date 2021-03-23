@@ -70,7 +70,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     """
 
     def select_policy(agent_id):
-        if agent_id == "player1":
+        if agent_id == "player_0":
             return "learned"
         else:
             return random.choice(["always_same", "beat_last"])
@@ -109,8 +109,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         if "policy_always_same_reward" not in results["hist_stats"]:
             reward_diff = 0
             continue
-        reward_diff = sum(results["hist_stats"]["policy_always_same_reward"])
-        reward_diff += sum(results["hist_stats"]["policy_beat_last_reward"])
+        reward_diff = sum(results["hist_stats"]["policy_learned_reward"])
         if results["timesteps_total"] > args.stop_timesteps:
             break
         # Reward (difference) reached -> all good, return.
