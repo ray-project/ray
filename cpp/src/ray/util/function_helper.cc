@@ -67,7 +67,8 @@ FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
 
   try {
     auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
-        const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib, "CallInDll");
+        const std::vector<std::shared_ptr<::ray::RayObject>> &)>(*lib,
+                                                                 "TaskExecutionHandler");
     funcs_.emplace(lib_name, execute_func);
     return execute_func;
   } catch (std::exception &e) {
