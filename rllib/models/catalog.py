@@ -328,7 +328,8 @@ class ModelCatalog:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(action_space)
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space, framework="tf")
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 
