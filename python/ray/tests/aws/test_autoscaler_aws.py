@@ -256,7 +256,7 @@ def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
         "IpPermissions"] == CUSTOM_IN_BOUND_RULES
 
     # Confirming boostrap config does not currently touch available node types.
-    assert bootstrapped_config["available_node_types"] == bootstrapped_config[
+    assert bootstrapped_config["available_node_types"] == config[
         "available_node_types"]
 
     # Confirming head and worker subnet_ids are untouched
