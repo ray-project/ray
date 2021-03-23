@@ -295,7 +295,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 def __init__(self, index):
                     self.index = index
                     self.returned_result = []
-                    super().__init__(metric="result", mode="max")
+                    super().__init__(metric="episode_reward_mean", mode="max")
 
                 def suggest(self, trial_id):
                     self.index += 1

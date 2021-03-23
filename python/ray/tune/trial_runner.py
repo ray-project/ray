@@ -214,9 +214,18 @@ class TrialRunner:
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
 
-        # Setting this to 0 still allows adding one new (pending) trial,
-        # but it will prevent us from trying to fill the trial list
-        self._max_pending_trials = 0  # Can be updated in `self.add_trial()`
+        # Set the number of maximum pending trials
+        max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
+        if max_pending_trials == "auto":
+            # Auto detect
+            if isinstance(self._search_alg, BasicVariantGenerator):
+                self._max_pending_trials = 1000
+            else:
+                self._max_pending_trials = 1
+        else:
+            # Manual override
+            self._max_pending_trials = int(max_pending_trials)
+        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
 
         self._metric = metric
 
@@ -556,21 +565,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        if trial.uses_placement_groups and self._max_pending_trials == 0:
-            max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG",
-                                           "auto")
-            if max_pending_trials == "auto":
-                # Auto detect
-                if isinstance(self._search_alg, BasicVariantGenerator):
-                    self._max_pending_trials = 1000
-                else:
-                    self._max_pending_trials = 1
-            else:
-                # Manual override
-                self._max_pending_trials = int(max_pending_trials)
-            self.trial_executor.set_max_pending_trials(
-                self._max_pending_trials)
-
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)

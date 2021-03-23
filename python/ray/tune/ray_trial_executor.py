@@ -788,7 +788,8 @@ class RayTrialExecutor(TrialExecutor):
         """
         if trial.uses_placement_groups:
             return trial in self._staged_trials or self._pg_manager.can_stage(
-            ) or self._pg_manager.has_ready(trial)
+            ) or self._pg_manager.has_ready(
+                trial, update=True)
 
         return self.has_resources(trial.resources)
 
