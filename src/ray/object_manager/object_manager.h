@@ -488,6 +488,7 @@ class ObjectManager : public ObjectManagerInterface,
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// Callback to get the URL of a locally spilled object.
+  /// This returns the empty string if the object was not spilled locally.
   std::function<std::string(const ObjectID &)> get_spilled_object_url_;
 
   /// Pull manager retry timer .
