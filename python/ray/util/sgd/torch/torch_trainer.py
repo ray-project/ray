@@ -646,22 +646,14 @@ class TorchTrainer:
                     "num_cpus_per_worker", kwargs.get("num_cpus_per_worker",
                                                       1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
-                use_local = config.get("use_local",
-                                       kwargs.get("use_local", False))
 
                 bundles = [
-                    # Head bundle
-                    {
-                        "CPU": int(use_local) * num_cpus_per_worker + 1,
-                        "GPU": int(use_local) * int(use_gpu)
-                    }
-                ] + [
                     # Worker bundles
                     {
                         "CPU": num_cpus_per_worker,
                         "GPU": int(use_gpu)
                     }
-                ] * (num_workers - int(use_local))
+                ] * num_workers
 
                 return PlacementGroupFactory(bundles, strategy="PACK")
 
