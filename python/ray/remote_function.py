@@ -106,6 +106,30 @@ class RemoteFunction:
 
         self.remote = _remote_proxy
 
+        @staticmethod
+        def _tracing_wrap_function(function):
+            def _resume_trace(
+                    *args: Any,
+                    _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+                    **kwargs: Any,
+            ) -> Any:
+                tracer = trace.get_tracer(__name__)
+
+                assert (_ray_trace_ctx is
+                        not None), f"Missing ray_trace_ctx!: {args}, {kwargs}"
+
+                # Set a new context if given a _ray_trace_ctx, or default to current_context
+                # Retrieves the context from the _ray_trace_ctx dictionary we injected
+                with use_context(DictPropagator.extract(
+                        _ray_trace_ctx)), tracer.start_as_current_span(
+                            _function_span_consumer_name(_function_name),
+                            kind=trace.SpanKind.CONSUMER,
+                            attributes=_function_hydrate_span_args(_function_name),
+                        ):
+                    return function(*args, **kwargs)
+
+            return _resume_trace
+
     def __call__(self, *args, **kwargs):
         raise TypeError("Remote functions cannot be called directly. Instead "
                         f"of running '{self._function_name}()', "
