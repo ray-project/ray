@@ -32,7 +32,6 @@ def get_default_fixture_ray_kwargs():
     ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
-        "dashboard_port": None,
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -53,7 +52,6 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
-
     with _ray_start(
             num_cpus=1, include_dashboard=True, **param) as address_info:
         yield address_info
