@@ -10,11 +10,10 @@ import string
 import time
 from typing import Iterable, List, Tuple, Dict, Optional, Type
 import os
-from fastapi.routing import APIRoute
-from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
 from fastapi import Depends, APIRouter, FastAPI
+from fastapi.routing import APIRoute
 import starlette.requests
 import starlette.responses
 import requests
@@ -22,8 +21,8 @@ import numpy as np
 import pydantic
 
 import ray
-from ray import serve
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.exceptions import RayServeException
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -455,6 +454,7 @@ def make_fastapi_class_based_view(fastapi_app: FastAPI, cls: Type) -> None:
     """
 
     def yield_current_servable_instance():
+        from ray import serve
         yield serve.get_replica_context().servable_object
 
     # Find all the class method routes
