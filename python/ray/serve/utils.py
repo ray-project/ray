@@ -12,8 +12,6 @@ from typing import Iterable, List, Tuple, Dict, Optional, Type
 import os
 from collections import UserDict
 
-from fastapi import Depends, APIRouter, FastAPI
-from fastapi.routing import APIRoute
 import starlette.requests
 import starlette.responses
 import requests
@@ -436,7 +434,7 @@ class ASGIHTTPSender:
             headers=dict(self.header))
 
 
-def make_fastapi_class_based_view(fastapi_app: FastAPI, cls: Type) -> None:
+def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
     Modified from
@@ -452,6 +450,9 @@ def make_fastapi_class_based_view(fastapi_app: FastAPI, cls: Type) -> None:
     >>> make_fastapi_class_based_view(app, A)
     >>> # now app can be run properly
     """
+    # Delayed import to prevent ciruclar imports in workers.
+    from fastapi import Depends, APIRouter
+    from fastapi.routing import APIRoute
 
     def yield_current_servable_instance():
         from ray import serve

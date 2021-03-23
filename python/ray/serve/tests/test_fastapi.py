@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 import requests
 import pytest
+import inspect
 
 from ray import serve
+from ray.serve.utils import make_fastapi_class_based_view
 
 
 def test_fastapi_function(serve_instance):
@@ -73,6 +75,31 @@ def test_class_based_view(serve_instance):
     assert resp.json() == 40
     resp = requests.get(f"http://localhost:8000/f/other")
     assert resp.json() == "hello"
+
+
+def test_make_fastapi_cbv_util():
+    app = FastAPI()
+
+    class A:
+        @app.get("/{i}")
+        def b(self, i: int):
+            pass
+
+    # before, "self" is treated as a query params
+    assert app.routes[-1].endpoint == A.b
+    assert app.routes[-1].dependant.query_params[0].name == "self"
+    assert len(app.routes[-1].dependant.dependencies) == 0
+
+    make_fastapi_class_based_view(app, A)
+
+    # after, "self" is treated as a dependency instead of query params
+    assert app.routes[-1].endpoint == A.b
+    assert len(app.routes[-1].dependant.query_params) == 0
+    assert len(app.routes[-1].dependant.dependencies) == 1
+    self_dep = app.routes[-1].dependant.dependencies[0]
+    assert self_dep.name == "self"
+    assert inspect.isfunction(self_dep.call)
+    assert "yield_current_servable" in str(self_dep.call)
 
 
 if __name__ == "__main__":

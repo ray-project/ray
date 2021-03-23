@@ -54,7 +54,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
-    servable_object: Any
+    servable_object: Callable
 
 
 def create_or_get_async_loop_in_thread():
@@ -69,8 +69,12 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-def _set_internal_replica_context(backend_tag, replica_tag, controller_name,
-                                  servable_object):
+def _set_internal_replica_context(
+        backend_tag: BackendTag,
+        replica_tag: ReplicaTag,
+        controller_name: str,
+        servable_object: Callable,
+):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         backend_tag, replica_tag, controller_name, servable_object)
