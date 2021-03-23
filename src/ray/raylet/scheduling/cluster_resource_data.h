@@ -181,7 +181,7 @@ class NodeResources {
 };
 
 /// Total and available capacities of each resource instance.
-
+/// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
   /// Available and total capacities for each instance of a predefined resource.

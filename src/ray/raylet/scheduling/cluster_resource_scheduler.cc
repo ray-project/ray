@@ -216,7 +216,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNodeLegacy(
+int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
     const TaskRequest &task_req, bool actor_creation, bool force_spillback,
     int64_t *total_violations, bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
@@ -341,7 +341,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          int64_t *total_violations,
                                                          bool *is_infeasible) {
   if (!hybrid_spillback_) {
-    return GetBestSchedulableNodeLegacy(task_req, actor_creation, force_spillback,
+    return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
                                         total_violations, is_infeasible);
   }
 

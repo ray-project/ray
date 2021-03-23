@@ -177,8 +177,6 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
 
     float utilization = 1 - (capacity.available.Double() / capacity.total.Double());
     if (utilization > highest) {
-      RAY_LOG(ERROR) << "Utilization: " << utilization << " from: " << i << ". "
-                     << capacity.available << "/" << capacity.total;
       highest = utilization;
     }
   }

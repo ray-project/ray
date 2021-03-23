@@ -31,7 +31,6 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
     RAY_CHECK(it != nodes.end());
     const auto &node = it->second;
     if (!node.GetLocalView().IsFeasible(task_request)) {
-      RAY_LOG(ERROR) << "Skipping node " << node_id << " because it's infeasible";
       // Skip infeasible nodes. This task can sit on any raylet's infeasible queue.
       continue;
     }
@@ -43,8 +42,6 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
       critical_resource_utilization = 0;
     }
 
-    RAY_LOG(ERROR) << "Node with id: " << node_id << " is available: " << is_available
-                   << ".";
 
     bool update_best_node = false;
 
@@ -63,9 +60,6 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
     }
 
     if (update_best_node) {
-      RAY_LOG(ERROR) << "Best node is now: " << node_id
-                     << " with utilization: " << critical_resource_utilization
-                     << " and it is " << (is_available ? "availabile" : "not available");
       best_node_id = node_id;
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;
