@@ -105,6 +105,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
 
       // Wait for the placement group to be ready within the specified time(unit is seconds).
       boolean ready = pg.wait(60);
+      Assert.assertTrue(ready);
 
       // You can look at placement group states using this API.
       List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
@@ -197,6 +198,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. code-block:: java
 
+        // Before you run this code, you need to make sure there are only two "CPU" are available.
         public static class Counter {
           public static String ping() {
             return "pong";
@@ -217,17 +219,17 @@ Let's create a placement group. Recall that each bundle is a collection of resou
             .build();
 
         PlacementGroup pg = Ray.createPlacementGroup(options);
-        boolean isCreated = pg.wait(60)
+        boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
-        # Won't be scheduled because there are no 2 cpus.
+        // Won't be scheduled because there are no 2 cpus.
         Ray.task(Counter::ping)
-          .setResource("CPU", 2.0)
+          .setResource("CPU", 1.0)
           .remote();
 
-        # Will be scheduled because 2 cpus are reserved by the placement group.
+        // Will be scheduled because 2 cpus are reserved by the placement group.
         Ray.task(Counter::ping)
-          .setPlacementGroup(placementGroup, 0)
+          .setPlacementGroup(pg, 0)
           .setResource("CPU", 2.0)
           .remote();
 
@@ -258,6 +260,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. code-block:: java
 
+        // Before you run this code, you need to make sure there are two "CPU" and two "extra_resource" are available.
         List<Map<String, Double>> bundles = new ArrayList<>();
         Map<String, Double> bundle1 = new HashMap<>();
         Map<String, Double> bundle2 = new HashMap<>();
@@ -280,7 +283,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
             .build();
 
         PlacementGroup pg = Ray.createPlacementGroup(options);
-        boolean isCreated = pg.wait(60)
+        boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
@@ -321,6 +324,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 
     .. code-block:: java
 
+      // Before you run this code, you need to make sure there are two "CPU" and two "extra_resource" are available.
       public static class Counter {
         private int value;
 
@@ -472,7 +476,7 @@ See :ref:`placement-group-lifetimes` for more details.
       // Create a placement group with a globally unique name.
       List<Map<String, Double>> bundles = new ArrayList<>();
       Map<String, Double> bundle1 = new HashMap<>();
-      bundle1.put("CPU", 2.0);
+      bundle1.put("CPU", 1.0);
       bundles.add(bundle1);
 
       PlacementGroupCreationOptions options =
@@ -482,8 +486,8 @@ See :ref:`placement-group-lifetimes` for more details.
           .setGlobalName("global_name")
           .build();
 
-      PlacementGroup group = Ray.createPlacementGroup(options);
-      group.wait(60);
+      PlacementGroup pg = Ray.createPlacementGroup(options);
+      pg.wait(60);
 
       ...
 
@@ -496,6 +500,11 @@ See :ref:`placement-group-lifetimes` for more details.
     .. code-block:: java
 
       // Create a placement group with a job-scope-unique name.
+      List<Map<String, Double>> bundles = new ArrayList<>();
+      Map<String, Double> bundle1 = new HashMap<>();
+      bundle1.put("CPU", 1.0);
+      bundles.add(bundle1);
+
       PlacementGroupCreationOptions options =
       new PlacementGroupCreationOptions.Builder()
         .setBundles(bundles)
@@ -503,8 +512,8 @@ See :ref:`placement-group-lifetimes` for more details.
         .setName("non_global_name")
         .build();
 
-      PlacementGroup group = Ray.createPlacementGroup(options);
-      group.wait(60);
+      PlacementGroup pg = Ray.createPlacementGroup(options);
+      pg.wait(60);
 
       ...
 
