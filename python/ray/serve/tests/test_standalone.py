@@ -10,7 +10,7 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
@@ -284,6 +284,7 @@ def test_no_http(ray_shutdown):
         serve.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)

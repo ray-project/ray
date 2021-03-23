@@ -22,35 +22,28 @@ class TestIMPALA(unittest.TestCase):
     def test_impala_compilation(self):
         """Test whether an ImpalaTrainer can be built with both frameworks."""
         config = impala.DEFAULT_CONFIG.copy()
+        config["model"]["lstm_use_prev_action"] = True
+        config["model"]["lstm_use_prev_reward"] = True
         num_iterations = 1
+        env = "CartPole-v0"
 
         for _ in framework_iterator(config):
             local_cfg = config.copy()
-            for env in ["Pendulum-v0", "CartPole-v0"]:
-                print("Env={}".format(env))
-                print("w/o LSTM")
-                # Test w/o LSTM.
-                local_cfg["model"]["use_lstm"] = False
-                local_cfg["num_aggregation_workers"] = 0
-                trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
-                for i in range(num_iterations):
-                    print(trainer.train())
-                check_compute_single_action(trainer)
-                trainer.stop()
-
-                # Test w/ LSTM.
-                print("w/ LSTM")
-                local_cfg["model"]["use_lstm"] = True
-                local_cfg["model"]["lstm_use_prev_action"] = True
-                local_cfg["model"]["lstm_use_prev_reward"] = True
-                local_cfg["num_aggregation_workers"] = 1
+            for lstm in [False, True]:
+                local_cfg["num_aggregation_workers"] = 0 if not lstm else 1
+                local_cfg["model"]["use_lstm"] = lstm
+                print("lstm={} aggregation-worker={}".format(
+                    lstm, local_cfg["num_aggregation_workers"]))
+                # Test with and w/o aggregation workers (this has nothing
+                # to do with LSTMs, though).
                 trainer = impala.ImpalaTrainer(config=local_cfg, env=env)
                 for i in range(num_iterations):
                     print(trainer.train())
                 check_compute_single_action(
                     trainer,
-                    include_state=True,
-                    include_prev_action_reward=True)
+                    include_state=lstm,
+                    include_prev_action_reward=lstm,
+                )
                 trainer.stop()
 
     def test_impala_lr_schedule(self):

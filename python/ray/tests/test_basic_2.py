@@ -9,7 +9,7 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
@@ -341,7 +341,7 @@ def test_call_chain(ray_start_cluster):
 @pytest.mark.skipif(client_test_enabled(), reason="init issue")
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_timeout_milliseconds": 200}
-    cluster = ray._private.cluster_utils.Cluster()
+    cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
         _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
@@ -640,7 +640,7 @@ def test_get_correct_node_ip():
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
-        found_ip = ray._private.services.get_node_ip_address()
+        found_ip = ray.util.get_node_ip_address()
         assert found_ip == "10.0.0.111"
 
 
