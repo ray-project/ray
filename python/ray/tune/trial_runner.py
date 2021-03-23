@@ -557,9 +557,9 @@ class TrialRunner:
             trial (Trial): Trial to queue.
         """
         if trial.uses_placement_groups and self._max_pending_trials == 0:
-            max_pending_trials = int(
-                os.getenv("TUNE_MAX_PENDING_TRIALS_PG", -1))
-            if max_pending_trials == -1:
+            max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG",
+                                           "auto")
+            if max_pending_trials == "auto":
                 # Auto detect
                 if isinstance(self._search_alg, BasicVariantGenerator):
                     self._max_pending_trials = 1000
@@ -567,7 +567,7 @@ class TrialRunner:
                     self._max_pending_trials = 1
             else:
                 # Manual override
-                self._max_pending_trials = max_pending_trials
+                self._max_pending_trials = int(max_pending_trials)
             self.trial_executor.set_max_pending_trials(
                 self._max_pending_trials)
 
