@@ -636,7 +636,6 @@ def _env_runner(
                 off_policy_actions=off_policy_actions,
                 policies=policies,
                 clip_actions=clip_actions,
-                sample_collector=sample_collector,
             )
         perf_stats.action_processing_time += time.time() - t3
 
@@ -711,6 +710,8 @@ def _process_observations(
             and instead record done=False.
         observation_fn (ObservationFunction): Optional multi-agent
             observation func to use for preprocessing observations.
+        sample_collector (SampleCollector): The SampleCollector object
+            used to store and retrieve environment samples.
 
     Returns:
         Tuple:
