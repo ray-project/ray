@@ -13,7 +13,10 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
-from ray.util.tracing import _tracing_wrap_function, _propagate_trace
+from ray.util.tracing import _propagate_trace
+from opentelemetry import trace
+from typing import Any, Dict, Optional
+from ray.util.tracing import DictPropagator, use_context, _function_span_consumer_name, _function_hydrate_span_args
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -71,9 +74,10 @@ class RemoteFunction:
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
-        self._function = _tracing_wrap_function(function)
+        self._function = self._tracing_wrap_function(function)
         self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+            function.__module__ + "." + function.__name__)
+        print(f"function name is {self._function_name}")
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -106,29 +110,32 @@ class RemoteFunction:
 
         self.remote = _remote_proxy
 
-        @staticmethod
-        def _tracing_wrap_function(function):
-            def _resume_trace(
-                    *args: Any,
-                    _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-                    **kwargs: Any,
-            ) -> Any:
-                tracer = trace.get_tracer(__name__)
+    @staticmethod
+    def _tracing_wrap_function(function):
+        print(f"function is {function}")
 
-                assert (_ray_trace_ctx is
-                        not None), f"Missing ray_trace_ctx!: {args}, {kwargs}"
+        def _resume_trace(
+                *args: Any,
+                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+                **kwargs: Any,
+        ) -> Any:
+            tracer = trace.get_tracer(__name__)
 
-                # Set a new context if given a _ray_trace_ctx, or default to current_context
-                # Retrieves the context from the _ray_trace_ctx dictionary we injected
-                with use_context(DictPropagator.extract(
-                        _ray_trace_ctx)), tracer.start_as_current_span(
-                            _function_span_consumer_name(_function_name),
-                            kind=trace.SpanKind.CONSUMER,
-                            attributes=_function_hydrate_span_args(_function_name),
-                        ):
-                    return function(*args, **kwargs)
+            assert (_ray_trace_ctx is
+                    not None), f"Missing ray_trace_ctx!: {args}, {kwargs}"
 
-            return _resume_trace
+            # Set a new context if given a _ray_trace_ctx, or default to current_context
+            # Retrieves the context from the _ray_trace_ctx dictionary we injected
+            with use_context(DictPropagator.extract(
+                    _ray_trace_ctx)), tracer.start_as_current_span(
+                        _function_span_consumer_name(function.__name__),
+                        kind=trace.SpanKind.CONSUMER,
+                        attributes=_function_hydrate_span_args(
+                           function.__name__),
+                    ):
+                return function(*args, **kwargs)
+
+        return _resume_trace
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Remote functions cannot be called directly. Instead "
