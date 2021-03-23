@@ -12,7 +12,7 @@ using ::testing::ElementsAre;
 
 class PullManagerTestWithCapacity {
  public:
-  PullManagerTestWithCapacity(size_t num_available_bytes)
+  PullManagerTestWithCapacity(size_t num_available_bytes, size_t max_available_bytes)
       : self_node_id_(NodeID::FromRandom()),
         object_is_local_(false),
         num_send_pull_request_calls_(0),
@@ -31,7 +31,7 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this]() { num_object_store_full_calls_++; }) {}
+            max_available_bytes, [this]() { num_object_store_full_calls_++; }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.pull_request_bundles_.empty());
@@ -55,7 +55,7 @@ class PullManagerTestWithCapacity {
 
 class PullManagerTest : public PullManagerTestWithCapacity, public ::testing::Test {
  public:
-  PullManagerTest() : PullManagerTestWithCapacity(1) {}
+  PullManagerTest() : PullManagerTestWithCapacity(1, 1) {}
 
   void AssertNumActiveRequestsEquals(size_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
@@ -67,7 +67,7 @@ class PullManagerTest : public PullManagerTestWithCapacity, public ::testing::Te
 class PullManagerWithAdmissionControlTest : public PullManagerTestWithCapacity,
                                             public ::testing::Test {
  public:
-  PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10) {}
+  PullManagerWithAdmissionControlTest() : PullManagerTestWithCapacity(10, 10) {}
 
   void AssertNumActiveRequestsEquals(size_t num_requests) {
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
@@ -526,10 +526,45 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   AssertNoLeaks();
 }
 
+TEST_F(PullManagerWithAdmissionControlTest, TestMaxReservation) {
+  /// Test admission control when the maximum reservation is less than the
+  /// reported availability.
+  for (auto &object_size : {5, 15}) {
+    num_send_pull_request_calls_ = 0;
+    num_object_store_full_calls_ = 0;
+    auto refs = CreateObjectRefs(1);
+    auto oids = ObjectRefsToIds(refs);
+    AssertNumActiveRequestsEquals(0);
+    std::vector<rpc::ObjectReference> objects_to_locate;
+    auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+    // Increase available bytes to more than the object size. We still don't pull
+    // the object because it is over the max.
+    pull_manager_.UpdatePullsBasedOnAvailableMemory(20);
+
+    std::unordered_set<NodeID> client_ids;
+    client_ids.insert(NodeID::FromRandom());
+    ASSERT_FALSE(pull_manager_.IsObjectActive(oids[0]));
+    pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), object_size);
+    if (object_size < 10) {
+      ASSERT_EQ(num_send_pull_request_calls_, 1);
+      ASSERT_TRUE(pull_manager_.IsObjectActive(oids[0]));
+      ASSERT_EQ(num_object_store_full_calls_, 0);
+    } else {
+      ASSERT_EQ(num_send_pull_request_calls_, 0);
+      ASSERT_FALSE(pull_manager_.IsObjectActive(oids[0]));
+      ASSERT_EQ(num_object_store_full_calls_, 1);
+    }
+
+    pull_manager_.CancelPull(req_id);
+  }
+  num_object_store_full_calls_ = 0;
+  AssertNoLeaks();
+}
+
 TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
   /// Test admission control for a queue of pull bundle requests. We should
   /// activate as many requests as we can, subject to the reported capacity.
-  int object_size = 2;
+  int object_size = 1;
   int num_oids_per_request = 2;
   int num_requests = 3;
 
@@ -554,7 +589,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
-  for (int capacity = 0; capacity < 20; capacity++) {
+  for (int capacity = 0; capacity < 10; capacity++) {
     int num_requests_expected =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);

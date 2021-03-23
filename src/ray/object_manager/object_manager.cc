@@ -106,10 +106,20 @@ ObjectManager::ObjectManager(instrumented_io_context &main_service,
   if (available_memory < 0) {
     available_memory = 0;
   }
+
+  RAY_CHECK(RayConfig::instance().pull_manager_memory_fraction() > 0 &&
+            RayConfig::instance().pull_manager_memory_fraction() <= 1)
+      << "pull_manager_memory_fraction must be a nonzero decimal "
+         "less than 1.";
+  size_t pull_manager_reservation = SIZE_MAX;
+  if (plasma::plasma_store_runner != nullptr) {
+    pull_manager_reservation = RayConfig::instance().pull_manager_memory_fraction() *
+                               plasma::plasma_store_runner->GetMemoryCapacity();
+  }
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       restore_spilled_object_, get_time, config.pull_timeout_ms, available_memory,
-      [spill_objects_callback, object_store_full_callback]() {
+      pull_manager_reservation, [spill_objects_callback, object_store_full_callback]() {
         // TODO(swang): This copies the out-of-memory handling in the
         // CreateRequestQueue. It would be nice to unify these.
         if (object_store_full_callback) {

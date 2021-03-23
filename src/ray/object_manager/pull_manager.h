@@ -44,7 +44,8 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available, std::function<void()> object_store_full_callback);
+      size_t num_bytes_available, size_t max_reservation,
+      std::function<void()> object_store_full_callback);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -217,6 +218,10 @@ class PullManager {
   /// The total number of bytes that is available to store objects that we are
   /// pulling.
   size_t num_bytes_available_;
+
+  /// The maximum number of bytes that we are allowed to use (max value for
+  /// num_bytes_available_).
+  const size_t max_reservation_;
 
   /// Triggered when the first request in the queue can't be pulled due to
   /// out-of-memory. This callback should try to make more bytes available.

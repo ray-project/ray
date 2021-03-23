@@ -196,7 +196,13 @@ class ClusterTaskManagerTest : public ::testing::Test {
   }
 
   void AssertPinnedTaskArgumentsEquals(const TaskID &task_id, size_t num_args_expected) {
-    ASSERT_EQ(task_manager_.pinned_task_arguments_[task_id].size(), num_args_expected);
+    size_t num_pinned = 0;
+    auto it = task_manager_.pinned_task_arguments_.find(task_id);
+    if (it != task_manager_.pinned_task_arguments_.end()) {
+      num_pinned = it->second.size();
+    }
+    ASSERT_EQ(num_pinned, num_args_expected);
+
     size_t num_args = 0;
     for (auto &args : task_manager_.pinned_task_arguments_) {
       num_args += args.second.size();
@@ -260,6 +266,59 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, BasicTestWithArg) {
+  /*
+    Test basic scheduler functionality for a task with an argument:
+    1. Queue and attempt to schedule/dispatch a task with an argument that is
+    not available.
+    2. Task argument becomes available. The task's dependencies are subscribed
+    to and pinned for the duration of the task.
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, 1);
+  auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
+  missing_objects_.insert(missing_arg);
+
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  ASSERT_TRUE(
+      dependency_manager_.subscribed_tasks.count(task.GetTaskSpecification().TaskId()));
+  AssertPinnedTaskArgumentsEquals(task.GetTaskSpecification().TaskId(), 0);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  missing_objects_.clear();
+  task_manager_.TasksUnblocked({task.GetTaskSpecification().TaskId()});
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+  ASSERT_TRUE(
+      dependency_manager_.subscribed_tasks.count(task.GetTaskSpecification().TaskId()));
+  AssertPinnedTaskArgumentsEquals(task.GetTaskSpecification().TaskId(), 1);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+  AssertPinnedTaskArgumentsEquals(task.GetTaskSpecification().TaskId(), 0);
+
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -309,10 +368,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 2);
   auto missing_arg = task.GetTaskSpecification().GetDependencyIds()[0];
   missing_objects_.insert(missing_arg);
-  std::unordered_set<TaskID> expected_subscribed_tasks = {
-      task.GetTaskSpecification().TaskId()};
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -324,7 +380,6 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /* This task can run */
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
   task_manager_.QueueAndScheduleTask(task2, &reply, callback);
-  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   AssertPinnedTaskArgumentsEquals(task2.GetTaskSpecification().TaskId(), 1);
   ASSERT_EQ(num_callbacks, 1);
@@ -337,7 +392,6 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
   task_manager_.TasksUnblocked(unblocked);
-  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   AssertPinnedTaskArgumentsEquals(task2.GetTaskSpecification().TaskId(), 1);
   ASSERT_EQ(num_callbacks, 1);
@@ -351,7 +405,6 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   leased_workers_.clear();
 
   task_manager_.ScheduleAndDispatchTasks();
-  ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
 
   // Task2 is now done so task can run.
   AssertPinnedTaskArgumentsEquals(task.GetTaskSpecification().TaskId(), 2);
