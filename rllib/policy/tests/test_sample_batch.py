@@ -20,9 +20,9 @@ class TestSampleBatch(unittest.TestCase):
             "b": np.array([[0.1, 0.2], [0.3, 0.4]]),
             "c": True,
         }
-        batch = SampleBatch(base_dict, _dont_check_lens=True)
+        batch = SampleBatch(base_dict)
         try:
-            SampleBatch(base_dict, _dont_check_lens=False)
+            SampleBatch(base_dict)
         except AssertionError:
             pass  # expected
         keys_ = list(base_dict.keys())

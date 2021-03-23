@@ -319,7 +319,8 @@ class DynamicTFPolicy(TFPolicy):
             # Pass through model. E.g., PG, PPO.
             else:
                 if isinstance(self.model, tf.keras.Model):
-                    dist_inputs, self._state_out = self.model(self._input_dict)
+                    dist_inputs, self._state_out, self._extra_action_fetches =\
+                        self.model(self._input_dict)
                 else:
                     dist_inputs, self._state_out = self.model(
                         self._input_dict, self._state_inputs, self._seq_lens)

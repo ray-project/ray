@@ -5,7 +5,6 @@ import unittest
 import ray
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.models.modelv3 import RNNModel
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
 from ray.rllib.utils.framework import try_import_tf
@@ -65,11 +64,14 @@ class TestModels(unittest.TestCase):
         self.assertTrue("fc_net.base_model.value_out.bias:0" in vars)
 
     def test_modelv3(self):
-        ModelCatalog.register_custom_model("keras_model", RNNModel)
         config = {
             "env": "CartPole-v0",
             "model": {
-                "custom_model": "keras_model",
+                "custom_model": RNNModel,
+                "custom_model_config": {
+                    "hiddens_size": 64,
+                    "cell_size": 128,
+                },
             },
             "num_workers": 0,
         }

@@ -70,7 +70,6 @@ class SampleBatch(dict):
                 "seq_lens", None))
         if isinstance(self.seq_lens, list):
             self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
-        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
                 not (tf and tf.is_tensor(self.seq_lens)) and \
@@ -104,20 +103,12 @@ class SampleBatch(dict):
             if isinstance(v, list):
                 self[k] = np.array(v)
 
-        if not lengths:
-            raise ValueError("Empty sample batch")
-
-        if not self.dont_check_lens:
-            assert len(set(lengths)) == 1, \
-                "Data columns must be same length, but lens are " \
-                "{}".format(lengths)
-
         if self.seq_lens is not None and \
                 not (tf and tf.is_tensor(self.seq_lens)) and \
                 len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = lengths[0]
+            self.count = lengths[0] if lengths else 0
 
     @PublicAPI
     def __len__(self):
@@ -161,7 +152,6 @@ class SampleBatch(dict):
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
             _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True,
             _zero_padded=zero_padded,
             _max_seq_len=max_seq_len,
         )
@@ -211,7 +201,7 @@ class SampleBatch(dict):
                 for (k, v) in self.items()
             },
             _seq_lens=self.seq_lens,
-            _dont_check_lens=self.dont_check_lens)
+        )
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
 
@@ -353,7 +343,7 @@ class SampleBatch(dict):
                 data,
                 _seq_lens=np.array(seq_lens, dtype=np.int32),
                 _time_major=self.time_major,
-                _dont_check_lens=True)
+            )
         else:
             return SampleBatch(
                 {k: v[start:end]

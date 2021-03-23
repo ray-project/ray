@@ -214,11 +214,16 @@ def build_tf_policy(
                                          config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
+
                 if extra_action_out_fn is None:
-                    policy._extra_action_fetches = {}
+                    extra_action_fetches = {}
                 else:
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
+                    extra_action_fetches = extra_action_out_fn(policy)
+
+                if hasattr(policy, "_extra_action_fetches"):
+                    policy._extra_action_fetches.update(extra_action_fetches)
+                else:
+                    policy._extra_action_fetches = extra_action_fetches
 
             DynamicTFPolicy.__init__(
                 self,

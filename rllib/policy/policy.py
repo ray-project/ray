@@ -750,7 +750,7 @@ class Policy(metaclass=ABCMeta):
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
-        return SampleBatch(ret, _dont_check_lens=True)
+        return SampleBatch(ret)
 
     def _update_model_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.

@@ -19,7 +19,8 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -418,26 +419,45 @@ class ModelCatalog:
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
-                    # Try calling with kwargs first (custom ModelV2 should
-                    # accept these as kwargs, not get them from
-                    # config["custom_model_config"] anymore).
-                    try:
-                        instance = model_cls(obs_space, action_space,
-                                             num_outputs, model_config, name,
-                                             **customized_model_kwargs)
-                    except TypeError as e:
-                        # Keyword error: Try old way w/o kwargs.
-                        if "__init__() got an unexpected " in e.args[0]:
-                            instance = model_cls(obs_space, action_space,
-                                                 num_outputs, model_config,
-                                                 name, **model_kwargs)
-                            logger.warning(
-                                "Custom ModelV2 should accept all custom "
-                                "options as **kwargs, instead of expecting"
-                                " them in config['custom_model_config']!")
-                        # Other error -> re-raise.
-                        else:
-                            raise e
+                    if issubclass(model_cls, tf.keras.Model):
+                        instance = model_cls(
+                            input_space=obs_space,
+                            action_space=action_space,
+                            num_outputs=num_outputs,
+                            name=name,
+                            **customized_model_kwargs,
+                        )
+                    else:
+                        # Try calling with kwargs first (custom ModelV2 should
+                        # accept these as kwargs, not get them from
+                        # config["custom_model_config"] anymore).
+                        try:
+                            instance = model_cls(
+                                obs_space,
+                                action_space,
+                                num_outputs,
+                                model_config,
+                                name,
+                                **customized_model_kwargs,
+                            )
+                        except TypeError as e:
+                            # Keyword error: Try old way w/o kwargs.
+                            if "__init__() got an unexpected " in e.args[0]:
+                                instance = model_cls(
+                                    obs_space,
+                                    action_space,
+                                    num_outputs,
+                                    model_config,
+                                    name,
+                                    **model_kwargs,
+                                )
+                                logger.warning(
+                                    "Custom ModelV2 should accept all custom "
+                                    "options as **kwargs, instead of expecting"
+                                    " them in config['custom_model_config']!")
+                            # Other error -> re-raise.
+                            else:
+                                raise e
 
                 # User still registered TFModelV2's variables: Check, whether
                 # ok.
@@ -666,6 +686,8 @@ class ModelCatalog:
             model_name (str): Name to register the model under.
             model_class (type): Python class of the model.
         """
+        if issubclass(model_class, tf.keras.Model):
+            deprecation_warning(old="register_custom_model", error=False)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod

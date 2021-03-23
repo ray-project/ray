@@ -1,5 +1,6 @@
 import numpy as np
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf1, tf, tfv = try_import_tf()
@@ -13,11 +14,11 @@ class RNNModel(tf.keras.models.Model if tf else object):
                  input_space,
                  action_space,
                  num_outputs,
-                 model_config,
-                 name,
+                 *,
+                 name="",
                  hiddens_size=256,
                  cell_size=64):
-        super(RNNModel, self).__init__()
+        super().__init__(name=name)
 
         self.cell_size = cell_size
 
@@ -46,14 +47,11 @@ class RNNModel(tf.keras.models.Model if tf else object):
         )
         lstm_out = tf.reshape(lstm_out, [-1, lstm_out.shape.as_list()[2]])
         logits = self.logits(lstm_out)
-        self._value_out = self.values(lstm_out)
-        return logits, [h, c]
+        values = tf.reshape(self.values(lstm_out), [-1])
+        return logits, [h, c], {SampleBatch.VF_PREDS: values}
 
     def get_initial_state(self):
         return [
             np.zeros(self.cell_size, np.float32),
             np.zeros(self.cell_size, np.float32),
         ]
-
-    def value_function(self):
-        return tf.reshape(self._value_out, [-1])
