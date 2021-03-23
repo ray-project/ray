@@ -1,5 +1,5 @@
 from typing import List, Tuple, Dict, Any
-
+from ray.job_config import JobConfig
 import os
 import sys
 import logging
@@ -29,6 +29,7 @@ class RayAPIStub:
 
     def connect(self,
                 conn_str: str,
+                job_config: JobConfig = None,
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
@@ -63,6 +64,7 @@ class RayAPIStub:
         try:
             self.client_worker = Worker(
                 conn_str,
+                job_config=job_config,
                 secure=secure,
                 metadata=metadata,
                 connection_retries=connection_retries)

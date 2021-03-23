@@ -15,6 +15,7 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
+        client_job (bool): A boolean represent the source of the job.
     """
 
     def __init__(self,
@@ -22,7 +23,8 @@ class JobConfig:
                  num_java_workers_per_process=1,
                  jvm_options=None,
                  code_search_path=None,
-                 runtime_env=None):
+                 runtime_env=None,
+                 client_job=False):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -40,8 +42,13 @@ class JobConfig:
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
         self.runtime_env = runtime_env or dict()
+        self.client_job = client_job
 
     def serialize(self):
+        job_config = self.get_proto_job_config()
+        return job_config.SerializeToString()
+
+    def get_proto_job_config(self):
         job_config = ray.gcs_utils.JobConfig()
         for key in self.worker_env:
             job_config.worker_env[key] = self.worker_env[key]
@@ -50,7 +57,6 @@ class JobConfig:
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
         job_config.runtime_env.CopyFrom(self._get_proto_runtime())
-        return job_config.SerializeToString()
 
     def get_runtime_env_uris(self):
         if self.runtime_env.get("working_dir_uri"):

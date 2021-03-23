@@ -46,16 +46,8 @@ message GetAllJobInfoReply {
 message ReportJobErrorRequest {
   ErrorTableData job_error = 1;
 }
-
 message ReportJobErrorReply {
   GcsStatus status = 1;
-}
-
-message UpdateJobRuntimeEnvRequest {
-  RuntimeEnv runtime_env = 1;
-}
-
-message UpdateJobRuntimeEnvReply {
 }
 
 // Service for job info access.
@@ -68,8 +60,6 @@ service JobInfoGcsService {
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
   // Report job error.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
-  // Update job runtime env
-  rpc UpdateJobRuntimeEnv(UpdateJobRuntimeEnvRequest) returns (UpdateJobRuntimeEnvReply);
 }
 
 message GetActorInfoRequest {

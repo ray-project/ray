@@ -162,7 +162,7 @@ cc_proto_library(
 proto_library(
     name = "ray_client_proto",
     srcs = ["ray_client.proto"],
-    deps = [":common_proto"],
+    deps = [],
 )
 
 python_grpc_compile(

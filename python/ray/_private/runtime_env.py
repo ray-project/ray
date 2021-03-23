@@ -226,7 +226,7 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
             _zip_module(module_path, module_path.parent, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
+def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     """Fetch a package from a given uri.
 
     This function is used to fetch a pacakge from the given uri to local
@@ -240,9 +240,13 @@ def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
     Returns:
         The number of bytes downloaded.
     """
+    if pkg_file is None:
+        pkg_file = Path(_get_local_path(pkg_uri))
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         code = _internal_kv_get(pkg_uri)
+        if code is None:
+            raise IOError("Fetch uri failed")
         code = code or b""
         pkg_file.write_bytes(code)
         return len(code)
@@ -354,17 +358,23 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
     """
 
     assert _internal_kv_initialized()
+    failed_uris = []
     for pkg_uri in pkg_uris:
         pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
         lock = FileLock(str(pkg_file) + ".lock")
-        with lock:
-            # TODO(yic): checksum calculation is required
-            if pkg_file.exists():
-                logger.debug(
-                    f"{pkg_uri} has existed locally, skip downloading")
-            else:
-                pkg_size = fetch_package(pkg_uri, pkg_file)
-                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-        sys.path.insert(0, str(pkg_file))
+        try:
+            with lock:
+                # TODO(yic): checksum calculation is required
+                if pkg_file.exists():
+                    logger.debug(
+                        f"{pkg_uri} has existed locally, skip downloading")
+                else:
+                    pkg_size = fetch_package(pkg_uri, pkg_file)
+                    logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
+            sys.path.insert(0, str(pkg_file))
+        except IOError as e:
+            logger.error(e)
+            failed_uris.add(pkg_uri)
+    return failed_uris

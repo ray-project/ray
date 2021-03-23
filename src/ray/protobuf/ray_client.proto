@@ -231,23 +231,34 @@ message KVListResponse {
   repeated bytes keys = 1;
 }
 
-message UpdateRuntimeEnvRequest {
-  RuntimeEnv runtime_env = 1;
+message InitRequest {
+  // job_config of ray.init
+  bytes job_config = 1;
 }
 
-message UpdateRuntimeEnvReply {
-  RuntimeEnv missing = 1;
+message InitResponse {
+  enum Status {
+    OK = 0;
+    MISSING_URIS = 1;
+    INCOMPATIBLE_RUNTIME_ENV = 2;
+  }
+  Status status = 1;
 }
 
-message DriverReadyRequest {
+message PrepRuntimeEnvRequest {
+  RuntimeEnv runtime_env = 1
 }
 
-message DriverReadyReply {
-  bool is_ready = 1;
-  string message = 2;
+message PrepRuntimeEnvResponse {
+  bool ok = 1;
+  string msg = 2;
 }
 
 service RayletDriver {
+  rpc Init(InitRequest) returns (InitResponse) {
+  }
+  rpc PrepRuntimeeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
+  }
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
   rpc PutObject(PutRequest) returns (PutResponse) {
@@ -267,10 +278,6 @@ service RayletDriver {
   rpc KVDel(KVDelRequest) returns (KVDelResponse) {
   }
   rpc KVList(KVListRequest) returns (KVListResponse) {
-  }
-  rpc UpdateRuntimeEnv(UpdateRuntimeEnvRequest) returns (UpdateRuntimeEnvReply) {
-  }
-  rpc DriverReady(DriverReadyRequest) returns (DriverReadyReply) {
   }
 }
 
@@ -310,6 +317,8 @@ message DataRequest {
     PutRequest put = 3;
     ReleaseRequest release = 4;
     ConnectionInfoRequest connection_info = 5;
+    InitRequest init = 6;
+    PrepRuntimeEnvRequest prep_runtime_env = 7;
   }
 }
 
@@ -321,6 +330,8 @@ message DataResponse {
     PutResponse put = 3;
     ReleaseResponse release = 4;
     ConnectionInfoResponse connection_info = 5;
+    InitResponse init = 6;
+    PrepRuntimeEnvResponse prep_runtime_env = 7;
   }
 }
 
