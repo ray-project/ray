@@ -86,7 +86,7 @@ def describe_a_security_group(ec2_client_stub, security_group):
 
 
 def describe_an_sg_2(ec2_client_stub, security_group):
-    """Same as last method, different input param format.
+    """Same as last function, different input param format.
 
     A call with this input parameter format is made when sg.ip_permissions is
     accessed in aws/config.py.
