@@ -1,3 +1,7 @@
+"""
+@author jennakwon06
+"""
+
 import ray
 import copy
 import logging
@@ -12,7 +16,7 @@ import math
 SAMPLING_RATE_PER_SECOND = 200000
 NUM_CHANNELS = 3
 # Number of minutes we process per data producer.
-NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER = 43800
+NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER = 200000
 NUM_DATA_PRODUCERS = 1
 NUM_MINS_PER_INPUT_FILE = 10
 NUM_MINS_PER_OUTPUT_FILE = 30
@@ -275,11 +279,13 @@ def main():
         xarray_filename_pairs = list()  # list of tuples
 
         # 1. Load 1 month Xarray
+        print("Load 1 month Xarray")
         xr1 = ProcessingChainRoutines.load_xarray(
             num_minutes_to_load_for_data_producer=(
                 NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER))
 
         # 2. Apply FFT
+        print("Apply FFT")
         xr2 = ProcessingChainRoutines.fft_xarray(
             xr_input=xr1, n_fft=n_fft, hop_length=hop_length)
 
@@ -288,6 +294,7 @@ def main():
         start_time = 0
 
         # 3. Produce indices for
+        print("Produce indices")
         for step in range(num_output_files):
             segment_start = start_time + (NUM_MINS_PER_OUTPUT_FILE * step
                                           )  # in minutes
@@ -303,6 +310,7 @@ def main():
             xarray_filename_pairs.append((xr_segment, file_name))
 
         # 5. Upload the files
+        print("Uploading files... Lazily done so far.")
         ProcessingChainRoutines.save_all_xarrays(
             xarray_filename_pairs=xarray_filename_pairs,
             dirpath=file_save_dirpath,

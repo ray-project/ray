@@ -2,11 +2,11 @@ cluster_name: Dask-on-ray-release-cluster
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 250
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 0
+max_workers: 250
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -59,11 +59,18 @@ auth:
 available_node_types:
     head_node_t:
         node_config:
-            InstanceType: r5n.4xlarge
+            InstanceType: r5n.16xlarge
         # For AWS instances, autoscaler will automatically add the available
         # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
         # resources: {"CPU": 4}
         resources: {"CPU": 0}
+    worker_node_t:
+        node_config:
+            InstanceType: r5.4xlarge
+        # Autoscaler will auto fill the CPU resources below.
+        resources: {"CPU": 96}
+        min_workers: 250
+        max_workers: 250
 
 head_node_type: head_node_t
 
@@ -88,7 +95,7 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: r5.4xlarge
+    # InstanceType: r5.4xlarge
     ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # You can provision additional disk space with a conf as follows
@@ -119,25 +126,19 @@ setup_commands:
     # - sudo apt install -y gdb
     # - sudo apt install -y linux-tools-common
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
-    - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
+    - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
+    - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 165536" >> /etc/security/limits.conf; echo "* hard nofile 165536" >> /etc/security/limits.conf;'
     - pip install tqdm
     - pip install -U dask
     - pip install fastparquet --ignore-installed
     - pip install -U numpy==1.19.5 scipy xarray dataclasses zarr
 
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - export RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1; ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"asio_event_loop_stats_collection_enabled":true}'
+    - ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"asio_event_loop_stats_collection_enabled":true,"scheduler_loadbalance_spillback":true}'
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - export RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray start --address=$RAY_HEAD_IP:6379 --num-cpus=96 --object-manager-port=8076

@@ -1,9 +1,27 @@
 Running script
 --------------
+There are 2 workloads. Each workerload requires a different cluster.yaml.
 
-Run `unset RAY_ADDRESS; python workloads/streaming_shuffle.py`
+Make sure to copy & paste both drivers.
 
-Cluster configurations
-----------------------
+Run `unset RAY_ADDRESS; python workloads/streaming_shuffle.py`. Use `cluster.yaml` for this release test.
+Run `unset RAY_ADDRESS; python workloads/dask_on_ray_large_scale_test.py`. Use `dask_on_ray.yaml` for this release test.
 
-Make sure the test runs in i3.8xl (IO optimized instance).
+Note that when you run `dask_on_ray.yaml`, you need to follow the below procedures.
+
+```
+ray up dask_on_ray.yaml -y # Start the ray cluster.
+# Wait until the cluster nodes are up. Use `watch ray status` and wait until all worker nodes are up.
+ray down dask_on_ray.yaml -y # After the cluster is up, you should call ray down.
+ray up dask_on_ray.yaml -y
+```
+
+This process is required because ulimit is not permitted for images that we are using. Ulimit is necessary for large cluster testing like this.
+Check out https://discuss.ray.io/t/setting-ulimits-on-ec2-instances/590/2 for more details
+
+Success Criteria
+----------------
+
+For `streaming_shuffle.py`, make sure to include the output string to the release logs.
+
+For `dask_on_ray_large_scale_test.py`, make sure the test runs for at least for an hour. This test should succeed, otherwise, it is a release blocker.
