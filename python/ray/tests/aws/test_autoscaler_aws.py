@@ -263,7 +263,8 @@ def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
     assert bootstrapped_config["head_node"]["SubnetIds"] ==\
         config["head_node"]["SubnetIds"] ==\
         config["worker_nodes"]["SubnetIds"] ==\
-        bootstrapped_config["worker_nodes"]["SubnetIds"]
+        bootstrapped_config["worker_nodes"]["SubnetIds"] ==\
+        [DEFAULT_SUBNET["SubnetId"]]
 
     # Confirming correct security group got filled for head and workers
     sg_id = DEFAULT_SG["GroupId"]
