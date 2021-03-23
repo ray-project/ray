@@ -86,7 +86,7 @@ class CustomRenderedEnv(gym.Env):
 if __name__ == "__main__":
     # Note: Recording and rendering in this example
     # should work for both local_mode=True|False.
-    ray.init()
+    ray.init(num_cpus=4)
     args = parser.parse_args()
 
     # Example config causing
