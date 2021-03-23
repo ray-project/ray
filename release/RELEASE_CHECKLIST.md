@@ -63,6 +63,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 	- [ ] K8s operator test
 - [ ] Data processing tests
     - [ ] streaming_shuffle
+	- [ ] dask on ray test
 - [ ] Tune tests
     - [ ] test_bookkeeping_overhead
     - [x] test_result_throughput_cluster (ignore final time)

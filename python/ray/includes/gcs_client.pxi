@@ -47,13 +47,13 @@ cdef class GcsClient:
         status = self.inner_.get().InternalKV().Put(
             key, value, overwrite, added)
         if not status.ok():
-            raise IOError("Put failed: {}".format(status.ToString()))
+            raise IOError("Put failed: {status.ToString()}")
         return added
 
     def kv_del(self, c_string key):
         status = self.inner_.get().InternalKV().Del(key)
         if not status.ok():
-            raise IOError("Del failed: {}".format(status.ToString()))
+            raise IOError("Del failed: {status.ToString()}")
 
     def kv_get(self, c_string key):
         cdef:
@@ -63,7 +63,7 @@ cdef class GcsClient:
         if status.IsNotFound():
             exists = False
         elif not status.ok():
-            raise IOError("Get failed: {}".format(status.ToString()))
+            raise IOError("Get failed: {status.ToString()}")
         return value if exists else None
 
     def kv_keys(self, c_string key):
@@ -71,7 +71,7 @@ cdef class GcsClient:
             c_vector[c_string] results
         status = self.inner_.get().InternalKV().Keys(key, results)
         if not status.ok():
-            raise IOError("Keys failed: {}".format(status.ToString()))
+            raise IOError("Keys failed: {status.ToString()}")
         return results
 
     def kv_exists(self, c_string key):
@@ -79,5 +79,5 @@ cdef class GcsClient:
             c_bool exist = False
         status = self.inner_.get().InternalKV().Exists(key, exist)
         if not status.ok():
-            raise IOError("Exists failed: {}".format(status.ToString()))
+            raise IOError("Exists failed: {status.ToString()}")
         return exist

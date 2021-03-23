@@ -1,13 +1,12 @@
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+cluster_name: Dask-on-ray-release-cluster
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 250
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 2
+max_workers: 250
 
 # The autoscaler will scale up the cluster faster with higher upscaling speed.
 # E.g., if the task requires adding more nodes then autoscaler will gradually
@@ -19,9 +18,9 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray-ml:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
+    image: "" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
     # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
-    container_name: "ray_container"
+    container_name: ""
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
@@ -57,19 +56,37 @@ auth:
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
 
+available_node_types:
+    head_node_t:
+        node_config:
+            InstanceType: r5n.16xlarge
+        # For AWS instances, autoscaler will automatically add the available
+        # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
+        # resources: {"CPU": 4}
+        resources: {"CPU": 0}
+    worker_node_t:
+        node_config:
+            InstanceType: r5.4xlarge
+        # Autoscaler will auto fill the CPU resources below.
+        resources: {"CPU": 96}
+        min_workers: 250
+        max_workers: 250
+
+head_node_type: head_node_t
+
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m5.large
+    # InstanceType: i3.8xlarge
     ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 100
+              VolumeSize: 1000
 
     # Additional options in the boto docs.
 
@@ -78,34 +95,14 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.large
+    # InstanceType: r5.4xlarge
     ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
-    # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
-        # Additional options can be found in the boto docs, e.g.
-        #   SpotOptions:
-        #       MaxPrice: MAX_HOURLY_PRICE
-
-    # Additional options in the boto docs.
-
-# Files or directories to copy to the head and worker nodes. The format is a
-# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
-file_mounts: {
-#    "/path1/on/remote/machine": "/path1/on/local/machine",
-#    "/path2/on/remote/machine": "/path2/on/local/machine",
-}
-
-# Files or directories to copy from the head node to the worker nodes. The format is a
-# list of paths. The same path on the head node will be copied to the worker node.
-# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
-# you should just use file_mounts. Only use this if you know what you're doing!
-cluster_synced_files: []
-
-# Whether changes to directories in file_mounts or cluster_synced_files in the head node
-# should sync to the worker node continuously
-file_mounts_sync_continuously: False
+    # You can provision additional disk space with a conf as follows
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 1000
 
 # Patterns for files to exclude when running rsync up or rsync down
 rsync_exclude:
@@ -124,25 +121,24 @@ rsync_filter:
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands: []
-    # Note: if you're developing Ray, you probably want to create a Docker image that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    # Uncomment the following line if you want to run the nightly version of ray (as opposed to the latest)
-    # - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
+setup_commands:
+    # - sudo apt install -y iotop
+    # - sudo apt install -y gdb
+    # - sudo apt install -y linux-tools-common
+    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+    - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
+    - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 165536" >> /etc/security/limits.conf; echo "* hard nofile 165536" >> /etc/security/limits.conf;'
+    - pip install tqdm
+    - pip install -U dask
+    - pip install fastparquet --ignore-installed
+    - pip install -U numpy==1.19.5 scipy xarray dataclasses zarr
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --num-cpus=0 --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --system-config='{"asio_event_loop_stats_collection_enabled":true,"scheduler_loadbalance_spillback":true}'
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray start --address=$RAY_HEAD_IP:6379 --num-cpus=96 --object-manager-port=8076

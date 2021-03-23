@@ -22,8 +22,7 @@ def run_kv_test(gcs_client):
     assert gcs_client.kv_put(b"TEST_KEY_3", b"TEST_VAL_3", True)
     assert gcs_client.kv_put(b"TEST_KEY_4", b"TEST_VAL_4", True)
     keys = set(gcs_client.kv_keys(b"TEST_KEY_"))
-    assert keys == set(
-        [b"TEST_KEY_1", b"TEST_KEY_2", b"TEST_KEY_3", b"TEST_KEY_4"])
+    assert keys == {b"TEST_KEY_1", b"TEST_KEY_2", b"TEST_KEY_3", b"TEST_KEY_4"}
 
 
 def test_gcs_client_core_worker(shutdown_only):
