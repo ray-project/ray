@@ -111,28 +111,36 @@ def actor_class_tracing_local(
         kwargs: MutableMapping[Any, Any],
 ) -> Any:
     """
-        Make sure we inject our current span context into the kwargs for propagation
+        Make sure we inject our current span context into the kwargs for propigation
         before running our remote tasks
         """
     class_name = instance._wrapped
     method_name = "__init__"
 
-    # assert "_ray_trace_ctx" not in kwargs
+    def _start_span(
+            args: Sequence[Any],
+            kwargs: MutableMapping[Any, Any],
+            *_args: Any,
+            **_kwargs: Any,
+    ) -> Any:
+        assert "_ray_trace_ctx" not in _kwargs
 
-    tracer = trace.get_tracer(__name__)
-    with tracer.start_as_current_span(
-            name=_span_producer_name(class_name, method_name),
-            kind=trace.SpanKind.PRODUCER,
-            attributes=_hydrate_span_args(class_name, method_name),
-    ) as span:
-        # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-        # kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                name=_span_producer_name(class_name, method_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(class_name, method_name),
+        ) as span:
+            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
 
-        result = wrapped(*args, **kwargs)
+            result = wrapped(args, kwargs, *_args, **_kwargs)
 
-        span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
 
-        return result
+            return result
+
+    return _start_span(*args, **kwargs)
 
 
 @wrapt.decorator
@@ -146,21 +154,29 @@ def actor_method_tracing_local(
                   ._ray_actor_creation_function_descriptor.class_name)
     method_name = instance._method_name
 
-    # assert "_ray_trace_ctx" not in kwargs
+    def _start_span(
+            args: Sequence[Any],
+            kwargs: MutableMapping[Any, Any],
+            *_args: Any,
+            **_kwargs: Any,
+    ) -> Any:
+        assert "_ray_trace_ctx" not in _kwargs
 
-    tracer = trace.get_tracer(__name__)
-    with tracer.start_as_current_span(
-            name=_span_producer_name(class_name, method_name),
-            kind=trace.SpanKind.PRODUCER,
-            attributes=_hydrate_span_args(class_name, method_name),
-    ) as span:
-        # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-        # kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                name=_span_producer_name(class_name, method_name),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_hydrate_span_args(class_name, method_name),
+        ) as span:
+            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+            kwargs["_ray_trace_ctx"] = dict_propagator.inject_current_context()
 
-        span.set_attribute("ray.actor_id",
-                           instance._actor_ref()._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id",
+                               instance._actor_ref()._ray_actor_id.hex())
 
-        return wrapped(*args, **kwargs)
+            return wrapped(args, kwargs, *_args, **_kwargs)
+
+    return _start_span(*args, **kwargs)
 
 
 @wrapt.decorator
