@@ -306,7 +306,7 @@ message JobTableData {
   JobState state = 10;
   // Job payload (The original job request json from dashboard).
   string job_payload = 11;
-  // Whether the job is submitted from dashboard. This field 
+  // Whether the job is submitted from dashboard. This field
   // determines whether to initialize the job environment or not.
   bool is_submitted_from_dashboard = 12;
 }
