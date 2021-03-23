@@ -85,6 +85,18 @@ def describe_a_security_group(ec2_client_stub, security_group):
         service_response={"SecurityGroups": [security_group]})
 
 
+def describe_an_sg_2(ec2_client_stub, security_group):
+    """Same as last method, different input param format.
+
+    A call with this input parameter format is made when sg.ip_permissions is
+    accessed in aws/config.py.
+    """
+    ec2_client_stub.add_response(
+        "describe_security_groups",
+        expected_params={"GroupIds": [security_group["GroupId"]]},
+        service_response={"SecurityGroups": [security_group]})
+
+
 def create_sg_echo(ec2_client_stub, security_group):
     ec2_client_stub.add_response(
         "create_security_group",
