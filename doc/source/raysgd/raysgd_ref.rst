@@ -25,7 +25,7 @@ PyTorch TrainingOperator
 CreatorOperator
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.util.sgd.torch.CreatorOperator
+.. autoclass:: ray.util.sgd.torch.training_operator.CreatorOperator
     :members:
     :exclude-members: setup
 
