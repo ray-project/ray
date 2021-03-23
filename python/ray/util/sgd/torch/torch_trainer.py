@@ -646,8 +646,16 @@ class TorchTrainer:
                     "num_cpus_per_worker", kwargs.get("num_cpus_per_worker",
                                                       1))
                 use_gpu = config.get("use_gpu", kwargs.get("use_gpu"))
+                use_local = config.get("use_local",
+                                       kwargs.get("use_local", False))
 
-                bundles = [
+                bundles = []
+
+                if not use_local:
+                    # We need a separate bundle for the driver
+                    bundles += [{"CPU": 1}]
+
+                bundles += [
                     # Worker bundles
                     {
                         "CPU": num_cpus_per_worker,
