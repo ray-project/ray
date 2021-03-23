@@ -438,8 +438,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduled_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(task_spec.TaskId(),
-                                                       rpc::ErrorType::TASK_CANCELLED));
+          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+              task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
           return Status::OK();
         }
       }

@@ -147,7 +147,7 @@ class TFRunner:
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
-        return ray.services.get_node_ip_address()
+        return ray.util.get_node_ip_address()
 
     def find_free_port(self):
         """Finds a free port on the current node."""

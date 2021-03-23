@@ -328,8 +328,14 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
+        std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+        if (worker_failure_data->has_creation_task_exception()) {
+          creation_task_exception = std::make_shared<rpc::RayException>(
+              worker_failure_data->creation_task_exception());
+        }
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
-                                         worker_failure_data->exit_type());
+                                         worker_failure_data->exit_type(),
+                                         creation_task_exception);
       });
 
   // Install job event listeners.

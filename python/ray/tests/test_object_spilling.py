@@ -98,12 +98,11 @@ def assert_no_thrashing(address):
     state = ray.state.GlobalState()
     state._initialize_global_state(address,
                                    ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    memory_summary = ray.internal.internal_api.memory_summary(
-        address=address, stats_only=True)
+    summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0
     consumed_bytes = 0
 
-    for line in memory_summary.split("\n"):
+    for line in summary.split("\n"):
         if "Restored" in line:
             restored_bytes = int(line.split(" ")[1])
         if "consumed" in line:
@@ -317,7 +316,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_spill_stats(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, _ = object_spilling_config
@@ -346,7 +345,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     x_id = f.remote()  # noqa
     ray.get(x_id)
-    s = memory_summary(stats_only=True)
+    s = memory_summary(address=address["redis_address"], stats_only=True)
     assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
@@ -360,7 +359,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
 
     ray.get(func_with_ref.remote(obj))
 
-    s = memory_summary(stats_only=True)
+    s = memory_summary(address=address["redis_address"], stats_only=True)
     # 50MB * 5 references + 30MB used for task execution.
     assert "Objects consumed by Ray tasks: 280 MiB." in s, s
     assert_no_thrashing(address["redis_address"])
@@ -464,7 +463,7 @@ def test_delete_objects(object_spilling_config, shutdown_only):
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_delete_while_creating(object_spilling_config,
                                               shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -505,7 +504,7 @@ def test_delete_objects_delete_while_creating(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"], reason="Failing on Windows.")
+    platform.system() in ["Windows"], reason="Failing on Windows.")
 def test_delete_objects_on_worker_failure(object_spilling_config,
                                           shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -567,8 +566,7 @@ def test_delete_objects_on_worker_failure(object_spilling_config,
 
 
 @pytest.mark.skipif(
-    platform.system() in ["Windows", "Darwin"],
-    reason="Failing on Windows and MacOS.")
+    platform.system() in ["Windows"], reason="Failing on Windows and MacOS.")
 def test_delete_objects_multi_node(multi_node_object_spilling_config,
                                    ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
@@ -922,6 +920,4 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
 
 if __name__ == "__main__":
-    if sys.platform == "darwin":
-        sys.exit()
     sys.exit(pytest.main(["-sv", __file__]))
