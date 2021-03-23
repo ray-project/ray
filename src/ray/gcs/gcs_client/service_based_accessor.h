@@ -166,12 +166,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
-  Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) override;
-
   Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback)
-      override;
+      const OptionalItemCallback<std::string> &callback) override;
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -447,7 +443,8 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
   virtual ~ServiceBasedPlacementGroupInfoAccessor() = default;
 
   Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) override;
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) override;
 
   Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                    const StatusCallback &callback) override;

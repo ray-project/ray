@@ -24,8 +24,8 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
 
-        hiddens = model_config.get("fcnet_hiddens", []) + \
-            model_config.get("post_fcnet_hiddens", [])
+        hiddens = list(model_config.get("fcnet_hiddens", [])) + \
+            list(model_config.get("post_fcnet_hiddens", []))
         activation = model_config.get("fcnet_activation")
         if not model_config.get("fcnet_hiddens", []):
             activation = model_config.get("post_fcnet_activation")

@@ -1,14 +1,12 @@
 # Ray Scalability Envelope
 
-### Note: This document is a WIP. This is not a scalability guarantee (yet).
-
 ## Distributed Benchmarks
 
 All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.
 
 | Dimension                                       | Quantity |
 | ---------                                       | -------- |
-| # nodes in cluster (with trivial task workload) | 250+     |
+| # nodes in cluster (with trivial task workload) | 1000+     |
 | # actors in cluster (with trivial workload)     | 10k+     |
 | # simultaneously running tasks                  | 10k+     |
 | # simultaneously running placement groups       | 1k+      |

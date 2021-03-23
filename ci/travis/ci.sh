@@ -141,6 +141,7 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
+      -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
@@ -313,12 +314,26 @@ build_wheels() {
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
+        -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
       )
 
-      # This command should be kept in sync with ray/python/README-building-wheels.md,
-      # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-      quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+
+      if [ -z "${BUILDKITE-}" ]; then
+        # This command should be kept in sync with ray/python/README-building-wheels.md,
+        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
+        docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+        quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+      else
+        cp -rT /ray /ray-mount
+        ls /ray-mount
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
+        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
+          quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+        cp -rT /ray-mount /ray # copy new files back here
+        find . | grep whl # testing
+      fi
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.

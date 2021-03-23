@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -205,7 +206,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{6000};
   absl::Mutex placement_group_requests_mutex_;
   std::unique_ptr<std::thread> thread_io_service_;
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
 
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;

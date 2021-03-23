@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
@@ -44,7 +45,9 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, SpillObjects)                   \
   RPC_SERVICE_HANDLER(CoreWorkerService, RestoreSpilledObjects)          \
   RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects)           \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AddSpilledUrl)                  \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RunOnUtilWorker)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, Exit)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
@@ -65,7 +68,9 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SpillObjects)                   \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RestoreSpilledObjects)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddSpilledUrl)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RunOnUtilWorker)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
@@ -92,7 +97,7 @@ class CoreWorkerGrpcService : public GrpcService {
   ///
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  CoreWorkerGrpcService(boost::asio::io_service &main_service,
+  CoreWorkerGrpcService(instrumented_io_context &main_service,
                         CoreWorkerServiceHandler &service_handler)
       : GrpcService(main_service), service_handler_(service_handler) {}
 

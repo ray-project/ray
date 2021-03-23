@@ -55,8 +55,6 @@ static void flushall_redis(void) {
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                           int64_t max_restarts) {
-  std::unique_ptr<ActorHandle> actor_handle;
-
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
@@ -545,7 +543,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto task_spec = builder.Build();
 
     ASSERT_TRUE(task_spec.IsActorTask());
-    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    auto request = std::make_unique<rpc::PushTaskRequest>();
     request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   }
   RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"

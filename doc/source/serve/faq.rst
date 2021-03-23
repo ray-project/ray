@@ -13,37 +13,17 @@ How do I deploy serve?
 
 See :doc:`deployment` for information about how to deploy serve.
 
-How do I delete backends and endpoints?
----------------------------------------
-
-To delete a backend, you can use :mod:`client.delete_backend <ray.serve.api.Client.delete_backend>`.
-Note that the backend must not be use by any endpoints in order to be delete.
-Once a backend is deleted, its tag can be reused.
-
-.. code-block:: python
-
-  client.delete_backend("simple_backend")
-
-
-To delete a endpoint, you can use :mod:`client.delete_endpoint <ray.serve.api.Client.delete_endpoint>`.
-Note that the endpoint will no longer work and return a 404 when queried.
-Once a endpoint is deleted, its tag can be reused.
-
-.. code-block:: python
-
-  client.delete_endpoint("simple_endpoint")
-
 How do I call an endpoint from Python code?
 -------------------------------------------
 
-Use :mod:`client.get_handle <ray.serve.api.Client.get_handle>` to get a handle to the endpoint,
+Use :mod:`serve.get_handle <ray.serve.api.get_handle>` to get a handle to the endpoint,
 then use :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that
 endpoint. This returns a Ray ObjectRef whose result can be waited for or retrieved using
 ``ray.wait`` or ``ray.get``, respectively.
 
 .. code-block:: python
 
-    handle = client.get_handle("api_endpoint")
+    handle = serve.get_handle("api_endpoint")
     ray.get(handle.remote(request))
 
 
@@ -67,11 +47,11 @@ To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServe
             self.count += inc
             return True
 
-    handle = client.get_handle("endpoint_name")
+    handle = serve.get_handle("endpoint_name")
     handle.options(method_name="other_method").remote(5)
 
 The call is the same as a regular query except a different method is called
-within the replica. It is compatible with batching as well.
+within the replica.
 
 How do I use custom status codes in my response?
 ---------------------------------------------------------
@@ -85,7 +65,7 @@ You can return a `Starlette Response object <https://www.starlette.io/responses/
     def f(starlette_request):
         return Response('Hello, world!', status_code=123, media_type='text/plain')
     
-    client.create_backend("hello", f)
+    serve.create_backend("hello", f)
 
 How do I enable CORS and other HTTP features?
 ---------------------------------------------
@@ -119,8 +99,7 @@ get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
 reach an endpoint through HTTP via a specific route. When you issue a request
 to an endpoint through ``ServeHandle``, the request goes through the same code
 path as an HTTP request would: choosing backends through :ref:`traffic
-policies <serve-split-traffic>`, finding the next available replica, and
-batching requests together.
+policies <serve-split-traffic>` and load balancing across available replicas.
 
 When the request arrives in the model, you can access the data similarly to how
 you would with HTTP request. Here are some examples how ServeRequest mirrors Starlette.Request:
@@ -239,13 +218,6 @@ to transparently put your Ray Serve application in K8s.
 Compare to these frameworks letting you deploy ML models on K8s, Ray Serve lacks
 the ability to declaratively configure your ML application via YAML files. In
 Ray Serve, you configure everything by Python code.
-
-How does Ray Serve scale behave on spikes?
-------------------------------------------
-You can easily scale your models just by changing the number of replicas in the `BackendConfig`.
-Ray Serve also has an experimental autoscaler that scales up your model replicas
-based on load. We can improve it and welcome any feedback! We also rely on the
-Ray cluster launcher for adding more machines.
 
 Is Ray Serve only for ML models?
 --------------------------------

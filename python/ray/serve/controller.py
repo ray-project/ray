@@ -15,6 +15,7 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -70,11 +71,6 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        # NOTE(simon): Currently we do all-to-all broadcast. This means
-        # any listeners will receive notification for all changes. This
-        # can be problem at scale, e.g. updating a single backend config
-        # will send over the entire configs. In the future, we should
-        # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
         self.goal_manager = AsyncGoalManager()
@@ -163,10 +159,13 @@ class ServeController:
             self.endpoint_state.shadow_traffic(endpoint_name, backend_tag,
                                                proportion)
 
-    # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
-    async def create_endpoint(self, endpoint: str,
-                              traffic_dict: Dict[str, float], route,
-                              methods: List[str]) -> None:
+    async def create_endpoint(
+            self,
+            endpoint: str,
+            traffic_dict: Dict[str, float],
+            route: Optional[str],
+            methods: List[str],
+    ) -> None:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -196,7 +195,7 @@ class ServeController:
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            return self.backend_state.create_backend(
+            return self.backend_state.deploy_backend(
                 backend_tag, backend_config, replica_config)
 
     async def delete_backend(self,
@@ -217,8 +216,16 @@ class ServeController:
                                     config_options: BackendConfig) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
-            return self.backend_state.update_backend_config(
-                backend_tag, config_options)
+            existing_backend_info = self.backend_state.get_backend(backend_tag)
+            if existing_backend_info is None:
+                raise ValueError(f"Backend {backend_tag} is not registered.")
+
+            existing_replica_config = existing_backend_info.replica_config
+            new_backend_config = existing_backend_info.backend_config.copy(
+                update=config_options.dict(exclude_unset=True))
+
+            return self.backend_state.deploy_backend(
+                backend_tag, new_backend_config, existing_replica_config)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -240,3 +247,54 @@ class ServeController:
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def deploy(self, name: str, backend_config: BackendConfig,
+                     replica_config: ReplicaConfig,
+                     version: Optional[str]) -> Optional[GoalId]:
+        """TODO."""
+
+        # By default the path prefix is the deployment name.
+        if replica_config.path_prefix is None:
+            replica_config.path_prefix = f"/{name}"
+            # Backend config should be synchronized so the backend worker
+            # is aware of it.
+            backend_config.internal_metadata.path_prefix = f"/{name}"
+
+        if replica_config.is_asgi_app:
+            # When the backend is asgi application, we want to proxy it
+            # with a prefixed path as well as proxy all HTTP methods.
+            # {wildcard:path} is used so HTTPProxy's Starlette router can match
+            # arbitrary path.
+            route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+            methods = [
+                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
+                "TRACE", "PATCH"
+            ]
+        else:
+            route = replica_config.path_prefix
+            # Generic endpoint should support a limited subset of HTTP methods.
+            methods = ["GET", "POST"]
+
+        async with self.write_lock:
+            if version is None:
+                version = RESERVED_VERSION_TAG
+            else:
+                if version == RESERVED_VERSION_TAG:
+                    # TODO(edoakes): this is unlikely to ever be hit, but it's
+                    # still ugly and should be removed once the old codepath
+                    # can be deleted.
+                    raise ValueError(
+                        f"Version {RESERVED_VERSION_TAG} is reserved and "
+                        "cannot be used by applications.")
+            goal_id = self.backend_state.deploy_backend(
+                name, backend_config, replica_config, version)
+            self.endpoint_state.create_endpoint(
+                name,
+                route,
+                methods,
+                TrafficPolicy({
+                    name: 1.0
+                }),
+            )
+            return goal_id

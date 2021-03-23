@@ -1,4 +1,4 @@
-const base = window.location.origin;
+import { formatUrl } from "./service/requestHandlers";
 
 type APIResponse<T> = {
   result: boolean;
@@ -7,12 +7,12 @@ type APIResponse<T> = {
 };
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
-  const url = new URL(path, base);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
+  const formattedParams = Object.entries(params)
+    .map((pair) => pair.join("="))
+    .join("&");
+  const url = [formatUrl(path), formattedParams].filter((x) => x!!).join("?");
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url);
   const json: APIResponse<T> = await response.json();
 
   const { result, msg, data } = json;
@@ -153,7 +153,7 @@ type BaseNodeInfo = {
   cpu: number; // System-wide CPU utilization expressed as a percentage
   cpus: [number, number]; // Number of logical CPUs and physical CPUs
   gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
-  mem: [number, number, number]; // Total, available, and used percentage of memory
+  mem: [number, number, number, number]; // Total (bytes), available (bytes), used (percentage), and used (bytes) of memory
   disk: {
     [dir: string]: {
       total: number;
@@ -163,7 +163,7 @@ type BaseNodeInfo = {
     };
   };
   loadAvg: [[number, number, number], [number, number, number]];
-  net: [number, number]; // Sent and received network traffic in bytes / second
+  networkSpeed: [number, number]; // Sent and received network traffic in bytes / second
   logCount?: number;
   errorCount?: number;
 };
@@ -323,10 +323,12 @@ export const checkProfilingStatus = (profilingId: string) =>
     profiling_id: profilingId,
   });
 
-export const getProfilingResultURL = (profilingId: string) =>
-  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
-    `${base}/api/get_profiling_info?profiling_id=${profilingId}`,
-  )}`;
+export const getProfilingResultURL = (profilingId: string) => {
+  const uriComponent = encodeURIComponent(
+    formatUrl(`/api/get_profiling_info?profiling_id=${profilingId}`),
+  );
+  return formatUrl(`/speedscope/index.html#profileURL=${uriComponent}`);
+};
 
 export const launchKillActor = (
   actorId: string,

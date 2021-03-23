@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled)
+from ray.test_utils import (client_test_enabled, get_error_message)
 
 import ray
 
@@ -31,7 +31,6 @@ def test_ignore_http_proxy(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7263
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -256,7 +255,7 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -328,8 +327,6 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="mutual recursion is a known issue")
 def test_mutually_recursive_functions(ray_start_shared_local_modes):
     # Test remote functions that recursively call each other.
     @ray.remote
@@ -624,6 +621,76 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
+
+
+def test_failed_task(ray_start_shared_local_modes, error_pubsub):
+    @ray.remote
+    def throw_exception_fct1():
+        raise Exception("Test function 1 intentionally failed.")
+
+    @ray.remote
+    def throw_exception_fct2():
+        raise Exception("Test function 2 intentionally failed.")
+
+    @ray.remote(num_returns=3)
+    def throw_exception_fct3(x):
+        raise Exception("Test function 3 intentionally failed.")
+
+    p = error_pubsub
+
+    throw_exception_fct1.remote()
+    throw_exception_fct1.remote()
+
+    if ray.worker.global_worker.mode != ray.worker.LOCAL_MODE:
+        msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
+        assert len(msgs) == 2
+        for msg in msgs:
+            assert "Test function 1 intentionally failed." in msg.error_message
+
+    x = throw_exception_fct2.remote()
+    try:
+        ray.get(x)
+    except Exception as e:
+        assert "Test function 2 intentionally failed." in str(e)
+    else:
+        # ray.get should throw an exception.
+        assert False
+
+    x, y, z = throw_exception_fct3.remote(1.0)
+    for ref in [x, y, z]:
+        try:
+            ray.get(ref)
+        except Exception as e:
+            assert "Test function 3 intentionally failed." in str(e)
+        else:
+            # ray.get should throw an exception.
+            assert False
+
+    class CustomException(ValueError):
+        def __init__(self, msg):
+            super().__init__(msg)
+            self.field = 1
+
+        def f(self):
+            return 2
+
+    @ray.remote
+    def f():
+        raise CustomException("This function failed.")
+
+    try:
+        ray.get(f.remote())
+    except Exception as e:
+        assert "This function failed." in str(e)
+        assert isinstance(e, ValueError)
+        assert isinstance(e, CustomException)
+        assert isinstance(e, ray.exceptions.RayTaskError)
+        assert "RayTaskError(CustomException)" in repr(e)
+        assert e.field == 1
+        assert e.f() == 2
+    else:
+        # ray.get should throw an exception.
+        assert False
 
 
 if __name__ == "__main__":

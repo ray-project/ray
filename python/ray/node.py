@@ -20,9 +20,10 @@ from collections import defaultdict
 import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink, open_log
+from ray._private.utils import (try_to_create_directory, try_to_symlink,
+                                open_log)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -90,7 +91,7 @@ class Node:
 
         self.head = head
         self.kernel_fate_share = bool(
-            spawn_reaper and ray.utils.detect_fate_sharing_support())
+            spawn_reaper and ray._private.utils.detect_fate_sharing_support())
         self.all_processes = {}
         self.removal_lock = threading.Lock()
 
@@ -98,10 +99,10 @@ class Node:
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
         elif ray_params.redis_address:
-            node_ip_address = ray._private.services.get_node_ip_address(
+            node_ip_address = ray.util.get_node_ip_address(
                 ray_params.redis_address)
         else:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
         if ray_params.raylet_ip_address:
@@ -120,16 +121,12 @@ class Node:
             raise ValueError(
                 "Internal config parameters can only be set on the head node.")
 
-        if ray_params._lru_evict:
-            assert (connect_only or
-                    head), "LRU Evict can only be passed into the head node."
-
         self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray.utils.get_ray_temp_dir(),
+            temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -165,7 +162,7 @@ class Node:
         else:
             redis_client = self.create_redis_client()
             session_name = _get_with_retry(redis_client, "session_name")
-            self.session_name = ray.utils.decode(session_name)
+            self.session_name = ray._private.utils.decode(session_name)
 
         self._init_temp(redis_client)
 
@@ -220,19 +217,10 @@ class Node:
             self._webui_url = (
                 ray._private.services.get_webui_url_from_redis(redis_client))
 
-        if head or not connect_only:
-            # We need to start a local raylet.
-            if (self._ray_params.node_manager_port is None
-                    or self._ray_params.node_manager_port == 0):
-                # No port specified. Pick a random port for the raylet to use.
-                # NOTE: There is a possible but unlikely race condition where
-                # the port is bound by another process between now and when the
-                # raylet starts.
-                self._ray_params.node_manager_port, self._socket = \
-                    self._get_unused_port(close_on_exit=False)
-
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
+        if not connect_only:
+            self._ray_params.update_pre_selected_port()
 
         # Start processes.
         if head:
@@ -244,6 +232,13 @@ class Node:
 
         if not connect_only:
             self.start_ray_processes()
+            address_info = (ray._private.services.get_address_info_from_redis(
+                self.redis_address,
+                self._raylet_ip_address,
+                redis_password=self.redis_password,
+                log_warning=False))
+            self._ray_params.node_manager_port = address_info[
+                "node_manager_port"]
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -260,7 +255,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        ray.utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create a dictionary to store temp file index.
@@ -270,7 +265,7 @@ class Node:
             self._temp_dir = self._ray_params.temp_dir
         else:
             temp_dir = _get_with_retry(redis_client, "temp_dir")
-            self._temp_dir = ray.utils.decode(temp_dir)
+            self._temp_dir = ray._private.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
 
@@ -278,7 +273,7 @@ class Node:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
             session_dir = _get_with_retry(redis_client, "session_dir")
-            self._session_dir = ray.utils.decode(session_dir)
+            self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -292,6 +287,12 @@ class Node:
         try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
+        # Create a directory to be used for runtime environment.
+        self._resource_dir = os.path.join(self._session_dir,
+                                          "runtime_resources")
+        try_to_create_directory(self._resource_dir)
+        import ray._private.runtime_env as runtime_env
+        runtime_env.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -440,6 +441,10 @@ class Node:
         """Get the path of the temporary directory."""
         return self._temp_dir
 
+    def get_runtime_env_dir_path(self):
+        """Get the path of the runtime env."""
+        return self._runtime_env_dir
+
     def get_session_dir_path(self):
         """Get the path of the session directory."""
         return self._session_dir
@@ -466,7 +471,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray.utils.get_ray_temp_dir()
+            directory_name = ray._private.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -669,7 +674,8 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             fate_share=self.kernel_fate_share)
+             fate_share=self.kernel_fate_share,
+             port_blacklist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -785,6 +791,7 @@ class Node:
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._resource_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -801,11 +808,9 @@ class Node:
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             config=self._config,
-            java_worker_options=self._ray_params.java_worker_options,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.

@@ -519,6 +519,9 @@ def _env_runner(
             terminal condition, and other fields as dictated by `policy`.
     """
 
+    # May be populated with used for image rendering
+    simple_image_viewer: Optional["SimpleImageViewer"] = None
+
     # Try to get Env's `max_episode_steps` prop. If it doesn't exist, ignore
     # error and continue with max_episode_steps=None.
     max_episode_steps = None
@@ -704,7 +707,24 @@ def _env_runner(
         # Try to render the env, if required.
         if render:
             t5 = time.time()
-            base_env.try_render()
+            # Render can either return an RGB image (uint8 [w x h x 3] numpy
+            # array) or take care of rendering itself (returning True).
+            rendered = base_env.try_render()
+            # Rendering returned an image -> Display it in a SimpleImageViewer.
+            if isinstance(rendered, np.ndarray) and len(rendered.shape) == 3:
+                # ImageViewer not defined yet, try to create one.
+                if simple_image_viewer is None:
+                    try:
+                        from gym.envs.classic_control.rendering import \
+                            SimpleImageViewer
+                        simple_image_viewer = SimpleImageViewer()
+                    except (ImportError, ModuleNotFoundError):
+                        render = False  # disable rendering
+                        logger.warning(
+                            "Could not import gym.envs.classic_control."
+                            "rendering! Try `pip install gym[all]`.")
+                if simple_image_viewer:
+                    simple_image_viewer.imshow(rendered)
             perf_stats.env_render_time += time.time() - t5
 
 
@@ -827,7 +847,7 @@ def _process_observations(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
                                    episode.custom_metrics, {},
-                                   episode.hist_data))
+                                   episode.hist_data, episode.media))
         else:
             hit_horizon = False
             all_agents_done = False
@@ -1050,7 +1070,7 @@ def _process_observations_w_trajectory_view_api(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
                                    episode.custom_metrics, {},
-                                   episode.hist_data))
+                                   episode.hist_data, episode.media))
         else:
             hit_horizon = False
             all_agents_done = False
@@ -1072,21 +1092,26 @@ def _process_observations_w_trajectory_view_api(
         # type: AgentID, EnvObsType
         for agent_id, raw_obs in all_agents_obs.items():
             assert agent_id != "__all__"
+
+            last_observation: EnvObsType = episode.last_observation_for(
+                agent_id)
+            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
+
+            # A new agent (initial obs) is already done -> Skip entirely.
+            if last_observation is None and agent_done:
+                continue
+
             policy_id: PolicyID = episode.policy_for(agent_id)
+
             prep_obs: EnvObsType = _get_or_raise(preprocessors,
                                                  policy_id).transform(raw_obs)
             if log_once("prep_obs"):
                 logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
-
             filtered_obs: EnvObsType = _get_or_raise(obs_filters,
                                                      policy_id)(prep_obs)
             if log_once("filtered_obs"):
                 logger.info("Filtered obs: {}".format(summarize(filtered_obs)))
 
-            agent_done = bool(all_agents_done or dones[env_id].get(agent_id))
-
-            last_observation: EnvObsType = episode.last_observation_for(
-                agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
             # Infos from the environment.

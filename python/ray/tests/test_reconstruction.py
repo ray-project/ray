@@ -163,6 +163,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -219,6 +220,7 @@ def test_basic_reconstruction_put(ray_start_cluster, reconstruction_enabled):
             pass
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction_actor_task(ray_start_cluster,
                                          reconstruction_enabled):
@@ -354,8 +356,8 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
         try:
             ray.get(a.dependent_task.remote(obj))
             return True
-        except ray.exceptions.RayActorError:
-            return False
+        except ray.exceptions.RayActorError as e:
+            return e.has_creation_task_error()
         except (ray.exceptions.RayTaskError, ray.exceptions.ObjectLostError):
             return True
 
@@ -364,12 +366,12 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
     if reconstruction_enabled:
         ray.get(a.dependent_task.remote(obj))
     else:
-        with pytest.raises(ray.exceptions.RayTaskError) as e:
+        with pytest.raises(ray.exceptions.RayActorError) as e:
             x = a.dependent_task.remote(obj)
             print(x)
             ray.get(x)
             with pytest.raises(ray.exceptions.ObjectLostError):
-                raise e.as_instanceof_cause()
+                raise e.get_creation_task_error()
 
 
 @pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")

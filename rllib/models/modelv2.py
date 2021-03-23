@@ -176,7 +176,7 @@ class ModelV2:
 
     def __call__(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: Union[SampleBatch, ModelInputDict],
             state: List[Any] = None,
             seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
@@ -187,8 +187,8 @@ class ModelV2:
         Custom models should override forward() instead of __call__.
 
         Args:
-            input_dict (dict): dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward", "is_training"
+            input_dict (Union[SampleBatch, ModelInputDict]): Dictionary of
+                input tensors.
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
             seq_lens (Tensor): 1d tensor holding input sequence lengths
@@ -200,7 +200,26 @@ class ModelV2:
                 [BATCH, state_size_i].
         """
 
-        restored = input_dict.copy()
+        # Original observations will be stored in "obs".
+        # Flattened (preprocessed) obs will be stored in "obs_flat".
+
+        # SampleBatch case: Models can now be called directly with a
+        # SampleBatch (which also includes tracking-dict case (deprecated now),
+        # where tensors get automatically converted).
+        if isinstance(input_dict, SampleBatch):
+            restored = input_dict.copy(shallow=True)
+            # Backward compatibility.
+            if seq_lens is None:
+                seq_lens = input_dict.seq_lens
+            if not state:
+                state = []
+                i = 0
+                while "state_in_{}".format(i) in input_dict:
+                    state.append(input_dict["state_in_{}".format(i)])
+                    i += 1
+            input_dict["is_training"] = input_dict.is_training
+        else:
+            restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
         try:
@@ -218,14 +237,17 @@ class ModelV2:
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
                 "got {}".format(res))
-        outputs, state = res
+        outputs, state_out = res
 
-        if not isinstance(state, list):
-            raise ValueError("State output is not a list: {}".format(state))
+        if not isinstance(state_out, list):
+            raise ValueError(
+                "State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs, state_out if len(state_out) > 0 else (state or [])
 
+    # TODO: (sven) obsolete this method at some point (replace by
+    #  simply calling model directly with a sample_batch as only input).
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
@@ -312,8 +334,9 @@ class ModelV2:
         return self.time_major is True
 
     # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
-                       index: Union[int, str] = "last") -> ModelInputDict:
+    def get_input_dict(self,
+                       sample_batch: SampleBatch,
+                       index: Union[int, str] = "last") -> SampleBatch:
         """Creates single ts input-dict at given index from a SampleBatch.
 
         Args:
@@ -327,7 +350,7 @@ class ModelV2:
                 final NEXT_OBS as observation input.
 
         Returns:
-            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
         """
         last_mappings = {
             SampleBatch.OBS: SampleBatch.NEXT_OBS,
@@ -373,10 +396,7 @@ class ModelV2:
                     input_dict[view_col] = sample_batch[data_col][
                         index:index + 1 if index != -1 else None]
 
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
+        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @DeveloperAPI
@@ -413,14 +433,13 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if tensorlib == "tf":
+    if tensorlib in ["tf", "tfe", "tf2"]:
+        assert tf is not None
         tensorlib = tf
     elif tensorlib == "torch":
         assert torch is not None
         tensorlib = torch
     original_space = getattr(obs_space, "original_space", obs_space)
-    if original_space is obs_space:
-        return obs
     return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 
@@ -449,7 +468,12 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and
+                isinstance(obs, (list, tuple))) or \
+                (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
+            return obs
+        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape))

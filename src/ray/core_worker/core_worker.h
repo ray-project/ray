@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
@@ -62,7 +63,8 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *results,
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -82,6 +84,7 @@ struct CoreWorkerOptions {
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
         delete_spilled_objects(nullptr),
+        unhandled_exception_handler(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -89,7 +92,8 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
-        metrics_agent_port(-1) {}
+        metrics_agent_port(-1),
+        connect_on_start(true) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -137,13 +141,19 @@ struct CoreWorkerOptions {
   /// be held up in garbage objects.
   std::function<void()> gc_collect;
   /// Application-language callback to spill objects to external storage.
-  std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
+  std::function<std::vector<std::string>(const std::vector<ObjectID> &,
+                                         const std::vector<std::string> &)>
+      spill_objects;
   /// Application-language callback to restore objects from external storage.
   std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;
+  /// Function to call on error objects never retrieved.
+  std::function<void(const RayObject &error)> unhandled_exception_handler;
+  std::function<void(const std::string &, const std::vector<std::string> &)>
+      run_on_util_worker_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -161,6 +171,10 @@ struct CoreWorkerOptions {
   /// The port number of a metrics agent that imports metrics from core workers.
   /// -1 means there's no such agent.
   int metrics_agent_port;
+  /// If false, the constructor won't connect and notify raylets that it is
+  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
+  /// TODO(sang): Use this method for Java and cpp frontend too.
+  bool connect_on_start;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -267,6 +281,8 @@ class CoreWorkerProcess {
 
   static void HandleAtExit();
 
+  void InitializeSystemConfig();
+
   /// Get the `CoreWorker` instance by worker ID.
   ///
   /// \param[in] workerId The worker ID.
@@ -328,12 +344,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
+  /// Connect to the raylet and notify that the core worker is ready.
+  /// If the options.connect_on_start is false, it doesn't need to be explicitly
+  /// called.
+  void ConnectToRaylet();
+
   /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional
   /// disconnect.
   ///
   /// \return Void.
-  void Disconnect();
+  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+                  const std::shared_ptr<LocalMemoryBuffer>
+                      &creation_task_exception_pb_bytes = nullptr);
 
   /// Shut down the worker completely.
   ///
@@ -575,8 +598,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id ID of the objects to check for.
   /// \param[out] has_object Whether or not the object is present.
+  /// \param[out] is_in_plasma Whether or not the object is in Plasma.
   /// \return Status.
-  Status Contains(const ObjectID &object_id, bool *has_object);
+  Status Contains(const ObjectID &object_id, bool *has_object,
+                  bool *is_in_plasma = nullptr);
 
   /// Wait for a list of objects to appear in the object store.
   /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
@@ -906,10 +931,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
+  // Run request on an python-based IO worker
+  void HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
+                             rpc::RunOnUtilWorkerReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   // Spill objects to external storage.
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                           rpc::SpillObjectsReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
+
+  // Add spilled URL to owned reference.
+  void HandleAddSpilledUrl(const rpc::AddSpilledUrlRequest &request,
+                           rpc::AddSpilledUrlReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
 
   // Restore objects from external storage.
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
@@ -922,6 +957,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                   rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
+  // This request fails if the core worker owns any object.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
@@ -946,6 +982,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
                 void *python_future);
 
+  // Get serialized job configuration.
+  const rpc::JobConfig &GetJobConfig() const;
+
+  /// Return true if the core worker is in the exit process.
+  bool IsExiting() const;
+
  private:
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -956,16 +998,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
-  void Exit(bool intentional);
+  void Exit(rpc::WorkerExitType exit_type,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
 
   /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure(const boost::system::error_code &error);
+  void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
-  void InternalHeartbeat(const boost::system::error_code &error);
+  void InternalHeartbeat();
 
   ///
   /// Private methods related to task submission.
@@ -1106,11 +1150,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// worker context.
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
-  // Flag indicating whether this worker has been shut down.
-  bool shutdown_ = false;
-
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
@@ -1121,11 +1162,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
-  /// Timer used to periodically check if the raylet has died.
-  boost::asio::steady_timer death_check_timer_;
-
-  /// Timer for internal book-keeping.
-  boost::asio::steady_timer internal_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1214,7 +1252,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;
@@ -1261,6 +1299,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
+
+  std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
 }  // namespace ray

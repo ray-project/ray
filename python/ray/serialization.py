@@ -1,19 +1,14 @@
 import logging
 import threading
+import traceback
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
-import ray.utils
+import ray._private.utils
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
-    RayError,
-    PlasmaObjectNotAvailable,
-    RayTaskError,
-    RayActorError,
-    TaskCancelledError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
+    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
+    TaskCancelledError, WorkerCrashedError, ObjectLostError, RaySystemError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -33,7 +28,7 @@ class DeserializationError(Exception):
 
 def _object_ref_deserializer(binary, owner_address):
     # NOTE(suquark): This function should be a global function so
-    # cloudpickle can access it directly. Otherwise couldpickle
+    # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
 
     # NOTE(swang): Must deserialize the object first before asking
@@ -217,11 +212,16 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
+                if data:
+                    pb_bytes = self._deserialize_msgpack_data(
+                        data, metadata_fields)
+                    if pb_bytes:
+                        return RayError.from_bytes(pb_bytes)
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectLostError(ray.ObjectRef(object_ref.binary()))
+                return ObjectLostError(object_ref.hex())
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
@@ -242,8 +242,12 @@ class SerializationContext:
                                                 data_metadata_pairs):
             assert self.get_outer_object_ref() is None
             self.set_outer_object_ref(object_ref)
-            results.append(
-                self._deserialize_object(data, metadata, object_ref))
+            try:
+                obj = self._deserialize_object(data, metadata, object_ref)
+            except Exception as e:
+                logger.exception(e)
+                obj = RaySystemError(e, traceback.format_exc())
+            results.append(obj)
             # Must clear ObjectRef to not hold a reference.
             self.set_outer_object_ref(None)
         return results

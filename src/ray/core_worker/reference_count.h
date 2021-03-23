@@ -51,7 +51,8 @@ class ReferenceCounterInterface {
 
 // Callback for location subscriptions.
 using LocationSubscriptionCallback =
-    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, int64_t)>;
+    std::function<void(const absl::flat_hash_set<NodeID> &, int64_t, const std::string &,
+                       const NodeID &, int64_t)>;
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
@@ -79,6 +80,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
+
+  /// Return true if the worker owns any object.
+  bool OwnObjects() const;
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -423,11 +427,33 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and
-  /// records that the object has been spilled to suppress reconstruction.
-  void HandleObjectSpilled(const ObjectID &object_id);
+  /// records the spill URL, spill node ID, and updated object size.
+  /// \param[in] object_id The object that has been spilled.
+  /// \param[in] spilled_url The URL to which the object has been spilled.
+  /// \param[in] spilled_node_id The ID of the node on which the object was spilled.
+  /// \param[in] size The size of the object.
+  /// \param[in] release Whether to release the reference.
+  /// \return True if the reference exists, false otherwise.
+  bool HandleObjectSpilled(const ObjectID &object_id, const std::string spilled_url,
+                           const NodeID &spilled_node_id, int64_t size, bool release);
 
-  /// Get locality data for object.
+  /// Get locality data for object. This is used by the leasing policy to implement
+  /// locality-aware leasing.
+  ///
+  /// \param[in] object_id Object whose locality data we want.
+  /// \return Locality data.
   absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+
+  /// Report locality data for object. This is used by the FutureResolver to report
+  /// locality data for borrowed refs.
+  ///
+  /// \param[in] object_id Object whose locality data we're reporting.
+  /// \param[in] locations Locations of the object.
+  /// \param[in] object_size Size of the object.
+  /// \return True if the reference exists, false otherwise.
+  bool ReportLocalityData(const ObjectID &object_id,
+                          const absl::flat_hash_set<NodeID> &locations,
+                          uint64_t object_size);
 
  private:
   struct Reference {
@@ -586,6 +612,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     size_t lineage_ref_count = 0;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
+    /// For objects that have been spilled to external storage, the URL from which
+    /// they can be retrieved.
+    std::string spilled_url = "";
+    /// The ID of the node that spilled the object.
+    /// This will be Nil if the object has not been spilled or if it is spilled
+    /// distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
     /// Location subscription callbacks registered by async location get requests.
     /// These will be invoked whenever locations or object_size are changed.
     std::vector<LocationSubscriptionCallback> location_subscription_callbacks;
@@ -712,9 +745,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope, and the caller must have already acquired mutex_.
+  ///
+  /// \param[in] it The reference iterator for the object.
+  /// \param[in] node_id The new object location to be added.
+  void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Pushes location updates to subscribers of a particular reference, invoking all
   /// callbacks registered for the reference by GetLocationsAsync calls. This method
   /// also increments the reference's location version counter.
+  ///
+  /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

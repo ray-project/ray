@@ -43,12 +43,13 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 namespace fb = plasma::flatbuf;
@@ -68,7 +69,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(boost::asio::io_service &io_context, const std::shared_ptr<Client> &client,
+  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker);
   /// The client that called get.
   std::shared_ptr<Client> client;
@@ -101,7 +102,7 @@ struct GetRequest {
   boost::asio::steady_timer timer_;
 };
 
-GetRequest::GetRequest(boost::asio::io_service &io_context,
+GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids, bool is_from_worker)
     : client(client),
@@ -114,7 +115,7 @@ GetRequest::GetRequest(boost::asio::io_service &io_context,
   num_objects_to_wait_for = unique_ids.size();
 }
 
-PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory,
+PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          bool hugepages_enabled, const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
@@ -129,7 +130,6 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
       create_request_queue_(
-          /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback, object_store_full_callback,
           /*get_time=*/
@@ -167,27 +167,27 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   }
   // Increase reference count.
   entry->ref_count++;
+  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client"
+                 << ", num bytes in use is now " << num_bytes_in_use_;
 
   // Add object id to the list of object ids that this client is using.
   client->object_ids.insert(object_id);
 }
 
 // Allocate memory
-uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE *fd,
-                                     int64_t *map_size, ptrdiff_t *offset,
+uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
+                                     ptrdiff_t *offset,
                                      const std::shared_ptr<Client> &client,
                                      bool is_create, PlasmaError *error) {
   // First free up space from the client's LRU queue if quota enforcement is on.
-  if (evict_if_full) {
-    std::vector<ObjectID> client_objects_to_evict;
-    bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
-                                                           &client_objects_to_evict);
-    if (!quota_ok) {
-      *error = PlasmaError::OutOfMemory;
-      return nullptr;
-    }
-    EvictObjects(client_objects_to_evict);
+  std::vector<ObjectID> client_objects_to_evict;
+  bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
+                                                         &client_objects_to_evict);
+  if (!quota_ok) {
+    *error = PlasmaError::OutOfMemory;
+    return nullptr;
   }
+  EvictObjects(client_objects_to_evict);
 
   // Try to evict objects until there is enough space.
   uint8_t *pointer = nullptr;
@@ -200,7 +200,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // it is not guaranteed that the corresponding pointer in the client will be
     // 64-byte aligned, but in practice it often will be.
     pointer = reinterpret_cast<uint8_t *>(PlasmaAllocator::Memalign(kBlockSize, size));
-    if (pointer || !evict_if_full) {
+    if (pointer) {
       // If we manage to allocate the memory, return the pointer. If we cannot
       // allocate the space, but we are also not allowed to evict anything to
       // make more space, return an error to the client.
@@ -236,7 +236,6 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
-                                                   bool evict_if_full,
                                                    PlasmaObject *object) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
@@ -252,9 +251,9 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   ReadCreateRequest(input, input_size, &object_id, &owner_raylet_id, &owner_ip_address,
                     &owner_port, &owner_worker_id, &data_size, &metadata_size,
                     &device_num);
-  auto error = CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
-                            owner_worker_id, evict_if_full, data_size, metadata_size,
-                            device_num, client, object);
+  auto error =
+      CreateObject(object_id, owner_raylet_id, owner_ip_address, owner_port,
+                   owner_worker_id, data_size, metadata_size, device_num, client, object);
   if (error == PlasmaError::OutOfMemory) {
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
@@ -262,11 +261,13 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
   return error;
 }
 
-PlasmaError PlasmaStore::CreateObject(
-    const ObjectID &object_id, const NodeID &owner_raylet_id,
-    const std::string &owner_ip_address, int owner_port, const WorkerID &owner_worker_id,
-    bool evict_if_full, int64_t data_size, int64_t metadata_size, int device_num,
-    const std::shared_ptr<Client> &client, PlasmaObject *result) {
+PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
+                                      const NodeID &owner_raylet_id,
+                                      const std::string &owner_ip_address, int owner_port,
+                                      const WorkerID &owner_worker_id, int64_t data_size,
+                                      int64_t metadata_size, int device_num,
+                                      const std::shared_ptr<Client> &client,
+                                      PlasmaObject *result) {
   RAY_LOG(DEBUG) << "creating object " << object_id.Hex() << " size " << data_size;
 
   auto entry = GetObjectTableEntry(&store_info_, object_id);
@@ -284,8 +285,7 @@ PlasmaError PlasmaStore::CreateObject(
 
   if (device_num == 0) {
     PlasmaError error = PlasmaError::OK;
-    pointer = AllocateMemory(total_size, evict_if_full, &fd, &map_size, &offset, client,
-                             true, &error);
+    pointer = AllocateMemory(total_size, &fd, &map_size, &offset, client, true, &error);
     if (!pointer) {
       return error;
     }
@@ -294,7 +294,7 @@ PlasmaError PlasmaStore::CreateObject(
     return PlasmaError::OutOfMemory;
   }
 
-  auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
+  auto ptr = std::make_unique<ObjectTableEntry>();
   entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
   entry->data_size = data_size;
   entry->metadata_size = metadata_size;
@@ -328,6 +328,8 @@ PlasmaError PlasmaStore::CreateObject(
   eviction_policy_.ObjectCreated(object_id, client.get(), true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
+  num_objects_unsealed_++;
+  num_bytes_unsealed_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
 
@@ -491,9 +493,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       RAY_CHECK(!entry->pointer);
 
       PlasmaError error = PlasmaError::OK;
-      entry->pointer = AllocateMemory(entry->data_size + entry->metadata_size,
-                                      /*evict=*/true, &entry->fd, &entry->map_size,
-                                      &entry->offset, client, false, &error);
+      entry->pointer =
+          AllocateMemory(entry->data_size + entry->metadata_size, &entry->fd,
+                         &entry->map_size, &entry->offset, client, false, &error);
       if (entry->pointer) {
         // TODO(suquark): Not sure if this old behavior is still compatible
         // with our current object spilling mechanics.
@@ -541,12 +543,14 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     client->object_ids.erase(it);
     // Decrease reference count.
     entry->ref_count--;
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
 
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
       num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
-      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
+      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
+                     << ", num bytes in use is now " << num_bytes_in_use_;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
         eviction_policy_.EndObjectAccess(object_id);
@@ -570,6 +574,16 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   auto buff_size = object->data_size + object->metadata_size;
   if (object->device_num == 0) {
     PlasmaAllocator::Free(object->pointer, buff_size);
+  }
+  if (object->state == ObjectState::PLASMA_CREATED) {
+    num_bytes_unsealed_ -= object->data_size + object->metadata_size;
+    num_objects_unsealed_--;
+  }
+  if (object->ref_count > 0) {
+    // A client was using this object.
+    num_bytes_in_use_ -= object->data_size + object->metadata_size;
+    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
   }
   store_info_.objects.erase(object_id);
 }
@@ -613,6 +627,9 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     object_info.owner_worker_id = entry->owner_worker_id.Binary();
     object_info.metadata_size = entry->metadata_size;
     infos.push_back(object_info);
+
+    num_objects_unsealed_--;
+    num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
   }
 
   PushNotifications(infos);
@@ -861,9 +878,8 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &object_id = GetCreateRequestObjectId(message);
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
 
-    auto handle_create = [this, client, message](bool evict_if_full,
-                                                 PlasmaObject *result) {
-      return HandleCreateObjectRequest(client, message, evict_if_full, result);
+    auto handle_create = [this, client, message](PlasmaObject *result) {
+      return HandleCreateObjectRequest(client, message, result);
     };
 
     if (request->try_immediately()) {
