@@ -45,13 +45,6 @@ class JobInfo:
         """
         return self._job_info["language"]
 
-    def supported_languages(self):
-        """ The languages are using by the job. The job is multi-languages
-        by default. The value is a list of language names of enum Language
-        defined in common.proto.
-        """
-        return self._job_info.get("supportedLanguages", ["PYTHON", "JAVA"])
-
     def url(self):
         """ The url to download the job package archive. The archive format is
         one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
@@ -122,22 +115,6 @@ class JobProcessor:
     def __init__(self, job_info):
         assert isinstance(job_info, JobInfo)
         self._job_info = job_info
-        self._running_proc = []
-
-    async def clean(self):
-        running_proc = [p for p in self._running_proc if p.returncode is None]
-        if running_proc:
-            logger.info("[%s] Clean running proc of %s: %s",
-                        self._job_info.job_id(),
-                        type(self).__name__,
-                        ", ".join(f"cmd[{p.cmd_index}]" for p in running_proc))
-        for proc in running_proc:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            await proc.wait()
-            assert proc.returncode is not None
 
     async def _download_package(self, http_session, url, filename):
         job_id = self._job_info.job_id()
@@ -175,7 +152,6 @@ class JobProcessor:
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
-        self._running_proc.append(proc)
         job_id = self._job_info.job_id()
         cmd_index = self._get_next_cmd_index()
         proc.cmd_index = cmd_index
