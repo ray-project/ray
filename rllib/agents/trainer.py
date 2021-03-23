@@ -124,10 +124,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # If True, try to render the environment on the local worker or on worker
     # 1 (if num_workers > 0). For vectorized envs, this usually means that only
     # the first sub-environment will be rendered.
+    # In order for this to work, your env will have to implement the
+    # `render()` method which either:
+    # a) handles window generation and rendering itself (returning True) or
+    # b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
     "render_env": False,
-    # If True, store evaluation videos in the output dir.
-    # Alternatively, provide a path (str) to a directory here, where the env
-    # recordings should be stored instead.
+    # If True, stores videos in this relative directory inside the default
+    # output dir (~/ray_results/...). Alternatively, you can specify an
+    # absolute path (str), in which the env recordings should be
+    # stored instead.
+    # Set to False for not recording anything.
+    # Note: This setting replaces the deprecated `monitor` key.
     "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
@@ -146,9 +153,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "lr": 0.0001,
 
     # === Debug Settings ===
-    # Whether to write episode stats and videos to the agent log dir. This is
-    # typically located in ~/ray_results.
-    "monitor": False,
     # Set the ray.rllib.* log level for the agent process and its workers.
     # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
     # periodically print out summaries of relevant internal dataflow (this is
@@ -410,12 +414,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Default value None allows overwriting with nested dicts
     "logger_config": None,
 
-    # Deprecated values.
+    # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     # This will be set automatically from now on.
     "simple_optimizer": DEPRECATED_VALUE,
+    # Whether to write episode stats and videos to the agent log dir. This is
+    # typically located in ~/ray_results.
+    "monitor": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -710,7 +717,13 @@ class Trainer(Trainable):
                 # Assert that user has not unset "in_evaluation".
                 assert "in_evaluation" not in extra_config or \
                     extra_config["in_evaluation"] is True
-                extra_config.update({
+                evaluation_config = merge_dicts(self.config, extra_config)
+                # Validate evaluation config.
+                self._validate_config(evaluation_config)
+                # Switch on complete_episode rollouts (evaluations are
+                # always done on n complete episodes) and set the
+                # `in_evaluation` flag.
+                evaluation_config.update({
                     "batch_mode": "complete_episodes",
                     "in_evaluation": True,
                 })
@@ -721,7 +734,7 @@ class Trainer(Trainable):
                     env_creator=self.env_creator,
                     validate_env=None,
                     policy_class=self._policy_class,
-                    config=merge_dicts(self.config, extra_config),
+                    config=evaluation_config,
                     num_workers=self.config["evaluation_num_workers"])
                 self.evaluation_metrics = {}
 
@@ -1137,6 +1150,16 @@ class Trainer(Trainable):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
+
+        # Monitor should be replaced by `record_env`.
+        if config.get("monitor", DEPRECATED_VALUE) != DEPRECATED_VALUE:
+            deprecation_warning("monitor", "record_env", error=False)
+            config["record_env"] = config.get("monitor", False)
+        # Empty string would fail some if-blocks checking for this setting.
+        # Set to True instead, meaning: use default output dir to store
+        # the videos.
+        if config.get("record_env") == "":
+            config["record_env"] = True
 
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
