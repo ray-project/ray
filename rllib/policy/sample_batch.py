@@ -63,7 +63,11 @@ class SampleBatch(dict):
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
-        self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
+        if self.seq_lens is None and len(args) > 0 and isinstance(
+                args[0], dict):
+            self.seq_lens = args[0].pop("_seq_lens", args[0].pop(
+                "seq_lens", None))
         if isinstance(self.seq_lens, list):
             self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
@@ -88,8 +92,6 @@ class SampleBatch(dict):
 
         if self.is_training is None:
             self.is_training = self.pop("is_training", False)
-        if self.seq_lens is None:
-            self.seq_lens = self.get("seq_lens", None)
 
         lengths = []
         copy_ = {k: v for k, v in self.items()}
@@ -477,9 +479,12 @@ class SampleBatch(dict):
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
+        if key == "seq_lens":
+            self.seq_lens = item
+            return
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        if not hasattr(self, "added_keys"):
+        elif not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 
