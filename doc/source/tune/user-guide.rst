@@ -759,7 +759,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``1000``.
+  to ``auto``, which will be updated to ``1000`` for random/grid search and ``1`` for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
   instead of the legacy resource requests. Setting this to 1 enables legacy placement.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
@@ -767,6 +767,9 @@ These are the environment variables Ray Tune currently considers:
   that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
   done in the same script. You might want to disable this if you run multiple Tune runs in
   parallel from different scripts. Set to 1 to disable.
+* **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
+  e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
+  initialized to a unique name at the start of the first run.
 * **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
   groups to be placed before continuing the tuning loop. Setting this to a float
   will block for that many seconds. This is mostly used for testing purposes. Defaults
