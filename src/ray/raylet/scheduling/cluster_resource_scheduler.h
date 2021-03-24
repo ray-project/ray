@@ -40,8 +40,7 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
 /// resources at those nodes.
 class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
  public:
-  ClusterResourceScheduler(void){};
-
+  ClusterResourceScheduler(void);
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
@@ -431,9 +430,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                                             const TaskRequest &task_request);
 
   /// Use the hybrid spillback policy.
-  bool hybrid_spillback_;
+  const bool hybrid_spillback_;
   /// The threshold at which to switch from packing to spreading.
-  float hybrid_threshold_;
+  const float hybrid_threshold_;
   /// Feature lag between legacy scheduling algorithms. When loadbalance_spillback_ is
   /// true, a node is chosen at uniform random from the possible nodes.
   bool loadbalance_spillback_;

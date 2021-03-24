@@ -56,6 +56,39 @@ def test_load_balancing(ray_start_cluster):
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
+def test_hybrid_policy(ray_start_cluster):
+    @ray.remote(num_cpus=1)
+    def get_node():
+        time.sleep(1)
+        return ray.worker.global_worker.current_node_id
+
+    cluster = ray_start_cluster
+    num_nodes = 2
+    num_cpus = 10
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=num_cpus)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Below the hybrid threshold we pack on the local node first.
+    nodes = ray.get([get_node.remote() for _ in range(5)])
+    assert len(set(nodes)) == 1
+
+    # We pack the second node to the hybrid threshold.
+    nodes = ray.get([get_node.remote() for _ in range(10)])
+    counter = collections.Counter(nodes)
+    for node_id in counter:
+        assert counter[node_id] == 5
+
+    # Once all nodes are past the hybrid threshold we round robin.
+    # TODO (Alex): Ideally we could schedule less than 20 nodes here, but the
+    # policy is imperfect if a resource report interrupts the process.
+    nodes = ray.get([get_node.remote() for _ in range(20)])
+    counter = collections.Counter(nodes)
+    for node_id in counter:
+        assert counter[node_id] == 10, counter
+
+
 def test_local_scheduling_first(ray_start_cluster):
     cluster = ray_start_cluster
     num_cpus = 8
@@ -68,7 +101,7 @@ def test_local_scheduling_first(ray_start_cluster):
     cluster.add_node(num_cpus=num_cpus)
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     def f():
         time.sleep(0.01)
         return ray.worker.global_worker.node.unique_id

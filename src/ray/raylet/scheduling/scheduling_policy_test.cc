@@ -21,6 +21,50 @@ NodeResources CreateNodeResources(double available_cpu, double total_cpu,
 
 class SchedulingPolicyTest : public ::testing::Test {};
 
+TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
+  StringIdMap map;
+  auto task_req1 = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
+  auto task_req2 = ResourceMapToTaskRequest(map, {{"CPU", 1}});
+  {
+    // Don't break with a non-resized predefined resources array.
+    NodeResources resources;
+    resources.predefined_resources = {{0, 2.0}};
+    ASSERT_FALSE(resources.IsFeasible(task_req1));
+    ASSERT_TRUE(resources.IsFeasible(task_req2));
+  }
+
+  {
+    // After resizing, make sure it doesn't break under with resources with 0 total.
+    NodeResources resources;
+    resources.predefined_resources = {{0, 2.0}};
+    resources.predefined_resources.resize(PredefinedResources_MAX);
+    ASSERT_FALSE(resources.IsFeasible(task_req1));
+    ASSERT_TRUE(resources.IsFeasible(task_req2));
+  }
+}
+
+TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
+  StringIdMap map;
+  auto task_req1 = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
+  auto task_req2 = ResourceMapToTaskRequest(map, {{"CPU", 1}});
+  {
+    // Don't break with a non-resized predefined resources array.
+    NodeResources resources;
+    resources.predefined_resources = {{2, 2.0}};
+    ASSERT_FALSE(resources.IsAvailable(task_req1));
+    ASSERT_TRUE(resources.IsAvailable(task_req2));
+  }
+
+  {
+    // After resizing, make sure it doesn't break under with resources with 0 total.
+    NodeResources resources;
+    resources.predefined_resources = {{2, 2.0}};
+    resources.predefined_resources.resize(PredefinedResources_MAX);
+    ASSERT_FALSE(resources.IsAvailable(task_req1));
+    ASSERT_TRUE(resources.IsAvailable(task_req2));
+  }
+}
+
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Don't break with a non-resized predefined resources array.

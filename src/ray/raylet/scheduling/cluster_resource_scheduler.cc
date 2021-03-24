@@ -20,9 +20,17 @@
 
 namespace ray {
 
+ClusterResourceScheduler::ClusterResourceScheduler()
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+
+          {};
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id),
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -32,7 +40,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
-    : loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -230,30 +240,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
   std::vector<int64_t> best_nodes;
   *total_violations = 0;
 
-  if (actor_creation && task_req.IsEmpty()) {
-    int64_t best_node = -1;
-    // This an actor which requires no resources.
-    // Pick a random node to to avoid all scheduling all actors on the local node.
-    if (nodes_.size() > 0) {
-      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
-      int idx = distribution(gen_);
-      for (auto &node : nodes_) {
-        if (idx == 0) {
-          best_nodes.emplace_back(node.first);
-          break;
-        }
-        idx--;
-      }
-    }
-    if (!best_nodes.empty()) {
-      best_node = best_nodes.back();
-    }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << nodes_.size()
-                   << ", task_req = " << task_req.DebugString();
-    return best_node;
-  }
-
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   const auto local_node_it = nodes_.find(local_node_id_);
@@ -340,6 +326,29 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool force_spillback,
                                                          int64_t *total_violations,
                                                          bool *is_infeasible) {
+  // The zero cpu actor is a special case that must be handled the same way by all
+  // scheduling policies.
+  if (actor_creation && task_req.IsEmpty()) {
+    int64_t best_node = -1;
+    // This an actor which requires no resources.
+    // Pick a random node to to avoid all scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
+      for (auto &node : nodes_) {
+        if (idx == 0) {
+          best_node = node.first;
+          break;
+        }
+        idx--;
+      }
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
+
   if (!hybrid_spillback_) {
     return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
                                                total_violations, is_infeasible);
