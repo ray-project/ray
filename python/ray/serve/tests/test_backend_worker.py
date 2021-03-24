@@ -7,7 +7,7 @@ import ray
 from ray import serve
 from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
-from ray.serve.router import RequestMetadata, Router
+from ray.serve.router import RequestMetadata, EndpointRouter
 from ray.serve.config import BackendConfig, BackendMetadata
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
@@ -65,7 +65,7 @@ async def add_servable_to_router(
     await controller_actor.add_new_replica.remote(
         "backend", worker, kwargs.get("backend_config", BackendConfig()))
 
-    router = Router(
+    router = EndpointRouter(
         controller_actor,
         "endpoint",
         asyncio.get_event_loop(),

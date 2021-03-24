@@ -185,7 +185,7 @@ class ReplicaSet:
         return assigned_ref
 
 
-class Router:
+class EndpointRouter:
     def __init__(
             self,
             controller_handle: ActorHandle,

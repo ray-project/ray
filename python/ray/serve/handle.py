@@ -1,10 +1,11 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Coroutine
 from enum import Enum
 
 from ray.serve.utils import get_random_letters
+from ray.serve.router import EndpointRouter, RequestMetadata
 from ray.util import metrics
 
 
@@ -53,16 +54,16 @@ class RayServeHandle:
 
     def __init__(
             self,
-            router,  # ThreadProxiedRouter
+            controller_handle,
             endpoint_name,
             handle_options: Optional[HandleOptions] = None,
             *,
             known_python_methods: List[str] = [],
     ):
-        self.router = router
+        self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
-        self.known_python_methods = known_python_methods
         self.handle_options = handle_options or HandleOptions()
+        self.known_python_methods = known_python_methods
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
 
         self.request_counter = metrics.Counter(
@@ -74,6 +75,15 @@ class RayServeHandle:
             "handle": self.handle_tag,
             "endpoint": self.endpoint_name
         })
+
+        self.router: EndpointRouter = self._make_router()
+
+    def _make_router(self) -> EndpointRouter:
+        return EndpointRouter(
+            self.controller_handle,
+            self.endpoint_name,
+            asyncio.get_event_loop(),
+        )
 
     def options(self,
                 *,
@@ -100,7 +110,22 @@ class RayServeHandle:
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
 
-        return self.__class__(self.router, self.endpoint_name, new_options)
+        return self.__class__(self.controller_handle, self.endpoint_name,
+                              new_options)
+
+    def _remote(self, endpoint_name, handle_options, request_data,
+                kwargs) -> Coroutine:
+        request_metadata = RequestMetadata(
+            get_random_letters(10),  # Used for debugging.
+            endpoint_name,
+            call_method=handle_options.method_name,
+            shard_key=handle_options.shard_key,
+            http_method=handle_options.http_method,
+            http_headers=handle_options.http_headers,
+        )
+        coro = self.router.assign_request(request_metadata, request_data,
+                                          **kwargs)
+        return coro
 
     async def remote(self,
                      request_data: Optional[Union[Dict, Any]] = None,
@@ -120,15 +145,15 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        return await self.router._remote(
-            self.endpoint_name, self.handle_options, request_data, kwargs)
+        return await self._remote(self.endpoint_name, self.handle_options,
+                                  request_data, kwargs)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
 
     def __reduce__(self):
         serialized_data = {
-            "router": self.router,
+            "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods
@@ -150,6 +175,15 @@ class RayServeHandle:
 
 
 class RayServeSyncHandle(RayServeHandle):
+    def _make_router(self) -> EndpointRouter:
+        # Delayed import because ray.serve.api depends on handles.
+        from ray.serve.api import create_or_get_async_loop_in_thread
+        return EndpointRouter(
+            self.controller_handle,
+            self.endpoint_name,
+            create_or_get_async_loop_in_thread(),
+        )
+
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchronous request to the endpoint.
@@ -169,15 +203,15 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self.router._remote(self.endpoint_name, self.handle_options,
-                                   request_data, kwargs)
+        coro = self._remote(self.endpoint_name, self.handle_options,
+                            request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self.router.async_loop)
+            coro, self.router._loop)
         return future.result()
 
     def __reduce__(self):
         serialized_data = {
-            "router": self.router,
+            "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
             "known_python_methods": self.known_python_methods
