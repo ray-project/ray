@@ -141,7 +141,7 @@ def _hash_modules(path: Path) -> bytes:
             with open(from_file_name, mode="rb") as f:
                 data = f.read(BUF_SIZE)
                 if not data:
-                    break
+                    continue
                 md5.update(data)
         hash_val = _xor_bytes(hash_val, md5.digest())
     return hash_val
