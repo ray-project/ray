@@ -363,6 +363,8 @@ ray::Status NodeManager::RegisterGcs() {
         WarnResourceDeadlock();
       },
       RayConfig::instance().debug_dump_period_milliseconds());
+  uint64_t now_ms = current_time_ms();
+  last_metrics_recorded_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
                                        record_metrics_period_ms_);
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
@@ -370,7 +372,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds());
   }
-  last_resource_report_at_ms_ = current_time_ms();
+  last_resource_report_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
                                        report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
@@ -951,7 +953,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
+        worker_type != rpc::WorkerType::RESTORE_WORKER &&
+        worker_type != rpc::WorkerType::UTIL_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -983,7 +986,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
-      worker_type == rpc::WorkerType::RESTORE_WORKER) {
+      worker_type == rpc::WorkerType::RESTORE_WORKER ||
+      worker_type == rpc::WorkerType::UTIL_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1046,6 +1050,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   }
 
   if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushRestoreWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushRestoreWorker(worker);
     return;
@@ -2216,7 +2226,7 @@ void NodeManager::RecordMetrics() {
   }
   // Last recorded time will be reset in the caller side.
   uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - metrics_last_recorded_time_ms_;
+  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
 
   // Record average number of tasks information per second.
   stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *
@@ -2229,8 +2239,11 @@ void NodeManager::RecordMetrics() {
                                        (1000.0 / (double)duration_ms));
   metrics_num_task_spilled_back_ = 0;
 
+  object_directory_->RecordMetrics(duration_ms);
   object_manager_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();
+
+  last_metrics_recorded_at_ms_ = current_time;
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {

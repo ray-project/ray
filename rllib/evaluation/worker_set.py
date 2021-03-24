@@ -339,7 +339,7 @@ class WorkerSet:
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
-            monitor_path=self._logdir if config["monitor"] else None,
+            record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],
@@ -355,7 +355,6 @@ class WorkerSet:
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
-            _use_trajectory_view_api=config["_use_trajectory_view_api"],
         )
 
         return worker

@@ -159,9 +159,10 @@ is generally the easiest way to run release tests.
    The following tests should be run.
 
    - ``data_processing_tests/workloads/streaming_shuffle.py`` run the 100GB streaming shuffle in a single node & fake 4 nodes cluster.
+   - ``data_processing_tests/workloads/dask_on_ray_large_scale_test.py`` runs the large scale dask on ray test in 250 nodes cluster.
 
    **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
-   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
+   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release. For the dask on ray test, just make sure it runs for at least 30 minutes without the driver crash.
 
 9. **Ray Tune release tests**
 

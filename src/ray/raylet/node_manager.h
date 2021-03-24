@@ -726,7 +726,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t metrics_last_recorded_time_ms_;
+  uint64_t last_metrics_recorded_at_ms_;
 
   /// Number of tasks that are received and scheduled.
   uint64_t metrics_num_task_scheduled_;
