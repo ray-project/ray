@@ -179,7 +179,6 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-            _use_trajectory_view_api: bool = True,
             policy: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
@@ -304,8 +303,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
-            _use_trajectory_view_api (bool): Whether to collect samples through
-                the experimental Trajectory View API.
             policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
@@ -409,12 +406,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 # framestacking via trajectory view API is enabled.
                 num_framestacks = model_config.get("num_framestacks", 0)
 
-                # No trajectory view API: No traj. view based framestacking.
-                if not policy_config["_use_trajectory_view_api"]:
-                    model_config["num_framestacks"] = num_framestacks = 0
                 # Trajectory view API is on and num_framestacks=auto: Only
                 # stack traj. view based if old `framestack=[invalid value]`.
-                elif num_framestacks == "auto":
+                if num_framestacks == "auto":
                     if framestack == DEPRECATED_VALUE:
                         model_config["num_framestacks"] = num_framestacks = 4
                     else:
@@ -648,7 +642,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
                 render=render,
@@ -674,7 +667,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=_use_trajectory_view_api,
                 sample_collector_class=policy_config.get(
                     "sample_collector_class"),
                 render=render,
@@ -1234,6 +1226,7 @@ def _validate_and_canonicalize(
 
 def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
                                 allow_none_graph: bool = False) -> None:
+    # Loop through all policy definitions in multi-agent policie
     for k, v in policy.items():
         if not isinstance(k, str):
             raise ValueError("policy keys must be strs, got {}".format(
