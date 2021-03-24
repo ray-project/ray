@@ -5,7 +5,7 @@ from ray._private.client_mode_hook import client_mode_hook
 
 
 @client_mode_hook
-def _internal_kv_initialized(target=None):
+def _internal_kv_initialized():
     worker = ray.worker.global_worker
     return hasattr(worker, "mode") and worker.mode is not None
 

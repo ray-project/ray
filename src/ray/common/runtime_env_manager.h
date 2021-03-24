@@ -43,12 +43,11 @@ class RuntimeEnvManager {
   /// \param[in] uri The uri referenced by the id.
   void AddUriReference(const std::string &hex_id, const std::string &uri);
 
-
   /// Get the reference of uris by id.
   ///
   /// \param[in] hex_id The id of to look.
   /// \return The uris referenced by the id.
-  const std::vector<std::string>& GetReferences(const std::string &hex_id) const;
+  const std::vector<std::string> &GetReferences(const std::string &hex_id) const;
 
   /// Decrease the reference of uri by job_id
   /// \param[in] hex_id The id of the runtime env.

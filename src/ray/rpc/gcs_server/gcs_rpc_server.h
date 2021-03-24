@@ -52,7 +52,8 @@ namespace rpc {
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER)
 
-#define KV_SERVICE_RPC_HANDLER(HANDLER) RPC_SERVICE_HANDLER(KVGcsService, HANDLER)
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER)
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
@@ -568,29 +569,34 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   PlacementGroupInfoGcsServiceHandler &service_handler_;
 };
 
-class KVGcsServiceHandler {
+class InternalKVGcsServiceHandler {
  public:
-  virtual ~KVGcsServiceHandler() = default;
-  virtual void HandleKeys(const rpc::KeysRequest &request, rpc::KeysReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual ~InternalKVGcsServiceHandler() = default;
+  virtual void HandleInternalKVKeys(const InternalKVKeysRequest &request,
+                                    InternalKVKeysReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGet(const GetRequest &request, GetReply *reply,
-                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleInternalKVGet(const InternalKVGetRequest &request,
+                                   InternalKVGetReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePut(const PutRequest &request, PutReply *reply,
-                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleInternalKVPut(const InternalKVPutRequest &request,
+                                   InternalKVPutReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDel(const DelRequest &request, DelReply *reply,
-                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleInternalKVDel(const InternalKVDelRequest &request,
+                                   InternalKVDelReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleExists(const ExistsRequest &request, ExistsReply *reply,
-                            SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleInternalKVExists(const InternalKVExistsRequest &request,
+                                      InternalKVExistsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
-class KVGrpcService : public GrpcService {
+class InternalKVGrpcService : public GrpcService {
  public:
-  explicit KVGrpcService(instrumented_io_context &io_service,
-                         KVGcsServiceHandler &handler)
+  explicit InternalKVGrpcService(instrumented_io_context &io_service,
+                                 InternalKVGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler) {}
 
  protected:
@@ -598,16 +604,16 @@ class KVGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    KV_SERVICE_RPC_HANDLER(Get);
-    KV_SERVICE_RPC_HANDLER(Put);
-    KV_SERVICE_RPC_HANDLER(Del);
-    KV_SERVICE_RPC_HANDLER(Exists);
-    KV_SERVICE_RPC_HANDLER(Keys);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
   }
 
  private:
-  KVGcsService::AsyncService service_;
-  KVGcsServiceHandler &service_handler_;
+  InternalKVGcsService::AsyncService service_;
+  InternalKVGcsServiceHandler &service_handler_;
 };
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
@@ -620,7 +626,7 @@ using TaskInfoHandler = TaskInfoGcsServiceHandler;
 using StatsHandler = StatsGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;
 using PlacementGroupInfoHandler = PlacementGroupInfoGcsServiceHandler;
-using KVHandler = KVGcsServiceHandler;
+using InternalKVHandler = InternalKVGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray

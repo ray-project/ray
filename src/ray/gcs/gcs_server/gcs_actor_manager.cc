@@ -87,8 +87,7 @@ rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    RuntimeEnvManager &runtime_env_manager,
+    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
@@ -289,9 +288,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   } else {
     // If it's a detached actor, we need to register the runtime env it used to GC
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    const auto& uris = runtime_env_manager_.GetReferences(job_id.Hex());
+    const auto &uris = runtime_env_manager_.GetReferences(job_id.Hex());
     auto actor_id_hex = actor->GetActorID().Hex();
-    for(const auto& uri : uris) {
+    for (const auto &uri : uris) {
       runtime_env_manager_.AddUriReference(actor_id_hex, uri);
     }
   }

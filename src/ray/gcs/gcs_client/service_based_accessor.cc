@@ -1534,66 +1534,68 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
   return Status::OK();
 }
 
-ServiceBasedKVAccessor::ServiceBasedKVAccessor(ServiceBasedGcsClient *client_impl)
+ServiceBasedInternalKVAccessor::ServiceBasedInternalKVAccessor(
+    ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status ServiceBasedKVAccessor::AsyncGet(
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
     const std::string &key, const OptionalItemCallback<std::string> &callback) {
-  rpc::GetRequest req;
+  rpc::InternalKVGetRequest req;
   req.set_key(key);
-  client_impl_->GetGcsRpcClient().Get(
-      req, [callback](const Status &status, const rpc::GetReply &reply) {
-        if (reply.optional_value_case() == rpc::GetReply::kValue) {
-          callback(status, reply.value());
-        } else {
+  client_impl_->GetGcsRpcClient().InternalKVGet(
+      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
           callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
         }
       });
   return Status::OK();
 }
 
-Status ServiceBasedKVAccessor::AsyncPut(const std::string &key, const std::string &value,
-                                        bool overwrite,
-                                        const OptionalItemCallback<int> &callback) {
-  rpc::PutRequest req;
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVPut(
+    const std::string &key, const std::string &value, bool overwrite,
+    const OptionalItemCallback<int> &callback) {
+  rpc::InternalKVPutRequest req;
   req.set_key(key);
   req.set_value(value);
   req.set_overwrite(overwrite);
-  client_impl_->GetGcsRpcClient().Put(
-      req, [callback](const Status &status, const rpc::PutReply &reply) {
+  client_impl_->GetGcsRpcClient().InternalKVPut(
+      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
         callback(status, reply.added_num());
       });
   return Status::OK();
 }
 
-Status ServiceBasedKVAccessor::AsyncExists(const std::string &key,
-                                           const OptionalItemCallback<bool> &callback) {
-  rpc::ExistsRequest req;
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVExists(
+    const std::string &key, const OptionalItemCallback<bool> &callback) {
+  rpc::InternalKVExistsRequest req;
   req.set_key(key);
-  client_impl_->GetGcsRpcClient().Exists(
-      req, [callback](const Status &status, const rpc::ExistsReply &reply) {
+  client_impl_->GetGcsRpcClient().InternalKVExists(
+      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
         callback(status, reply.exists());
       });
   return Status::OK();
 }
 
-Status ServiceBasedKVAccessor::AsyncDel(const std::string &key,
-                                        const StatusCallback &callback) {
-  rpc::DelRequest req;
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVDel(
+    const std::string &key, const StatusCallback &callback) {
+  rpc::InternalKVDelRequest req;
   req.set_key(key);
-  client_impl_->GetGcsRpcClient().Del(
-      req,
-      [callback](const Status &status, const rpc::DelReply &reply) { callback(status); });
+  client_impl_->GetGcsRpcClient().InternalKVDel(
+      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+        callback(status);
+      });
   return Status::OK();
 }
 
-Status ServiceBasedKVAccessor::AsyncKeys(
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVKeys(
     const std::string &prefix,
     const OptionalItemCallback<std::vector<std::string>> &callback) {
-  rpc::KeysRequest req;
+  rpc::InternalKVKeysRequest req;
   req.set_prefix(prefix);
-  client_impl_->GetGcsRpcClient().Keys(
-      req, [callback](const Status &status, const rpc::KeysReply &reply) {
+  client_impl_->GetGcsRpcClient().InternalKVKeys(
+      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
         if (!status.ok()) {
           callback(status, boost::none);
         } else {

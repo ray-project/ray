@@ -523,64 +523,6 @@ service PlacementGroupInfoGcsService {
       returns (WaitPlacementGroupUntilReadyReply);
 }
 
-message GetRequest {
-  bytes key = 1;
-}
-
-message GetReply {
-  GcsStatus status = 1;
-  oneof optional_value {
-    bytes value = 2;
-  }
-}
-
-message PutRequest {
-  bytes key = 1;
-  bytes value = 2;
-  bool overwrite = 3;
-}
-
-message PutReply {
-  GcsStatus status = 1;
-  int32 added_num = 2;
-}
-
-message DelRequest {
-  bytes key = 1;
-}
-
-message DelReply {
-  GcsStatus status = 1;
-  int32 deleted_num = 2;
-}
-
-message ExistsRequest {
-  bytes key = 1;
-}
-
-message ExistsReply {
-  GcsStatus status = 1;
-  bool exists = 2;
-}
-
-message KeysRequest {
-  bytes prefix = 1;
-}
-
-message KeysReply {
-  GcsStatus status = 1;
-  repeated bytes results = 2;
-}
-
-// Service for KV storage
-service KVGcsService {
-  rpc Get(GetRequest) returns (GetReply);
-  rpc Put(PutRequest) returns (PutReply);
-  rpc Del(DelRequest) returns (DelReply);
-  rpc Exists(ExistsRequest) returns (ExistsReply);
-  rpc Keys(KeysRequest) returns (KeysReply);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
@@ -588,6 +530,62 @@ run autoscaler with any version of ray. For example, the K8s operator runs
 autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
+
+message InternalKVGetRequest {
+  bytes key = 1;
+}
+
+message InternalKVGetReply {
+  GcsStatus status = 1;
+  bytes value = 2;
+}
+
+message InternalKVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message InternalKVPutReply {
+  GcsStatus status = 1;
+  int32 added_num = 2;
+}
+
+message InternalKVDelRequest {
+  bytes key = 1;
+}
+
+message InternalKVDelReply {
+  GcsStatus status = 1;
+  int32 deleted_num = 2;
+}
+
+message InternalKVExistsRequest {
+  bytes key = 1;
+}
+
+message InternalKVExistsReply {
+  GcsStatus status = 1;
+  bool exists = 2;
+}
+
+message InternalKVKeysRequest {
+  bytes prefix = 1;
+}
+
+message InternalKVKeysReply {
+  GcsStatus status = 1;
+  repeated bytes results = 2;
+}
+
+// Service for KV storage
+service InternalKVGcsService {
+  rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
+  rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
+  rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
+  rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+}
 
 message GetAllResourceUsageRequest {
 }

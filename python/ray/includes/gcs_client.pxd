@@ -13,7 +13,7 @@ from ray.includes.common cimport (
 )
 
 cdef extern from "ray/gcs/accessor.h" nogil:
-    cdef cppclass CKVAccessor "ray::gcs::KVAccessor":
+    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus Put(const c_string &key,
                        const c_string &value,
                        c_bool overwrite,
@@ -25,7 +25,7 @@ cdef extern from "ray/gcs/accessor.h" nogil:
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
-        CKVAccessor &KV()
+        CInternalKVAccessor &InternalKV()
 
 
 cdef extern from * namespace "_gcs_maker":
@@ -47,6 +47,7 @@ cdef extern from * namespace "_gcs_maker":
            RAY_CHECK(Connect(io_context_).ok());
         }
         ~RayletGcsClient() {
+          RAY_LOG(INFO) << "Stop!!!";
           io_context_.stop();
           thread_.join();
         }

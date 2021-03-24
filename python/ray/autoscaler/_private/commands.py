@@ -104,13 +104,15 @@ def debug_status(status, error) -> str:
     else:
         status = status.decode("utf-8")
         as_dict = json.loads(status)
+        time = datetime.datetime.fromtimestamp(as_dict["time"])
         lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
         if "autoscaler_report" in as_dict:
             autoscaler_summary = AutoscalerSummary(
                 **as_dict["autoscaler_report"])
-            status = format_info_string(lm_summary, autoscaler_summary)
+            status = format_info_string(
+                lm_summary, autoscaler_summary, time=time)
         else:
-            status = format_info_string_no_node_types(lm_summary)
+            status = format_info_string_no_node_types(lm_summary, time=time)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -1239,8 +1241,8 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     if not nodes:
         cli_logger.error(
-            f"No nodes found. Specify with `--host` or by passing a ray "
-            f"cluster config to `--cluster`.")
+            "No nodes found. Specify with `--host` or by passing a ray "
+            "cluster config to `--cluster`.")
         return None
 
     if cluster_config_file:

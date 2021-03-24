@@ -191,11 +191,11 @@ void GcsServer::InitGcsResourceScheduler() {
 
 void GcsServer::InitGcsJobManager() {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(
-      gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_);
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
+                                                     *runtime_env_manager_);
   // Register service.
-  job_info_service_ = std::make_unique<rpc::JobInfoGrpcService>(
-      main_service_, *gcs_job_manager_);
+  job_info_service_ =
+      std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
   rpc_server_.RegisterService(*job_info_service_);
 }
 
@@ -301,15 +301,15 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsKVManager>(redis_client_);
-  kv_service_ = std::make_unique<rpc::KVGrpcService>(main_service_, *kv_manager_);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
 }
 
 void GcsServer::InitRuntimeEnvManager() {
-  runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      [this](const std::string& uri, auto cb) {
+  runtime_env_manager_ =
+      std::make_unique<RuntimeEnvManager>([this](const std::string &uri, auto cb) {
         std::string sep = "://";
         auto pos = uri.find(sep);
         if (pos == std::string::npos || pos + sep.size() == uri.size()) {
@@ -317,12 +317,12 @@ void GcsServer::InitRuntimeEnvManager() {
           cb(false);
         } else {
           auto scheme = uri.substr(0, pos);
-          if(scheme != "gcs") {
+          if (scheme != "gcs") {
             // Skip other uri
             cb(true);
           } else {
             this->kv_manager_->AsyncDel(uri, [cb](int deleted_num) {
-              if(deleted_num == 0) {
+              if (deleted_num == 0) {
                 cb(false);
               } else {
                 cb(true);

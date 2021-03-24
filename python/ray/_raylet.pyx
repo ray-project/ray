@@ -851,6 +851,10 @@ def connect_to_gcs(ip, port, password):
     return GcsClient.make_from_address(ip, port, password)
 
 
+def disconnect_from_gcs(gcs_client):
+    gcs_client.disconnect()
+
+
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -916,6 +920,7 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
+        options.connect_on_start = False
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -931,6 +936,10 @@ cdef class CoreWorker:
     def get_gcs_client(self):
         return GcsClient.make_from_existing(
             CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
+
+    def notify_raylet(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ConnectToRaylet()
 
     def run_task_loop(self):
         with nogil:

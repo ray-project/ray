@@ -30,7 +30,6 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 
-
 namespace ray {
 namespace gcs {
 
@@ -192,8 +191,8 @@ class GcsServer {
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Global KV storage handler and service.
-  std::unique_ptr<GcsKVManager> kv_manager_;
-  std::unique_ptr<rpc::KVGrpcService> kv_service_;
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
