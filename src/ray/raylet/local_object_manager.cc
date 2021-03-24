@@ -41,22 +41,18 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    // Send a long-running RPC request to the owner for each object. When we get a
-    // response or the RPC fails (due to the owner crashing), unpin the object.
-    // TODO(edoakes): we should be batching these requests instead of sending one per
-    // pinned object.
-    rpc::WaitForObjectEvictionRequest wait_request;
-    wait_request.set_object_id(object_id.Binary());
-    wait_request.set_intended_worker_id(owner_address.worker_id());
-    auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
-    owner_client->WaitForObjectEviction(
-        wait_request,
-        [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
-          }
-          ReleaseFreedObject(object_id);
-        });
+    // Callback that is invoked when the owner publishes the object to evict.
+    auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
+      ReleaseFreedObject(object_id);
+      core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
+    };
+    // Callback that is invoked when the owner of the object id is dead.
+    auto owner_dead_callback = [this](const ObjectID &object_id) {
+      ReleaseFreedObject(object_id);
+    };
+    // TODO(sang): Batch this request.
+    core_worker_subscriber_->SubcribeObject(owner_address, object_id,
+                                            subscription_callback, owner_dead_callback);
   }
 }
 
