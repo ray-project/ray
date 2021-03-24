@@ -94,9 +94,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state_ = CommitState::COMMITTED;
 
-  for (const auto &resource : bundle_spec.GetFormattedResources()) {
-    cluster_resource_scheduler_->AddLocalResource(resource.first, resource.second);
-  }
+  cluster_resource_scheduler_->CommitBundleResource(bundle_spec, bundle_state->resources_);
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(

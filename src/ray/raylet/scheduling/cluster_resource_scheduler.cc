@@ -404,6 +404,62 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
+
+void ClusterResourceScheduler::CommitBundleResource(const BundleSpecification &bundle_spec, 
+                              const std::shared_ptr<TaskResourceInstances> resource_instances) {
+
+  RAY_CHECK(resource_instances->custom_resources.size() == 0);
+
+  for (const auto &resource : bundle_spec.GetFormattedResources()) {
+    auto &resource_name = resource.first;
+    auto &resource_value = resource.second;
+
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+
+    auto original_resource_name = GetOriginalResourceName(resource_name);
+    int idx = -1;
+    if (original_resource_name == ray::kCPU_ResourceLabel) {
+      idx = (int)CPU;
+    } else if (original_resource_name == ray::kGPU_ResourceLabel) {
+      idx = (int)GPU;
+    } else if (original_resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+      idx = (int)OBJECT_STORE_MEM;
+    } else if (original_resource_name == ray::kMemory_ResourceLabel) {
+      idx = (int)MEM;
+    }
+
+    auto predefined_resource_instance = resource_instances->predefined_resources[idx];
+
+    if (local_resources_.custom_resources.contains(resource_id)) {
+      auto &instances = local_resources_.custom_resources[resource_id];
+      
+      for (size_t index = 0; index < predefined_resource_instance.size(); index++) {
+        instances.total[index] += predefined_resource_instance[index];
+        instances.available[index] += predefined_resource_instance[index];
+      }
+
+      auto local_node_it = nodes_.find(local_node_id_);
+      RAY_CHECK(local_node_it != nodes_.end());
+      auto &capacity =
+          local_node_it->second.GetMutableLocalView()->custom_resources[resource_id];
+
+      capacity.available += FixedPoint(resource_value);
+      capacity.total += FixedPoint(resource_value);
+    } else {
+      ResourceInstanceCapacities capacity;
+      capacity.total = predefined_resource_instance;
+      capacity.available = predefined_resource_instance;
+
+      local_resources_.custom_resources.emplace(resource_id, capacity);
+      std::string node_id_string = string_to_int_map_.Get(local_node_id_);
+      RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
+      UpdateResourceCapacity(node_id_string, resource_name, resource_value);
+      UpdateLocalAvailableResourcesFromResourceInstances();
+    }
+  }
+}
+
 void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
                                                 double resource_total) {
   string_to_int_map_.Insert(resource_name);
