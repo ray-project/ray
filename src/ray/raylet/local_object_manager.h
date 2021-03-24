@@ -16,14 +16,13 @@
 
 #include <google/protobuf/repeated_field.h>
 
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <functional>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/gcs/accessor.h"
 #include "ray/object_manager/common.h"
+#include "ray/raylet/pubsub/subscriber.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/util.h"
@@ -38,8 +37,9 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id, size_t free_objects_batch_size,
-      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      const NodeID &node_id, std::string self_node_address, int self_node_port,
+      size_t free_objects_batch_size, int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
@@ -47,8 +47,11 @@ class LocalObjectManager {
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       std::function<void(const ObjectID &, const std::string &, const NodeID &)>
-          restore_object_from_remote_node)
+          restore_object_from_remote_node,
+      std::shared_ptr<SubscriberInterface> core_worker_subscriber)
       : self_node_id_(node_id),
+        self_node_address_(self_node_address),
+        self_node_port_(self_node_port),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -62,7 +65,8 @@ class LocalObjectManager {
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
         restore_object_from_remote_node_(restore_object_from_remote_node),
-        is_external_storage_type_fs_(is_external_storage_type_fs) {}
+        is_external_storage_type_fs_(is_external_storage_type_fs),
+        core_worker_subscriber_(core_worker_subscriber) {}
 
   /// Pin objects.
   ///
@@ -188,6 +192,8 @@ class LocalObjectManager {
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
   const NodeID self_node_id_;
+  const std::string self_node_address_;
+  const int self_node_port_;
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
@@ -243,14 +249,6 @@ class LocalObjectManager {
   /// spilled from this node, in bytes.
   size_t num_bytes_pending_spill_;
 
-  /// This class is accessed by both the raylet and plasma store threads. The
-  /// mutex protects private members that relate to object spilling.
-  mutable absl::Mutex mutex_;
-
-  ///
-  /// Fields below are used to delete spilled objects.
-  ///
-
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages
   /// because those objects could be still in progress of spilling.
@@ -267,6 +265,10 @@ class LocalObjectManager {
 
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  /// This class is accessed by both the raylet and plasma store threads. The
+  /// mutex protects private members that relate to object spilling.
+  mutable absl::Mutex mutex_;
 
   /// The current number of active spill workers.
   int64_t num_active_workers_ GUARDED_BY(mutex_);
@@ -287,6 +289,10 @@ class LocalObjectManager {
   /// If it is not (meaning it is distributed backend), it always restores objects
   /// directly from the external storage.
   bool is_external_storage_type_fs_;
+
+  /// The raylet client to initiate the pubsub to core workers (owners).
+  /// It is used to subscribe objects to evict.
+  std::shared_ptr<SubscriberInterface> core_worker_subscriber_;
 
   ///
   /// Stats

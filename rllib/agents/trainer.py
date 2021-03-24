@@ -239,10 +239,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
 
-    # Experimental flag to speed up sampling and use "trajectory views" as
-    # generic ModelV2 `input_dicts` that can be requested by the model to
-    # contain different information on the ongoing episode.
-    "_use_trajectory_view_api": True,
     # The SampleCollector class to be used to collect and retrieve
     # environment-, model-, and sampler data. Override the SampleCollector base
     # class to implement your own collection/buffering/retrieval logic.
@@ -1178,17 +1174,6 @@ class Trainer(Trainable):
             config["simple_optimizer"] = False
         elif simple_optim_setting == DEPRECATED_VALUE:
             config["simple_optimizer"] = True
-
-        # Trajectory View API settings.
-        if not config.get("_use_trajectory_view_api"):
-            traj_view_framestacks = model_config.get("num_framestacks", "auto")
-            if model_config.get("_time_major"):
-                raise ValueError("`model._time_major` only supported "
-                                 "iff `_use_trajectory_view_api` is True!")
-            elif traj_view_framestacks not in ["auto", 0]:
-                raise ValueError("`model.num_framestacks` only supported "
-                                 "iff `_use_trajectory_view_api` is True!")
-            model_config["num_framestacks"] = 0
 
         # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):

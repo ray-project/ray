@@ -1612,7 +1612,7 @@ py_test(
     tags = ["examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=80", "--torch"]
+    args = ["--as-test", "--stop-reward=80", "--framework torch"]
 )
 
 py_test(
