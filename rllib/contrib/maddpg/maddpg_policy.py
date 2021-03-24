@@ -297,12 +297,13 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         var_list = []
         for var in self.vars.values():
             var_list += var
-        return self.sess.run(var_list)
+        return {"_state": self.sess.run(var_list)}
 
     @override(TFPolicy)
     def set_weights(self, weights):
         self.sess.run(
-            self.update_vars, feed_dict=dict(zip(self.vars_ph, weights)))
+            self.update_vars,
+            feed_dict=dict(zip(self.vars_ph, weights["_state"])))
 
     @override(Policy)
     def get_state(self):
