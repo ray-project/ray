@@ -233,9 +233,11 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.1)
+            ready, not_ready = ray.wait(refs, timeout=0.5)
+            print(f"finished call, num_ready={len(ready)} num_not_ready={len(not_ready)}")
             for ref in ready:
                 val, pid = ray.get(ref)
+                print(f"val={val}, pid={pid}")
                 responses[val].add(pid)
             for ref in not_ready:
                 blocking.extend(not_ready)
