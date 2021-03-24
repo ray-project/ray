@@ -494,6 +494,10 @@ class Client:
                                            replica_config, version))
 
     @_ensure_connected
+    def delete_deployment(self, name: str) -> None:
+        self._wait_for_goal(self._controller.delete_deployment.remote(name))
+
+    @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of all registered backends.
 
@@ -1087,6 +1091,16 @@ class ServeDeployment(ABC):
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
+    @classmethod
+    def options(self,
+                backend_def: Optional[Callable] = None,
+                name: Optional[str] = None,
+                version: Optional[str] = None,
+                ray_actor_options: Optional[Dict] = None,
+                config: Optional[BackendConfig] = None) -> "ServeDeployment":
+        """Return a new deployment with the specified options set."""
+        raise NotImplementedError()
+
 
 def make_deployment_cls(
         backend_def: Callable,
@@ -1121,11 +1135,12 @@ def make_deployment_cls(
         @classmethod
         def delete(self):
             """Delete this deployment."""
-            raise NotImplementedError()
+            return _get_global_client().delete_deployment(Deployment._name)
 
         @classmethod
         def get_handle(self, sync: Optional[bool] = True
                        ) -> Union[RayServeHandle, RayServeSyncHandle]:
+            """Get a ServeHandle to this deployment."""
             return _get_global_client().get_handle(
                 Deployment._name, missing_ok=False, sync=sync, _internal=True)
 

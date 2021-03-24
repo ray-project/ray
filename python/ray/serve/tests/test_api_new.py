@@ -219,52 +219,31 @@ def test_updating_config(serve_instance):
     assert set(old_replica_tag_list) == set(new_replica_tag_list)
 
 
-@pytest.mark.skip("delete() not implemented yet")
 def test_delete_backend(serve_instance):
+    @serve.deployment("delete")
     def function(_):
         return "hello"
 
-    serve.create_backend("delete:v1", function)
-    serve.create_endpoint(
-        "delete_backend", backend="delete:v1", route="/delete-backend")
+    function.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
 
-    # Check that we can't delete the backend while it's in use.
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
+    function.delete()
 
-    serve.create_backend("delete:v2", function)
-    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
-
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
-
-    # Check that the backend can be deleted once it's no longer in use.
-    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
-    serve.delete_backend("delete:v1")
-
-    # Check that we can no longer use the previously deleted backend.
-    with pytest.raises(ValueError):
-        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
-
+    @serve.deployment("delete")
     def function2(_):
         return "olleh"
 
-    # Check that we can now reuse the previously delete backend's tag.
-    serve.create_backend("delete:v1", function2)
-    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+    function2.deploy()
 
     for _ in range(10):
         try:
-            assert requests.get(
-                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
             break
         except AssertionError:
-            time.sleep(0.5)  # wait for the traffic policy to propogate
+            time.sleep(0.5)  # Wait for the change to propagate.
     else:
-        assert requests.get(
-            "http://127.0.0.1:8000/delete-backend").text == "olleh"
+        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
 
 
 @pytest.mark.skip("Not implemented yet")
