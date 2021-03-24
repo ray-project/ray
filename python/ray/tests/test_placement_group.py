@@ -13,7 +13,7 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,

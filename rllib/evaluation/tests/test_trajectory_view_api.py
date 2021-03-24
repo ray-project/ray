@@ -2,7 +2,6 @@ import copy
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
-import time
 import unittest
 
 import ray
@@ -177,105 +176,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             assert results["train_batch_size"] == config["train_batch_size"]
             trainer.stop()
 
-    def test_traj_view_simple_performance(self):
-        """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
-        """
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
-        action_space = Discrete(2)
-        obs_space = Box(-1.0, 1.0, shape=(700, ))
-
-        from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-        from ray.tune import register_env
-        register_env("ma_env", lambda c: RandomMultiAgentEnv({
-            "num_agents": 2,
-            "p_done": 0.0,
-            "max_episode_len": 104,
-            "action_space": action_space,
-            "observation_space": obs_space
-        }))
-
-        config["num_workers"] = 3
-        config["num_envs_per_worker"] = 8
-        config["num_sgd_iter"] = 1  # Put less weight on training.
-
-        policies = {
-            "pol0": (None, obs_space, action_space, {}),
-        }
-
-        def policy_fn(agent_id):
-            return "pol0"
-
-        config["multiagent"] = {
-            "policies": policies,
-            "policy_mapping_fn": policy_fn,
-        }
-        num_iterations = 2
-        for _ in framework_iterator(config, frameworks="torch"):
-            print("w/ traj. view API")
-            config["_use_trajectory_view_api"] = True
-            trainer = ppo.PPOTrainer(config=config, env="ma_env")
-            learn_time_w = 0.0
-            sampler_perf_w = {}
-            start = time.time()
-            for i in range(num_iterations):
-                out = trainer.train()
-                ts = out["timesteps_total"]
-                sampler_perf_ = out["sampler_perf"]
-                sampler_perf_w = {
-                    k:
-                    sampler_perf_w.get(k, 0.0) + (sampler_perf_[k] * 1000 / ts)
-                    for k, v in sampler_perf_.items()
-                }
-                delta = out["timers"]["learn_time_ms"] / ts
-                learn_time_w += delta
-                print("{}={}s".format(i, delta))
-            sampler_perf_w = {
-                k: sampler_perf_w[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf_w.items()
-            }
-            duration_w = time.time() - start
-            print("Duration: {}s "
-                  "sampler-perf.={} learn-time/iter={}s".format(
-                      duration_w, sampler_perf_w,
-                      learn_time_w / num_iterations))
-            trainer.stop()
-
-            print("w/o traj. view API")
-            config["_use_trajectory_view_api"] = False
-            trainer = ppo.PPOTrainer(config=config, env="ma_env")
-            learn_time_wo = 0.0
-            sampler_perf_wo = {}
-            start = time.time()
-            for i in range(num_iterations):
-                out = trainer.train()
-                ts = out["timesteps_total"]
-                sampler_perf_ = out["sampler_perf"]
-                sampler_perf_wo = {
-                    k: sampler_perf_wo.get(k, 0.0) +
-                    (sampler_perf_[k] * 1000 / ts)
-                    for k, v in sampler_perf_.items()
-                }
-                delta = out["timers"]["learn_time_ms"] / ts
-                learn_time_wo += delta
-                print("{}={}s".format(i, delta))
-            sampler_perf_wo = {
-                k: sampler_perf_wo[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf_wo.items()
-            }
-            duration_wo = time.time() - start
-            print("Duration: {}s "
-                  "sampler-perf.={} learn-time/iter={}s".format(
-                      duration_wo, sampler_perf_wo,
-                      learn_time_wo / num_iterations))
-            trainer.stop()
-
-            # Assert `_use_trajectory_view_api` is faster.
-            self.assertLess(sampler_perf_w["mean_raw_obs_processing_ms"],
-                            sampler_perf_wo["mean_raw_obs_processing_ms"])
-            self.assertLess(sampler_perf_w["mean_action_processing_ms"],
-                            sampler_perf_wo["mean_action_processing_ms"])
-            self.assertLess(duration_w, duration_wo)
-
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
         rollout_worker_w_api = RolloutWorker(
@@ -334,7 +234,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=dict(config, **{"_use_trajectory_view_api": True}),
+            policy_config=config,
             rollout_fragment_length=rollout_fragment_length,
             policy_spec=policies,
             policy_mapping_fn=policy_fn,
@@ -342,7 +242,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         )
         rollout_worker_wo_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=dict(config, **{"_use_trajectory_view_api": False}),
+            policy_config=config,
             rollout_fragment_length=rollout_fragment_length,
             policy_spec=policies,
             policy_mapping_fn=policy_fn,
@@ -384,7 +284,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=dict(config, **{"_use_trajectory_view_api": True}),
+            policy_config=config,
             rollout_fragment_length=rollout_fragment_length,
             policy_spec=policies,
             policy_mapping_fn=policy_fn,
