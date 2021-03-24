@@ -112,10 +112,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    // Request task dependencies that should be made local. These arguments
-    // will count towards the memory reservation for objects pulled from remote
-    // nodes or external storage, so we should not cancel the request until the
-    // task is done.
     bool args_ready =
         task_dependency_manager_.RequestTaskDependencies(task_id, task.GetDependencies());
     if (args_ready) {
@@ -250,6 +246,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         auto callback = std::get<2>(*work_it);
         Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
       }
+
+      if (!spec.GetDependencies().empty()) {
+        task_dependency_manager_.RemoveTaskDependencies(
+            task.GetTaskSpecification().TaskId());
+      }
       work_it = dispatch_queue.erase(work_it);
     }
     if (is_infeasible) {
@@ -331,16 +332,6 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-
-  // The task is done, so its arguments can be released from the object store.
-  // We wait until the task is done so that the arguments count towards the
-  // memory reservation for objects pulled from remote nodes or external
-  // storage.
-  if (!task->GetTaskSpecification().GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(
-        task->GetTaskSpecification().TaskId());
-  }
-
   auto it = pinned_task_arguments_.find(task->GetTaskSpecification().TaskId());
   RAY_CHECK(it != pinned_task_arguments_.end());
   num_pinned_task_arguments_ -= it->second.size();
