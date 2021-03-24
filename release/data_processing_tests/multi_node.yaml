@@ -108,18 +108,18 @@ setup_commands:
     # - sudo apt install -y gdb
     # - sudo apt install -y linux-tools-common
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/fix-memory-leak/6aa279e1072e0d49fba60f20017d79549c5035f8/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
     - pip install tqdm
     - pip install -U dask
     - pip install fastparquet --ignore-installed
     - pip install -U numpy==1.19.5 scipy xarray dataclasses zarr
-    - mkdir -p /tmp/spill
-    - sudo mkfs -t xfs /dev/nvme1n1
-    - sudo mkdir -p /obj-data
-    - sudo mount /dev/nvme1n1 /obj-data
-    - sudo chown -R ubuntu /obj-data;
-    - mkdir /obj-data/ray_spilled_objects
+    # - mkdir -p /tmp/spill
+    # - sudo mkfs -t xfs /dev/nvme1n1
+    # - sudo mkdir -p /obj-data
+    # - sudo mount /dev/nvme1n1 /obj-data
+    # - sudo chown -R ubuntu /obj-data;
+    # - mkdir /obj-data/ray_spilled_objects
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
