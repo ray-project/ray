@@ -627,7 +627,7 @@ class BackendState:
         # `create_backend` codepath -- it can be removed once we deprecate
         # that as the version should never be None.
         if target_version is None:
-            return
+            return 0
 
         old_running_replicas = self._replicas[backend_tag].count(
             exclude_version=target_version,
@@ -638,8 +638,12 @@ class BackendState:
         new_running_replicas = self._replicas[backend_tag].count(
             version=target_version, states=[ReplicaState.RUNNING])
 
+        if target_replicas < old_running_replicas:
+            return 0
+
         pending_replicas = (
             target_replicas - new_running_replicas - old_running_replicas)
+
         rollout_size = max(int(0.2 * target_replicas), 1)
 
         max_to_stop = max(rollout_size - pending_replicas, 0)
@@ -651,10 +655,6 @@ class BackendState:
             ],
             max_replicas=max_to_stop)
 
-        # Inform the routers and backend replicas about config changes.
-        # TODO(edoakes): this should only happen if we change something other
-        # than num_replicas.
-        self._notify_backend_configs_changed(backend_tag)
         if len(replicas_to_stop) > 0:
             logger.info(f"Stopping {len(replicas_to_stop)} replicas of "
                         f"backend '{backend_tag}' with outdated versions.")
@@ -662,6 +662,8 @@ class BackendState:
         for replica in replicas_to_stop:
             replica.set_should_stop(graceful_shutdown_timeout_s)
             self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP, replica)
+
+        return len(replicas_to_stop)
 
     def _scale_backend_replicas(
             self,
