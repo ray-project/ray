@@ -65,6 +65,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   /// The thread pool to execute actor tasks.
   private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
 
+  private final Map<ActorId, Integer> actorMaxConcurrency = new ConcurrentHashMap<>();
+
   /// The thread pool to execute normal tasks.
   private final ExecutorService normalTaskExecutorService;
 
@@ -114,7 +116,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         }
       }
     }
-    if (taskSpec.getType() == TaskType.ACTOR_TASK) {
+    if (taskSpec.getType() == TaskType.ACTOR_TASK  && !isConcurrentActor(taskSpec)) {
       ObjectId dummyObjectId =
           new ObjectId(
               taskSpec.getActorTaskSpec().getPreviousActorTaskDummyObjectId().toByteArray());
@@ -197,8 +199,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .setNumReturns(1)
             .setActorCreationTaskSpec(
                 ActorCreationTaskSpec.newBuilder()
-                    .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-                    .build())
+                  .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
+                  .setMaxConcurrency(options.maxConcurrency)
+                  .build())
             .build();
     submitTaskSpec(taskSpec);
     final LocalModeActorHandle actorHandle =
@@ -326,11 +329,18 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             }
           };
 
+      if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
+        actorMaxConcurrency.put(
+          getActorId(taskSpec), taskSpec.getActorCreationTaskSpec().getMaxConcurrency());
+      }
+
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
         ExecutorService executorService;
         if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
-          executorService = Executors.newSingleThreadExecutor();
+          final int maxConcurrency = taskSpec.getActorCreationTaskSpec().getMaxConcurrency();
+          Preconditions.checkState(maxConcurrency >= 1);
+          executorService = Executors.newFixedThreadPool(maxConcurrency);
           synchronized (actorTaskExecutorServices) {
             actorTaskExecutorServices.put(getActorId(taskSpec), executorService);
           }
@@ -362,11 +372,16 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private void executeTask(TaskSpec taskSpec) {
     TaskExecutor.ActorContext actorContext = null;
+    UniqueId workerId;
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
       actorContext = actorContexts.get(getActorId(taskSpec));
       Preconditions.checkNotNull(actorContext);
+      workerId = ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId();
+    } else {
+      // Actor creation task and normal task will use a new random worker id.
+      workerId = UniqueId.randomId();
     }
-    taskExecutor.setActorContext(actorContext);
+    taskExecutor.setActorContext(workerId, actorContext);
     List<NativeRayObject> args =
         getFunctionArgs(taskSpec).stream()
             .map(
@@ -377,10 +392,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .collect(Collectors.toList());
     runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
-    UniqueId workerId =
-        actorContext != null
-            ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
-            : UniqueId.randomId();
+
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
     List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
     taskExecutor.checkByteBufferArguments(rayFunctionInfo);
@@ -459,5 +471,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                       .position(0)));
     }
     return returnIds;
+  }
+
+  /** Whether this is an concurrent actor. */
+  private boolean isConcurrentActor(TaskSpec taskSpec) {
+    final ActorId actorId = getActorId(taskSpec);
+    Preconditions.checkNotNull(actorId);
+    return actorMaxConcurrency.containsKey(actorId) && actorMaxConcurrency.get(actorId) > 1;
   }
 }
