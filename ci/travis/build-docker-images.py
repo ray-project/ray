@@ -306,7 +306,8 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
                         tag=non_python_nightly_tag)
-                    docker_push(full_image, non_python_nightly_tag)
+                    if not _release_build():
+                        docker_push(full_image, non_python_nightly_tag)
 
 
 # Push infra here:
