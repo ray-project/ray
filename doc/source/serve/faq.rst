@@ -8,157 +8,11 @@ questions, feel free to ask them in the `Discussion Board <https://discuss.ray.i
 
 .. contents::
 
-How do I deploy serve?
-----------------------
+How do I deploy Ray Serve?
+--------------------------
 
 See :doc:`deployment` for information about how to deploy serve.
 
-How do I call an endpoint from Python code?
--------------------------------------------
-
-Use :mod:`serve.get_handle <ray.serve.api.get_handle>` to get a handle to the endpoint,
-then use :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that
-endpoint. This returns a Ray ObjectRef whose result can be waited for or retrieved using
-``ray.wait`` or ``ray.get``, respectively.
-
-.. code-block:: python
-
-    handle = serve.get_handle("api_endpoint")
-    ray.get(handle.remote(request))
-
-
-How do I call a method on my replica besides __call__?
-------------------------------------------------------
-
-To call a method via HTTP use the header field ``X-SERVE-CALL-METHOD``.
-
-To call a method via Python, use :mod:`handle.options <ray.serve.handle.RayServeHandle.options>`:
-
-.. code-block:: python
-
-    class StatefulProcessor:
-        def __init__(self):
-            self.count = 1
-
-        def __call__(self, request):
-            return {"current": self.count}
-
-        def other_method(self, inc):
-            self.count += inc
-            return True
-
-    handle = serve.get_handle("endpoint_name")
-    handle.options(method_name="other_method").remote(5)
-
-The call is the same as a regular query except a different method is called
-within the replica.
-
-How do I use custom status codes in my response?
----------------------------------------------------------
-
-You can return a `Starlette Response object <https://www.starlette.io/responses/>`_ from your backend code:
-
-.. code-block:: python
-
-    from starlette.responses import Response
-
-    def f(starlette_request):
-        return Response('Hello, world!', status_code=123, media_type='text/plain')
-    
-    serve.create_backend("hello", f)
-
-How do I enable CORS and other HTTP features?
----------------------------------------------
-
-Serve supports arbitrary `Starlette middlewares <https://www.starlette.io/middleware/>`_
-and custom middlewares in Starlette format. The example below shows how to enable
-`Cross-Origin Resource Sharing (CORS) <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`_.
-You can follow the same pattern for other Starlette middlewares.
-
-
-.. code-block:: python
-
-    from starlette.middleware import Middleware
-    from starlette.middleware.cors import CORSMiddleware
-
-    client = serve.start(
-        http_options={"middlewares": [
-            Middleware(
-                CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-        ]})
-
-
-.. _serve-handle-explainer:
-
-How do ``ServeHandle`` and ``ServeRequest`` work?
----------------------------------------------------
-
-Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless :ref:`model composition<serve-model-composition>`. You can
-get a ``ServeHandle`` corresponding to an ``endpoint``, similar how you can
-reach an endpoint through HTTP via a specific route. When you issue a request
-to an endpoint through ``ServeHandle``, the request goes through the same code
-path as an HTTP request would: choosing backends through :ref:`traffic
-policies <serve-split-traffic>` and load balancing across available replicas.
-
-When the request arrives in the model, you can access the data similarly to how
-you would with HTTP request. Here are some examples how ServeRequest mirrors Starlette.Request:
-
-.. list-table::
-   :header-rows: 1
-
-   * - HTTP
-     - ServeHandle
-     - | Request
-       | (Starlette.Request and ServeRequest)
-   * - ``requests.get(..., headers={...})``
-     - ``handle.options(http_headers={...})``
-     - ``request.headers``
-   * - ``requests.post(...)``
-     - ``handle.options(http_method="POST")``
-     - ``request.method``
-   * - ``requests.get(..., json={...})``
-     - ``handle.remote({...})``
-     - ``await request.json()``
-   * - ``requests.get(..., form={...})``
-     - ``handle.remote({...})``
-     - ``await request.form()``
-   * - ``requests.get(..., params={"a":"b"})``
-     - ``handle.remote(a="b")``
-     - ``request.query_params``
-   * - ``requests.get(..., data="long string")``
-     - ``handle.remote("long string")``
-     - ``await request.body()``
-   * - ``N/A``
-     - ``handle.remote(python_object)``
-     - ``request.data``
-
-.. note::
-
-    You might have noticed that the last row of the table shows that ServeRequest supports
-    Python object pass through the handle. This is not possible in HTTP. If you
-    need to distinguish if the origin of the request is from Python or HTTP, you can do an ``isinstance``
-    check:
-
-    .. code-block:: python
-
-        import starlette.requests
-
-        if isinstance(request, starlette.requests.Request):
-            print("Request coming from web!")
-        elif isinstance(request, ServeRequest):
-            print("Request coming from Python!")
-
-.. note::
-
-    Once special case is when you pass a web request to a handle.
-
-    .. code-block:: python
-
-        handle.remote(starlette_request)
-
-    In this case, Serve will `not` wrap it in ServeRequest. You can directly
-    process the request as a ``starlette.requests.Request``.
 
 How fast is Ray Serve?
 ----------------------
@@ -172,8 +26,8 @@ You can checkout our `microbenchmark instruction <https://github.com/ray-project
 to benchmark on your hardware.
 
 
-Can I use asyncio along with Ray Serve?
----------------------------------------
+Can I use ``asyncio`` along with Ray Serve?
+-------------------------------------------
 Yes! You can make your servable methods ``async def`` and Serve will run them
 concurrently inside a Python asyncio event loop.
 
