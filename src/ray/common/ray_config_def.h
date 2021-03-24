@@ -114,8 +114,7 @@ RAY_CONFIG(bool, scheduler_loadbalance_spillback,
 /* RAY_CONFIG(bool, scheduler_hybrid_scheduling, */
 /*            getenv("RAY_SCHEDULER_HYBRID") == nullptr || */
 /*                getenv("RAY_SCHEDULER_HYBRID") != std::string("0")) */
-RAY_CONFIG(bool, scheduler_hybrid_scheduling,
-           true)
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_hybrid_threshold,
            getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr

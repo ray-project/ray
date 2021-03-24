@@ -6,7 +6,8 @@ namespace raylet_scheduling_policy {
 
 int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
-                     float hybrid_threshold, bool force_spillback, bool require_available) {
+                     float hybrid_threshold, bool force_spillback,
+                     bool require_available) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -61,7 +62,8 @@ int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_i
         update_best_node = true;
       }
     } else if (!best_is_available &&
-               critical_resource_utilization < best_utilization_score && !require_available) {
+               critical_resource_utilization < best_utilization_score &&
+               !require_available) {
       // Pick the best feasible node by critical resource utilization.
       update_best_node = true;
     }
