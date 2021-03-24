@@ -345,13 +345,17 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                total_violations, is_infeasible);
   }
 
+  // TODO (Alex): Setting require_available == force_spillback is a hack in order to remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      task_req, local_node_id_, nodes_, hybrid_threshold_);
-  *is_infeasible = best_node_id == -1;
+                                                                task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback, force_spillback);
+  *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
     *total_violations = 0;
   }
+
+  RAY_LOG(DEBUG) << "Scheduling decision. " << "forcing spillback: " << force_spillback << ". Best node: " << best_node_id
+                 << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
 

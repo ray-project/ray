@@ -40,6 +40,6 @@ namespace raylet_scheduling_policy {
 /// schedule on.
 int64_t HybridPolicy(const TaskRequest &task_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
-                     float hybrid_threshold);
+                     float hybrid_threshold, bool force_spillback, bool require_available);
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

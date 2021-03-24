@@ -73,7 +73,7 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 0));
 
-  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, false, false);
   ASSERT_EQ(to_schedule, local_node);
 }
 
@@ -89,7 +89,7 @@ TEST_F(SchedulingPolicyTest, AvailableTieBreakTest) {
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1.5, 2, 0, 0, 0, 0));
 
-  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50, false, false);
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -106,7 +106,7 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 1));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 1));
 
-  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50, false, false);
   ASSERT_EQ(to_schedule, remote_node);
 }
 
@@ -121,8 +121,22 @@ TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   nodes.emplace(local_node, CreateNodeResources(10, 10, 0, 0, 0, 0));
   nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 0, 0));
 
-  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50, false, false);
   ASSERT_EQ(to_schedule, -1);
+}
+
+TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
+  // Test the edge case where a task requires all of a node's resources, and the node is
+  // fully utilized.
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(0, 1, 0, 0, 0, 1));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.50, false, false);
+  ASSERT_EQ(to_schedule, local_node);
 }
 
 TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
@@ -137,8 +151,53 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
   nodes.emplace(local_node, CreateNodeResources(1, 2, 0, 0, 0, 1));
   nodes.emplace(remote_node, CreateNodeResources(0.75, 2, 0, 0, 0, 1));
 
-  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51);
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, false, false);
   ASSERT_EQ(to_schedule, local_node);
+}
+
+TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
+  // The local node is better, but we force spillback, so we'll schedule on a non-local node anyways.
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(1, 10, 0, 0, 1, 10));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, true, true);
+  ASSERT_EQ(to_schedule, remote_node);
+}
+
+TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
+  // The local node is available but disqualified. 
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 1));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, true, false);
+  ASSERT_EQ(to_schedule, remote_node);
+}
+
+TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
+  // The local node is better, but we force spillback, so we'll schedule on a non-local node anyways.
+  StringIdMap map;
+  TaskRequest req = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  int64_t local_node = 0;
+  int64_t remote_node = 1;
+
+  absl::flat_hash_map<int64_t, Node> nodes;
+  nodes.emplace(local_node, CreateNodeResources(2, 2, 0, 0, 1, 1));
+  nodes.emplace(remote_node, CreateNodeResources(0, 2, 0, 0, 0, 0));
+
+  int to_schedule = raylet_scheduling_policy::HybridPolicy(req, local_node, nodes, 0.51, true, false);
+  ASSERT_EQ(to_schedule, -1);
 }
 
 int main(int argc, char **argv) {

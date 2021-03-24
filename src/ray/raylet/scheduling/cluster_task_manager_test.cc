@@ -601,17 +601,17 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         if (expected_load[3]) {
           match = match && shape["GPU"];
         }
-        /* These logs are very useful for debugging.
-        RAY_LOG(ERROR) << "==========================";
-        RAY_LOG(ERROR) << expected_load[0] << "\t" <<
-        load.num_infeasible_requests_queued(); RAY_LOG(ERROR) << expected_load[1] << "\t"
-        << load.num_ready_requests_queued(); RAY_LOG(ERROR) << expected_load[2] << "\t" <<
-        shape["CPU"]; RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
-        RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
-        RAY_LOG(ERROR) << "==========================";
-        RAY_LOG(ERROR) << load.DebugString();
-        RAY_LOG(ERROR) << "-----------------------------------";
-        */
+        // These logs are very useful for debugging.
+        // RAY_LOG(ERROR) << "==========================";
+        // RAY_LOG(ERROR) << expected_load[0] << "\t"
+        //                << load.num_infeasible_requests_queued();
+        // RAY_LOG(ERROR) << expected_load[1] << "\t" << load.num_ready_requests_queued();
+        // RAY_LOG(ERROR) << expected_load[2] << "\t" << shape["CPU"];
+        // RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
+        // RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
+        // RAY_LOG(ERROR) << "==========================";
+        // RAY_LOG(ERROR) << load.DebugString();
+        // RAY_LOG(ERROR) << "-----------------------------------";
         found = found || match;
       }
       ASSERT_TRUE(found);

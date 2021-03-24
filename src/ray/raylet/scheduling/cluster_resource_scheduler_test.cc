@@ -18,6 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 
@@ -191,7 +192,10 @@ bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
-  void SetUp() {}
+  void SetUp() {
+    // The legacy scheduling policy is easier to reason about for testing purposes. See `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling policy.
+    RayConfig::instance().initialize("scheduler_hybrid_scheduling,false;");
+  }
 
   void Shutdown() {}
 };

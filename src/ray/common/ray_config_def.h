@@ -111,9 +111,11 @@ RAY_CONFIG(bool, scheduler_loadbalance_spillback,
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
+/* RAY_CONFIG(bool, scheduler_hybrid_scheduling, */
+/*            getenv("RAY_SCHEDULER_HYBRID") == nullptr || */
+/*                getenv("RAY_SCHEDULER_HYBRID") != std::string("0")) */
 RAY_CONFIG(bool, scheduler_hybrid_scheduling,
-           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
-               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+           true)
 
 RAY_CONFIG(float, scheduler_hybrid_threshold,
            getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
