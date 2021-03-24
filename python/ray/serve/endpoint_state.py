@@ -26,15 +26,17 @@ class EndpointState:
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            self._routes, self._traffic_policies = pickle.loads(checkpoint)
+            (self._routes, self._traffic_policies,
+             self._python_methods) = pickle.loads(checkpoint)
 
         self._notify_route_table_changed()
         self._notify_traffic_policies_changed()
 
     def _checkpoint(self):
         self._kv_store.put(
-            CHECKPOINT_KEY, pickle.dumps((self._routes,
-                                          self._traffic_policies)))
+            CHECKPOINT_KEY,
+            pickle.dumps((self._routes, self._traffic_policies,
+                          self._python_methods)))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
@@ -122,7 +124,7 @@ class EndpointState:
                 "methods": methods,
                 "traffic": traffic_dict,
                 "shadows": shadow_dict,
-                "python_methods": self._python_methods.get(endpoint, []),
+                "python_methods": self._python_methods[endpoint],
             }
         return endpoints
 
