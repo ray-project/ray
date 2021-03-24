@@ -1,7 +1,7 @@
 from contextlib import contextmanager
+from functools import wraps
 import inspect
 import os
-import wrapt
 
 from opentelemetry import context, trace
 from opentelemetry.context.context import Context
@@ -16,11 +16,9 @@ from typing import (
     Callable,
     Dict,
     Generator,
-    List,
     MutableMapping,
     Optional,
     Sequence,
-    Type,
     Union,
 )
 
@@ -67,7 +65,6 @@ def use_context(parent_context: Context, ) -> Generator[None, None, None]:
 
 
 def _function_hydrate_span_args(func: Callable[..., Any]) -> Attributes:
-    # TODO: once ray 1.2.0 is released, we can just use get_runtime_context().get() to get all runtime context information
     runtime_context = get_runtime_context().get()
 
     span_args = {
@@ -158,7 +155,39 @@ def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _tracing_wrap_function(function):
+def _tracing_task_invocation(method):
+    """Trace the execution of a remote task. Inject
+    the current span context into kwargs for propagation."""
+
+    @wraps(method)
+    def _invocation_remote_span(
+            self,
+            args: Any,  # from tracing
+            kwargs: MutableMapping[Any, Any],  # from tracing
+            *_args: Any,  # from Ray
+            **_kwargs: Any,  # from Ray
+    ) -> Any:
+        assert "_ray_trace_ctx" not in kwargs
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+                _function_span_producer_name("tester"),
+                kind=trace.SpanKind.PRODUCER,
+                attributes=_function_hydrate_span_args("tester"),
+        ):
+            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
+            kwargs["_ray_trace_ctx"] = (  # YAPF formatting
+                DictPropagator.inject_current_context())
+            return method(self, args, kwargs, *_args, **_kwargs)
+
+    return _invocation_remote_span
+
+
+def _inject_tracing_into_context(function):
+    """Wrap the function argument passed to RemoteFunction's __init__ so that
+    future execution of that function will include tracing.
+    Use the provided trace context from kwargs.
+    """
+
     def _resume_trace(
             *args: Any,
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
@@ -173,70 +202,29 @@ def _tracing_wrap_function(function):
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
         with use_context(DictPropagator.extract(
                 _ray_trace_ctx)), tracer.start_as_current_span(
-                    _function_span_consumer_name(_function_name),
+                    _function_span_consumer_name(function.__name__),
                     kind=trace.SpanKind.CONSUMER,
-                    attributes=_function_hydrate_span_args(_function_name),
+                    attributes=_function_hydrate_span_args(function.__name__),
                 ):
             return function(*args, **kwargs)
 
     return _resume_trace
 
 
-@wrapt.decorator
-def _propagate_trace(
-        wrapped: Callable[..., Any],
-        instance: Any,
-        args: List[Any],
-        kwargs: MutableMapping[Any, Any],
-) -> Any:
-    """
-    Make sure we inject our current span context into the kwargs for propagation
-    before running our remote tasks
-    """
+def _tracing_actor_class_invocation(method):
+    """Trace the creation of an actor. Inject
+    the current span context into kwargs for propagation."""
 
-    def _start_remote_span(
-            args: Any,
-            kwargs: MutableMapping[Any, Any],
-            *_args: Any,
-            **_kwargs: Any,
-    ) -> Any:
-        assert "_ray_trace_ctx" not in kwargs
-
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-                _function_span_producer_name(instance._function_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_function_hydrate_span_args(
-                    instance._function_name),
-        ):
-            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-            kwargs["_ray_trace_ctx"] = (  # YAPF formatting
-                DictPropagator.inject_current_context())
-            return wrapped(args, kwargs, *_args, **_kwargs)
-
-    return _start_remote_span(*args, **kwargs)
-
-
-@wrapt.decorator
-def actor_class_tracing_local(
-        wrapped: Callable[..., Any],
-        instance: Any,
-        args: Sequence[Any],
-        kwargs: MutableMapping[Any, Any],
-) -> Any:
-    """
-        Make sure we inject our current span context into the kwargs for propigation
-        before running our remote tasks
-        """
-    class_name = instance._wrapped
-    method_name = "__init__"
-
-    def _start_span(
-            args: Sequence[Any],
-            kwargs: MutableMapping[Any, Any],
-            *_args: Any,
-            **_kwargs: Any,
-    ) -> Any:
+    @wraps(method)
+    def _invocation_actor_class_remote_span(
+            self,
+            args: Any,  # from tracing
+            kwargs: MutableMapping[Any, Any],  # from tracing
+            *_args: Any,  # from Ray
+            **_kwargs: Any,  # from Ray
+    ):
+        class_name = self.__ray_metadata__.class_name
+        method_name = "__init__"
         assert "_ray_trace_ctx" not in _kwargs
 
         tracer = trace.get_tracer(__name__)
@@ -248,32 +236,29 @@ def actor_class_tracing_local(
             # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
 
-            result = wrapped(args, kwargs, *_args, **_kwargs)
+            result = method(self, args, kwargs, *_args, **_kwargs)
 
             span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
 
             return result
 
-    return _start_span(*args, **kwargs)
+    return _invocation_actor_class_remote_span
 
 
-@wrapt.decorator
-def actor_method_tracing_local(
-        wrapped: Callable[..., Any],
-        instance: Any,
-        args: Sequence[Any],
-        kwargs: MutableMapping[Any, Any],
-) -> Any:
-    class_name = (instance._actor_ref()
-                  ._ray_actor_creation_function_descriptor.class_name)
-    method_name = instance._method_name
+def _tracing_actor_method_invocation(method):
+    """Trace the invocation of an actor method."""
 
+    @wraps(method)
     def _start_span(
+            self,
             args: Sequence[Any],
             kwargs: MutableMapping[Any, Any],
             *_args: Any,
             **_kwargs: Any,
     ) -> Any:
+        class_name = (self._actor_ref()
+                      ._ray_actor_creation_function_descriptor.class_name)
+        method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
         tracer = trace.get_tracer(__name__)
@@ -286,20 +271,17 @@ def actor_method_tracing_local(
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
 
             span.set_attribute("ray.actor_id",
-                               instance._actor_ref()._ray_actor_id.hex())
+                               self._actor_ref()._ray_actor_id.hex())
 
-            return wrapped(args, kwargs, *_args, **_kwargs)
+            return method(self, args, kwargs, *_args, **_kwargs)
 
-    return _start_span(*args, **kwargs)
+    return _start_span
 
 
-@wrapt.decorator
-def make_tracing_actor(
-        wrapped: Callable[..., Any],
-        instance: Any,
-        args: Sequence[Any],
-        kwargs: MutableMapping[Any, Any],
-) -> Any:
+def _inject_tracing_into_class(cls):
+    """Given a class that will be made into an actor, 
+    inject tracing into all of the methods."""
+
     def span_wrapper(method: Callable[..., Any]) -> Any:
         def _resume_span(
                 self: Any,
@@ -308,8 +290,8 @@ def make_tracing_actor(
                 **_kwargs: Any,
         ) -> Any:
             """
-            Wrap whatever the user's function is with with a function that will
-            extract the trace context
+            Wrap the user's function with a function that
+            will extract the trace context
             """
             tracer: trace.Tracer = trace.get_tracer(__name__)
 
@@ -318,18 +300,20 @@ def make_tracing_actor(
             if _ray_trace_ctx:
                 with use_context(DictPropagator.extract(
                         _ray_trace_ctx)), tracer.start_as_current_span(
-                            _actor_span_consumer_name(self._wrapped, method),
+                            _actor_span_consumer_name(self.__class__.__name__,
+                                                      method),
                             kind=trace.SpanKind.CONSUMER,
                             attributes=_actor_hydrate_span_args(
-                                self._wrapped, method),
+                                self.__class__.__name__, method),
                         ):
                     return method(self, *_args, **_kwargs)
             else:
                 with tracer.start_as_current_span(
-                        _actor_span_consumer_name(self._wrapped, method),
+                        _actor_span_consumer_name(self.__class__.__name__,
+                                                  method),
                         kind=trace.SpanKind.CONSUMER,
                         attributes=_actor_hydrate_span_args(
-                            self._wrapped, method),
+                            self.__class__.__name__, method),
                 ):
                     return method(self, *_args, **_kwargs)
 
@@ -343,8 +327,8 @@ def make_tracing_actor(
                 **_kwargs: Any,
         ) -> Any:
             """
-            Wrap whatever the user's function is with with a function that will
-            extract the trace context
+            Wrap the user's function with a function that
+            will extract the trace context
             """
             tracer = trace.get_tracer(__name__)
 
@@ -372,26 +356,14 @@ def make_tracing_actor(
 
         return _resume_span
 
-    def _make_actor(_cls: Type[Any], *_args: Any, **_kwargs: Any) -> Any:
-        class TracingWrapper(
-                _cls
-        ):  # type: ignore # I can't figure out how to annotate _cls appropriately to make mypy happy
-            _wrapped = _cls
+    methods = inspect.getmembers(cls, is_function_or_method)
+    for name, method in methods:
+        if inspect.iscoroutinefunction(method):
+            # If the method was async, swap out sync wrapper into async
+            wrapped_method = async_span_wrapper(method)
+        else:
+            wrapped_method = span_wrapper(method)
 
-        # This is here to make it so that when Ray's internals inspect
-        # TracingWrapper they capture the right `class_name`.
-        TracingWrapper.__name__ = _cls.__name__
+        setattr(cls, name, wrapped_method)
 
-        methods = inspect.getmembers(TracingWrapper, is_function_or_method)
-        for name, method in methods:
-            if inspect.iscoroutinefunction(method):
-                # If the method was async, convert out sync wrapper into async
-                wrapped_method = async_span_wrapper(method)
-            else:
-                wrapped_method = span_wrapper(method)
-
-            setattr(TracingWrapper, name, wrapped_method)
-
-        return wrapped(TracingWrapper, *_args, **_kwargs)
-
-    return _make_actor(*args, **kwargs)
+    return cls
