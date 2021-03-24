@@ -33,7 +33,5 @@ worker_default_node_type: gpu_2_32
 
 file_mounts_sync_continuously: false
 
-setup_commands: []
-#  - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
-#  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-
+setup_commands:
+   - pip install -U {{env["RAY_WHEEL"]}}
