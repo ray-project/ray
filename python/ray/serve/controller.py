@@ -251,8 +251,6 @@ class ServeController:
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig,
                      version: Optional[str]) -> Optional[GoalId]:
-        """TODO."""
-
         # By default the path prefix is the deployment name.
         if replica_config.path_prefix is None:
             replica_config.path_prefix = f"/{name}"
@@ -300,6 +298,5 @@ class ServeController:
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
-        """TODO."""
         self.endpoint_state.delete_endpoint(name)
         return self.backend_state.delete_backend(name, force_kill=False)
