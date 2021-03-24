@@ -13,7 +13,7 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
-from ray.util.tracing import _tracing_task_invocation, _inject_tracing_into_context
+from ray.util.tracing import _tracing_task_invocation, _inject_tracing_into_function
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -71,7 +71,7 @@ class RemoteFunction:
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
         self._language = language
-        self._function = _inject_tracing_into_context(function)
+        self._function = _inject_tracing_into_function(function)
         self._function_name = (function.__module__ + "." + function.__name__)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON

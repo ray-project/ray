@@ -7,7 +7,7 @@ from opentelemetry import context, trace
 from opentelemetry.context.context import Context
 from opentelemetry.util import types
 from opentelemetry.util.types import Attributes
-from opentelemetry import propagators  # type: ignore
+from opentelemetry import propagators
 from opentelemetry.trace.propagation.textmap import DictGetter
 
 from typing import (
@@ -55,7 +55,7 @@ def nest_tracing_attributes(attributes: Dict[str, types.AttributeValue],
 
 
 @contextmanager
-def use_context(parent_context: Context, ) -> Generator[None, None, None]:
+def use_context(parent_context: Context) -> Generator[None, None, None]:
     new_context = parent_context if parent_context is not None else Context()
     token = context.attach(new_context)
     try:
@@ -174,15 +174,14 @@ def _tracing_task_invocation(method):
                 kind=trace.SpanKind.PRODUCER,
                 attributes=_function_hydrate_span_args("tester"),
         ):
-            # Inject a _ray_trace_ctx as a dictionary that we'll pop out on the other side
-            kwargs["_ray_trace_ctx"] = (  # YAPF formatting
-                DictPropagator.inject_current_context())
+            # Inject a _ray_trace_ctx as a dictionary that we'll pop ou
+            kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
             return method(self, args, kwargs, *_args, **_kwargs)
 
     return _invocation_remote_span
 
 
-def _inject_tracing_into_context(function):
+def _inject_tracing_into_function(function):
     """Wrap the function argument passed to RemoteFunction's __init__ so that
     future execution of that function will include tracing.
     Use the provided trace context from kwargs.
