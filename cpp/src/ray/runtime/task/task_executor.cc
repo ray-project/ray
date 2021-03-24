@@ -39,6 +39,7 @@ Status TaskExecutor::ExecuteTask(
   std::string lib_name = typed_descriptor->LibName();
   std::string func_offset = typed_descriptor->FunctionOffset();
   std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
+  std::string func_name = typed_descriptor->FunctionName();
   uintptr_t base_addr = 0;
   if (!func_offset.empty()) {
     base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
@@ -63,14 +64,14 @@ Status TaskExecutor::ExecuteTask(
     data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
                             args_buffer, current_actor_);
   } else {  // NORMAL_TASK
-    if (func_offset.empty()) {
+    if (!func_name.empty()) {
       auto execute_func = FunctionHelper::GetInstance().GetExecuteFunction(lib_name);
       if (execute_func == nullptr) {
         return ray::Status::NotFound(lib_name + " not found");
       }
 
       RAY_LOG(DEBUG) << "Get execute function ok";
-      auto result = execute_func(args_buffer);
+      auto result = execute_func(func_name, args_buffer);
       RAY_LOG(DEBUG) << "Execute function ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
@@ -126,16 +127,17 @@ void TaskExecutor::Invoke(
         std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
   }
 
+  auto function_descriptor = task_spec.FunctionDescriptor();
+  auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
+
   std::shared_ptr<msgpack::sbuffer> data;
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-    auto result = internal::TaskExecutionHandler(args_buffer);
+    auto result =
+        internal::TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer);
     data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
     return;
   }
-
-  auto function_descriptor = task_spec.FunctionDescriptor();
-  auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
   if (actor) {
     typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(

@@ -11,8 +11,8 @@ class TaskCaller {
  public:
   TaskCaller();
 
-  TaskCaller(RayRuntime *runtime, std::string function_name)
-      : runtime_(runtime), function_name_(std::move(function_name)) {}
+  TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr)
+      : runtime_(runtime), ptr_(ptr) {}
 
   TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
              std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
@@ -20,7 +20,7 @@ class TaskCaller {
   template <typename... Args>
   ObjectRef<ReturnType> Remote(Args... args) {
     if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-      Arguments::WrapArgs(&args_, function_name_, args...);
+      Arguments::WrapArgs(&args_, args...);
     }
 
     auto returned_object_id = runtime_->Call(ptr_, args_);

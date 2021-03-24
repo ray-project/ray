@@ -13,16 +13,15 @@ namespace ray {
 namespace internal {
 /// Execute remote functions by networking stream.
 inline static msgpack::sbuffer TaskExecutionHandler(
+    const std::string &func_name,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  if (args_buffer.empty()) {
-    return PackError("lack of required arguments");
+  if (func_name.empty()) {
+    return PackError("Task function name is empty");
   }
-  auto &memory_buffer = args_buffer.at(0)->GetData();
+
   msgpack::sbuffer result;
   do {
     try {
-      auto func_name = ray::api::Serializer::Deserialize<std::string>(
-          (char *)memory_buffer->Data(), memory_buffer->Size());
       auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
       if (func_ptr == nullptr) {
         result = PackError("unknown function: " + func_name);

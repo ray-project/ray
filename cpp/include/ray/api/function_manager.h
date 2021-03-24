@@ -57,21 +57,16 @@ struct Invoker {
   static inline msgpack::sbuffer Apply(
       const Function &func, const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
     using ArgsTuple = boost::callable_traits::args_t<Function>;
-    if (std::tuple_size<ArgsTuple>::value != args_buffer.size() - 1) {
+    if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
       return PackError("Arguments number not match");
-    }
-
-    std::vector<std::shared_ptr<RayObject>> new_vector;
-    if (args_buffer.size() > 1) {
-      auto first = args_buffer.begin() + 1;
-      new_vector = std::vector<std::shared_ptr<RayObject>>(first, args_buffer.end());
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
     try {
-      bool is_ok = GetArgsTuple(
-          tp, new_vector, absl::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+      bool is_ok =
+          GetArgsTuple(tp, args_buffer,
+                       absl::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
       if (!is_ok) {
         return PackError("arguments error");
       }
