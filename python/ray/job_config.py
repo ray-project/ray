@@ -45,10 +45,12 @@ class JobConfig:
         self.client_job = client_job
 
     def serialize(self):
+        """Serialize the struct into protobuf string"""
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
     def get_proto_job_config(self):
+        """Return the prototype structure of JobConfig"""
         job_config = ray.gcs_utils.JobConfig()
         for key in self.worker_env:
             job_config.worker_env[key] = self.worker_env[key]
@@ -60,6 +62,7 @@ class JobConfig:
         return job_config
 
     def get_runtime_env_uris(self):
+        """Get the uris of runtime environment"""
         if self.runtime_env.get("working_dir_uri"):
             return [self.runtime_env.get("working_dir_uri")]
         return []

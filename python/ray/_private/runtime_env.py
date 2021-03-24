@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import inspect
 
 from filelock import FileLock
 from pathlib import Path
@@ -13,7 +12,6 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_initialized)
 
 from typing import List, Tuple
-from types import ModuleType
 from urllib.parse import urlparse
 import os
 import sys
@@ -193,8 +191,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
         assert Path(working_dir).exists()
         hash_val = _xor_bytes(hash_val, _hash_modules(Path(working_dir)))
     for py_module in py_modules or []:
-        hash_val = _xor_bytes(hash_val,
-                              _hash_modules(Path(py_module).parent))
+        hash_val = _xor_bytes(hash_val, _hash_modules(Path(py_module).parent))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
@@ -207,7 +204,8 @@ def create_project_package(working_dir: str, py_modules: List[str],
 
     Args:
         working_dir (str): The working directory.
-        py_modules (list[module]): The python modules to be included.
+        py_modules (list[str]): The list of path of python modules to be
+            included.
         output_path (str): The path of file to be created.
     """
     pkg_file = Path(output_path)
@@ -224,7 +222,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     """Fetch a package from a given uri.
 
     This function is used to fetch a pacakge from the given uri to local
-    filesystem. If it exists, it'll just return
+    filesystem. If it exists, it'll just return 0.
 
     Args:
         pkg_uri (str): The uri of the package to download.
@@ -307,8 +305,8 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     working_dir = job_config.runtime_env.get("working_dir")
     py_modules = job_config.runtime_env.get("py_modules")
 
-    if (not job_config.runtime_env.get("working_dir_uri")) and (
-            working_dir or py_modules):
+    if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
+                                                                or py_modules):
         pkg_name = get_project_package_name(working_dir, py_modules)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
@@ -336,8 +334,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             logger.info(f"{pkg_uri} doesn't exist. Create new package with"
                         f" {working_dir} and {py_modules}")
             if not pkg_file.exists():
-                create_project_package(working_dir, py_modules,
-                                       file_path)
+                create_project_package(working_dir, py_modules, file_path)
             # Push the data to remote storage
             pkg_size = push_package(pkg_uri, pkg_file)
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")

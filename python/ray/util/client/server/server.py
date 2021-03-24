@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self, ray_connect_handler: Callable):
+        """Construct a raylet service
+
+        Args:
+           ray_connect_handler (Callable): Function to connect to ray cluster
+        """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
             dict)
@@ -419,6 +424,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return argout, kwargout
 
     def _prepare_runtime_env(self, job_runtime_env) -> List[str]:
+        """Download runtime environment to local node"""
         missing_uris = []
         uris = job_runtime_env.uris
         from ray._private import runtime_env

@@ -39,6 +39,7 @@ class RayAPIStub:
 
         Args:
             conn_str: Connection string, in the form "[host]:port"
+            job_config: The job config of the server.
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make

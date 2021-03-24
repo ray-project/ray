@@ -8,7 +8,7 @@ import sys
 import time
 import socket
 import math
-
+from typing import Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
@@ -178,11 +178,12 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script, env=None):
+def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 
     Args:
-        driver_script: A string to run as a Python script.
+        driver_script (str): A string to run as a Python script.
+        env (dict): The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -192,7 +193,8 @@ def run_string_as_driver(driver_script, env=None):
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env=env,)
+        env=env,
+    )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:

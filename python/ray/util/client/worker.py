@@ -439,6 +439,25 @@ class Worker:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
     def _server_init(self, job_config: JobConfig):
+        """Initialize the server
+
+        There are two steps communication between client and server.
+        First request is `Init`, which will call `ray.init` in
+        server side. The server will return a status which might
+        trigger the second request:
+          Status.OK: it means the serer is ready to accept request.
+              No future work is needed.
+          Status.INCOMPATIBLE_RUNTIME_ENV: it means the server is
+              having different runtime env as the client, the client
+              won't be able to run in this server.
+          Status.MISSING_URIS: it means server missed some uris and
+              client need to prepare them. After the preparation,
+              it need to send another request `PrepRuntimeEnvRequest`
+              to notify the server to fetch it.
+
+        Args:
+            job_config (JobConfig): Job config to pass to the server
+        """
         import ray._private.runtime_env as runtime_env
         import tempfile
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -457,7 +476,8 @@ class Worker:
                     return
                 elif init_ret.status == Status.INCOMPATIBLE_RUNTIME_ENV:
                     raise RuntimeError(
-                        "Client's runtime env is not the same as server's")
+                        "Client's runtime env is not the same as server's. "
+                        "Please start another server.")
                 elif init_ret.status == Status.MISSING_URIS:
                     runtime_env.upload_runtime_env_package_if_needed(
                         job_config)

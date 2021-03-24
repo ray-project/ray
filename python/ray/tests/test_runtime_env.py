@@ -121,7 +121,7 @@ def test_two_node_uri(call_ray_start, working_dir, env):
     import ray._private.runtime_env as runtime_env
     import tempfile
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        ray.init(address='auto')
+        ray.init(address="auto")
         pkg_name = runtime_env.get_project_package_name(working_dir, [])
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
         runtime_env.create_project_package(working_dir, [], tmp_file.name)
@@ -175,6 +175,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+
 
 @pytest.fixture(scope="session")
 def conda_envs():
