@@ -290,6 +290,116 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
+@pytest.mark.parametrize("use_handle", [True, False])
+def test_redeploy_scale_down(serve_instance, use_handle):
+    # Tests redeploying with a new version and lower num_replicas.
+    name = "test"
+
+    @serve.deployment(name, version="1", config={"num_replicas": 4})
+    def v1(request):
+        return f"1|{os.getpid()}"
+
+    @ray.remote(num_cpus=0)
+    def call(block=False):
+        if use_handle:
+            handle = v1.get_handle()
+            ret = ray.get(handle.remote(block=str(block)))
+        else:
+            ret = requests.get(
+                f"http://localhost:8000/{name}", params={
+                    "block": block
+                }).text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    def make_calls(expected):
+        # Returns dict[val, set(pid)].
+        responses = defaultdict(set)
+        start = time.time()
+        while time.time() - start < 30:
+            refs = [call.remote(block=False) for _ in range(10)]
+            ready, not_ready = ray.wait(refs, timeout=0.5)
+            for ref in ready:
+                val, pid = ray.get(ref)
+                responses[val].add(pid)
+
+            if all(
+                    len(responses[val]) == num
+                    for val, num in expected.items()):
+                break
+        else:
+            assert False, f"Timed out, responses: {responses}."
+
+        return responses
+
+    v1.deploy()
+    responses1 = make_calls({"1": 4})
+    pids1 = responses1["1"]
+
+    @serve.deployment(name, version="2", config={"num_replicas": 2})
+    def v2(*args):
+        return f"2|{os.getpid()}"
+
+    v2.deploy()
+    responses2 = make_calls({"2": 2})
+    assert all(pid not in pids1 for pid in responses2["2"])
+
+
+@pytest.mark.parametrize("use_handle", [True, False])
+def test_redeploy_scale_up(serve_instance, use_handle):
+    # Tests redeploying with a new version and higher num_replicas.
+    name = "test"
+
+    @serve.deployment(name, version="1", config={"num_replicas": 2})
+    def v1(request):
+        return f"1|{os.getpid()}"
+
+    @ray.remote(num_cpus=0)
+    def call(block=False):
+        if use_handle:
+            handle = v1.get_handle()
+            ret = ray.get(handle.remote(block=str(block)))
+        else:
+            ret = requests.get(
+                f"http://localhost:8000/{name}", params={
+                    "block": block
+                }).text
+
+        return ret.split("|")[0], ret.split("|")[1]
+
+    def make_calls(expected):
+        # Returns dict[val, set(pid)].
+        responses = defaultdict(set)
+        start = time.time()
+        while time.time() - start < 30:
+            refs = [call.remote(block=False) for _ in range(10)]
+            ready, not_ready = ray.wait(refs, timeout=0.5)
+            for ref in ready:
+                val, pid = ray.get(ref)
+                responses[val].add(pid)
+
+            if all(
+                    len(responses[val]) == num
+                    for val, num in expected.items()):
+                break
+        else:
+            assert False, f"Timed out, responses: {responses}."
+
+        return responses
+
+    v1.deploy()
+    responses1 = make_calls({"1": 2})
+    pids1 = responses1["1"]
+
+    @serve.deployment(name, version="2", config={"num_replicas": 4})
+    def v2(*args):
+        return f"2|{os.getpid()}"
+
+    v2.deploy()
+    responses2 = make_calls({"2": 4})
+    assert all(pid not in pids1 for pid in responses2["2"])
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
