@@ -50,9 +50,9 @@ py_test(
 )
 
 py_test(
-    name = "test_convergence_gaussian_process",
-    size = "small",
-    srcs = ["tests/test_convergence_gaussian_process.py"],
+    name = "test_convergence",
+    size = "medium",
+    srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
