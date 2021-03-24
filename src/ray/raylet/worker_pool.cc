@@ -182,41 +182,29 @@ Process WorkerPool::StartWorkerProcess(
     }
   }
 
-  if (job_config) {
-    // Note that we push the item to the front of the vector to make
-    // sure this is the freshest option than others.
-    if (!job_config->jvm_options().empty()) {
-      dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
-                             job_config->jvm_options().end());
-    }
-
-    std::string code_search_path_str;
-    for (int i = 0; i < job_config->code_search_path_size(); i++) {
-      auto path = job_config->code_search_path(i);
-      if (i != 0) {
-        code_search_path_str += ":";
-      }
-      code_search_path_str += path;
-    }
-    if (!code_search_path_str.empty()) {
-      switch (language) {
-      case Language::PYTHON: {
-        code_search_path_str = "--code-search-path=" + code_search_path_str;
-        break;
-      }
-      case Language::JAVA: {
-        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        break;
-      }
-      default:
-        RAY_LOG(FATAL) << "code_search_path is not supported for worker language "
-                       << language;
-      }
-      dynamic_options.push_back(code_search_path_str);
-    }
-  }
-
   if (language == Language::JAVA) {
+    if (job_config) {
+      // Note that we push the item to the front of the vector to make
+      // sure this is the freshest option than others.
+      if (!job_config->jvm_options().empty()) {
+        dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
+                               job_config->jvm_options().end());
+      }
+
+      std::string code_search_path_str;
+      for (int i = 0; i < job_config->code_search_path_size(); i++) {
+        auto path = job_config->code_search_path(i);
+        if (i != 0) {
+          code_search_path_str += ":";
+        }
+        code_search_path_str += path;
+      }
+      if (!code_search_path_str.empty()) {
+        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        dynamic_options.push_back(code_search_path_str);
+      }
+    }
+
     dynamic_options.push_back("-Dray.job.num-java-workers-per-process=" +
                               std::to_string(workers_to_start));
   }
@@ -571,7 +559,7 @@ void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) 
 
 void WorkerPool::PopUtilWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+  PopIOWorkerInternal(rpc::WorkerType::UTIL_WORKER, callback);
 }
 
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
