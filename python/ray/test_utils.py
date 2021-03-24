@@ -178,7 +178,7 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script):
+def run_string_as_driver(driver_script, env=None):
     """Run a driver as a separate process.
 
     Args:
@@ -191,7 +191,8 @@ def run_string_as_driver(driver_script):
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        env=env,)
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:

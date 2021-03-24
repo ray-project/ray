@@ -5,6 +5,7 @@ import unittest
 
 import subprocess
 
+import tempfile
 from unittest import mock
 from pathlib import Path
 
@@ -13,20 +14,27 @@ from ray.test_utils import run_string_as_driver
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
 
+PKG_DIR = Path(tempfile.gettempdir()) / "ray" / "session_latest" \
+  / "runtime_resources"
+
 driver_script = """
 import sys
 import logging
 sys.path.insert(0, "{working_dir}")
 import test_module
 import ray
-
+import ray.util
+import os
 job_config = ray.job_config.JobConfig(
     runtime_env={runtime_env}
 )
 
-ray.init(address="{redis_address}",
-         job_config=job_config,
-         logging_level=logging.DEBUG)
+if os.environ.get("CLIENT"):
+    ray.util.connect("{address}", job_config=job_config)
+else:
+    ray.init(address="{address}",
+             job_config=job_config,
+             logging_level=logging.DEBUG)
 
 @ray.remote
 def run_test():
@@ -48,7 +56,6 @@ sleep(5)
 
 @pytest.fixture(scope="session")
 def working_dir():
-    import tempfile
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
         module_path = path / "test_module"
@@ -69,147 +76,102 @@ from test_module.test import one
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_single_node(ray_start_cluster_head, working_dir):
-    cluster = ray_start_cluster_head
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_single_node(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_single_node_client(working_dir):
-    # cluster = ray_start_cluster_head
-    # redis_address = cluster.address
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    driver_script = """
-import sys
-import logging
-sys.path.insert(0, "{working_dir}")
-import test_module
-import ray
-
-job_config = ray.job_config.JobConfig(
-    runtime_env={runtime_env}
-)
-
-ray.util.connect("localhost:10002", job_config=job_config)
-
-
-@ray.remote
-def run_test():
-    return test_module.one()
-
-@ray.remote
-class TestActor(object):
-    @ray.method(num_returns=1)
-    def one(self):
-        return test_module.one()
-
-{execute_statement}
-
-ray.shutdown()
-from time import sleep
-sleep(5)
-"""
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
-    assert out.strip().split()[-1] == "1000"
-
-
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node(two_node_cluster, working_dir):
-    cluster, _ = two_node_cluster
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_two_node(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_module(two_node_cluster, working_dir):
-    cluster, _ = two_node_cluster
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_two_node_module(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     runtime_env = """{  "local_modules": [test_module] }"""
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
-    print(script)
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_two_node_uri(two_node_cluster, working_dir):
-    cluster, _ = two_node_cluster
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_two_node_uri(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     import ray._private.runtime_env as runtime_env
     import tempfile
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
+        ray.init(address='auto')
         pkg_name = runtime_env.get_project_package_name(working_dir, [])
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
         runtime_env.create_project_package(working_dir, [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+        ray.shutdown()
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_regular_actors(ray_start_cluster_head, working_dir):
-    cluster = ray_start_cluster_head
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_regular_actors(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     execute_statement = """
 test_actor = TestActor.options(name="test_actor").remote()
 print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_detached_actors(ray_start_cluster_head, working_dir):
-    cluster = ray_start_cluster_head
-    redis_address = cluster.address
+@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+def test_detached_actors(call_ray_start, working_dir, env):
+    address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     execute_statement = """
 test_actor = TestActor.options(name="test_actor", lifetime="detached").remote()
 print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
-    out = run_string_as_driver(script)
+    out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
-    from ray._private.runtime_env import PKG_DIR
     # It's a detached actors, so it should still be there
     assert len(list(Path(PKG_DIR).iterdir())) == 2
     pkg = list(Path(PKG_DIR).glob("*.zip"))[0]
     import sys
     sys.path.insert(0, str(pkg))
+    ray.init(address="auto")
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)
+    ray.shutdown()
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
-
 
 @pytest.fixture(scope="session")
 def conda_envs():
