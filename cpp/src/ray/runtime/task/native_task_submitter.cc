@@ -10,8 +10,8 @@ namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-    auto function_descriptor =
-        FunctionDescriptorBuilder::BuildCpp(invocation.lib_name, "", "");
+    auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
+        invocation.lib_name, "", "", invocation.fptr.function_name);
     return RayFunction(Language::CPP, function_descriptor);
   }
 
@@ -20,7 +20,8 @@ RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto func_offset = (size_t)(invocation.fptr.function_pointer - base_addr);
   auto exec_func_offset = (size_t)(invocation.fptr.exec_function_pointer - base_addr);
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset));
+      invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset),
+      invocation.fptr.function_name);
   return RayFunction(Language::CPP, function_descriptor);
 }
 
