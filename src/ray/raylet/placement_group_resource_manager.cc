@@ -94,7 +94,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state_ = CommitState::COMMITTED;
 
-  cluster_resource_scheduler_->CommitBundleResource(bundle_spec, bundle_state->resources_);
+  cluster_resource_scheduler_->CommitBundleResource(bundle_spec,
+                                                    bundle_state->resources_);
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(

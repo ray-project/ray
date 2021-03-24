@@ -404,10 +404,9 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
-
-void ClusterResourceScheduler::CommitBundleResource(const BundleSpecification &bundle_spec, 
-                              const std::shared_ptr<TaskResourceInstances> resource_instances) {
-
+void ClusterResourceScheduler::CommitBundleResource(
+    const BundleSpecification &bundle_spec,
+    const std::shared_ptr<TaskResourceInstances> resource_instances) {
   RAY_CHECK(resource_instances->custom_resources.size() == 0);
 
   for (const auto &resource : bundle_spec.GetFormattedResources()) {
@@ -433,7 +432,7 @@ void ClusterResourceScheduler::CommitBundleResource(const BundleSpecification &b
 
     if (local_resources_.custom_resources.contains(resource_id)) {
       auto &instances = local_resources_.custom_resources[resource_id];
-      
+
       for (size_t index = 0; index < predefined_resource_instance.size(); index++) {
         instances.total[index] += predefined_resource_instance[index];
         instances.available[index] += predefined_resource_instance[index];

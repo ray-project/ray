@@ -20,6 +20,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
@@ -27,7 +28,6 @@
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "ray/common/bundle_spec.h"
 
 namespace ray {
 
@@ -178,8 +178,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param bundle_spec: Bundle specific which we want to commit.
   /// \param resource_instances: The resources assigned to bundle.
-  void CommitBundleResource(const BundleSpecification &bundle_spec, 
-                              const std::shared_ptr<TaskResourceInstances> resource_instances);
+  void CommitBundleResource(
+      const BundleSpecification &bundle_spec,
+      const std::shared_ptr<TaskResourceInstances> resource_instances);
 
   /// Add a local resource that is available.
   ///
