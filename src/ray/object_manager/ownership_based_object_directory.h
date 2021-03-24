@@ -94,15 +94,19 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
 
   /// Number of object locations added to this object directory.
   uint64_t metrics_num_object_locations_added_;
+  double metrics_num_object_locations_added_per_second_;
 
   /// Number of object locations removed from this object directory.
   uint64_t metrics_num_object_locations_removed_;
+  double metrics_num_object_locations_removed_per_second_;
 
   /// Number of object location lookups.
   uint64_t metrics_num_object_location_lookups_;
+  double metrics_num_object_location_lookups_per_second_;
 
   /// Number of object location updates.
   uint64_t metrics_num_object_location_updates_;
+  double metrics_num_object_location_updates_per_second_;
 };
 
 }  // namespace ray

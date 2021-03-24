@@ -388,27 +388,44 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
   stats::ObjectDirectoryLocationSubscriptions.Record(listeners_.size());
 
   // Record number of object location updates per second.
+  metrics_num_object_location_updates_per_second_ =
+      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms);
   stats::ObjectDirectoryLocationUpdates.Record(
-      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms));
+      metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
   // Record number of object location lookups per second.
+  metrics_num_object_location_lookups_per_second_ =
+      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms);
   stats::ObjectDirectoryLocationLookups.Record(
-      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms));
+      metrics_num_object_location_lookups_per_second_);
   metrics_num_object_location_lookups_ = 0;
   // Record number of object locations added per second.
+  metrics_num_object_locations_added_per_second_ =
+      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms);
   stats::ObjectDirectoryAddedLocations.Record(
-      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms));
+      metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
   // Record number of object locations removed per second.
+  metrics_num_object_locations_removed_per_second_ =
+      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms);
   stats::ObjectDirectoryRemovedLocations.Record(
-      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms));
+      metrics_num_object_locations_removed_per_second_);
   metrics_num_object_locations_removed_ = 0;
 }
 
 std::string OwnershipBasedObjectDirectory::DebugString() const {
   std::stringstream result;
+  result << std::fixed << std::setprecision(3);
   result << "OwnershipBasedObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
+  result << "\n- num location updates per second: "
+         << metrics_num_object_location_updates_per_second_;
+  result << "\n- num location lookups per second: "
+         << metrics_num_object_location_lookups_per_second_;
+  result << "\n- num locations added per second: "
+         << metrics_num_object_locations_added_per_second_;
+  result << "\n- num locations removed per second: "
+         << metrics_num_object_locations_removed_per_second_;
   return result.str();
 }
 
