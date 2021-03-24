@@ -321,7 +321,7 @@ void GcsServer::InitRuntimeEnvManager() {
             // Skip other uri
             cb(true);
           } else {
-            this->kv_manager_->AsyncDel(uri, [cb](int deleted_num) {
+            this->kv_manager_->AsyncInternalKVDel(uri, [cb](int deleted_num) {
               if (deleted_num == 0) {
                 cb(false);
               } else {
