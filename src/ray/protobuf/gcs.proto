@@ -279,7 +279,7 @@ message JobTableData {
   enum JobState {
     // The job is submitted from dashboard.
     SUBMITTED = 0;
-    // The driver is registered to raylet and GCS.
+    // The job has started running and the driver has registered to GCS.
     RUNNING = 1;
     // The driver is exited.
     FINISHED = 2;

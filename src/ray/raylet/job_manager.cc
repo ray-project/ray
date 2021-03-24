@@ -28,10 +28,5 @@ std::shared_ptr<JobTableData> JobManager::GetJobData(const JobID &job_id) const 
   return iter == jobs_.end() ? nullptr : iter->second;
 }
 
-const absl::flat_hash_map<JobID, std::shared_ptr<JobTableData>>
-    &JobManager::GetAllJobData() const {
-  return jobs_;
-}
-
 }  // namespace raylet
 }  // namespace ray
