@@ -40,7 +40,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return ray.JobID.from_int(job_id_int)
 
     @routes.post("/jobs")
-    async def new_job(self, req) -> aiohttp.web.Response:
+    async def submit_job(self, req) -> aiohttp.web.Response:
         job_info = dict(await req.json())
         language = common_pb2.Language.Value(job_info["language"])
         job_id = await self._next_job_id()
