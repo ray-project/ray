@@ -56,14 +56,16 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
                 assert False, ("backend_def must be function, class, or "
                                "corresponding import path.")
 
+            # Set the controller name so that serve.connect() in the user's
+            # backend code will connect to the instance that this backend is
+            # running in.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag, replica_tag, controller_name)
             if is_function:
                 _callable = backend
             else:
                 _callable = backend(*init_args)
-
-            # Set the controller name so that serve.connect() in the user's
-            # backend code will connect to the instance that this backend is
-            # running in.
+            # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,
                 replica_tag,
