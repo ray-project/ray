@@ -161,7 +161,7 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(working_dir: str, modules: List[str]) -> str:
+def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
@@ -181,7 +181,7 @@ def get_project_package_name(working_dir: str, modules: List[str]) -> str:
  e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
     Args:
         working_dir (str): The working directory.
-        modules (list[module]): The python module.
+        py_modules (list[str]): The python module.
 
     Returns:
         Package name as a string.
@@ -192,14 +192,13 @@ def get_project_package_name(working_dir: str, modules: List[str]) -> str:
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
         hash_val = _xor_bytes(hash_val, _hash_modules(Path(working_dir)))
-    for module in modules or []:
-        assert inspect.ismodule(module)
+    for py_module in py_modules or []:
         hash_val = _xor_bytes(hash_val,
-                              _hash_modules(Path(module.__file__).parent))
+                              _hash_modules(Path(py_module).parent))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
-def create_project_package(working_dir: str, modules: List[ModuleType],
+def create_project_package(working_dir: str, py_modules: List[str],
                            output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
@@ -208,7 +207,7 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
 
     Args:
         working_dir (str): The working directory.
-        modules (list[module]): The python modules to be included.
+        py_modules (list[module]): The python modules to be included.
         output_path (str): The path of file to be created.
     """
     pkg_file = Path(output_path)
@@ -217,13 +216,8 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir)
             _zip_module(working_path, working_path, zip_handler)
-        for module in modules or []:
-            logger.info(module.__file__)
-            # we only take care of modules with path like this for now:
-            #    /path/module_name/__init__.py
-            # module_path should be: /path/module_name
-            module_path = Path(module.__file__).parent
-            _zip_module(module_path, module_path.parent, zip_handler)
+        for py_module in py_modules or []:
+            _zip_module(Path(py_module), Path(py_module).parent, zip_handler)
 
 
 def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
@@ -311,11 +305,11 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     """
     # For now, we only support local directory and packages
     working_dir = job_config.runtime_env.get("working_dir")
-    required_modules = job_config.runtime_env.get("local_modules")
+    py_modules = job_config.runtime_env.get("py_modules")
 
     if (not job_config.runtime_env.get("working_dir_uri")) and (
-            working_dir or required_modules):
-        pkg_name = get_project_package_name(working_dir, required_modules)
+            working_dir or py_modules):
+        pkg_name = get_project_package_name(working_dir, py_modules)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
@@ -338,11 +332,11 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             file_path = _get_local_path(pkg_uri)
             pkg_file = Path(file_path)
             working_dir = job_config.runtime_env.get("working_dir")
-            required_modules = job_config.runtime_env.get("local_modules")
+            py_modules = job_config.runtime_env.get("py_modules")
             logger.info(f"{pkg_uri} doesn't exist. Create new package with"
-                        f" {working_dir} and {required_modules}")
+                        f" {working_dir} and {py_modules}")
             if not pkg_file.exists():
-                create_project_package(working_dir, required_modules,
+                create_project_package(working_dir, py_modules,
                                        file_path)
             # Push the data to remote storage
             pkg_size = push_package(pkg_uri, pkg_file)

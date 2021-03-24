@@ -48,9 +48,12 @@ class TestActor(object):
 
 {execute_statement}
 
-ray.shutdown()
+if os.environ.get("CLIENT"):
+    ray.util.disconnect()
+else:
+    ray.shutdown()
 from time import sleep
-sleep(5)
+sleep(10)
 """
 
 
@@ -103,7 +106,7 @@ def test_two_node(call_ray_start, working_dir, env):
 @pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
 def test_two_node_module(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
-    runtime_env = """{  "local_modules": [test_module] }"""
+    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
