@@ -621,7 +621,6 @@ cc_library(
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
-            "src/ray/core_worker/pubsub/*.cc",
             "src/ray/core_worker/transport/*.cc",
             "src/ray/rpc/worker/*.cc",
         ],
@@ -634,7 +633,6 @@ cc_library(
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
         "src/ray/core_worker/store_provider/memory_store/*.h",
-        "src/ray/core_worker/pubsub/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -759,16 +757,6 @@ cc_test(
 )
 
 cc_test(
-    name = "publisher_test",
-    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -836,18 +824,6 @@ cc_test(
     name = "local_object_manager_test",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "subscriber_test",
-    srcs = [
-        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [
