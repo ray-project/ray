@@ -620,7 +620,7 @@ class Policy(metaclass=ABCMeta):
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value #np.zeros_like(value)
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
