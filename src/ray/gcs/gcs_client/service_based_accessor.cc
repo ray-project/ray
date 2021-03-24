@@ -1544,10 +1544,10 @@ Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVGet(
       req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
-        if (reply.optional_value_case() == rpc::InternalKVGetReply::kValue) {
-          callback(status, reply.value());
-        } else {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
           callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
         }
       });
   return Status::OK();

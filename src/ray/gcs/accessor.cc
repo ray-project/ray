@@ -45,10 +45,8 @@ Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
   AsyncInternalKVGet(key, [&ret_promise, &value](Status status, auto &v) {
     if (v) {
       value = *v;
-      ret_promise.set_value(status);
-    } else {
-      ret_promise.set_value(Status::NotFound("Failed to find the key."));
     }
+    ret_promise.set_value(status);
   });
   return ret_promise.get_future().get();
 }
