@@ -3,7 +3,9 @@ import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union, Coroutine
 from enum import Enum
+from ray.serve.common import EndpointTag
 
+from ray.actor import ActorHandle
 from ray.serve.utils import get_random_letters
 from ray.serve.router import EndpointRouter, RequestMetadata
 from ray.util import metrics
@@ -54,8 +56,8 @@ class RayServeHandle:
 
     def __init__(
             self,
-            controller_handle,
-            endpoint_name,
+            controller_handle: ActorHandle,
+            endpoint_name: EndpointTag,
             handle_options: Optional[HandleOptions] = None,
             *,
             known_python_methods: List[str] = [],
