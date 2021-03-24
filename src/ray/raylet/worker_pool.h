@@ -181,10 +181,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param[in] job_config The config of the job.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
-  /// \return If the registration is successful.
-  Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
-                        const rpc::JobConfig &job_config,
-                        std::function<void(Status, int)> send_reply_callback);
+  /// \return Void.
+  void RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
+                      const rpc::JobConfig &job_config,
+                      std::function<void(Status, int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
   ///

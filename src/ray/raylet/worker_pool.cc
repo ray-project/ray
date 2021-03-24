@@ -479,15 +479,15 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   }
 }
 
-Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const rpc::JobConfig &job_config,
-                                  std::function<void(Status, int)> send_reply_callback) {
+void WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
+                                const rpc::JobConfig &job_config,
+                                std::function<void(Status, int)> send_reply_callback) {
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
   Status status = GetNextFreePort(&port);
   if (!status.ok()) {
-    // Not to invoke the send_reply_callback if !status.ok().
-    return status;
+    send_reply_callback(status, /*port=*/0);
+    return;
   }
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
@@ -521,8 +521,6 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   } else {
     send_reply_callback(Status::OK(), port);
   }
-
-  return Status::OK();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(

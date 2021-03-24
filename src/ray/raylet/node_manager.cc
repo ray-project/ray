@@ -1111,10 +1111,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
           }));
     };
 
-    Status status = worker_pool_.RegisterDriver(worker, job_config, cb_register_driver);
-    if (!status.ok()) {
-      send_reply_callback(status, /*port=*/0);
-    }
+    worker_pool_.RegisterDriver(worker, job_config, cb_register_driver);
   }
 }
 
