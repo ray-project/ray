@@ -26,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
-        x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, x)
+        dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
+        if x.seq_lens is not None:
+            dict_["seq_lens"] = x.seq_lens
+        return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
     # Special handling of "Repeated" values.
@@ -609,7 +611,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = {"_state": super().get_state()}
-            state["_optimizer_variables"] = self._optimizer.variables()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             return state
 
         @override(Policy)

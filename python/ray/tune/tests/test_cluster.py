@@ -364,11 +364,11 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
 
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 @pytest.mark.parametrize("with_pg", [True, False])
-@patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-@patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
 def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
                        with_pg):
     """Removing a node in full cluster causes Trial to be requeued."""
+    os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
     if not with_pg:
         os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
 
