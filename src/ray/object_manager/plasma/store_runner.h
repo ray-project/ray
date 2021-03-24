@@ -30,11 +30,6 @@ class PlasmaStoreRunner {
                        "PlasmaStoreRunner.GetAvailableMemory");
   }
 
-  size_t GetMemoryCapacity() const {
-    RAY_CHECK(system_memory_ > 0);
-    return static_cast<size_t>(system_memory_);
-  }
-
  private:
   void Shutdown();
   absl::Mutex store_runner_mutex_;
