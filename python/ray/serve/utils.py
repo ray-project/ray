@@ -454,9 +454,9 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     from fastapi import Depends, APIRouter
     from fastapi.routing import APIRoute
 
-    def yield_current_servable_instance():
+    def get_current_servable_instance():
         from ray import serve
-        yield serve.get_replica_context().servable_object
+        return serve.get_replica_context().servable_object
 
     # Find all the class method routes
     member_methods = {
@@ -485,7 +485,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         old_parameters = list(old_signature.parameters.values())
         old_self_parameter = old_parameters[0]
         new_self_parameter = old_self_parameter.replace(
-            default=Depends(yield_current_servable_instance))
+            default=Depends(get_current_servable_instance))
         new_parameters = [new_self_parameter] + [
             # Make the rest of the parameters keyword only because
             # the first argument is no longer positional.

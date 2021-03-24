@@ -99,7 +99,7 @@ def test_make_fastapi_cbv_util():
     self_dep = app.routes[-1].dependant.dependencies[0]
     assert self_dep.name == "self"
     assert inspect.isfunction(self_dep.call)
-    assert "yield_current_servable" in str(self_dep.call)
+    assert "get_current_servable" in str(self_dep.call)
 
 
 if __name__ == "__main__":
