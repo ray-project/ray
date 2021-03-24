@@ -722,18 +722,17 @@ class BackendState:
             to_remove = -delta_replicas
             logger.info(f"Removing {to_remove} replicas "
                         f"from backend '{backend_tag}'.")
-            for _ in range(to_remove):
-                replicas_to_stop = self._replicas[backend_tag].pop(
-                    states=[
-                        ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                        ReplicaState.RUNNING
-                    ],
-                    max_replicas=to_remove)
+            replicas_to_stop = self._replicas[backend_tag].pop(
+                states=[
+                    ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                    ReplicaState.RUNNING
+                ],
+                max_replicas=to_remove)
 
-                for replica in replicas_to_stop:
-                    replica.set_should_stop(graceful_shutdown_timeout_s)
-                    self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
-                                                    replica)
+            for replica in replicas_to_stop:
+                replica.set_should_stop(graceful_shutdown_timeout_s)
+                self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
+                                                replica)
 
         return True
 
