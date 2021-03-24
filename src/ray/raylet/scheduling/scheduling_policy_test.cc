@@ -23,7 +23,8 @@ class SchedulingPolicyTest : public ::testing::Test {};
 
 TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   StringIdMap map;
-  auto task_req1 = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
+  auto task_req1 =
+      ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
   auto task_req2 = ResourceMapToTaskRequest(map, {{"CPU", 1}});
   {
     // Don't break with a non-resized predefined resources array.
@@ -45,7 +46,8 @@ TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
 
 TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   StringIdMap map;
-  auto task_req1 = ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
+  auto task_req1 =
+      ResourceMapToTaskRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
   auto task_req2 = ResourceMapToTaskRequest(map, {{"CPU", 1}});
   {
     // Don't break with a non-resized predefined resources array.
