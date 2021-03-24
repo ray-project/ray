@@ -35,7 +35,7 @@ A **placement group strategy** is an algorithm for selecting nodes for bundle pl
 Starting a placement group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group`` API if you are using Python. With Java, you can use ``Ray.createPlacementGroup`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+Ray placement group can be created via the ``ray.util.placement_group`` API if you are using Python. With Java, you can use ``PlacementGroups.createPlacementGroup`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
 .. tabs::
   .. group-tab:: Python
@@ -79,7 +79,7 @@ Ray placement group can be created via the ``ray.util.placement_group`` API if y
           .setStrategy(PlacementStrategy.STRICT_SPREAD)
           .build();
 
-      PlacementGroup pg = Ray.createPlacementGroup(options);
+      PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
 
 .. important:: Each bundle must be able to fit on a single node on the Ray cluster.
 
@@ -108,7 +108,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
       Assert.assertTrue(ready);
 
       // You can look at placement group states using this API.
-      List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+      List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
       for (PlacementGroup group: allPlacementGroup) {
         System.out.println(group);
       }
@@ -218,7 +218,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
             .setStrategy(PlacementStrategy.STRICT_SPREAD)
             .build();
 
-        PlacementGroup pg = Ray.createPlacementGroup(options);
+        PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
         boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
@@ -282,7 +282,7 @@ Let's create a placement group. Recall that each bundle is a collection of resou
             .setStrategy(PlacementStrategy.STRICT_PACK)
             .build();
 
-        PlacementGroup pg = Ray.createPlacementGroup(options);
+        PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
         boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
@@ -434,9 +434,9 @@ You can remove a placement group at any time to free its allocated resources.
 
     .. code-block:: java
 
-      Ray.removePlacementGroup(placementGroup.getId());
+      PlacementGroups.removePlacementGroup(placementGroup.getId());
 
-      PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(placementGroup.getId());
+      PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(placementGroup.getId());
       Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
 
 
@@ -486,13 +486,13 @@ See :ref:`placement-group-lifetimes` for more details.
           .setGlobalName("global_name")
           .build();
 
-      PlacementGroup pg = Ray.createPlacementGroup(options);
+      PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
       pg.wait(60);
 
       ...
 
       // Retrieve the placement group later somewhere.
-      PlacementGroup group = Ray.getGlobalPlacementGroup("global_name");
+      PlacementGroup group = PlacementGroups.getGlobalPlacementGroup("global_name");
       Assert.assertNotNull(group);
 
     We also support non-global named placement group in Java, which means that the placement group name is only valid within the job and cannot be accessed from another job.
@@ -512,13 +512,13 @@ See :ref:`placement-group-lifetimes` for more details.
         .setName("non_global_name")
         .build();
 
-      PlacementGroup pg = Ray.createPlacementGroup(options);
+      PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
       pg.wait(60);
 
       ...
 
       // Retrieve the placement group later somewhere in the same job.
-      PlacementGroup group = Ray.getPlacementGroup("non_global_name");
+      PlacementGroup group = PlacementGroups.getPlacementGroup("non_global_name");
       Assert.assertNotNull(group);
 
 

@@ -1,5 +1,6 @@
 package io.ray.docdemo;
 
+import io.ray.api.PlacementGroups;
 import io.ray.api.Ray;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -34,21 +35,21 @@ public class PlacementGroupDemo {
             .setStrategy(PlacementStrategy.STRICT_SPREAD)
             .build();
 
-    PlacementGroup pg = Ray.createPlacementGroup(options);
+    PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
 
     // Wait for the placement group to be ready within the specified time(unit is seconds).
     boolean ready = pg.wait(60);
     Assert.assertTrue(ready);
 
     // You can look at placement group states using this API.
-    List<PlacementGroup> allPlacementGroup = Ray.getAllPlacementGroups();
+    List<PlacementGroup> allPlacementGroup = PlacementGroups.getAllPlacementGroups();
     for (PlacementGroup group : allPlacementGroup) {
       System.out.println(group);
     }
 
-    Ray.removePlacementGroup(pg.getId());
+    PlacementGroups.removePlacementGroup(pg.getId());
 
-    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(pg.getId());
+    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(pg.getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
@@ -66,16 +67,16 @@ public class PlacementGroupDemo {
             .setStrategy(PlacementStrategy.STRICT_SPREAD)
             .build();
 
-    PlacementGroup pg = Ray.createPlacementGroup(options);
+    PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
     boolean isCreated = pg.wait(60);
     Assert.assertTrue(isCreated);
 
     // Will be scheduled because 2 cpus are reserved by the placement group.
     Ray.task(Counter::ping).setPlacementGroup(pg, 0).setResource("CPU", 1.0).remote();
 
-    Ray.removePlacementGroup(pg.getId());
+    PlacementGroups.removePlacementGroup(pg.getId());
 
-    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(pg.getId());
+    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(pg.getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
@@ -93,16 +94,16 @@ public class PlacementGroupDemo {
             .setGlobalName("global_name")
             .build();
 
-    PlacementGroup pg = Ray.createPlacementGroup(options);
+    PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
     pg.wait(60);
 
     // Retrieve the placement group later somewhere.
-    PlacementGroup group = Ray.getGlobalPlacementGroup("global_name");
+    PlacementGroup group = PlacementGroups.getGlobalPlacementGroup("global_name");
     Assert.assertNotNull(group);
 
-    Ray.removePlacementGroup(pg.getId());
+    PlacementGroups.removePlacementGroup(pg.getId());
 
-    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(pg.getId());
+    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(pg.getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
@@ -120,16 +121,16 @@ public class PlacementGroupDemo {
             .setName("non_global_name")
             .build();
 
-    PlacementGroup pg = Ray.createPlacementGroup(options);
+    PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
     pg.wait(60);
 
     // Retrieve the placement group later somewhere in the same job.
-    PlacementGroup group = Ray.getPlacementGroup("non_global_name");
+    PlacementGroup group = PlacementGroups.getPlacementGroup("non_global_name");
     Assert.assertNotNull(group);
 
-    Ray.removePlacementGroup(pg.getId());
+    PlacementGroups.removePlacementGroup(pg.getId());
 
-    PlacementGroup removedPlacementGroup = Ray.getPlacementGroup(pg.getId());
+    PlacementGroup removedPlacementGroup = PlacementGroups.getPlacementGroup(pg.getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
   }
 
