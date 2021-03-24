@@ -1172,10 +1172,11 @@ class Trainer(Trainable):
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
                     "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = False
-        # Auto-setting: Use simple-optimizer for torch/tfe, otherwise:
-        # TFMultiGPU (if supported by the algo's execution plan).
+        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = framework != "tf"
+            config["simple_optimizer"] = \
+                framework != "tf" or len(config["multiagent"]["policies"]) > 0
         # User manually set simple-optimizer to False -> Error if not tf.
         elif simple_optim_setting is False:
             if framework in ["tfe", "tf2", "torch"]:
