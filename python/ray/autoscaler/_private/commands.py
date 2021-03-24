@@ -8,6 +8,7 @@ import random
 import sys
 import subprocess
 import tempfile
+from threading import Thread
 import time
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -406,7 +407,14 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 file_mounts_contents_hash="",
                 is_head_node=False,
                 docker_config=config.get("docker"))
-            _exec(updater, cmd=f"docker stop {container_name}", run_env="host")
+
+            # Silent is necessary to avoid messing up the user's terminal
+            # when running this concurrently.
+            updater.cmd_runner.run(
+                f"docker stop {container_name}",
+                with_output=False,
+                run_env="host",
+                silent=True)
         except Exception:
             cli_logger.warning(f"Docker stop failed on {node}")
 
@@ -416,9 +424,13 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
+        threads = []
         for node in A:
-            run_docker_stop(node, container_name)
-
+            t = Thread(target=lambda: run_docker_stop(node, container_name))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
     with LogTimer("teardown_cluster: done."):
         while A:
             provider.terminate_nodes(A)
