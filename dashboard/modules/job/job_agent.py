@@ -19,6 +19,16 @@ from ray._private.utils import hex_to_binary, binary_to_hex
 logger = logging.getLogger(__name__)
 
 
+class CmdIndex:
+    _global_cmd_index = 1
+
+    @classmethod
+    def get_next(cls):
+        cmd_index = cls._global_cmd_index
+        cls._global_cmd_index += 1
+        return cmd_index
+
+
 class JobFatalError(Exception):
     pass
 
@@ -118,7 +128,7 @@ class JobProcessor:
 
     async def _download_package(self, http_session, url, filename):
         job_id = self._job_info.job_id()
-        cmd_index = self._get_next_cmd_index()
+        cmd_index = CmdIndex.get_next()
         logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index, url,
                     filename)
         async with http_session.get(url, ssl=False) as response:
@@ -138,12 +148,6 @@ class JobProcessor:
         unzip_cmd = [self._get_current_python(), "-c", code]
         await self._check_call_cmd(unzip_cmd)
 
-    @staticmethod
-    def _get_next_cmd_index(start_index=[1]):
-        cmd_index = start_index[0]
-        start_index[0] += 1
-        return cmd_index
-
     async def _check_call_cmd(self, cmd):
         await self._check_output_cmd(cmd)
 
@@ -153,7 +157,7 @@ class JobProcessor:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         job_id = self._job_info.job_id()
-        cmd_index = self._get_next_cmd_index()
+        cmd_index = CmdIndex.get_next()
         proc.cmd_index = cmd_index
         logger.info("[%s] Run cmd[%s] %s", job_id, cmd_index, repr(cmd))
         stdout, stderr = await proc.communicate()

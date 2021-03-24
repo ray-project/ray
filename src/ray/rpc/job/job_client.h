@@ -21,13 +21,13 @@
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with a remote job server.
+/// Client used for communicating with a remote job agent server.
 class JobClient {
  public:
   /// Constructor.
   ///
-  /// \param[in] address Address of the job server.
-  /// \param[in] port Port of the job server.
+  /// \param[in] address Address of the job agent server.
+  /// \param[in] port Port of the job agent server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   JobClient(const std::string &address, const int port,
             ClientCallManager &client_call_manager)
