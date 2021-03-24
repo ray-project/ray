@@ -15,28 +15,11 @@ class ValueNetworkMixin:
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
-        if config["_use_trajectory_view_api"]:
-
-            def value(**input_dict):
-                input_dict = self._lazy_tensor_dict(input_dict)
-                model_out, _ = self.model.from_batch(
-                    input_dict, is_training=False)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
-
-        else:
-
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
-                        self.device),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
-                        self.device),
-                    "is_training": False,
-                }, [torch.Tensor([s]).to(self.device) for s in state],
-                                          torch.Tensor([1]).to(self.device))
-                return self.model.value_function()[0]
+        def value(**input_dict):
+            input_dict = self._lazy_tensor_dict(input_dict)
+            model_out, _ = self.model.from_batch(input_dict, is_training=False)
+            # [0] = remove the batch dim.
+            return self.model.value_function()[0]
 
         self._value = value
 
