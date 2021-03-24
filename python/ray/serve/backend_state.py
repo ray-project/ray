@@ -621,33 +621,52 @@ class BackendState:
         return new_goal_id
 
     def _stop_wrong_version_replicas(
-            self, backend_tag: BackendTag, target_replicas: int,
+            self, replicas: ReplicaStateContainer, target_replicas: int,
             target_version: str, graceful_shutdown_timeout_s: float) -> int:
+        """Stops replicas with outdated versions to implement rolling updates.
+
+        TODO
+        """
         # NOTE(edoakes): this short-circuits when using the legacy
         # `create_backend` codepath -- it can be removed once we deprecate
         # that as the version should never be None.
         if target_version is None:
             return 0
 
-        old_running_replicas = self._replicas[backend_tag].count(
+        # We include SHOULD_START and STARTING replicas here because if there
+        # are replicas still pending startup, we may as well terminate them
+        # and start new version replicas instead.
+        old_running_replicas = replicas.count(
             exclude_version=target_version,
             states=[
                 ReplicaState.SHOULD_START, ReplicaState.STARTING,
                 ReplicaState.RUNNING
             ])
-        new_running_replicas = self._replicas[backend_tag].count(
+        old_stopping_replicas = replicas.count(
+            exclude_version=target_version,
+            states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
+        new_running_replicas = replicas.count(
             version=target_version, states=[ReplicaState.RUNNING])
 
-        if target_replicas < old_running_replicas:
+        # If the backend is currently scaling down, let the scale down
+        # complete before doing a rolling update.
+        if target_replicas < old_running_replicas + old_stopping_replicas:
             return 0
 
+        # The number of replicas that are currently in transition between
+        # an old version and the new version. Note that we cannot directly
+        # count the number of stopping replicas because once replicas finish
+        # stopping, they are removed from the data structure.
         pending_replicas = (
             target_replicas - new_running_replicas - old_running_replicas)
 
+        # Maximum number of replicas that can be updating at any given time.
+        # There should never be more than rollout_size old replicas stopping
+        # or rollout_size new replicas starting.
         rollout_size = max(int(0.2 * target_replicas), 1)
-
         max_to_stop = max(rollout_size - pending_replicas, 0)
-        replicas_to_stop = self._replicas[backend_tag].pop(
+
+        replicas_to_stop = replicas.pop(
             exclude_version=target_version,
             states=[
                 ReplicaState.SHOULD_START, ReplicaState.STARTING,
@@ -655,13 +674,9 @@ class BackendState:
             ],
             max_replicas=max_to_stop)
 
-        if len(replicas_to_stop) > 0:
-            logger.info(f"Stopping {len(replicas_to_stop)} replicas of "
-                        f"backend '{backend_tag}' with outdated versions.")
-
         for replica in replicas_to_stop:
             replica.set_should_stop(graceful_shutdown_timeout_s)
-            self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP, replica)
+            replicas.add(ReplicaState.SHOULD_STOP, replica)
 
         return len(replicas_to_stop)
 
@@ -690,9 +705,12 @@ class BackendState:
             backend_info.backend_config.
             experimental_graceful_shutdown_timeout_s)
 
-        self._stop_wrong_version_replicas(backend_tag, target_replicas,
-                                          target_version,
-                                          graceful_shutdown_timeout_s)
+        stopped = self._stop_wrong_version_replicas(
+            self._replicas[backend_tag], target_replicas, target_version,
+            graceful_shutdown_timeout_s)
+        if stopped > 0:
+            logger.info(f"Stopping {stopped} replicas of backend "
+                        f"'{backend_tag}' with outdated versions.")
 
         current_replicas = self._replicas[backend_tag].count(states=[
             ReplicaState.SHOULD_START, ReplicaState.STARTING,
