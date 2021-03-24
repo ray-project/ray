@@ -11,7 +11,7 @@ questions, feel free to ask them in the `Discussion Board <https://discuss.ray.i
 How do I deploy Ray Serve?
 --------------------------
 
-See :doc:`deployment` for information about how to deploy serve.
+See :doc:`deployment` for information about how to deploy Serve.
 
 
 How fast is Ray Serve?
