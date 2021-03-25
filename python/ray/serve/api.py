@@ -24,7 +24,8 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger, register_custom_serializers)
+                             logger, make_fastapi_class_based_view,
+                             register_custom_serializers)
 
 import ray
 
@@ -54,6 +55,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    servable_object: Callable
 
 
 def create_or_get_async_loop_in_thread():
@@ -68,10 +70,15 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
+def _set_internal_replica_context(
+        backend_tag: BackendTag,
+        replica_tag: ReplicaTag,
+        controller_name: str,
+        servable_object: Callable,
+):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(backend_tag, replica_tag,
-                                               controller_name)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+        backend_tag, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -1072,6 +1079,9 @@ def ingress(
 
         if app is not None:
             cls._serve_asgi_app = app
+            # Sometimes there are decorators on the methods. We want to fix
+            # the fast api routes here.
+            make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
             cls._serve_path_prefix = path_prefix
 
