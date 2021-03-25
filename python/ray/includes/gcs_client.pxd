@@ -44,10 +44,11 @@ cdef extern from * namespace "_gcs_maker":
               thread_([this](){
                   io_context_.run();
               }) {
-           RAY_CHECK(Connect(io_context_).ok());
+           RAY_CHECK_OK(Connect(io_context_));
         }
         ~RayletGcsClient() {
-          RAY_LOG(INFO) << "Stop!!!";
+          RAY_LOG(DEBUG)
+            << "Destructing GCS client and associated event loop thread.";
           io_context_.stop();
           thread_.join();
         }

@@ -798,7 +798,7 @@ class InternalKVAccessor {
   /// \param value The value associated with the key
   /// \param callback Callback that will be called after the operation.
   /// \return Status
- virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
                                     bool overwrite,
                                     const OptionalItemCallback<int> &callback) = 0;
 
@@ -826,7 +826,6 @@ class InternalKVAccessor {
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
   Status Keys(const std::string &prefix, std::vector<std::string> &value);
-
 
   /// Set the <key, value> in the store
   ///
@@ -859,7 +858,7 @@ class InternalKVAccessor {
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
-Status Exists(const std::string &key, bool &exist);
+  Status Exists(const std::string &key, bool &exist);
 
  protected:
   InternalKVAccessor() = default;
