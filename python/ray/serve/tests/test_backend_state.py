@@ -816,19 +816,6 @@ def test_new_version_deploy_throttling(mock_backend_state):
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
 
-    backend_state.update()
-    check_counts(backend_state, total=10)
-    check_counts(
-        backend_state,
-        version="1",
-        total=9,
-        by_state=[(ReplicaState.RUNNING, 7), (ReplicaState.STOPPING, 2)])
-    check_counts(
-        backend_state,
-        version="2",
-        total=1,
-        by_state=[(ReplicaState.RUNNING, 1)])
-
     # Mark the old replicas as done stopping.
     backend_state._replicas[TEST_TAG].get(
         states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()

@@ -633,6 +633,11 @@ class BackendState:
         if target_version is None:
             return 0
 
+        # Short circuit if target replicas is 0 (the backend is being deleted)
+        # because this will be handled in the main loop.
+        if target_replicas == 0:
+            return 0
+
         # We include SHOULD_START and STARTING replicas here because if there
         # are replicas still pending startup, we may as well terminate them
         # and start new version replicas instead.
