@@ -3,7 +3,6 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -169,11 +168,6 @@ def validate_config(config):
                 "ParameterNoise Exploration requires `batch_mode` to be "
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
-
-    if config["simple_optimizer"] != DEPRECATED_VALUE or \
-            config["simple_optimizer"] is False:
-        logger.warning("`simple_optimizer` must be True (or unset) for DDPG!")
-    config["simple_optimizer"] = True
 
 
 def get_policy_class(config):
