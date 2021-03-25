@@ -88,7 +88,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                       rllib_dir, tmp_dir, algo) +
                   "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
-                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 190.0}\"" +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 180.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
@@ -127,7 +127,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 190.0
+        assert mean_reward >= 180.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
