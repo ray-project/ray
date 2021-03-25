@@ -9,7 +9,6 @@ import ray
 from ray._raylet import (TaskID, ActorID, JobID)
 from ray.internal.internal_api import node_stats
 import logging
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
