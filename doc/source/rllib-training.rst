@@ -236,21 +236,14 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
+    # or simply get the last checkpoint (with highest "training_iteration")
+    last_checkpoint = analysis.get_last_checkpoint()
+
 Loading and restoring a trained agent from a checkpoint is simple:
 
 .. code-block:: python
 
-    from ray.tune.utils.trainable import TrainableUtil
-
     agent = ppo.PPOTrainer(config=config, env=env_class)
-    # path to specific checkpoint
-    checkpoint_path = '<path-to-checkpoint>'
-    # alternatively: load last checkpoint in a given directory
-    checkpoint_path = TrainableUtil.get_last_checkpoint(dir_path)
-    # or the best checkpoint according to a given metric
-    checkpoint_path = TrainableUtil.get_best_checkpoint(dir_path, metric='episode_reward_mean', mode='max')
-
-    # load agent from checkpoint
     agent.restore(checkpoint_path)
 
 
