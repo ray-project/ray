@@ -1,6 +1,5 @@
 import collections
 import numpy as np
-import sys
 import itertools
 from typing import Dict, List, Set, Union
 
@@ -428,7 +427,9 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(d.nbytes for d in self.data.values())
+        return sum(
+            d.nbytes if isinstance(d, np.ndarray) else 0
+            for d in self.values())
 
     def get(self, key, default=None):
         try:
