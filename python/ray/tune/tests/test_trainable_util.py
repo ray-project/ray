@@ -1,5 +1,3 @@
-import glob
-import tempfile
 from collections import OrderedDict
 import os
 import sys
@@ -7,7 +5,6 @@ import shutil
 import unittest
 from unittest.mock import patch
 
-from ray import tune
 import ray._private.utils
 import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
@@ -22,31 +19,8 @@ class TrainableUtilTest(unittest.TestCase):
         self.checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.checkpoint_dir, "0")
 
-        # run tune to generate proper checkpoints for testing functions for
-        # finding last and best checkpoint
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
-        tmpdir = tempfile.mkdtemp()
-        test_name = "TuneRestoreTest"
-        tune.run(
-            "PG",
-            name=test_name,
-            stop={"training_iteration": 2},
-            checkpoint_freq=1,
-            local_dir=tmpdir,
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-        self.test_dir = os.path.expanduser(os.path.join(tmpdir, test_name))
-        # get the logdir of the current tune run (the first and only one within
-        #  the test_dir)
-        self.logdir = glob.glob(os.path.join(self.test_dir, "*", ""))[0]
-
     def tearDown(self):
         self.addCleanup(shutil.rmtree, self.checkpoint_dir)
-        shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir,
@@ -76,51 +50,6 @@ class TrainableUtilTest(unittest.TestCase):
         for i in range(5):
             path = os.path.join(self.checkpoint_dir, str(i))
             self.assertEquals(loaded["data"][str(i)], open(path, "rb").read())
-
-    def testTuneRestoreLastCheckpoint(self):
-        """Tests that the last checkpoint in the log dir is restored."""
-        # assert that logdir and checkpoint really exist
-        self.assertTrue(os.path.isdir(self.logdir))
-        last_checkpoint = TrainableUtil.get_last_checkpoint(self.logdir)
-        self.assertTrue(os.path.isfile(last_checkpoint))
-        # assert the function returns the 2nd (and latest) checkpoint
-        self.assertTrue("2" in last_checkpoint)
-
-        # load the checkpoint and do one more train iteration
-        tune.run(
-            "PG",
-            name="TuneRestoreTest",
-            # train one more iteration (with small batch size)
-            stop={"training_iteration": 3},
-            checkpoint_freq=1,
-            restore=last_checkpoint,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
-
-    def testTuneRestoreBestCheckpoint(self):
-        """Tests that the best checkpoint in the log dir is restored."""
-        self.assertTrue(os.path.isdir(self.logdir))
-        best_checkpoint = \
-            TrainableUtil.get_best_checkpoint(self.logdir,
-                                              metric="episode_reward_mean")
-        self.assertTrue(os.path.isfile(best_checkpoint))
-
-        # load the checkpoint and do one more train iteration
-        tune.run(
-            "PG",
-            name="TuneRestoreTest",
-            # train one more iteration (with small batch size)
-            stop={"training_iteration": 3},
-            checkpoint_freq=1,
-            restore=best_checkpoint,  # Restore the checkpoint
-            config={
-                "env": "CartPole-v0",
-                "framework": "tf",
-            },
-        )
 
 
 class UnflattenDictTest(unittest.TestCase):

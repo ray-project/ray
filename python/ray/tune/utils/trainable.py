@@ -139,27 +139,6 @@ class TrainableUtil:
         return checkpoint_path
 
     @staticmethod
-    def get_checkpoint_path(checkpoint_dir):
-        """Given a directory of a specific checkpoint, returns the full
-        checkpoint path.
-
-        Args:
-            checkpoint_dir (str): Path pointing to a checkpoint directory.
-        Returns:
-            A string with the full path to the checkpoint within the directory.
-        """
-        if "checkpoint" not in checkpoint_dir:
-            raise ValueError("The given path does not point to a specific "
-                             f"checkpoint: {checkpoint_dir}")
-        # if it directly points to the checkpoint file, just return it
-        if os.path.isfile(checkpoint_dir):
-            return checkpoint_dir
-
-        # else derive the checkpoint file and return it
-        checkpoint_number = checkpoint_dir.split("_")[-1]
-        return os.path.join(checkpoint_dir, f"checkpoint-{checkpoint_number}")
-
-    @staticmethod
     def get_checkpoints_paths(logdir):
         """ Finds the checkpoints within a specific folder.
 
@@ -188,62 +167,6 @@ class TrainableUtil:
         chkpt_df = pd.DataFrame(
             iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
         return chkpt_df
-
-    @staticmethod
-    def get_last_checkpoint(logdir):
-        """Finds and returns last checkpoint from given directory.
-
-        Args:
-            logdir (str): Path pointing to a directory with checkpoints.
-
-        Returns:
-            Last checkpoint in given directory (with highest training
-            iteration).
-        """
-        # if logdir already points to a specific checkpoint load it
-        if "checkpoint" in logdir:
-            return TrainableUtil.get_checkpoint_path(logdir)
-
-        # get all checkpoint paths and their corresponding training iteration
-        df = TrainableUtil.get_checkpoints_paths(logdir)
-        # retrieve path with highest training iteration
-        last_df_row = \
-            df[df["training_iteration"] == df["training_iteration"].max()]
-        if len(last_df_row) == 0:
-            subdirs = glob.glob(os.path.join(logdir, "*", ""))
-            raise ValueError(f"No checkpoints found in directory: {logdir}"
-                             f"Maybe in a sub-directory? {subdirs}")
-        last_checkpoint_path = last_df_row["chkpt_path"].item()
-        return last_checkpoint_path
-
-    @staticmethod
-    def get_best_checkpoint(logdir, metric, mode="max"):
-        """Finds and returns best checkpoint from given directory according to
-        the given metric.
-
-        Args:
-            logdir (str): Path pointing to a directory with checkpoints.
-            metric (str): Metric to use for selecting the best checkpoint.
-            mode (str): Whether to maximize or minimize the given metric.
-
-        Returns:
-            Best checkpoint in given directory according to given metric and
-            mode.
-        """
-        # if logdir already points to a specific checkpoint load it
-        if "checkpoint" in logdir:
-            return TrainableUtil.get_checkpoint_path(logdir)
-
-        # else load the best checkpoint from all available checkpoints
-        abs_logdir = os.path.abspath(logdir)
-        analysis = ray.tune.Analysis(abs_logdir)
-        analysis.default_metric = metric
-        analysis.default_mode = mode
-        best_checkpoint = analysis.get_best_checkpoint(
-            analysis._get_trial_paths()[0])
-        best_checkpoint_path = os.path.abspath(best_checkpoint)
-
-        return best_checkpoint_path
 
 
 class PlacementGroupUtil:
