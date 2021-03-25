@@ -20,6 +20,7 @@ import traceback
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
+import ray.services
 
 PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class RemotePdb(Pdb):
         self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
                                        True)
-        self._listen_socket.bind((host, port))
+        self._listen_socket.bind(("0.0.0.0", port))
 
     def listen(self):
         if not self._quiet:
@@ -195,6 +196,7 @@ def connect_ray_pdb(host=None,
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
+    host = ray.services.get_node_ip_address()
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
