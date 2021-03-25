@@ -96,7 +96,7 @@ class MyKerasQModel(DistributionalQTFModel):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
     ModelCatalog.register_custom_model(
         "keras_model", MyVisionNetwork
         if args.use_vision_network else MyKerasModel)

@@ -603,7 +603,7 @@ class Client:
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
-                "serve/advanced.html#sync-and-async-handles")
+                "serve/http-servehandle.html#sync-and-async-handles")
 
         if not asyncio.get_event_loop().is_running() and not sync:
             logger.warning(
@@ -611,7 +611,7 @@ class Client:
                 "You should make sure client.get_handle is called inside a "
                 "running event loop. Or call client.get_handle(.., sync=True) "
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
-                "master/serve/advanced.html#sync-and-async-handles")
+                "master/serve/http-servehandle.html#sync-and-async-handles")
 
         if endpoint_name in all_endpoints:
             this_endpoint = all_endpoints[endpoint_name]
