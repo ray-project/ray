@@ -16,8 +16,35 @@ from ray.util.placement_group import PlacementGroup, get_placement_group, \
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
-TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
+
+_tune_pg_prefix = None
+
+
+def get_tune_pg_prefix():
+    """Get the tune placement group name prefix.
+
+    This will store the prefix in a global variable so that subsequent runs
+    can use this identifier to clean up placement groups before starting their
+    run.
+
+    Can be overwritten with the ``TUNE_PLACEMENT_GROUP_PREFIX`` env variable.
+    """
+    global _tune_pg_prefix
+
+    if _tune_pg_prefix:
+        return _tune_pg_prefix
+
+    # Else: check env variable
+    env_prefix = os.getenv("TUNE_PLACEMENT_GROUP_PREFIX", "")
+
+    if env_prefix:
+        _tune_pg_prefix = env_prefix
+        return _tune_pg_prefix
+
+    # Else: create and store unique prefix
+    _tune_pg_prefix = f"__tune_{uuid.uuid4().hex[:8]}__"
+    return _tune_pg_prefix
 
 
 class PlacementGroupFactory:
@@ -187,7 +214,7 @@ class PlacementGroupManager:
         prefix (str): Prefix for the placement group names that are created.
     """
 
-    def __init__(self, prefix: str = "_tune__"):
+    def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
         self._prefix = prefix
 
         # Sets of staged placement groups by factory
@@ -219,6 +246,11 @@ class PlacementGroupManager:
         # to process events
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
+
+        self._max_staging = max_staging
+
+    def set_max_staging(self, max_staging: int):
+        self._max_staging = max_staging
 
     def remove_pg(self, pg: PlacementGroup):
         """Schedule placement group for (delayed) removal.
@@ -314,7 +346,7 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return len(self._staging_futures) < TUNE_MAX_PENDING_TRIALS_PG
+        return len(self._staging_futures) < self._max_staging
 
     def update_status(self):
         """Update placement group status.

@@ -213,6 +213,7 @@ class ExperimentPlateauStopper(Stopper):
         return self.has_plateaued() and self._iterations >= self._patience
 
 
+# Deprecate: 1.4
 class EarlyStopping(ExperimentPlateauStopper):
     def __init__(self, *args, **kwargs):
         warnings.warn(

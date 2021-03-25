@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=0)
-parser.add_argument("--torch", action="store_true")
+parser.add_argument("--framework", choices=["tf", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=500000)
@@ -59,7 +59,7 @@ if __name__ == "__main__":
             "attention_head_dim": 32,
             "attention_position_wise_mlp_dim": 32,
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {
@@ -68,6 +68,28 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    # To run the Trainer without tune.run, using the attention net and
+    # manual state-in handling, do the following:
+
+    # Example (use `config` from the above code):
+    # >> import numpy as np
+    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >>
+    # >> trainer = PPOTrainer(config)
+    # >> env = RepeatAfterMeEnv({})
+    # >> obs = env.reset()
+    # >> init_state = state = np.zeros(
+    #    [100 (attention_memory_inference), 64 (attention_dim)], np.float32)
+    # >> while True:
+    # >>     a, state_out, _ = trainer.compute_action(obs, [state])
+    # >>     obs, reward, done, _ = env.step(a)
+    # >>     if done:
+    # >>         obs = env.reset()
+    # >>         state = init_state
+    # >>     else:
+    # >>         state = np.concatenate([state, [state_out[0]]])[1:]
+
+    # We use tune here, which handles env and trainer creation for us.
     results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
