@@ -349,7 +349,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
-                                RAY_LOG(ERROR) << "Object restore for " << object_id.Hex()
+                                RAY_LOG(ERROR) << "Object restore for " << object_id
                                                << " failed, will retry later: " << status;
                               }
                             });
