@@ -1083,7 +1083,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
   if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
     // Return the worker to the idle pool.
-    worker_pool_.PushRestoreWorker(worker);
+    worker_pool_.PushUtilWorker(worker);
     return;
   }
 
