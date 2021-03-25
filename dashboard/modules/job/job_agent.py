@@ -33,10 +33,6 @@ class CmdIndex:
         return cmd_index
 
 
-class JobFatalError(Exception):
-    pass
-
-
 @attr.s(kw_only=True, slots=True)
 class JobInfo(JobDescription):
     # The job id hex string.
@@ -156,11 +152,11 @@ class DownloadPackage(JobProcessor):
         job_id = self._job_info.job_id
         filename = job_consts.DOWNLOAD_PACKAGE_FILE.format(
             temp_dir=temp_dir, job_id=job_id)
-        unzip_dir = job_consts.JOB_UNPACK_DIR.format(
+        unpack_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
         await self._download_package(self._http_session, self._job_info.url,
                                      filename)
-        await self._unpack_package(filename, unzip_dir)
+        await self._unpack_package(filename, unpack_dir)
 
 
 class StartPythonDriver(JobProcessor):
