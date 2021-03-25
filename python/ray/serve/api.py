@@ -494,6 +494,10 @@ class Client:
                                            replica_config, version))
 
     @_ensure_connected
+    def delete_deployment(self, name: str) -> None:
+        self._wait_for_goal(self._controller.delete_deployment.remote(name))
+
+    @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of all registered backends.
 
@@ -581,8 +585,8 @@ class Client:
         Returns:
             RayServeHandle
         """
-        if not missing_ok and endpoint_name not in ray.get(
-                self._controller.get_all_endpoints.remote()):
+        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
+        if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
         if asyncio.get_event_loop().is_running() and sync:
@@ -590,7 +594,7 @@ class Client:
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
-                "serve/advanced.html#sync-and-async-handles")
+                "serve/http-servehandle.html#sync-and-async-handles")
 
         if not asyncio.get_event_loop().is_running() and not sync:
             logger.warning(
@@ -598,15 +602,26 @@ class Client:
                 "You should make sure client.get_handle is called inside a "
                 "running event loop. Or call client.get_handle(.., sync=True) "
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
-                "master/serve/advanced.html#sync-and-async-handles")
+                "master/serve/http-servehandle.html#sync-and-async-handles")
+
+        if endpoint_name in all_endpoints:
+            this_endpoint = all_endpoints[endpoint_name]
+            python_methods: List[str] = this_endpoint["python_methods"]
+        else:
+            # This can happen in the missing_ok=True case.
+            # handle.method_name.remote won't work and user must
+            # use the legacy handle.options(method).remote().
+            python_methods: List[str] = []
 
         # NOTE(simon): this extra layer of router seems unnecessary
         # BUT it's needed still because of the shared asyncio thread.
         router = self._get_proxied_router(sync=sync, endpoint=endpoint_name)
         if sync:
-            handle = RayServeSyncHandle(router, endpoint_name)
+            handle = RayServeSyncHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         else:
-            handle = RayServeHandle(router, endpoint_name)
+            handle = RayServeHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         return handle
 
 
@@ -1087,6 +1102,16 @@ class ServeDeployment(ABC):
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
+    @classmethod
+    def options(self,
+                backend_def: Optional[Callable] = None,
+                name: Optional[str] = None,
+                version: Optional[str] = None,
+                ray_actor_options: Optional[Dict] = None,
+                config: Optional[BackendConfig] = None) -> "ServeDeployment":
+        """Return a new deployment with the specified options set."""
+        raise NotImplementedError()
+
 
 def make_deployment_cls(
         backend_def: Callable,
@@ -1121,11 +1146,12 @@ def make_deployment_cls(
         @classmethod
         def delete(self):
             """Delete this deployment."""
-            raise NotImplementedError()
+            return _get_global_client().delete_deployment(Deployment._name)
 
         @classmethod
         def get_handle(self, sync: Optional[bool] = True
                        ) -> Union[RayServeHandle, RayServeSyncHandle]:
+            """Get a ServeHandle to this deployment."""
             return _get_global_client().get_handle(
                 Deployment._name, missing_ok=False, sync=sync, _internal=True)
 
