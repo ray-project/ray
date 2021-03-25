@@ -1,4 +1,3 @@
-from collections import Counter
 import os
 import pytest
 import subprocess
@@ -9,7 +8,6 @@ from ray.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
     wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
-from time import sleep
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -389,52 +387,6 @@ ray.get(main_wait.release.remote())
     assert driver1_out_split[1][-1] == "2", driver1_out_split
     assert driver2_out_split[0][-1] == "3", driver2_out_split
     assert driver2_out_split[1][-1] == "4", driver2_out_split
-
-
-def test_spillback_distribution(ray_start_cluster):
-    cluster = ray_start_cluster
-    # Create a head node and wait until it is up.
-    cluster.add_node(
-        num_cpus=0, _system_config={"scheduler_loadbalance_spillback": True})
-    ray.init(address=cluster.address)
-    cluster.wait_for_nodes()
-
-    num_nodes = 2
-    # create 2 worker nodes.
-    for _ in range(num_nodes):
-        cluster.add_node(num_cpus=8)
-    cluster.wait_for_nodes()
-
-    assert ray.cluster_resources()["CPU"] == 16
-
-    @ray.remote
-    def task():
-        sleep(1)
-        return ray.worker.global_worker.current_node_id
-
-    # Make sure tasks are spilled back non-deterministically.
-    locations = ray.get([task.remote() for _ in range(8)])
-    counter = Counter(locations)
-    spread = max(counter.values()) - min(counter.values())
-    # Ideally we'd want 4 tasks to go to each node, but we'll settle for
-    # anything better than a 1-7 split since randomness is noisy.
-    assert spread < 6
-    assert len(counter) > 1
-
-    @ray.remote(num_cpus=1)
-    class Actor1:
-        def __init__(self):
-            pass
-
-        def get_location(self):
-            return ray.worker.global_worker.current_node_id
-
-    actors = [Actor1.remote() for _ in range(10)]
-    locations = ray.get([actor.get_location.remote() for actor in actors])
-    counter = Counter(locations)
-    spread = max(counter.values()) - min(counter.values())
-    assert spread < 6
-    assert len(counter) > 1
 
 
 if __name__ == "__main__":

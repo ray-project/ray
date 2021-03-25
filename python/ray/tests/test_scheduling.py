@@ -59,7 +59,9 @@ def test_load_balancing(ray_start_cluster):
 def test_hybrid_policy(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def get_node():
-        time.sleep(1)
+        # Making this sleep shorter will make the test flakey due to warm pool
+        # startup time.
+        time.sleep(3)
         return ray.worker.global_worker.current_node_id
 
     cluster = ray_start_cluster
@@ -87,6 +89,56 @@ def test_hybrid_policy(ray_start_cluster):
     counter = collections.Counter(nodes)
     for node_id in counter:
         assert counter[node_id] == 10, counter
+
+
+def test_legacy_spillback_distribution(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create a head node and wait until it is up.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "scheduler_loadbalance_spillback": True,
+            "scheduler_hybrid_scheduling": False
+        })
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    num_nodes = 2
+    # create 2 worker nodes.
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=8)
+    cluster.wait_for_nodes()
+
+    assert ray.cluster_resources()["CPU"] == 16
+
+    @ray.remote
+    def task():
+        time.sleep(1)
+        return ray.worker.global_worker.current_node_id
+
+    # Make sure tasks are spilled back non-deterministically.
+    locations = ray.get([task.remote() for _ in range(8)])
+    counter = collections.Counter(locations)
+    spread = max(counter.values()) - min(counter.values())
+    # Ideally we'd want 4 tasks to go to each node, but we'll settle for
+    # anything better than a 1-7 split since randomness is noisy.
+    assert spread < 6
+    assert len(counter) > 1
+
+    @ray.remote(num_cpus=1)
+    class Actor1:
+        def __init__(self):
+            pass
+
+        def get_location(self):
+            return ray.worker.global_worker.current_node_id
+
+    actors = [Actor1.remote() for _ in range(10)]
+    locations = ray.get([actor.get_location.remote() for actor in actors])
+    counter = collections.Counter(locations)
+    spread = max(counter.values()) - min(counter.values())
+    assert spread < 6
+    assert len(counter) > 1
 
 
 def test_local_scheduling_first(ray_start_cluster):
