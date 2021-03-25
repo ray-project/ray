@@ -12,6 +12,7 @@ import traceback
 import ray
 from ray._private.utils import hex_to_binary
 from ray.new_dashboard.tests.conftest import *  # noqa
+from ray.new_dashboard.modules.job import job_consts
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 JOB_ROOT_DIR = "/tmp/ray/job"
 TEST_PYTHON_JOB = {
-    "language": "PYTHON",
+    "language": job_consts.PYTHON,
     "url": "http://xxx/yyy.zip",
     "driverEntry": "python_file_name_without_ext",
 }
@@ -256,6 +257,71 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
                     last_ex.__traceback__) if last_ex else []
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_submit_job_validation(ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    shutil.rmtree(JOB_ROOT_DIR, ignore_errors=True)
+
+    # Invalid value.
+    resp = requests.post(
+        f"{webui_url}/jobs",
+        json={
+            "language": "Unsupported",
+            "url": "http://xxx/yyy.zip",
+            "driverEntry": "python_file_name_without_ext",
+        })
+    resp.raise_for_status()
+    result = resp.json()
+    assert result["result"] is False
+    msg = result["msg"]
+    assert "language" in msg and "Unsupported" in msg, resp.text
+
+    # Missing required field.
+    resp = requests.post(
+        f"{webui_url}/jobs",
+        json={
+            "language": job_consts.PYTHON,
+            "url": "http://xxx/yyy.zip",
+        })
+    resp.raise_for_status()
+    result = resp.json()
+    assert result["result"] is False
+    msg = result["msg"]
+    assert all(p in msg for p in ["missing", "driverEntry"]), resp.text
+
+    # Incorrect value type.
+    resp = requests.post(
+        f"{webui_url}/jobs",
+        json={
+            "language": job_consts.PYTHON,
+            "url": ["http://xxx/yyy.zip"],
+            "driverEntry": "python_file_name_without_ext",
+        })
+    resp.raise_for_status()
+    result = resp.json()
+    assert result["result"] is False
+    msg = result["msg"]
+    assert all(p in msg for p in ["url", "str", "list"]), resp.text
+
+    # Invalid key.
+    resp = requests.post(
+        f"{webui_url}/jobs",
+        json={
+            "language": job_consts.PYTHON,
+            "url": "http://xxx/yyy.zip",
+            "driverEntry": "python_file_name_without_ext",
+            "invalidKey": 1,
+        })
+    resp.raise_for_status()
+    result = resp.json()
+    assert result["result"] is False
+    msg = result["msg"]
+    assert all(p in msg for p in ["unexpected", "invalidKey"]), resp.text
 
 
 if __name__ == "__main__":

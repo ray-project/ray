@@ -123,6 +123,7 @@ install_requires = [
     "aiohttp",
     "aiohttp_cors",
     "aioredis",
+    "attrs",
     "click >= 7.0",
     "colorama",
     "dataclasses; python_version < '3.7'",
