@@ -309,7 +309,8 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self):
-        self.api_key_file = os.path.expanduser(self.api_key_path)
+        self.api_key_file = os.path.expanduser(self.api_key_path) if \
+            self.api_key_path else None
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):
