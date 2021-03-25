@@ -330,8 +330,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // scheduling policies.
   if (actor_creation && task_req.IsEmpty()) {
     int64_t best_node = -1;
-    // This an actor which requires no resources.
-    // Pick a random node to to avoid all scheduling all actors on the local node.
+    // This is an actor which requires no resources.
+    // Pick a random node to to avoid scheduling all actors on the local node.
     if (nodes_.size() > 0) {
       std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
       int idx = distribution(gen_);
