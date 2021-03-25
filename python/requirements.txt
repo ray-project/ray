@@ -37,7 +37,7 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic
+pydantic>=1.8
 dataclasses; python_version < '3.7'
 starlette
 
