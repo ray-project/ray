@@ -32,11 +32,24 @@ if __name__ == "__main__":
     config = {
         "env": "stateless_cartpole",
         "model": {
+            "vf_share_layers": True,
             "custom_model": "frame_stack_model",
             "custom_model_config": {
                 "num_frames": 16,
-            }
+            },
+
+            # To compare against a simple LSTM:
+            # "use_lstm": True,
+            # "lstm_use_prev_action": True,
+            # "lstm_use_prev_reward": True,
+
+            # To compare against a simple attention net:
+            # "use_attention": True,
+            # "attention_use_n_prev_actions": 1,
+            # "attention_use_n_prev_rewards": 1,
         },
+        "num_sgd_iter": 5,
+        "vf_loss_coeff": 0.0001,
         "framework": args.framework,
     }
 
