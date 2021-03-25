@@ -7,7 +7,7 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-
+from contextlib import contextmanager
 import sys
 import logging
 import inspect
@@ -19,6 +19,37 @@ import click
 import warnings
 
 import colorama
+
+
+class _ColorfulMock:
+    def __init__(self):
+        # do not do any color work
+        self.identity = lambda x: x
+
+        self.colorful = self
+        self.colormode = None
+
+        self.NO_COLORS = None
+        self.ANSI_8_COLORS = None
+
+    def disable(self):
+        pass
+
+    @contextmanager
+    def with_style(self, x):
+        class IdentityClass:
+            def __getattr__(self, name):
+                return lambda y: y
+
+        yield IdentityClass()
+
+    def __getattr__(self, name):
+        if name == "with_style":
+            return self.with_style
+
+        return self.identity
+
+
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
@@ -35,23 +66,6 @@ except ModuleNotFoundError:
     # the CliLogger code will still work.
     class ColorfulString:
         pass
-
-    class _ColorfulMock:
-        def __init__(self):
-            # do not do any color work
-            self.identity = lambda x: x
-
-            self.colorful = self
-            self.colormode = None
-
-            self.NO_COLORS = None
-            self.ANSI_8_COLORS = None
-
-        def disable(self):
-            pass
-
-        def __getattr__(self, name):
-            return self.identity
 
     _cf = _ColorfulMock()
 

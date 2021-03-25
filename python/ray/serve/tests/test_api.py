@@ -440,7 +440,8 @@ def test_list_endpoints(serve_instance):
         },
         "shadows": {
             "backend3": 0.5
-        }
+        },
+        "python_methods": [],
     }
 
     assert "endpoint2" in endpoints
@@ -450,7 +451,8 @@ def test_list_endpoints(serve_instance):
         "traffic": {
             "backend2": 1.0
         },
-        "shadows": {}
+        "shadows": {},
+        "python_methods": [],
     }
 
     serve.delete_endpoint("endpoint")

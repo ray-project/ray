@@ -245,6 +245,7 @@ class RayServeReplica:
         arg = parse_request_item(request_item)
 
         start = time.time()
+        method_to_call = None
         try:
             # TODO(simon): Split this section out when invoke_batch is removed.
             if self.config.internal_metadata.is_asgi_app:
@@ -276,7 +277,10 @@ class RayServeReplica:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(method_to_call.__name__, e)
+            function_name = "unknown"
+            if method_to_call is not None:
+                function_name = method_to_call.__name__
+            result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
