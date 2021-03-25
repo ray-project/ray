@@ -657,7 +657,6 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
-  /// TODO(simon) group all asyncio related fields into a separate struct.
   bool is_asyncio_ = false;
   /// If use_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.

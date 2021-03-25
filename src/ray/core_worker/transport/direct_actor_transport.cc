@@ -570,7 +570,7 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
                                                           int max_concurrency) {
   RAY_CHECK(max_concurrency_ == 0)
-      << "SetMaxActorConcurrency should only be set at most once.";
+      << "SetMaxActorConcurrency should only be called at most once.";
   RAY_CHECK(max_concurrency >= 1);
   max_concurrency_ = max_concurrency;
   is_asyncio_ = is_asyncio;
