@@ -13,7 +13,8 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
-from ray.util.tracing import _tracing_task_invocation, _inject_tracing_into_function
+from ray.util.tracing import (_tracing_task_invocation,
+                              _inject_tracing_into_function)
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
