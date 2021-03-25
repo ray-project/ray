@@ -90,7 +90,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
-    # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
@@ -328,7 +327,8 @@ class ModelCatalog:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(action_space)
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space, framework="tf")
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 
