@@ -85,10 +85,7 @@ class JobProcessor:
         code = f"import shutil; " \
                f"shutil.unpack_archive({repr(filename)}, {repr(path)})"
         unzip_cmd = [self._get_current_python(), "-c", code]
-        await self._check_call_cmd(unzip_cmd)
-
-    async def _check_call_cmd(self, cmd):
-        await self._check_output_cmd(cmd)
+        await self._check_output_cmd(unzip_cmd)
 
     async def _check_output_cmd(self, cmd):
         proc = await asyncio.create_subprocess_exec(
