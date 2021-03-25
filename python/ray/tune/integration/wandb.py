@@ -299,8 +299,7 @@ class WandbLoggerCallback(LoggerCallback):
                  **kwargs):
         self.project = project
         self.group = group
-        self.api_key_file = os.path.expanduser(
-            api_key_file) if api_key_file else None
+        self.api_key_path = api_key_file
         self.api_key = api_key
         self.excludes = excludes or []
         self.log_config = log_config
@@ -310,6 +309,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self):
+        self.api_key_file = os.path.expanduser(self.api_key_path)
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):
