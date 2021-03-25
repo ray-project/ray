@@ -20,7 +20,7 @@ namespace raylet_scheduling_policy {
 ///   * Always skip infeasible nodes
 ///   * Always prefer available nodes over feasible nodes.
 ///   * Break ties in available/feasible by critical resource utilization.
-///   * Critical resource utilization below a threshold should be trucnated to 0.
+///   * Critical resource utilization below a threshold should be truncated to 0.
 ///
 /// The traversal order should:
 ///   * Prioritize the local node above all others.
