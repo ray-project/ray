@@ -335,7 +335,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     if (nodes_.size() > 0) {
       std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
       int idx = distribution(gen_);
-      best_node = std::next(nodes_.begin(), idx).first;
+      best_node = std::next(nodes_.begin(), idx)->first;
     }
     RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
                    << ", # nodes = " << nodes_.size()
