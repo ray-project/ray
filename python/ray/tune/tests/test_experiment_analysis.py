@@ -144,6 +144,41 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             best_trial, self.metric, mode="max")
         assert expected_path == best_checkpoint
 
+    def testGetLastCheckpoint(self):
+        # one more experiment with 2 iterations
+        new_ea = tune.run(
+            MyTrainableClass,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            stop={"training_iteration": 2},
+            checkpoint_freq=1,
+            config={
+                "width": tune.sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
+        })
+
+        # check if it's loaded correctly
+        last_checkpoint = new_ea.get_last_checkpoint()
+        assert self.test_path in last_checkpoint
+        assert "checkpoint_000002" in last_checkpoint
+
+        # test restoring the checkpoint and running for another iteration
+        tune.run(
+            MyTrainableClass,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            restore=last_checkpoint,
+            stop={"training_iteration": 3},
+            checkpoint_freq=1,
+            config={
+                "width": tune.sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
+        })
+
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
         self.assertTrue(len(dataframes) == self.num_samples)

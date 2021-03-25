@@ -274,6 +274,26 @@ class Analysis:
         else:
             return min(checkpoint_paths, key=lambda x: x[1])[0]
 
+    def get_last_checkpoint(self, trial=None):
+        """Gets the last persistent checkpoint path of the provided trial,
+        according to the "training_iteration" metric.
+        Helper function that wraps Analysis.get_best_checkpoint().
+
+        Args:
+            trial (Trial): The log directory or an instance of a trial.
+            If None, load the latest trial automatically.
+
+        Returns:
+            Path for last checkpoint of trial
+        """
+        metric = "training_iteration"
+        mode = "max"
+
+        if trial is None:
+            trial = self.get_best_logdir(metric, mode)
+
+        return self.get_best_checkpoint(trial, metric, mode)
+
     def _retrieve_rows(self,
                        metric: Optional[str] = None,
                        mode: Optional[str] = None) -> Dict[str, Any]:
