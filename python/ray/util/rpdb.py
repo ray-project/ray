@@ -196,7 +196,9 @@ def connect_ray_pdb(host=None,
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
-    host = ray.services.get_node_ip_address()
+    import urllib.request
+    host = urllib.request.urlopen("http://169.254.169.254/latest/meta-data/public-ipv4").read().decode()
+    # host = ray.services.get_node_ip_address()
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
@@ -204,7 +206,7 @@ def connect_ray_pdb(host=None,
         patch_stdstreams=patch_stdstreams,
         quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(sockname[0], sockname[1])
+    pdb_address = "{}:{}".format(host, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": setproctitle.getproctitle(),
@@ -245,6 +247,7 @@ def connect_pdb_client(host, port, ssh_key=None):
     if os.environ.get("RAY_DEBUG_SSH_COMMAND") and host != ray.services.get_node_ip_address():
         # RAY_DEBUG_SSH_COMMAND = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {ssh_key} -N -L {port}:localhost:{port} ubuntu@{host}"
         cmd = os.environ["RAY_DEBUG_SSH_COMMAND"].format(host=host, port=port)
+        print("running", cmd)
         p = subprocess.Popen(
             cmd,
             universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
