@@ -43,7 +43,7 @@ class LocalObjectManager {
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
-      int64_t min_spilling_size,
+      int64_t min_spilling_size, bool is_external_storage_type_fs,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : self_node_id_(node_id),
@@ -58,7 +58,8 @@ class LocalObjectManager {
         min_spilling_size_(min_spilling_size),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
-        is_plasma_object_spillable_(is_plasma_object_spillable) {}
+        is_plasma_object_spillable_(is_plasma_object_spillable),
+        is_external_storage_type_fs_(is_external_storage_type_fs) {}
 
   /// Pin objects.
   ///

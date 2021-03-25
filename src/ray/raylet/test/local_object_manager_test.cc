@@ -291,6 +291,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
+                /*is_external_storage_type_fs=*/true,
                 /*on_objects_freed=*/
                 [&](const std::vector<ObjectID> &object_ids) {
                   for (const auto &object_id : object_ids) {
