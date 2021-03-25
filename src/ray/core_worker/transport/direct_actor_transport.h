@@ -386,13 +386,17 @@ class SchedulingQueue {
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
-                       WorkerContext &worker_context,
+                       std::shared_ptr<BoundedExecutor> pool = nullptr,
+                       bool is_asyncio = false,
+                       std::shared_ptr<FiberState> fiber_state = nullptr,
                        int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : worker_context_(worker_context),
-        reorder_wait_seconds_(reorder_wait_seconds),
+      : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
-        waiter_(waiter) {}
+        waiter_(waiter),
+        pool_(pool),
+        is_asyncio_(is_asyncio),
+        fiber_state_(fiber_state) {}
 
   bool TaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
 
@@ -437,24 +441,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
-    // Only call SetMaxActorConcurrency to configure threadpool size when the
-    // actor is not async actor. Async actor is single threaded.
-    int max_concurrency = worker_context_.CurrentActorMaxConcurrency();
-    if (worker_context_.CurrentActorIsAsync()) {
-      // If this is an async actor, initialize the fiber state once.
-      if (!is_asyncio_) {
-        RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-        fiber_state_.reset(new FiberState(max_concurrency));
-        is_asyncio_ = true;
-      }
-    } else {
-      // If this is a concurrency actor (not async), initialize the thread pool once.
-      if (max_concurrency != 1 && !pool_) {
-        RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-        pool_.reset(new BoundedExecutor(max_concurrency));
-      }
-    }
-
     // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_actor_tasks_.empty() &&
            pending_actor_tasks_.begin()->first < next_seq_no_) {
@@ -475,7 +461,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       if (is_asyncio_) {
         // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
-      } else if (pool_) {
+      } else if (pool_ != nullptr) {
         // Process concurrent actor task.
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
@@ -518,8 +504,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
   }
 
-  // Worker context.
-  WorkerContext &worker_context_;
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
@@ -534,13 +518,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::unique_ptr<BoundedExecutor> pool_;
+  std::shared_ptr<BoundedExecutor> pool_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// If use_asyncio_ is true, fiber_state_ contains the running state required
+  /// If is_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  std::shared_ptr<FiberState> fiber_state_;
   friend class SchedulingQueueTest;
 };
 
@@ -667,6 +651,21 @@ class CoreWorkerDirectTaskReceiver {
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
       std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
+  /// The max number of concurrent calls to allow.
+  /// 0 indicates that the value is not set yet.
+  int max_concurrency_ = 0;
+  /// If concurrent calls are allowed, holds the pool for executing these tasks.
+  std::shared_ptr<BoundedExecutor> pool_;
+  /// Whether this actor use asyncio for concurrency.
+  /// TODO(simon) group all asyncio related fields into a separate struct.
+  bool is_asyncio_ = false;
+  /// If use_asyncio_ is true, fiber_state_ contains the running state required
+  /// to enable continuation and work together with python asyncio.
+  std::shared_ptr<FiberState> fiber_state_;
+
+  /// Set the max concurrency of an actor.
+  /// This should be called once for the actor creation task.
+  void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
 };
 
 }  // namespace ray

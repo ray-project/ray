@@ -437,6 +437,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     return;
   }
 
+  if (task_spec.IsActorCreationTask()) {
+    SetMaxActorConcurrency(task_spec.IsAsyncioActor(), task_spec.MaxActorConcurrency());
+  }
+
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::shared_ptr<ResourceMappingType> resource_ids;
@@ -530,7 +534,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
           std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
-              task_main_io_service_, *waiter_, worker_context_)));
+              task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
       it = result.first;
     }
 
@@ -561,6 +565,25 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
+}
+
+void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
+                                                          int max_concurrency) {
+  RAY_CHECK(max_concurrency_ == 0)
+      << "SetMaxActorConcurrency should only be set at most once.";
+  RAY_CHECK(max_concurrency >= 1);
+  max_concurrency_ = max_concurrency;
+  is_asyncio_ = is_asyncio;
+  if (max_concurrency_ > 1) {
+    if (is_asyncio_) {
+      RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+      pool_.reset(new BoundedExecutor(max_concurrency));
+    } else {
+      RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
+                    << ", creating new fiber thread.";
+      fiber_state_.reset(new FiberState(max_concurrency));
+    }
+  }
 }
 
 }  // namespace ray
