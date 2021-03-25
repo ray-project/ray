@@ -38,13 +38,6 @@ def warn_replay_buffer_size(*, item: SampleBatchType, num_items: int) -> None:
                "({} batches of size {}, {} bytes each), "
                "available system memory is {} GB".format(
                    mem_size, num_items, item.count, item_size, total_gb))
-        for d in item.values():
-            if not isinstance(d, np.ndarray):
-                msg += "\n"
-                msg += ("UserWarn: SampleBatch has value of type {} "
-                        "instead of numpy array, "
-                        "the memory estimation may not be right.".format(
-                            type(d)))
         if mem_size > total_gb:
             raise ValueError(msg)
         elif mem_size > 0.2 * total_gb:

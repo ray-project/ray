@@ -1,4 +1,5 @@
 import collections
+import logging
 import numpy as np
 import itertools
 from typing import Dict, List, Set, Union
@@ -16,6 +17,8 @@ torch, _ = try_import_torch()
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI
@@ -427,9 +430,17 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
+        if log_once("SampleBatch.size_bytes"):
+            for k, v in self.items():
+                if not isinstance(v, np.ndarray):
+                    msg = ("SampleBatch[\"{}\"] is of type {}, which is not "
+                           "supported to get its size in bytes. This may "
+                           "cause incorrect estimation of memory usage. It's "
+                           "better to use numpy array.".format(k, type(v)))
+                    logger.warning(msg)
         return sum(
-            d.nbytes if isinstance(d, np.ndarray) else 0
-            for d in self.values())
+            v.nbytes if isinstance(v, np.ndarray) else 0
+            for v in self.values())
 
     def get(self, key, default=None):
         try:
