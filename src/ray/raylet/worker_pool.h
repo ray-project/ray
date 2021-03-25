@@ -387,6 +387,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
+    // States for io workers used for python util functions.
+    IOWorkerState util_io_worker_state;
     // States for io workers used for spilling objects.
     IOWorkerState spill_io_worker_state;
     // States for io workers used for restoring objects.
