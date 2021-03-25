@@ -105,7 +105,7 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and config["num_gpus"] > 0:
             logger.info("TorchPolicy running on GPU.")
             self.device = torch.device("cuda")
         else:
