@@ -242,13 +242,15 @@ def post_mortem():
 
 
 def connect_pdb_client(host, port, ssh_key=None):
-    cmd = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {ssh_key} -N -L {port}:localhost:{port} ubuntu@{host}"
-    p = subprocess.Popen(
-        cmd,
-        universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    stat = p.poll()
-    while stat == None:
+    if os.environ.get("RAY_DEBUG_SSH_COMMAND") and host != ray.services.get_node_ip_address():
+        # RAY_DEBUG_SSH_COMMAND = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {ssh_key} -N -L {port}:localhost:{port} ubuntu@{host}"
+        cmd = os.environ["RAY_DEBUG_SSH_COMMAND"].format(host=host, port=port)
+        p = subprocess.Popen(
+            cmd,
+            universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stat = p.poll()
+        while stat == None:
+            stat = p.poll()
 
     while True:
         try:
