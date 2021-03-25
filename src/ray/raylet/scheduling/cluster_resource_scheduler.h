@@ -20,7 +20,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
@@ -174,13 +173,16 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Add a bundle resource that is available.
+  /// Transform the predefined resources into a new customer resource.
   ///
-  /// \param bundle_spec: Bundle specific which we want to commit.
+  /// \param predefined_resource_name: The original resource which will be transformed.
+  /// \param customer_resource_name: The new customer resource name.
+  /// \param customer_resource_value: The new customer resource value.
   /// \param resource_instances: The resources assigned to bundle.
-  void CommitBundleResource(
-      const BundleSpecification &bundle_spec,
-      const std::shared_ptr<TaskResourceInstances> resource_instances);
+  void TransformResource(const std::string &predefined_resource_name,
+                         const std::string &customer_resource_name,
+                         const double &customer_resource_value,
+                         const std::shared_ptr<TaskResourceInstances> resource_instances);
 
   /// Add a local resource that is available.
   ///
