@@ -1272,7 +1272,7 @@ def deployment(
         config.num_replicas = num_replicas
 
     if user_config is not None:
-        config.user_config = user_config,
+        config.user_config = user_config
 
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
