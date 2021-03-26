@@ -23,6 +23,13 @@ pkg_install_helper() {
 }
 
 install_bazel() {
+  if command -v bazel; then
+    if [ -n "${BUILDKITE-}" ]; then
+      echo "Bazel exists, skipping the install"
+      return
+    fi
+  fi
+
   "${ROOT_DIR}"/install-bazel.sh
   if [ -f /etc/profile.d/bazel.sh ]; then
     . /etc/profile.d/bazel.sh
@@ -30,6 +37,11 @@ install_bazel() {
 }
 
 install_base() {
+  if [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping install_base in Buildkite"
+    return
+  fi
+
   case "${OSTYPE}" in
     linux*)
       # Expired apt key error: https://github.com/bazelbuild/bazel/issues/11470#issuecomment-633205152
@@ -187,6 +199,8 @@ install_nvm() {
         "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Skipping nvm on Buildkite because we will use apt-get."
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
   fi
@@ -212,8 +226,19 @@ install_upgrade_pip() {
 }
 
 install_node() {
-  if [ "${OSTYPE}" = msys ]; then
+  if command -v node; then
+    if [ -n "${BUILDKITE-}" ]; then
+      echo "Node existed, skipping install";
+      return
+    fi
+  fi
+
+  if [ "${OSTYPE}" = msys ] ; then
     { echo "WARNING: Skipping running Node.js due to incompatibilities with Windows"; } 2> /dev/null
+  elif [ -n "${BUILDKITE-}" ] ; then
+    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+    sudo apt-get install -y nodejs
   else
     # Install the latest version of Node.js in order to build the dashboard.
     (
@@ -227,7 +252,9 @@ install_node() {
 }
 
 install_toolchains() {
-  "${ROOT_DIR}"/install-toolchains.sh
+  if [ -z "${BUILDKITE-}" ]; then
+    "${ROOT_DIR}"/install-toolchains.sh
+  fi
 }
 
 install_dependencies() {
@@ -297,13 +324,7 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7" ]; then
-      # Install Python 3.7 dependencies if 3.7 is set.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
-    else
-      # Else default to Python 3.6.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
-    fi
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
   # For Tune, install upstream dependencies.
@@ -338,7 +359,7 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

@@ -5,11 +5,12 @@ import unittest
 import ray
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.ppo as ppo
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
-from ray.rllib.agents.ppo.ppo_torch_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_torch, ppo_surrogate_loss as ppo_surrogate_loss_torch
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_tf
+from ray.rllib.agents.ppo.ppo_torch_policy import ppo_surrogate_loss as \
+    ppo_surrogate_loss_torch
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -82,12 +83,14 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
+        # Test with compression.
+        config["compress_observations"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
@@ -108,15 +111,15 @@ class TestPPO(unittest.TestCase):
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
         config["framework"] = "tf"
-        # Mimick tuned_example for PPO CartPole.
+        # Mimic tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003
         config["observation_filter"] = "MeanStdFilter"
         config["num_sgd_iter"] = 6
-        config["vf_share_layers"] = True
         config["vf_loss_coeff"] = 0.01
         config["model"]["fcnet_hiddens"] = [32]
         config["model"]["fcnet_activation"] = "linear"
+        config["model"]["vf_share_layers"] = True
 
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         num_iterations = 200
@@ -124,7 +127,7 @@ class TestPPO(unittest.TestCase):
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
-            if results["episode_reward_mean"] > 150:
+            if results["episode_reward_mean"] > 75.0:
                 learnt = True
                 break
         assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
@@ -181,7 +184,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["free_log_std"] = True
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -212,11 +215,8 @@ class TestPPO(unittest.TestCase):
             # Check the variable is initially zero.
             init_std = get_value()
             assert init_std == 0.0, init_std
-
-            if fw in ["tf2", "tf", "tfe"]:
-                batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH.copy())
-            else:
-                batch = postprocess_ppo_gae_torch(policy, FAKE_BATCH.copy())
+            batch = compute_gae_for_sample_batch(policy, FAKE_BATCH.copy())
+            if fw == "torch":
                 batch = policy._lazy_tensor_dict(batch)
             policy.learn_on_batch(batch)
 
@@ -232,7 +232,7 @@ class TestPPO(unittest.TestCase):
         config["gamma"] = 0.99
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
-        config["vf_share_layers"] = True
+        config["model"]["vf_share_layers"] = True
 
         for fw, sess in framework_iterator(config, session=True):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
@@ -255,11 +255,9 @@ class TestPPO(unittest.TestCase):
             # to train_batch dict.
             # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
             # [0.50005, -0.505, 0.5]
-            if fw in ["tf2", "tf", "tfe"]:
-                train_batch = postprocess_ppo_gae_tf(policy, FAKE_BATCH.copy())
-            else:
-                train_batch = postprocess_ppo_gae_torch(
-                    policy, FAKE_BATCH.copy())
+            train_batch = compute_gae_for_sample_batch(policy,
+                                                       FAKE_BATCH.copy())
+            if fw == "torch":
                 train_batch = policy._lazy_tensor_dict(train_batch)
 
             # Check Advantage values.

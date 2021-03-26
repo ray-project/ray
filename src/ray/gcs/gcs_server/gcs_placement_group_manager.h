@@ -17,6 +17,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
@@ -61,10 +62,11 @@ class GcsPlacementGroup {
         placement_group_spec.creator_job_dead());
     placement_group_table_data_.set_creator_actor_dead(
         placement_group_spec.creator_actor_dead());
+    placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
   }
 
   /// Get the immutable PlacementGroupTableData of this placement group.
-  const rpc::PlacementGroupTableData &GetPlacementGroupTableData();
+  const rpc::PlacementGroupTableData &GetPlacementGroupTableData() const;
 
   /// Get the mutable bundle of this placement group.
   rpc::Bundle *GetMutableBundle(int bundle_index);
@@ -107,8 +109,11 @@ class GcsPlacementGroup {
   /// Mark that the creator actor of this placement group is dead.
   void MarkCreatorActorDead();
 
-  /// Return True if the placement group is removable. False otherwise.
-  bool IsPlacementGroupRemovable() const;
+  /// Return True if the placement group lifetime is done. False otherwise.
+  bool IsPlacementGroupLifetimeDone() const;
+
+  /// Returns whether or not this is a detached placement group.
+  bool IsDetached() const;
 
  private:
   /// The placement_group meta data which contains the task specification as well as the
@@ -132,7 +137,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   explicit GcsPlacementGroupManager(
-      boost::asio::io_context &io_context,
+      instrumented_io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       GcsResourceManager &gcs_resource_manager);
@@ -151,14 +156,25 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
                                rpc::GetPlacementGroupReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetNamedPlacementGroup(const rpc::GetNamedPlacementGroupRequest &request,
+                                    rpc::GetNamedPlacementGroupReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
-
   void HandleWaitPlacementGroupUntilReady(
       const rpc::WaitPlacementGroupUntilReadyRequest &request,
       rpc::WaitPlacementGroupUntilReadyReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Register a callback which will be invoked after successfully created.
+  ///
+  /// \param placement_group_id The placement group id which we want to listen.
+  /// \param callback Will be invoked after the placement group is created successfully or
+  /// be invoked if the placement group is deleted before create successfully.
+  void WaitPlacementGroup(const PlacementGroupID &placement_group_id,
+                          StatusCallback callback);
 
   /// Register placement_group asynchronously.
   ///
@@ -193,7 +209,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void OnPlacementGroupCreationSuccess(
       const std::shared_ptr<GcsPlacementGroup> &placement_group);
 
-  /// TODO-SANG Fill it up.
+  /// Remove the placement group of a given id.
   void RemovePlacementGroup(const PlacementGroupID &placement_group_id,
                             StatusCallback on_placement_group_removed);
 
@@ -275,11 +291,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
-  boost::asio::io_context &io_context_;
+  instrumented_io_context &io_context_;
 
-  /// Callback of placement_group registration requests that are not yet flushed.
-  absl::flat_hash_map<PlacementGroupID, StatusCallback>
-      placement_group_to_register_callback_;
+  /// Callbacks of pending `RegisterPlacementGroup` requests.
+  /// Maps placement group ID to placement group registration callbacks, which is used to
+  /// filter duplicated messages from a driver/worker caused by some network problems.
+  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+      placement_group_to_register_callbacks_;
 
   /// Callback of `WaitPlacementGroupUntilReady` requests.
   absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
@@ -311,6 +329,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
+  /// Maps placement group names to their placement group ID for lookups by name.
+  absl::flat_hash_map<std::string, PlacementGroupID> named_placement_groups_;
+
   // Debug info.
   enum CountType {
     CREATE_PLACEMENT_GROUP_REQUEST = 0,
@@ -318,7 +339,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     GET_PLACEMENT_GROUP_REQUEST = 2,
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
     WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
-    CountType_MAX = 5,
+    GET_NAMED_PLACEMENT_GROUP_REQUEST = 5,
+    CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

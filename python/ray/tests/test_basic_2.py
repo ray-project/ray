@@ -1,8 +1,11 @@
 # coding: utf-8
+import os
 import logging
 import sys
 import threading
 import time
+import tempfile
+import subprocess
 
 import numpy as np
 import pytest
@@ -193,7 +196,6 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
@@ -319,7 +321,6 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -340,9 +341,9 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="init issue")
 def test_system_config_when_connecting(ray_start_cluster):
-    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
+    config = {"object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
         _system_config=config, object_store_memory=100 * 1024 * 1024)
@@ -360,9 +361,7 @@ def test_system_config_when_connecting(ray_start_cluster):
         put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     del put_ref
 
-    # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj_ref)
+    ray.get(obj_ref)
 
 
 def test_get_multiple(ray_start_regular_shared):
@@ -465,8 +464,7 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="internal api and message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -645,8 +643,48 @@ def test_get_correct_node_ip():
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
-        found_ip = ray._private.services.get_node_ip_address()
+        found_ip = ray.util.get_node_ip_address()
         assert found_ip == "10.0.0.111"
+
+
+def test_load_code_from_local(ray_start_regular_shared):
+    # This case writes a driver python file to a temporary directory.
+    #
+    # The driver starts a cluster with
+    # `ray.init(ray.job_config.JobConfig(code_search_path=<path list>))`,
+    # then creates a nested actor. The actor will be loaded from code in
+    # worker.
+    #
+    # This tests the following two cases when :
+    # 1) Load a nested class.
+    # 2) Load a class defined in the `__main__` module.
+    code_test = """
+import os
+import ray
+
+class A:
+    @ray.remote
+    class B:
+        def get(self):
+            return "OK"
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    b = A.B.remote()
+    print(ray.get(b.get.remote()))
+"""
+
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(
+                code_test.format(
+                    repr(ray_start_regular_shared["redis_address"])))
+        output = subprocess.check_output([sys.executable, test_driver])
+        assert b"OK" in output
 
 
 if __name__ == "__main__":

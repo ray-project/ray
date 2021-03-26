@@ -6,8 +6,7 @@ Getting Involved / Contributing
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.
 
-.. tip:: Join our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to
-  discuss Ray or ask questions on `our forum <https://discuss.ray.io/>`_! The
+.. tip:: Ask questions on `our forum <https://discuss.ray.io/>`_! The
   community is extremely active in helping people succeed in building their
   Ray applications.
 
@@ -46,13 +45,12 @@ Submitting and Merging a Contribution
 
 There are a couple steps to merge a contribution.
 
-1. First rebase your development branch on the most recent version of master.
+1. First merge the most recent version of master into your development branch.
 
    .. code:: bash
 
      git remote add upstream https://github.com/ray-project/ray.git
-     git fetch upstream
-     git rebase upstream/master
+     git pull upstream master
 
 2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases

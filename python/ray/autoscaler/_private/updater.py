@@ -10,7 +10,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
     TAG_RAY_FILE_MOUNTS_CONTENTS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
     STATUS_SETTING_UP, STATUS_SYNCING_FILES
-from ray.autoscaler._private.command_runner import NODE_START_WAIT_S, \
+from ray.autoscaler._private.command_runner import \
+    AUTOSCALER_NODE_START_WAIT_S, \
     ProcessRunnerError
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.cli_logger import cli_logger, cf
@@ -48,6 +49,7 @@ class NodeUpdater:
         use_internal_ip: Wwhether the node_id belongs to an internal ip
             or external ip.
         docker_config: Docker section of autoscaler yaml
+        restart_only: Whether to skip setup commands & just restart ray
     """
 
     def __init__(self,
@@ -68,7 +70,8 @@ class NodeUpdater:
                  rsync_options=None,
                  process_runner=subprocess,
                  use_internal_ip=False,
-                 docker_config=None):
+                 docker_config=None,
+                 restart_only=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         use_internal_ip = (use_internal_ip
@@ -106,6 +109,7 @@ class NodeUpdater:
         self.auth_config = auth_config
         self.is_head_node = is_head_node
         self.docker_config = docker_config
+        self.restart_only = restart_only
 
     def run(self):
         if cmd_output_util.does_allow_interactive(
@@ -281,7 +285,7 @@ class NodeUpdater:
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
         cli_logger.labeled_value("New status", STATUS_WAITING_FOR_SSH)
 
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = time.time() + AUTOSCALER_NODE_START_WAIT_S
         self.wait_ready(deadline)
         global_event_system.execute_callback(
             CreateClusterEvent.ssh_control_acquired)
@@ -298,6 +302,11 @@ class NodeUpdater:
                 sync_run_yet=False)
             if init_required:
                 node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
+                # This ensures that `setup_commands` are not removed
+                self.restart_only = False
+
+        if self.restart_only:
+            self.setup_commands = []
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`

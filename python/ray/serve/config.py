@@ -1,32 +1,42 @@
 import inspect
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveFloat, PositiveInt, validator
-from ray.serve.constants import (ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST,
-                                 DEFAULT_HTTP_PORT)
+from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from pydantic.dataclasses import dataclass
+from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.utils import logger
 
 
-def _callable_accepts_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "_serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "_serve_accept_batch")
+def _callable_accepts_batch(backend_def):
+    if inspect.isfunction(backend_def):
+        return hasattr(backend_def, "_serve_accept_batch")
+    elif inspect.isclass(backend_def):
+        return hasattr(backend_def.__call__, "_serve_accept_batch")
+    elif isinstance(backend_def, str):
+        return True
+    else:
+        raise TypeError("backend_def must be function, class, or str.")
 
 
-def _callable_is_blocking(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class)
-    elif inspect.isclass(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class.__call__)
+def _callable_is_blocking(backend_def):
+    if inspect.isfunction(backend_def):
+        return not inspect.iscoroutinefunction(backend_def)
+    elif inspect.isclass(backend_def):
+        return not inspect.iscoroutinefunction(backend_def.__call__)
+    elif isinstance(backend_def, str):
+        return False
+    else:
+        raise TypeError("backend_def must be function, class, or str.")
 
 
 @dataclass
 class BackendMetadata:
     accepts_batches: bool = False
     is_blocking: bool = True
+    is_asgi_app: bool = False
+    path_prefix: Optional[str] = None
     autoscaling_config: Optional[Dict[str, Any]] = None
 
 
@@ -63,8 +73,8 @@ class BackendConfig(BaseModel):
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
-    experimental_graceful_shutdown_wait_loop_s: PositiveFloat = 2.0
-    experimental_graceful_shutdown_timeout_s: PositiveFloat = 20.0
+    experimental_graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
+    experimental_graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
 
     class Config:
         validate_assignment = True
@@ -80,6 +90,15 @@ class BackendConfig(BaseModel):
                 "method does not accept batching. Please use "
                 "@serve.accept_batch to explicitly mark that the function or "
                 "method accepts a list of requests as an argument.")
+
+        if self.max_batch_size is not None:
+            logger.warning(
+                "Setting max_batch_size and batch_wait_timeout in the "
+                "BackendConfig are deprecated in favor of using the "
+                "@serve.batch decorator in the application level. Please see "
+                "the documentation for details: "
+                "https://docs.ray.io/en/master/serve/ml-models.html#request-batching."  # noqa:E501
+            )
 
     # This is not a pydantic validator, so that we may skip this method when
     # creating partially filled BackendConfig objects to pass as updates--for
@@ -105,8 +124,11 @@ class BackendConfig(BaseModel):
             # Pipeline/async mode: if the servable is not blocking,
             # router should just keep pushing queries to the replicas
             # until a high limit.
+            # TODO(edoakes): setting this to a relatively low constant because
+            # we can't determine if imported backends are sync or async, but we
+            # may consider tweaking it in the future.
             if not values["internal_metadata"].is_blocking:
-                v = ASYNC_CONCURRENCY
+                v = 100
 
             # Batch inference mode: user specifies non zero timeout to wait for
             # full batch. We will use 2*max_batch_size to perform double
@@ -119,12 +141,13 @@ class BackendConfig(BaseModel):
 
 
 class ReplicaConfig:
-    def __init__(self, func_or_class, *actor_init_args,
-                 ray_actor_options=None):
-        self.func_or_class = func_or_class
-        self.accepts_batches = _callable_accepts_batch(func_or_class)
-        self.is_blocking = _callable_is_blocking(func_or_class)
-        self.actor_init_args = list(actor_init_args)
+    def __init__(self, backend_def, *init_args, ray_actor_options=None):
+        self.backend_def = backend_def
+        self.accepts_batches = _callable_accepts_batch(backend_def)
+        self.is_blocking = _callable_is_blocking(backend_def)
+        self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
+        self.path_prefix = getattr(backend_def, "_serve_path_prefix", None)
+        self.init_args = list(init_args)
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
@@ -134,27 +157,32 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-        # Validate that func_or_class is a function or class.
-        if inspect.isfunction(self.func_or_class):
-            if len(self.actor_init_args) != 0:
+        # Validate that backend_def is an import path, function, or class.
+        if isinstance(self.backend_def, str):
+            pass
+        elif inspect.isfunction(self.backend_def):
+            if len(self.init_args) != 0:
                 raise ValueError(
-                    "actor_init_args not supported for function backend.")
-        elif not inspect.isclass(self.func_or_class):
+                    "init_args not supported for function backend.")
+        elif not inspect.isclass(self.backend_def):
             raise TypeError(
                 "Backend must be a function or class, it is {}.".format(
-                    type(self.func_or_class)))
+                    type(self.backend_def)))
+
+        if "placement_group" in self.ray_actor_options:
+            raise ValueError("Providing placement_group for backend actors "
+                             "is not currently supported.")
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying lifetime in actor_init_args is not allowed.")
+                "Specifying lifetime in init_args is not allowed.")
         elif "name" in self.ray_actor_options:
-            raise ValueError(
-                "Specifying name in actor_init_args is not allowed.")
+            raise ValueError("Specifying name in init_args is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "actor_init_args is not allowed.")
+                             "init_args is not allowed.")
         else:
             # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:

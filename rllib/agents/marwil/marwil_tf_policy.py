@@ -1,4 +1,7 @@
+import logging
+
 import ray
+from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
@@ -8,6 +11,8 @@ from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
 
 tf1, tf, tfv = try_import_tf()
 
+logger = logging.getLogger(__name__)
+
 
 class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
@@ -15,73 +20,13 @@ class ValueNetworkMixin:
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
-        if config["_use_trajectory_view_api"]:
-
-            @make_tf_callable(self.get_session())
-            def value(**input_dict):
-                model_out, _ = self.model.from_batch(
-                    input_dict, is_training=False)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
-
-        # TODO: (sven) Remove once trajectory view API is all-algo default.
-        else:
-
-            @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        [prev_action]),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        [prev_reward]),
-                    "is_training": tf.convert_to_tensor(False),
-                }, [tf.convert_to_tensor([s]) for s in state],
-                                          tf.convert_to_tensor([1]))
-                return self.model.value_function()[0]
+        @make_tf_callable(self.get_session())
+        def value(**input_dict):
+            model_out, _ = self.model.from_batch(input_dict, is_training=False)
+            # [0] = remove the batch dim.
+            return self.model.value_function()[0]
 
         self._value = value
-
-
-class ValueLoss:
-    def __init__(self, state_values, cumulative_rewards):
-        self.loss = 0.5 * tf.reduce_mean(
-            tf.math.square(state_values - cumulative_rewards))
-
-
-class ReweightedImitationLoss:
-    def __init__(self, policy, state_values, cumulative_rewards, actions,
-                 action_dist, beta):
-        if beta != 0.0:
-            # Advantage Estimation.
-            adv = cumulative_rewards - state_values
-
-            # Update averaged advantage norm.
-            # Eager.
-            if policy.config["framework"] in ["tf2", "tfe"]:
-                policy._ma_adv_norm.assign_add(1e-6 * (
-                    tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
-                # Exponentially weighted advantages.
-                exp_advs = tf.math.exp(beta * tf.math.divide(
-                    adv, 1e-8 + tf.math.sqrt(policy._ma_adv_norm)))
-            # Static graph.
-            else:
-                update_adv_norm = tf1.assign_add(
-                    ref=policy._ma_adv_norm,
-                    value=1e-6 * (tf.reduce_mean(tf.math.square(adv)) -
-                                  policy._ma_adv_norm))
-
-                # Exponentially weighted advantages.
-                with tf1.control_dependencies([update_adv_norm]):
-                    exp_advs = tf.math.exp(beta * tf.math.divide(
-                        adv, 1e-8 + tf.math.sqrt(policy._ma_adv_norm)))
-            exp_advs = tf.stop_gradient(exp_advs)
-        else:
-            exp_advs = 1.0
-
-        # L = - A * log\pi_\theta(a|s)
-        logprobs = action_dist.logp(actions)
-        self.loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
 
 
 def postprocess_advantages(policy,
@@ -120,58 +65,79 @@ def postprocess_advantages(policy,
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
-        if policy.config["_use_trajectory_view_api"]:
-            # Create an input dict according to the Model's requirements.
-            index = "last" if SampleBatch.NEXT_OBS in sample_batch.data else -1
-            input_dict = policy.model.get_input_dict(sample_batch, index=index)
-            last_r = policy._value(**input_dict)
-        # TODO: (sven) Remove once trajectory view API is all-algo default.
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append(sample_batch["state_out_{}".format(i)][-1])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
+        # Create an input dict according to the Model's requirements.
+        index = "last" if SampleBatch.NEXT_OBS in sample_batch.data else -1
+        input_dict = policy.model.get_input_dict(sample_batch, index=index)
+        last_r = policy._value(**input_dict)
 
-    # Adds the policy logits, VF preds, and advantages to the batch,
-    # using GAE ("generalized advantage estimation") or not.
+    # Adds the "advantages" (which in the case of MARWIL are simply the
+    # discounted cummulative rewards) to the SampleBatch.
     return compute_advantages(
         sample_batch,
         last_r,
         policy.config["gamma"],
+        # We just want the discounted cummulative rewards, so we won't need
+        # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
         use_gae=False,
         use_critic=False)
 
 
 class MARWILLoss:
-    def __init__(self, policy, state_values, action_dist, actions, advantages,
-                 vf_loss_coeff, beta):
+    def __init__(self, policy, value_estimates, action_dist, actions,
+                 cumulative_rewards, vf_loss_coeff, beta):
 
-        self.v_loss = self._build_value_loss(state_values, advantages)
-        self.p_loss = self._build_policy_loss(policy, state_values, advantages,
-                                              actions, action_dist, beta)
+        # Advantage Estimation.
+        adv = cumulative_rewards - value_estimates
+        adv_squared = tf.reduce_mean(tf.math.square(adv))
 
-        self.total_loss = self.p_loss.loss + vf_loss_coeff * self.v_loss.loss
-        explained_var = explained_variance(advantages, state_values)
-        self.explained_variance = tf.reduce_mean(explained_var)
+        # Value function's loss term (MSE).
+        self.v_loss = 0.5 * adv_squared
 
-    def _build_value_loss(self, state_values, cum_rwds):
-        return ValueLoss(state_values, cum_rwds)
+        if beta != 0.0:
+            # Perform moving averaging of advantage^2.
 
-    def _build_policy_loss(self, policy, state_values, cum_rwds, actions,
-                           action_dist, beta):
-        return ReweightedImitationLoss(policy, state_values, cum_rwds, actions,
-                                       action_dist, beta)
+            # Update averaged advantage norm.
+            # Eager.
+            if policy.config["framework"] in ["tf2", "tfe"]:
+                update_term = adv_squared - policy._moving_average_sqd_adv_norm
+                policy._moving_average_sqd_adv_norm.assign_add(
+                    1e-8 * update_term)
+
+                # Exponentially weighted advantages.
+                c = tf.math.sqrt(policy._moving_average_sqd_adv_norm)
+                exp_advs = tf.math.exp(beta * (adv / (1e-8 + c)))
+            # Static graph.
+            else:
+                update_adv_norm = tf1.assign_add(
+                    ref=policy._moving_average_sqd_adv_norm,
+                    value=1e-6 *
+                    (adv_squared - policy._moving_average_sqd_adv_norm))
+
+                # Exponentially weighted advantages.
+                with tf1.control_dependencies([update_adv_norm]):
+                    exp_advs = tf.math.exp(beta * tf.math.divide(
+                        adv, 1e-8 + tf.math.sqrt(
+                            policy._moving_average_sqd_adv_norm)))
+            exp_advs = tf.stop_gradient(exp_advs)
+        else:
+            exp_advs = 1.0
+
+        # L = - A * log\pi_\theta(a|s)
+        logprobs = action_dist.logp(actions)
+        self.p_loss = -1.0 * tf.reduce_mean(exp_advs * logprobs)
+
+        self.total_loss = self.p_loss + vf_loss_coeff * self.v_loss
+
+        self.explained_variance = tf.reduce_mean(
+            explained_variance(cumulative_rewards, value_estimates))
 
 
 def marwil_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
-    state_values = model.value_function()
+    value_estimates = model.value_function()
 
-    policy.loss = MARWILLoss(policy, state_values, action_dist,
+    policy.loss = MARWILLoss(policy, value_estimates, action_dist,
                              train_batch[SampleBatch.ACTIONS],
                              train_batch[Postprocessing.ADVANTAGES],
                              policy.config["vf_coeff"], policy.config["beta"])
@@ -181,8 +147,8 @@ def marwil_loss(policy, model, dist_class, train_batch):
 
 def stats(policy, train_batch):
     return {
-        "policy_loss": policy.loss.p_loss.loss,
-        "vf_loss": policy.loss.v_loss.loss,
+        "policy_loss": policy.loss.p_loss,
+        "vf_loss": policy.loss.v_loss,
         "total_loss": policy.loss.total_loss,
         "vf_explained_var": policy.loss.explained_variance,
     }
@@ -191,8 +157,8 @@ def stats(policy, train_batch):
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     # Set up a tf-var for the moving avg (do this here to make it work with
-    # eager mode).
-    policy._ma_adv_norm = get_variable(
+    # eager mode); "c^2" in the paper.
+    policy._moving_average_sqd_adv_norm = get_variable(
         100.0,
         framework="tf",
         tf_name="moving_average_of_advantage_norm",
@@ -206,4 +172,5 @@ MARWILTFPolicy = build_tf_policy(
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     before_loss_init=setup_mixins,
+    gradients_fn=compute_and_clip_gradients,
     mixins=[ValueNetworkMixin])

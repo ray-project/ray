@@ -9,11 +9,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (
-    client_test_enabled,
-    dicts_equal,
-    wait_for_pid_to_exit,
-)
+from ray.test_utils import (client_test_enabled, get_error_message)
 
 import ray
 
@@ -35,7 +31,6 @@ def test_ignore_http_proxy(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7263
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -170,126 +165,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-def test_many_fractional_resources(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
-
-    @ray.remote
-    def g():
-        return 1
-
-    @ray.remote
-    def f(block, accepted_resources):
-        true_resources = {
-            resource: value[0][1]
-            for resource, value in ray.get_resource_ids().items()
-        }
-        if block:
-            ray.get(g.remote())
-        return dicts_equal(true_resources, accepted_resources)
-
-    # Check that the resource are assigned correctly.
-    result_ids = []
-    for rand1, rand2, rand3 in np.random.uniform(size=(100, 3)):
-        resource_set = {"CPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_cpus=rand1))
-
-        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
-        result_ids.append(f._remote([False, resource_set], num_gpus=rand1))
-
-        resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
-        result_ids.append(
-            f._remote([False, resource_set], resources={"Custom": rand1}))
-
-        resource_set = {
-            "CPU": int(rand1 * 10000) / 10000,
-            "GPU": int(rand2 * 10000) / 10000,
-            "Custom": int(rand3 * 10000) / 10000
-        }
-        result_ids.append(
-            f._remote(
-                [False, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
-        result_ids.append(
-            f._remote(
-                [True, resource_set],
-                num_cpus=rand1,
-                num_gpus=rand2,
-                resources={"Custom": rand3}))
-    assert all(ray.get(result_ids))
-
-    # Check that the available resources at the end are the same as the
-    # beginning.
-    stop_time = time.time() + 10
-    correct_available_resources = False
-    while time.time() < stop_time:
-        available_resources = ray.available_resources()
-        if ("CPU" in available_resources
-                and ray.available_resources()["CPU"] == 2.0
-                and "GPU" in available_resources
-                and ray.available_resources()["GPU"] == 2.0
-                and "Custom" in available_resources
-                and ray.available_resources()["Custom"] == 2.0):
-            correct_available_resources = True
-            break
-    if not correct_available_resources:
-        assert False, "Did not get correct available resources."
-
-
-def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def g():
-        time.sleep(.1)
-        return 0
-
-    @ray.remote(max_calls=1, max_retries=0)
-    def f():
-        return [g.remote()]
-
-    nested = ray.get([f.remote() for _ in range(10)])
-
-    # Should still be able to retrieve these objects, since f's workers will
-    # wait for g to finish before exiting.
-    ray.get([x[0] for x in nested])
-
-    @ray.remote(max_calls=1, max_retries=0)
-    def f():
-        return os.getpid(), g.remote()
-
-    nested = ray.get([f.remote() for _ in range(10)])
-    while nested:
-        pid, g_id = nested.pop(0)
-        ray.get(g_id)
-        del g_id
-        wait_for_pid_to_exit(pid)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_fair_queueing(shutdown_only):
-    ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
-
-    @ray.remote
-    def h():
-        return 0
-
-    @ray.remote
-    def g():
-        return ray.get(h.remote())
-
-    @ray.remote
-    def f():
-        return ray.get(g.remote())
-
-    # This will never finish without fair queueing of {f, g, h}:
-    # https://github.com/ray-project/ray/issues/3644
-    ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
-    assert len(ready) == 1000, len(ready)
-
-
 def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -380,11 +255,14 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="message size")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
         "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "automatic_object_spilling_enabled": False
+        }
     }],
     indirect=True)
 def test_fetch_local(ray_start_cluster_head):
@@ -449,8 +327,6 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="mutual recursion is a known issue")
 def test_mutually_recursive_functions(ray_start_shared_local_modes):
     # Test remote functions that recursively call each other.
     @ray.remote
@@ -745,6 +621,76 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
+
+
+def test_failed_task(ray_start_shared_local_modes, error_pubsub):
+    @ray.remote
+    def throw_exception_fct1():
+        raise Exception("Test function 1 intentionally failed.")
+
+    @ray.remote
+    def throw_exception_fct2():
+        raise Exception("Test function 2 intentionally failed.")
+
+    @ray.remote(num_returns=3)
+    def throw_exception_fct3(x):
+        raise Exception("Test function 3 intentionally failed.")
+
+    p = error_pubsub
+
+    throw_exception_fct1.remote()
+    throw_exception_fct1.remote()
+
+    if ray.worker.global_worker.mode != ray.worker.LOCAL_MODE:
+        msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
+        assert len(msgs) == 2
+        for msg in msgs:
+            assert "Test function 1 intentionally failed." in msg.error_message
+
+    x = throw_exception_fct2.remote()
+    try:
+        ray.get(x)
+    except Exception as e:
+        assert "Test function 2 intentionally failed." in str(e)
+    else:
+        # ray.get should throw an exception.
+        assert False
+
+    x, y, z = throw_exception_fct3.remote(1.0)
+    for ref in [x, y, z]:
+        try:
+            ray.get(ref)
+        except Exception as e:
+            assert "Test function 3 intentionally failed." in str(e)
+        else:
+            # ray.get should throw an exception.
+            assert False
+
+    class CustomException(ValueError):
+        def __init__(self, msg):
+            super().__init__(msg)
+            self.field = 1
+
+        def f(self):
+            return 2
+
+    @ray.remote
+    def f():
+        raise CustomException("This function failed.")
+
+    try:
+        ray.get(f.remote())
+    except Exception as e:
+        assert "This function failed." in str(e)
+        assert isinstance(e, ValueError)
+        assert isinstance(e, CustomException)
+        assert isinstance(e, ray.exceptions.RayTaskError)
+        assert "RayTaskError(CustomException)" in repr(e)
+        assert e.field == 1
+        assert e.f() == 2
+    else:
+        # ray.get should throw an exception.
+        assert False
 
 
 if __name__ == "__main__":

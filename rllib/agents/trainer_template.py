@@ -5,7 +5,7 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep
+from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
@@ -26,7 +26,21 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
         ConcatBatches(
             min_batch_size=config["train_batch_size"],
             count_steps_by=config["multiagent"]["count_steps_by"],
-        )).for_each(TrainOneStep(workers))
+        ))
+
+    if config.get("simple_optimizer") is True:
+        train_op = train_op.for_each(TrainOneStep(workers))
+    else:
+        train_op = train_op.for_each(
+            TrainTFMultiGPU(
+                workers=workers,
+                sgd_minibatch_size=config.get("sgd_minibatch_size",
+                                              config["train_batch_size"]),
+                num_sgd_iter=config.get("num_sgd_iter", 1),
+                num_gpus=config["num_gpus"],
+                shuffle_sequences=config.get("shuffle_sequences", False),
+                _fake_gpus=config["_fake_gpus"],
+                framework=config["framework"]))
 
     # Add on the standard episode reward, etc. metrics reporting. This returns
     # a LocalIterator[metrics_dict] representing metrics for each train step.
@@ -146,6 +160,18 @@ def build_trainer(
         @override(Trainer)
         def step(self):
             res = next(self.train_exec_impl)
+
+            # self._iteration gets incremented after this function returns,
+            # meaning that e. g. the first time this function is called,
+            # self._iteration will be 0. We check `self._iteration+1` in the
+            # if-statement below to reflect that the first training iteration
+            # is already over.
+            if (self.config["evaluation_interval"] and (self._iteration + 1) %
+                    self.config["evaluation_interval"] == 0):
+                evaluation_metrics = self._evaluate()
+                assert isinstance(evaluation_metrics, dict), \
+                    "_evaluate() needs to return a dict."
+                res.update(evaluation_metrics)
             return res
 
         @override(Trainer)

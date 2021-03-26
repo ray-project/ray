@@ -45,7 +45,7 @@ class GcsPubSub {
   using Callback = std::function<void(const std::string &id, const std::string &data)>;
 
   explicit GcsPubSub(std::shared_ptr<RedisClient> redis_client)
-      : redis_client_(redis_client) {}
+      : redis_client_(redis_client), total_commands_queued_(0) {}
 
   virtual ~GcsPubSub() = default;
 
@@ -93,6 +93,8 @@ class GcsPubSub {
   /// \param id The id of message to be unsubscribed from redis.
   /// \return Whether the specified ID under the specified channel is unsubscribed.
   bool IsUnsubscribed(const std::string &channel, const std::string &id);
+
+  std::string DebugString() const;
 
  private:
   /// Represents a caller's command to subscribe or unsubscribe to a given
@@ -160,9 +162,11 @@ class GcsPubSub {
   std::shared_ptr<RedisClient> redis_client_;
 
   /// Mutex to protect the subscribe_callback_index_ field.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   absl::flat_hash_map<std::string, Channel> channels_ GUARDED_BY(mutex_);
+
+  size_t total_commands_queued_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gcs

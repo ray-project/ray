@@ -11,7 +11,7 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
@@ -38,7 +38,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(
+                f"{ip}:{ports[1]}", options=options)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -76,10 +78,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             payload = {
                 "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+                "max_workers": cfg["max_workers"]
             }
 
             try:
@@ -143,7 +142,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # The key is b'RAY_REPORTER:{node id hex}',
                 # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
                 key, data = msg
-                data = json.loads(ray.utils.decode(data))
+                data = json.loads(ray._private.utils.decode(data))
                 key = key.decode("utf-8")
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = data

@@ -3,7 +3,9 @@ from concurrent import futures
 import grpc
 import base64
 from collections import defaultdict
+from dataclasses import dataclass
 
+import threading
 from typing import Any
 from typing import Dict
 from typing import Set
@@ -17,12 +19,14 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
+from ray.util.client.common import (GRPC_MAX_MESSAGE_SIZE,
+                                    CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
-from ray.util.client.server.server_stubs import current_remote
+from ray.util.client.server.server_stubs import current_server
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -30,13 +34,18 @@ logger = logging.getLogger(__name__)
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self):
+        # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
+            dict)
+        # Stores client_id -> (client_ref_id -> ref_id (in self.object_refs))
+        self.client_side_ref_map: Dict[str, Dict[bytes, bytes]] = defaultdict(
             dict)
         self.function_refs = {}
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
-        self._current_function_stub = None
+        self.named_actors = set()
+        self.state_lock = threading.Lock()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -108,24 +117,34 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return json.dumps(data)
 
     def release(self, client_id: str, id: bytes) -> bool:
-        if client_id in self.object_refs:
-            if id in self.object_refs[client_id]:
-                logger.debug(f"Releasing object {id.hex()} for {client_id}")
-                del self.object_refs[client_id][id]
-                return True
+        with self.state_lock:
+            if client_id in self.object_refs:
+                if id in self.object_refs[client_id]:
+                    logger.debug(
+                        f"Releasing object {id.hex()} for {client_id}")
+                    del self.object_refs[client_id][id]
+                    return True
 
-        if client_id in self.actor_owners:
-            if id in self.actor_owners[client_id]:
-                logger.debug(f"Releasing actor {id.hex()} for {client_id}")
-                del self.actor_refs[id]
-                self.actor_owners[client_id].remove(id)
-                return True
+            if client_id in self.actor_owners:
+                if id in self.actor_owners[client_id]:
+                    logger.debug(f"Releasing actor {id.hex()} for {client_id}")
+                    self.actor_owners[client_id].remove(id)
+                    if self._can_remove_actor_ref(id):
+                        logger.debug(f"Deleting reference to actor {id.hex()}")
+                        del self.actor_refs[id]
+                    return True
 
-        return False
+            return False
 
     def release_all(self, client_id):
-        self._release_objects(client_id)
-        self._release_actors(client_id)
+        with self.state_lock:
+            self._release_objects(client_id)
+            self._release_actors(client_id)
+
+    def _can_remove_actor_ref(self, actor_id_bytes):
+        no_owner = not any(actor_id_bytes in actor_list
+                           for actor_list in self.actor_owners.values())
+        return no_owner and actor_id_bytes not in self.named_actors
 
     def _release_objects(self, client_id):
         if client_id not in self.object_refs:
@@ -133,16 +152,23 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
+        if client_id in self.client_side_ref_map:
+            del self.client_side_ref_map[client_id]
         logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
         if client_id not in self.actor_owners:
             logger.debug(f"Releasing client with no actors: {client_id}")
+            return
+
         count = 0
-        for id_bytes in self.actor_owners[client_id]:
+        actors_to_remove = self.actor_owners.pop(client_id)
+        for id_bytes in actors_to_remove:
             count += 1
-            del self.actor_refs[id_bytes]
-        del self.actor_owners[client_id]
+            if self._can_remove_actor_ref(id_bytes):
+                logger.debug(f"Deleting reference to actor {id_bytes.hex()}")
+                del self.actor_refs[id_bytes]
+
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
     def Terminate(self, req, context=None):
@@ -209,6 +235,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
+        if len(request.client_ref_id) > 0:
+            self.client_side_ref_map[client_id][
+                request.client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
 
@@ -299,7 +328,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
-        with current_remote(remote_class):
+        with current_server(self):
             actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
@@ -315,7 +344,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
-        with current_remote(remote_func):
+        with current_server(self):
             output = remote_func.remote(*arglist, **kwargs)
         ids = self.unify_and_track_outputs(output, task.client_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
@@ -325,8 +354,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                               context=None) -> ray_client_pb2.ClientTaskTicket:
         assert len(task.payload_id) == 0
         actor = ray.get_actor(task.name)
-        self.actor_refs[actor._actor_id.binary()] = actor
-        self.actor_owners[task.client_id].add(actor._actor_id.binary())
+        bin_actor_id = actor._actor_id.binary()
+        self.actor_refs[bin_actor_id] = actor
+        self.actor_owners[task.client_id].add(bin_actor_id)
+        self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(
             return_ids=[actor._actor_id.binary()])
 
@@ -407,22 +438,37 @@ def decode_options(
     return opts
 
 
-_current_servicer: Optional[RayletServicer] = None
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: RayletServicer
+    data_servicer: DataServicer
+    logs_servicer: LogstreamServicer
+    grpc_server: grpc.Server
+
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)
 
 
-# Used by tests to peek inside the servicer
-def _get_current_servicer():
-    global _current_servicer
-    return _current_servicer
+def serve(connection_str, ray_connect_handler=None):
+    def default_connect_handler():
+        with disable_client_hook():
+            if not ray.is_initialized():
+                return ray.init()
 
-
-def serve(connection_str):
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    ray_connect_handler = ray_connect_handler or default_connect_handler
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+        options=[
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ])
     task_servicer = RayletServicer()
-    data_servicer = DataServicer(task_servicer)
+    data_servicer = DataServicer(
+        task_servicer, ray_connect_handler=ray_connect_handler)
     logs_servicer = LogstreamServicer()
-    global _current_servicer
-    _current_servicer = task_servicer
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
@@ -430,22 +476,51 @@ def serve(connection_str):
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
     server.add_insecure_port(connection_str)
+    current_handle = ClientServerHandle(
+        task_servicer=task_servicer,
+        data_servicer=data_servicer,
+        logs_servicer=logs_servicer,
+        grpc_server=server,
+    )
     server.start()
-    return server
+    return current_handle
 
 
 def init_and_serve(connection_str, *args, **kwargs):
     with disable_client_hook():
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
-    server = serve(connection_str)
-    return (server, info)
+
+    def ray_connect_handler():
+        # Ray client will disconnect from ray when
+        # num_clients == 0.
+        if ray.is_initialized():
+            return info
+        else:
+            return ray.init(*args, **kwargs)
+
+    server_handle = serve(
+        connection_str, ray_connect_handler=ray_connect_handler)
+    return (server_handle, info)
 
 
 def shutdown_with_server(server, _exiting_interpreter=False):
     server.stop(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)
+
+
+def create_ray_handler(redis_address, redis_password):
+    def ray_connect_handler():
+        if redis_address:
+            if redis_password:
+                ray.init(address=redis_address, _redis_password=redis_password)
+            else:
+                ray.init(address=redis_address)
+        else:
+            ray.init()
+
+    return ray_connect_handler
 
 
 def main():
@@ -467,18 +542,13 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_address:
-        if args.redis_password:
-            ray.init(
-                address=args.redis_address,
-                _redis_password=args.redis_password)
-        else:
-            ray.init(address=args.redis_address)
-    else:
-        ray.init()
+
+    ray_connect_handler = create_ray_handler(args.redis_address,
+                                             args.redis_password)
+
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
-    server = serve(hostport)
+    server = serve(hostport, ray_connect_handler)
     try:
         while True:
             time.sleep(1000)

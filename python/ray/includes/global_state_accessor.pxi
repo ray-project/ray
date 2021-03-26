@@ -17,15 +17,13 @@ cdef class GlobalStateAccessor:
     cdef:
         unique_ptr[CGlobalStateAccessor] inner
 
-    def __init__(self, redis_address, redis_password,
-                 c_bool is_test_client=False):
+    def __init__(self, redis_address, redis_password):
         if not redis_password:
             redis_password = ""
         self.inner.reset(
             new CGlobalStateAccessor(
                 redis_address.encode("ascii"),
                 redis_password.encode("ascii"),
-                is_test_client,
             ),
         )
 
@@ -144,6 +142,16 @@ cdef class GlobalStateAccessor:
         with nogil:
             result = self.inner.get().GetPlacementGroupInfo(
                 cplacement_group_id)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
+    def get_placement_group_by_name(self, placement_group_name):
+        cdef unique_ptr[c_string] result
+        cdef c_string cplacement_group_name = placement_group_name
+        with nogil:
+            result = self.inner.get().GetPlacementGroupByName(
+                cplacement_group_name)
         if result:
             return c_string(result.get().data(), result.get().size())
         return None

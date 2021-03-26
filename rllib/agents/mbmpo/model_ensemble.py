@@ -136,6 +136,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 obs_space.low[0],
                 obs_space.high[0],
                 shape=(obs_space.shape[0] + action_space.shape[0], ))
+        else:
+            raise NotImplementedError
         super(DynamicsEnsembleCustomModel, self).__init__(
             input_space, action_space, num_outputs, model_config, name)
 
@@ -198,6 +200,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
     def fit(self):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
+        for pid, pol in local_worker.policy_map.items():
+            pol.view_requirements[
+                SampleBatch.NEXT_OBS].used_for_training = True
         new_samples = local_worker.sample()
         # Initial Exploration of 8000 timesteps
         if not self.global_itr:

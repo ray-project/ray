@@ -148,19 +148,25 @@ Let's create a placement group. Recall that each bundle is a collection of resou
     # Will be scheduled because 2 cpus are reserved by the placement group.
     f.options(placement_group=pg).remote()
 
-.. code-block:: python
+.. note::
 
-  gpu_bundle = {"GPU": 2}
-  extra_resource_bundle = {"extra_resource": 2}
+  When using placement groups, users should ensure that their placement groups are ready (by calling ``ray.get(pg.ready())``)
+  and have the proper resources. Ray assumes that the placement group will be properly created and does *not*
+  print a warning about infeasible tasks.
 
-  # Reserve bundles with strict pack strategy.
-  # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
-  # Using this placement group for scheduling actors or tasks will guarantee that they will
-  # be colocated on the same node.
-  pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+  .. code-block:: python
 
-  # Wait until placement group is created.
-  ray.get(pg.ready())
+    gpu_bundle = {"GPU": 2}
+    extra_resource_bundle = {"extra_resource": 2}
+
+    # Reserve bundles with strict pack strategy.
+    # It means Ray will reserve 2 "GPU" and 2 "extra_resource" on the same node (strict pack) within a Ray cluster.
+    # Using this placement group for scheduling actors or tasks will guarantee that they will
+    # be colocated on the same node.
+    pg = placement_group([gpu_bundle, extra_resource_bundle], strategy="STRICT_PACK")
+
+    # Wait until placement group is created.
+    ray.get(pg.ready())
 
 Now let's define an actor that uses GPU. We'll also define a task that use ``extra_resources``.
 
@@ -229,7 +235,7 @@ because they are scheduled on a placement group with the STRICT_PACK strategy.
         # scheduled with the parent's placement group.
         ray.get(child.options(placement_group=None).remote())
 
-Note that you can anytime remove the placement group to clean up resources.
+You can remove a placement group at any time to free its allocated resources.
 
 .. code-block:: python
 
@@ -251,6 +257,77 @@ Note that you can anytime remove the placement group to clean up resources.
   """
 
   ray.shutdown()
+
+Named Placement Groups
+----------------------
+
+A placement group can be given a globally unique name.
+This allows you to retrieve the placement group from any job in the Ray cluster.
+This can be useful if you cannot directly pass the placement group handle to
+the actor or task that needs it, or if you are trying to
+access a placement group launched by another driver.
+Note that the placement group will still be destroyed if it's lifetime isn't `detached`.
+See :ref:`placement-group-lifetimes` for more details.
+
+.. tabs::
+  .. group-tab:: Python
+
+    .. code-block:: python
+
+      # first_driver.py
+      # Create a placement group with a global name.
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached", name="global_name")
+      ray.get(pg.ready())
+
+    Then, we can retrieve the actor later somewhere.
+
+    .. code-block:: python
+
+      # second_driver.py
+      # Retrieve a placement group with a global name.
+      pg = ray.util.get_placement_group("global_name")
+
+  .. group-tab:: Java
+
+    The named placement group is not implemented for Java APIs yet.
+
+.. _placement-group-lifetimes:
+
+Placement Group Lifetimes
+-------------------------
+
+.. tabs::
+  .. group-tab:: Python
+
+    By default, the lifetimes of placement groups are not detached and will be destroyed
+    when the driver is terminated (but, if it is created from a detached actor, it is 
+    killed when the detached actor is killed). If you'd like to keep the placement group 
+    alive regardless of its job or detached actor, you should specify 
+    `lifetime="detached"`. For example:
+
+    .. code-block:: python
+
+      # first_driver.py
+      pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD", lifetime="detached")
+      ray.get(pg.ready())
+
+    The placement group's lifetime will be independent of the driver now. This means it 
+    is possible to retrieve the placement group from other drivers regardless of when 
+    the current driver exits. Let's see an example:
+
+    .. code-block:: python
+
+      # second_driver.py
+      table = ray.util.placement_group_table()
+      print(len(table))
+
+    Note that the lifetime option is decoupled from the name. If we only specified
+    the name without specifying ``lifetime="detached"``, then the placement group can
+    only be retrieved as long as the original driver is still running.
+
+  .. group-tab:: Java
+
+    The lifetime argument is not implemented for Java APIs yet.
 
 Tips for Using Placement Groups
 -------------------------------

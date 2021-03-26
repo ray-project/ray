@@ -33,7 +33,7 @@ namespace ray {
 using rpc::HeartbeatTableData;
 
 // Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
+static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
@@ -51,7 +51,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                            const NodeResources &local_node_resources);
   ClusterResourceScheduler(
       const std::string &local_node_id,
-      const std::unordered_map<std::string, double> &local_node_resources);
+      const std::unordered_map<std::string, double> &local_node_resources,
+      std::function<int64_t(void)> get_used_object_store_memory = nullptr);
 
   // Mapping from predefined resource indexes to resource strings
   std::string GetResourceNameFromIndex(int64_t res_idx);
@@ -136,6 +137,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   ///  \param task_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
+  ///  \param force_spillback For non-actor creation requests, pick a remote
+  ///  feasible node. If this is false, then the task may be scheduled to the
+  ///  local node.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
@@ -145,7 +149,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
-                                 int64_t *violations, bool *is_infeasible);
+                                 bool force_spillback, int64_t *violations,
+                                 bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -156,7 +161,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      int64_t *violations, bool *is_infeasible);
+      bool force_spillback, int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -380,14 +385,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) override;
+  void FillResourceUsage(rpc::ResourcesData &resources_data) override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///
   /// \param gcs_resources: The remote cache from gcs.
   void UpdateLastResourceUsage(
-      std::shared_ptr<SchedulingResources> gcs_resources) override;
+      const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
@@ -430,11 +435,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const TaskRequest &task_request);
 
+  bool loadbalance_spillback_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// Keep the mapping between node and resource IDs in string representation
@@ -442,6 +450,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   StringIdMap string_to_int_map_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
+  /// Function to get used object store memory.
+  std::function<int64_t(void)> get_used_object_store_memory_;
 };
 
 }  // end namespace ray

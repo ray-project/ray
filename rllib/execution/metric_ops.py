@@ -3,8 +3,8 @@ import time
 
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.evaluation.worker_set import WorkerSet
 
 
@@ -88,6 +88,7 @@ class CollectMetrics:
 
         # Add in iterator metrics.
         metrics = _get_shared_metrics()
+        custom_metrics_from_info = metrics.info.pop("custom_metrics", {})
         timers = {}
         counters = {}
         info = {}
@@ -102,10 +103,15 @@ class CollectMetrics:
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
             "timesteps_total": metrics.counters[STEPS_SAMPLED_COUNTER],
+            "agent_timesteps_total": metrics.counters.get(
+                AGENT_STEPS_SAMPLED_COUNTER, 0),
         })
         res["timers"] = timers
         res["info"] = info
         res["info"].update(counters)
+        res["custom_metrics"] = res.get("custom_metrics", {})
+        res["episode_media"] = res.get("episode_media", {})
+        res["custom_metrics"].update(custom_metrics_from_info)
         return res
 
 

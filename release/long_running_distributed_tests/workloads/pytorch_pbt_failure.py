@@ -11,7 +11,6 @@ import ray
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.utils.util import merge_dicts
 from ray.tune.utils.mock import FailureInjectorCallback
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
@@ -91,16 +90,9 @@ TorchTrainable = TorchTrainer.as_trainable(
         "test_mode": args.smoke_test,
         BATCH_SIZE: 128 * num_training_workers,
     },
-    use_gpu=not args.smoke_test)
-
-
-class NoFaultToleranceTrainable(TorchTrainable):
-    def _train(self):
-        train_stats = self.trainer.train(max_retries=0, profile=True)
-        validation_stats = self.trainer.validate(profile=True)
-        stats = merge_dicts(train_stats, validation_stats)
-        return stats
-
+    use_gpu=not args.smoke_test,
+    backend="gloo",  # This should also work with NCCL
+)
 
 pbt_scheduler = PopulationBasedTraining(
     time_attr="training_iteration",
@@ -119,7 +111,7 @@ reporter.add_metric_column("val_loss", "loss")
 reporter.add_metric_column("val_accuracy", "acc")
 
 analysis = tune.run(
-    NoFaultToleranceTrainable,
+    TorchTrainable,
     num_samples=4,
     config={
         "lr": tune.choice([0.001, 0.01, 0.1]),
@@ -131,7 +123,7 @@ analysis = tune.run(
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    callbacks=[FailureInjectorCallback()],
+    callbacks=[FailureInjectorCallback(time_between_checks=90)],
     queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 

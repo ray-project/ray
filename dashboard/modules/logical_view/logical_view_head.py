@@ -1,6 +1,6 @@
 import logging
 import aiohttp.web
-import ray.utils
+import ray._private.utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.actor_utils as actor_utils
 from ray.new_dashboard.utils import rest_response
@@ -46,12 +46,15 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return rest_response(success=False, message="Bad Request")
         try:
-            channel = aiogrpc.insecure_channel(f"{ip_address}:{port}")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(
+                f"{ip_address}:{port}", options=options)
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(
                 core_worker_pb2.KillActorRequest(
-                    intended_actor_id=ray.utils.hex_to_binary(actor_id)))
+                    intended_actor_id=ray._private.utils.hex_to_binary(
+                        actor_id)))
 
         except aiogrpc.AioRpcError:
             # This always throws an exception because the worker

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
@@ -39,8 +40,9 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  OwnershipBasedObjectDirectory(boost::asio::io_service &io_service,
-                                std::shared_ptr<gcs::GcsClient> &gcs_client);
+  OwnershipBasedObjectDirectory(instrumented_io_context &io_service,
+                                std::shared_ptr<gcs::GcsClient> &gcs_client,
+                                std::function<void(const ObjectID &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -62,6 +64,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
 
+  void RecordMetrics(uint64_t duration_ms) override;
+
   std::string DebugString() const override;
 
   /// OwnershipBasedObjectDirectory should not be copied.
@@ -70,6 +74,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
  private:
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
+  /// The callback used to mark an object as failed.
+  std::function<void(const ObjectID &)> mark_as_failed_;
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
   /// reaches zero, the client will be deleted and a new one will need to be created
@@ -83,6 +89,24 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// Internal callback function used by SubscribeObjectLocations.
   void SubscriptionCallback(ObjectID object_id, WorkerID worker_id, Status status,
                             const rpc::GetObjectLocationsOwnerReply &reply);
+
+  /// Metrics
+
+  /// Number of object locations added to this object directory.
+  uint64_t metrics_num_object_locations_added_;
+  double metrics_num_object_locations_added_per_second_;
+
+  /// Number of object locations removed from this object directory.
+  uint64_t metrics_num_object_locations_removed_;
+  double metrics_num_object_locations_removed_per_second_;
+
+  /// Number of object location lookups.
+  uint64_t metrics_num_object_location_lookups_;
+  double metrics_num_object_location_lookups_per_second_;
+
+  /// Number of object location updates.
+  uint64_t metrics_num_object_location_updates_;
+  double metrics_num_object_location_updates_per_second_;
 };
 
 }  // namespace ray

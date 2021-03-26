@@ -27,19 +27,23 @@ DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
-# This must be greater than MEMORY_RESOURCE_UNIT_BYTES * 0.7
+# This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# Above this number of bytes, raise an error by default unless the user sets
+# RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
+REDIS_KEY_DASHBOARD = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
@@ -63,17 +67,13 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 100000
+MAX_RESOURCE_QUANTITY = 100e12
 
 # Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
+MEMORY_RESOURCE_UNIT_BYTES = 1
 
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
-
-# Fraction of plasma memory that can be reserved. It is actually 70% but this
-# is set to 69% to leave some headroom.
-PLASMA_RESERVABLE_MEMORY_FRACTION = 0.69
 
 
 def round_to_memory_units(memory_bytes, round_up):
@@ -150,12 +150,9 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
-# Default param for RotatingFileHandler
-# maxBytes. 10G by default. We intentionally set the default value high
-# so that users who won't care don't know about the existence of this.
-LOGGING_ROTATE_BYTES = 10 * 1000 * 1000 * 1000
-# The default will grow logs up until 500GB without log loss.
-LOGGING_ROTATE_BACKUP_COUNT = 50  # backupCount
+
+LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
+LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
@@ -172,6 +169,8 @@ PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
+PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER = "python-core-driver"
+PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 
 # Log file names
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
@@ -235,4 +234,4 @@ MACH_PAGE_SIZE_BYTES = 4096
 MAX_INT64_VALUE = 9223372036854775807
 
 # Object Spilling related constants
-DEFAULT_OBJECT_PREFIX = "ray_spilled_object"
+DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"

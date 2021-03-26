@@ -1,13 +1,23 @@
 import copy
 import logging
 import math
+import re
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.kubernetes import auth_api, core_api, log_prefix
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
+
+MEMORY_SIZE_UNITS = {
+    "K": 2**10,
+    "M": 2**20,
+    "G": 2**30,
+    "T": 2**40,
+    "P": 2**50
+}
 
 
 class InvalidNamespaceError(ValueError):
@@ -68,16 +78,28 @@ def fillout_resources_kubernetes(config):
     not currently support fractional CPU.
     """
     if "available_node_types" not in config:
-        return config["available_node_types"]
+        return config
     node_types = copy.deepcopy(config["available_node_types"])
+    head_node_type = config["head_node_type"]
     for node_type in node_types:
-        container_data = node_types[node_type]["node_config"]["spec"][
-            "containers"][0]
+
+        node_config = node_types[node_type]["node_config"]
+        # The next line is for compatibility with configs like
+        # kubernetes/example-ingress.yaml,
+        # cf. KubernetesNodeProvider.create_node().
+        pod = node_config.get("pod", node_config)
+        container_data = pod["spec"]["containers"][0]
+
         autodetected_resources = get_autodetected_resources(container_data)
+        if node_types == head_node_type:
+            # we only autodetect worker type node memory resource
+            autodetected_resources.pop("memory")
         if "resources" not in config["available_node_types"][node_type]:
             config["available_node_types"][node_type]["resources"] = {}
-        config["available_node_types"][node_type]["resources"].update(
-            autodetected_resources)
+        autodetected_resources.update(
+            config["available_node_types"][node_type]["resources"])
+        config["available_node_types"][node_type][
+            "resources"] = autodetected_resources
         logger.debug(
             "Updating the resources of node type {} to include {}.".format(
                 node_type, autodetected_resources))
@@ -93,6 +115,16 @@ def get_autodetected_resources(container_data):
         resource_name.upper(): get_resource(container_resources, resource_name)
         for resource_name in ["cpu", "gpu"]
     }
+
+    # Throw out GPU from resource dict if the amount is 0.
+    for key in copy.deepcopy(node_type_resources):
+        if node_type_resources[key] == 0:
+            del node_type_resources[key]
+
+    memory_limits = get_resource(container_resources, "memory")
+    node_type_resources["memory"] = int(
+        memory_limits *
+        (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION))
 
     return node_type_resources
 
@@ -116,7 +148,7 @@ def _get_resource(container_resources, resource_name, field_name):
 
     Args:
         container_resources (dict): Container's resource field.
-        resource_name (str): One of 'cpu' or 'gpu'.
+        resource_name (str): One of 'cpu', 'gpu' or memory.
         field_name (str): One of 'requests' or 'limits'.
 
     Returns:
@@ -137,16 +169,31 @@ def _get_resource(container_resources, resource_name, field_name):
     # E.g. 'nvidia.com/gpu' or 'cpu'.
     resource_key = matching_keys.pop()
     resource_quantity = resources[resource_key]
-    return _parse_resource(resource_quantity)
+    if resource_name == "memory":
+        return _parse_memory_resource(resource_quantity)
+    else:
+        return _parse_cpu_or_gpu_resource(resource_quantity)
 
 
-def _parse_resource(resource):
+def _parse_cpu_or_gpu_resource(resource):
     resource_str = str(resource)
     if resource_str[-1] == "m":
         # For example, '500m' rounds up to 1.
         return math.ceil(int(resource_str[:-1]) / 1000)
     else:
         return int(resource_str)
+
+
+def _parse_memory_resource(resource):
+    resource_str = str(resource)
+    try:
+        return int(resource_str)
+    except ValueError:
+        pass
+    memory_size = re.sub(r"([KMGTP]+)", r" \1", resource_str)
+    number, unit_index = [item.strip() for item in memory_size.split()]
+    unit_index = unit_index[0]
+    return float(number) * MEMORY_SIZE_UNITS[unit_index]
 
 
 def _configure_namespace(provider_config):

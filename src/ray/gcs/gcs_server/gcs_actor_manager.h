@@ -190,6 +190,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleKillActorViaGcs(const rpc::KillActorViaGcsRequest &request,
+                             rpc::KillActorViaGcsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -238,10 +242,15 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id ID of the node where the dead worker was located.
   /// \param worker_id ID of the dead worker.
-  /// \param intentional_exit Whether the death was intentional. If yes and the
-  /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
-                    bool intentional_exit = false);
+  /// \param exit_type exit reason of the dead worker.
+  /// \param creation_task_exception if this arg is set, this worker is died because of an
+  /// exception thrown in actor's creation task.
+  void OnWorkerDead(
+      const NodeID &node_id, const WorkerID &worker_id,
+      const rpc::WorkerExitType disconnect_type,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.
@@ -316,14 +325,21 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
       const NodeID &node_id, const WorkerID &worker_id) const;
 
- private:
   /// Reconstruct the specified actor.
   ///
   /// \param actor The target actor to be reconstructed.
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule = true);
+  /// \param creation_task_exception Only applies when need_reschedule=false, decribing
+  /// why this actor failed. If this arg is set, it means this actor died because of an
+  /// exception thrown in creation task.
+  void ReconstructActor(
+      const ActorID &actor_id, bool need_reschedule,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+
+  /// Reconstruct the specified actor and reschedule it.
+  void ReconstructActor(const ActorID &actor_id);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -337,14 +353,44 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   /// Kill the specified actor.
   ///
+  /// \param actor_id ID of the actor to kill.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+
+  /// Notify CoreWorker to kill the specified actor.
+  ///
   /// \param actor The actor to be killed.
-  void KillActor(const std::shared_ptr<GcsActor> &actor);
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
+                                   bool force_kill = true, bool no_restart = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
   ///
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
+
+  std::shared_ptr<rpc::ActorTableData> GenActorDataOnlyWithStates(
+      const rpc::ActorTableData &actor) {
+    auto actor_delta = std::make_shared<rpc::ActorTableData>();
+    actor_delta->set_state(actor.state());
+    actor_delta->set_allocated_creation_task_exception(
+        new rpc::RayException(actor.creation_task_exception()));
+    actor_delta->mutable_address()->CopyFrom(actor.address());
+    actor_delta->set_num_restarts(actor.num_restarts());
+    actor_delta->set_timestamp(actor.timestamp());
+    actor_delta->set_pid(actor.pid());
+    return actor_delta;
+  }
+
+  /// Cancel actor which is either being scheduled or is pending scheduling.
+  ///
+  /// \param actor The actor to be cancelled.
+  /// \param task_id The id of actor creation task to be cancelled.
+  void CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
+                               const TaskID &task_id);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated
@@ -403,7 +449,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_ACTOR_INFO_REQUEST = 2,
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
-    CountType_MAX = 10,
+    KILL_ACTOR_REQUEST = 5,
+    CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

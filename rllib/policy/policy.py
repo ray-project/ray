@@ -15,7 +15,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -250,10 +249,6 @@ class Policy(metaclass=ABCMeta):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Note: This is an experimental API method.
-
-        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
-        (also only supported for torch).
         Uses the currently "forward-pass-registered" samples from the collector
         to construct the input_dict for the Model.
 
@@ -280,11 +275,7 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config.get("_use_trajectory_view_api", False) else
-            s.unsqueeze(0)
-            if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
-            for k, s in input_dict.items() if k[:9] == "state_in_"
+            s for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
@@ -500,7 +491,11 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def export_model(self, export_dir: str) -> None:
-        """Export Policy to local directory for serving.
+        """Exports the Policy's Model to local directory for serving.
+
+        Note: The file format will depend on the deep learning framework used.
+        See the child classed of Policy and their `export_model`
+        implementations for more details.
 
         Args:
             export_dir (str): Local writable directory.
@@ -617,7 +612,9 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(self._dummy_batch)
+        input_dict = self._lazy_tensor_dict(
+            {k: v
+             for k, v in self._dummy_batch.items()})
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(input_dict, explore=False)
         # Add all extra action outputs to view reqirements (these may be
@@ -627,11 +624,11 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
-        batch_for_postproc.count = self._dummy_batch.count
-        self.exploration.postprocess_trajectory(self, batch_for_postproc)
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False)
+        self._dummy_batch.set_get_interceptor(None)
+        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
@@ -645,7 +642,7 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-        # Wrap `train_batch` with a to-tensor UsageTrackingDict.
+        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
@@ -658,35 +655,39 @@ class Policy(metaclass=ABCMeta):
             stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys | \
-                                batch_for_postproc.added_keys
+                                self._dummy_batch.accessed_keys | \
+                                self._dummy_batch.added_keys
             for key in all_accessed_keys:
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
-                # Tag those only needed for post-processing.
-                for key in batch_for_postproc.accessed_keys:
+                # Tag those only needed for post-processing (with some
+                # exceptions).
+                for key in self._dummy_batch.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
-                            key not in self.model.view_requirements:
+                            key not in self.model.view_requirements and \
+                            key not in [
+                                SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                                SampleBatch.UNROLL_ID, SampleBatch.DONES,
+                                SampleBatch.REWARDS, SampleBatch.INFOS]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
-                # Also always leave DONES and REWARDS, no matter what.
+                # Also always leave DONES, REWARDS, INFOS, no matter what.
                 for key in list(self.view_requirements.keys()):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS] and \
+                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
                             key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
-                        if key in batch_for_postproc.deleted_keys:
+                        if key in self._dummy_batch.deleted_keys:
                             logger.warning(
                                 "SampleBatch key '{}' was deleted manually in "
                                 "postprocessing function! RLlib will "
@@ -709,7 +710,8 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
-                _, shape = ModelCatalog.get_action_shape(view_req.space)
+                _, shape = ModelCatalog.get_action_shape(
+                    view_req.space, framework=self.config["framework"])
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:

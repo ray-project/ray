@@ -54,7 +54,7 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param gcs_resources: The remote cache from gcs.
   virtual void UpdateLastResourceUsage(
-      std::shared_ptr<SchedulingResources> gcs_resources) {}
+      const std::shared_ptr<SchedulingResources> gcs_resources) {}
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
@@ -62,7 +62,7 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

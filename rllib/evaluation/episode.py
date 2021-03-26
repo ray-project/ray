@@ -67,6 +67,7 @@ class MultiAgentEpisode:
         self.custom_metrics: Dict[str, float] = {}
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
+        self.media: Dict[str, Any] = {}
         self._policies: Dict[PolicyID, Policy] = policies
         self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
             policy_mapping_fn

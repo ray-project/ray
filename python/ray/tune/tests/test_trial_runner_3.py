@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 import os
 import pickle
@@ -25,6 +26,13 @@ from ray.tune.suggest.search_generator import SearchGenerator
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
+
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -101,6 +109,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
+        time.sleep(2)  # Wait for stopped placement group to free resources
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
@@ -109,6 +118,9 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
         experiments = [Experiment.from_json("test", experiment_spec)]
@@ -226,6 +238,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
@@ -282,7 +295,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 def __init__(self, index):
                     self.index = index
                     self.returned_result = []
-                    super().__init__(metric="result", mode="max")
+                    super().__init__(metric="episode_reward_mean", mode="max")
 
                 def suggest(self, trial_id):
                     self.index += 1
@@ -495,6 +508,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
     def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=3)
 
         runner = TrialRunner(
@@ -588,9 +603,10 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 0.5)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 7)
     def testCheckpointFreqBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "7"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
@@ -620,6 +636,9 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(num_checkpoints(trial), 3)
 
     def testUserCheckpoint(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=3)
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
@@ -642,9 +661,10 @@ class TrialRunnerTest3(unittest.TestCase):
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
 
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
-    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
     def testUserCheckpointBuffered(self):
+        os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "8"
+        os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
+
         def num_checkpoints(trial):
             return sum(
                 item.startswith("checkpoint_")
@@ -688,6 +708,27 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
+
+    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    def testCheckpointAutoPeriod(self):
+        ray.init(num_cpus=3)
+
+        # This makes checkpointing take 2 seconds.
+        def sync_up(source, target):
+            time.sleep(2)
+            return True
+
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir,
+            checkpoint_period="auto",
+            sync_to_cloud=sync_up,
+            remote_checkpoint_dir="fake")
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
+
+        runner.step()  # Run one step, this will trigger checkpointing
+
+        self.assertGreaterEqual(runner._checkpoint_manager._checkpoint_period,
+                                38.)
 
 
 class SearchAlgorithmTest(unittest.TestCase):

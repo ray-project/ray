@@ -31,6 +31,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -121,10 +122,10 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                               std::shared_ptr<Buffer> *data, int device_num);
 
   Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-             std::vector<ObjectBuffer> *object_buffers);
+             std::vector<ObjectBuffer> *object_buffers, bool is_from_worker);
 
   Status Get(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
-             ObjectBuffer *object_buffers);
+             ObjectBuffer *object_buffers, bool is_from_worker);
 
   Status Release(const ObjectID &object_id);
 
@@ -172,7 +173,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status GetBuffers(const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
                     const std::function<std::shared_ptr<Buffer>(
                         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
-                    ObjectBuffer *object_buffers);
+                    ObjectBuffer *object_buffers, bool is_from_worker);
 
   uint8_t *LookupMmappedFile(MEMFD_TYPE store_fd_val);
 
@@ -180,7 +181,7 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                             bool is_sealed);
 
   /// The boost::asio IO context for the client.
-  boost::asio::io_service main_service_;
+  instrumented_io_context main_service_;
   /// The connection to the store service.
   std::shared_ptr<StoreConn> store_conn_;
   /// Table of dlmalloc buffer files that have been memory mapped so far. This
@@ -217,8 +218,7 @@ uint8_t *PlasmaClient::Impl::GetStoreFdAndMmap(MEMFD_TYPE store_fd_val,
   } else {
     MEMFD_TYPE fd;
     RAY_CHECK_OK(store_conn_->RecvFd(&fd));
-    mmap_table_[store_fd_val] =
-        std::unique_ptr<ClientMmapTableEntry>(new ClientMmapTableEntry(fd, map_size));
+    mmap_table_[store_fd_val] = std::make_unique<ClientMmapTableEntry>(fd, map_size);
     return mmap_table_[store_fd_val]->pointer();
   }
 }
@@ -247,8 +247,7 @@ void PlasmaClient::Impl::IncrementObjectCount(const ObjectID &object_id,
   if (elem == objects_in_use_.end()) {
     // Add this object ID to the hash table of object IDs in use. The
     // corresponding call to free happens in PlasmaClient::Release.
-    objects_in_use_[object_id] =
-        std::unique_ptr<ObjectInUseEntry>(new ObjectInUseEntry());
+    objects_in_use_[object_id] = std::make_unique<ObjectInUseEntry>();
     objects_in_use_[object_id]->object = *object;
     objects_in_use_[object_id]->count = 0;
     objects_in_use_[object_id]->is_sealed = is_sealed;
@@ -362,7 +361,7 @@ Status PlasmaClient::Impl::GetBuffers(
     const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
     const std::function<std::shared_ptr<Buffer>(
         const ObjectID &, const std::shared_ptr<Buffer> &)> &wrap_buffer,
-    ObjectBuffer *object_buffers) {
+    ObjectBuffer *object_buffers, bool is_from_worker) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int64_t i = 0; i < num_objects; ++i) {
@@ -409,7 +408,8 @@ Status PlasmaClient::Impl::GetBuffers(
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
-  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms));
+  RAY_RETURN_NOT_OK(SendGetRequest(store_conn_, &object_ids[0], num_objects, timeout_ms,
+                                   is_from_worker));
   std::vector<uint8_t> buffer;
   RAY_RETURN_NOT_OK(PlasmaReceive(store_conn_, MessageType::PlasmaGetReply, &buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
@@ -470,7 +470,8 @@ Status PlasmaClient::Impl::GetBuffers(
 }
 
 Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
-                               int64_t timeout_ms, std::vector<ObjectBuffer> *out) {
+                               int64_t timeout_ms, std::vector<ObjectBuffer> *out,
+                               bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   const auto wrap_buffer = [=](const ObjectID &object_id,
@@ -479,16 +480,19 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
   };
   const size_t num_objects = object_ids.size();
   *out = std::vector<ObjectBuffer>(num_objects);
-  return GetBuffers(&object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0]);
+  return GetBuffers(&object_ids[0], num_objects, timeout_ms, wrap_buffer, &(*out)[0],
+                    is_from_worker);
 }
 
 Status PlasmaClient::Impl::Get(const ObjectID *object_ids, int64_t num_objects,
-                               int64_t timeout_ms, ObjectBuffer *out) {
+                               int64_t timeout_ms, ObjectBuffer *out,
+                               bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   const auto wrap_buffer = [](const ObjectID &object_id,
                               const std::shared_ptr<Buffer> &buffer) { return buffer; };
-  return GetBuffers(object_ids, num_objects, timeout_ms, wrap_buffer, out);
+  return GetBuffers(object_ids, num_objects, timeout_ms, wrap_buffer, out,
+                    is_from_worker);
 }
 
 Status PlasmaClient::Impl::MarkObjectUnused(const ObjectID &object_id) {
@@ -753,13 +757,14 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
 }
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
-                         std::vector<ObjectBuffer> *object_buffers) {
-  return impl_->Get(object_ids, timeout_ms, object_buffers);
+                         std::vector<ObjectBuffer> *object_buffers, bool is_from_worker) {
+  return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
 }
 
 Status PlasmaClient::Get(const ObjectID *object_ids, int64_t num_objects,
-                         int64_t timeout_ms, ObjectBuffer *object_buffers) {
-  return impl_->Get(object_ids, num_objects, timeout_ms, object_buffers);
+                         int64_t timeout_ms, ObjectBuffer *object_buffers,
+                         bool is_from_worker) {
+  return impl_->Get(object_ids, num_objects, timeout_ms, object_buffers, is_from_worker);
 }
 
 Status PlasmaClient::Release(const ObjectID &object_id) {

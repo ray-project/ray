@@ -12,8 +12,6 @@ import time
 import yaml
 import collections
 
-from ray.experimental.internal_kv import _internal_kv_put, \
-    _internal_kv_initialized
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
@@ -25,12 +23,13 @@ from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
-    DEBUG_AUTOSCALING_ERROR, format_info_string
+    format_info_string
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
-    ["node_id", "init_commands", "start_ray_commands", "docker_config"])
+    ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
 
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
@@ -118,6 +117,10 @@ class StandardAutoscaler:
             node_launcher.daemon = True
             node_launcher.start()
 
+        # NodeTracker maintains soft state to track the number of recently
+        # failed nodes. It is best effort only.
+        self.node_tracker = NodeTracker()
+
         # Expand local file_mounts to allow ~ in the paths. This can't be done
         # earlier when the config is written since we might be on different
         # platform and the expansion would result in wrong path.
@@ -138,9 +141,6 @@ class StandardAutoscaler:
         except Exception as e:
             logger.exception("StandardAutoscaler: "
                              "Error during autoscaling.")
-            if _internal_kv_initialized():
-                _internal_kv_put(
-                    DEBUG_AUTOSCALING_ERROR, str(e), overwrite=True)
             # Don't abort the autoscaler if the K8s API server is down.
             # https://github.com/ray-project/ray/issues/12255
             is_k8s_connection_error = (
@@ -215,6 +215,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -233,6 +235,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -283,7 +287,7 @@ class StandardAutoscaler:
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start, docker_config in (
+        for node_id, setup_commands, ray_start_commands, docker_config in (
                 self.should_update(node_id) for node_id in nodes):
             if node_id is not None:
                 resources = self._node_resources(node_id)
@@ -291,8 +295,8 @@ class StandardAutoscaler:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start, resources,
-                              docker_config)))
+                        args=(node_id, setup_commands, ray_start_commands,
+                              resources, docker_config)))
         for t in T:
             t.start()
         for t in T:
@@ -311,18 +315,17 @@ class StandardAutoscaler:
 
         The first item in the return list is the most recently used.
         """
-        updated_last_used = copy.deepcopy(last_used)
+        last_used_copy = copy.deepcopy(last_used)
         # Add the unconnected nodes as the least recently used (the end of
         # list). This prioritizes connected nodes.
         least_recently_used = -1
-        for node_id in nodes:
-            node_ip = self.provider.internal_ip(node_id)
-            if node_ip not in updated_last_used:
-                updated_last_used[node_ip] = least_recently_used
 
         def last_time_used(node_id: NodeID):
             node_ip = self.provider.internal_ip(node_id)
-            return updated_last_used[node_ip]
+            if node_ip not in last_used_copy:
+                return least_recently_used
+            else:
+                return last_used_copy[node_ip]
 
         return sorted(nodes, key=last_time_used, reverse=True)
 
@@ -633,28 +636,31 @@ class StandardAutoscaler:
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            setup_commands = []
+            ray_start_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = []
+            ray_start_commands = []
         else:
-            init_commands = self._get_node_type_specific_fields(
+            setup_commands = self._get_node_type_specific_fields(
                 node_id, "worker_setup_commands")
-            ray_commands = self.config["worker_start_ray_commands"]
+            ray_start_commands = self.config["worker_start_ray_commands"]
 
         docker_config = self._get_node_specific_docker_config(node_id)
         return UpdateInstructions(
             node_id=node_id,
-            init_commands=init_commands,
-            start_ray_commands=ray_commands,
+            setup_commands=setup_commands,
+            ray_start_commands=ray_start_commands,
             docker_config=docker_config)
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands,
+    def spawn_updater(self, node_id, setup_commands, ray_start_commands,
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
+        ip = self.provider.internal_ip(node_id)
+        node_type = self._get_node_type(node_id)
+        self.node_tracker.track(node_id, ip, node_type)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -665,7 +671,8 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), self.head_node_ip),
-            setup_commands=with_head_node_ip(init_commands, self.head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands,
+                                             self.head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  self.head_node_ip),
             runtime_hash=self.runtime_hash,
@@ -725,6 +732,8 @@ class StandardAutoscaler:
         nodes = self.workers()
         if nodes:
             self.provider.terminate_nodes(nodes)
+            for node in nodes:
+                self.node_tracker.untrack(node)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
 
@@ -744,10 +753,20 @@ class StandardAutoscaler:
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
+        non_failed = set()
 
         for node_id in all_node_ids:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
+
+            if not all(
+                    tag in node_tags
+                    for tag in (TAG_RAY_NODE_KIND, TAG_RAY_USER_NODE_TYPE,
+                                TAG_RAY_NODE_STATUS)):
+                # In some node providers, creation of a node and tags is not
+                # atomic, so just skip it.
+                continue
+
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
@@ -757,6 +776,7 @@ class StandardAutoscaler:
             is_active = self.load_metrics.is_active(ip)
             if is_active:
                 active_nodes[node_type] += 1
+                non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
@@ -765,13 +785,10 @@ class StandardAutoscaler:
                 ]
                 is_pending = status in pending_states
                 if is_pending:
-                    pending_nodes.append((ip, node_type))
-                else:
-                    # TODO (Alex): Failed nodes are now immediately killed, so
-                    # this list will almost always be empty. We should ideally
-                    # keep a cache of recently failed nodes and their startup
-                    # logs.
-                    failed_nodes.append((ip, node_type))
+                    pending_nodes.append((ip, node_type, status))
+                    non_failed.add(node_id)
+
+        failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
         # The concurrent counter leaves some 0 counts in, so we need to
         # manually filter those out.

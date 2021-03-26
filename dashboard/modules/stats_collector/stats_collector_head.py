@@ -71,7 +71,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
             node_id, node_info = change.new
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
-            channel = aiogrpc.insecure_channel(address)
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = aiogrpc.insecure_channel(address, options=options)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -202,8 +203,10 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         node_id = actor_table_data["address"]["rayletId"]
                         job_actors.setdefault(job_id,
                                               {})[actor_id] = actor_table_data
-                        node_actors.setdefault(node_id,
-                                               {})[actor_id] = actor_table_data
+                        # Update only when node_id is not Nil.
+                        if node_id != stats_collector_consts.NIL_NODE_ID:
+                            node_actors.setdefault(
+                                node_id, {})[actor_id] = actor_table_data
                     DataSource.job_actors.reset(job_actors)
                     DataSource.node_actors.reset(node_actors)
                     logger.info("Received %d actor info from GCS.",
@@ -218,24 +221,35 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                                     RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS)
 
         # Receive actors from channel.
+        state_keys = ("state", "address", "numRestarts", "timestamp", "pid")
         async for sender, msg in receiver.iter():
             try:
-                _, actor_table_data = msg
+                actor_id, actor_table_data = msg
                 pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
                     actor_table_data)
                 message = ray.gcs_utils.ActorTableData.FromString(
                     pubsub_message.data)
                 actor_table_data = actor_table_data_to_dict(message)
                 _process_actor_table_data(actor_table_data)
+                # If actor is not new registered but updated, we only update
+                # states related fields.
+                if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+                    actor_id = actor_id.decode("UTF-8")[len(
+                        ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
+                    actor_table_data_copy = dict(DataSource.actors[actor_id])
+                    for k in state_keys:
+                        actor_table_data_copy[k] = actor_table_data[k]
+                    actor_table_data = actor_table_data_copy
                 actor_id = actor_table_data["actorId"]
                 job_id = actor_table_data["jobId"]
                 node_id = actor_table_data["address"]["rayletId"]
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
-                # Update node actors.
-                node_actors = dict(DataSource.node_actors.get(node_id, {}))
-                node_actors[actor_id] = actor_table_data
-                DataSource.node_actors[node_id] = node_actors
+                # Update node actors (only when node_id is not Nil).
+                if node_id != stats_collector_consts.NIL_NODE_ID:
+                    node_actors = dict(DataSource.node_actors.get(node_id, {}))
+                    node_actors[actor_id] = actor_table_data
+                    DataSource.node_actors[node_id] = node_actors
                 # Update job actors.
                 job_actors = dict(DataSource.job_actors.get(job_id, {}))
                 job_actors[actor_id] = actor_table_data
@@ -271,7 +285,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
 
         async for sender, msg in receiver.iter():
             try:
-                data = json.loads(ray.utils.decode(msg))
+                data = json.loads(ray._private.utils.decode(msg))
                 ip = data["ip"]
                 pid = str(data["pid"])
                 logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))

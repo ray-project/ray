@@ -20,6 +20,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
@@ -41,9 +42,9 @@ struct RemoteConnectionInfo {
 };
 
 /// Callback for object location notifications.
-using OnLocationsFound =
-    std::function<void(const ray::ObjectID &object_id,
-                       const std::unordered_set<ray::NodeID> &, const std::string &)>;
+using OnLocationsFound = std::function<void(
+    const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
+    const std::string &, const NodeID &, size_t object_size)>;
 
 class ObjectDirectoryInterface {
  public:
@@ -127,6 +128,9 @@ class ObjectDirectoryInterface {
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -142,7 +146,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  ObjectDirectory(boost::asio::io_service &io_service,
+  ObjectDirectory(instrumented_io_context &io_service,
                   std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
@@ -171,6 +175,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
 
+  void RecordMetrics(uint64_t duration_ms) override;
+
   std::string DebugString() const override;
 
   /// ObjectDirectory should not be copied.
@@ -185,6 +191,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     std::unordered_set<NodeID> current_object_locations;
     /// The location where this object has been spilled, if any.
     std::string spilled_url = "";
+    // The node id that spills the object to the disk.
+    // It will be Nil if it uses a distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
+    /// The size of the object.
+    size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.
     /// It means current_object_locations is up-to-date with GCS. It
     /// should never go back to false once set to true. If this is true, and
@@ -194,7 +205,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   };
 
   /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.

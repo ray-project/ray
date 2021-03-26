@@ -1,5 +1,6 @@
 import os
 import pickle
+from collections.abc import Iterable
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -22,13 +23,17 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
+_VALID_TYPES = (Number, wandb.data_types.Video)
+_VALID_ITERABLE_TYPES = (wandb.data_types.Video)
 
 
 def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
-    return isinstance(obj, Number)
+    if isinstance(obj, Iterable) and len(obj) > 0:
+        return isinstance(obj[0], _VALID_ITERABLE_TYPES)
+    return isinstance(obj, _VALID_TYPES)
 
 
 def _clean_log(obj: Any):
@@ -304,6 +309,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._trial_processes: Dict["Trial", _WandbLoggingProcess] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
+    def setup(self):
         _set_api_key(self.api_key_file, self.api_key)
 
     def log_trial_start(self, trial: "Trial"):
@@ -480,7 +486,7 @@ class WandbLogger(Logger):
 
         self._trial_experiment_logger = self._experiment_logger_cls(
             **wandb_config)
-
+        self._trial_experiment_logger.setup()
         self._trial_experiment_logger.log_trial_start(self.trial)
 
     def on_result(self, result: Dict):

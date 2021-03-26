@@ -1,6 +1,7 @@
 import numpy as np
 import re
 import unittest
+from tempfile import TemporaryDirectory
 
 import ray
 import ray.rllib.agents.ddpg as ddpg
@@ -45,6 +46,30 @@ class TestDDPG(unittest.TestCase):
                 results = trainer.train()
                 print(results)
             check_compute_single_action(trainer)
+            # Ensure apply_gradient_fn is being called and updating global_step
+            if config["framework"] == "tf":
+                a = trainer.get_policy().global_step.eval(
+                    trainer.get_policy().get_session())
+            else:
+                a = trainer.get_policy().global_step
+            check(a, 500)
+            trainer.stop()
+
+    def test_ddpg_checkpoint_save_and_restore(self):
+        """Test whether a DDPGTrainer can save and load checkpoints."""
+        config = ddpg.DEFAULT_CONFIG.copy()
+        config["num_workers"] = 1
+        config["num_envs_per_worker"] = 2
+        config["learning_starts"] = 0
+        config["exploration_config"]["random_timesteps"] = 100
+
+        # Test against all frameworks.
+        for _ in framework_iterator(config):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer.train()
+            with TemporaryDirectory() as temp_dir:
+                checkpoint = trainer.save(temp_dir)
+                trainer.restore(checkpoint)
             trainer.stop()
 
     def test_ddpg_exploration_and_with_random_prerun(self):
@@ -184,15 +209,8 @@ class TestDDPG(unittest.TestCase):
 
         env = SimpleEnv
         batch_size = 100
-        if env is SimpleEnv:
-            obs_size = (batch_size, 1)
-            actions = np.random.random(size=(batch_size, 1))
-        elif env == "CartPole-v0":
-            obs_size = (batch_size, 4)
-            actions = np.random.randint(0, 2, size=(batch_size, ))
-        else:
-            obs_size = (batch_size, 3)
-            actions = np.random.random(size=(batch_size, 1))
+        obs_size = (batch_size, 1)
+        actions = np.random.random(size=(batch_size, 1))
 
         # Batch of size=n.
         input_ = self._get_batch_helper(obs_size, actions, batch_size)

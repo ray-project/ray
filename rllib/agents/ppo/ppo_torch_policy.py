@@ -3,14 +3,12 @@ PyTorch policy class used for PPO.
 """
 import gym
 import logging
-import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
@@ -19,7 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
@@ -215,33 +213,13 @@ class ValueNetworkMixin:
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
-            if config["_use_trajectory_view_api"]:
 
-                def value(**input_dict):
-                    model_out, _ = self.model.from_batch(
-                        convert_to_torch_tensor(input_dict, self.device),
-                        is_training=False)
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
-
-            # TODO: (sven) Remove once trajectory view API is all-algo default.
-            else:
-
-                def value(ob, prev_action, prev_reward, *state):
-                    model_out, _ = self.model({
-                        SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                            np.asarray([ob]), self.device),
-                        SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                            np.asarray([prev_action]), self.device),
-                        SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                            np.asarray([prev_reward]), self.device),
-                        "is_training": False,
-                    }, [
-                        convert_to_torch_tensor(np.asarray([s]), self.device)
-                        for s in state
-                    ], convert_to_torch_tensor(np.asarray([1]), self.device))
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                input_dict = self._lazy_tensor_dict(input_dict)
+                model_out, _ = self.model(input_dict)
+                # [0] = remove the batch dim.
+                return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
@@ -279,7 +257,7 @@ PPOTorchPolicy = build_policy_class(
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     before_loss_init=setup_mixins,

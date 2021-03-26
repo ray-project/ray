@@ -29,8 +29,8 @@ class MADDPGPostprocessing:
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
         #  supported now.
-        sample_batch.data[SampleBatch.DONES] = self.get_done_from_info(
-            sample_batch.data[SampleBatch.INFOS])
+        sample_batch[SampleBatch.DONES] = self.get_done_from_info(
+            sample_batch[SampleBatch.INFOS])
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
@@ -265,17 +265,11 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
     @override(TFPolicy)
     def gradients(self, optimizer, loss):
-        if self.config["grad_norm_clipping"] is not None:
-            self.gvs = {
-                k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
-                                     self.config["grad_norm_clipping"])
-                for k, optimizer in self.optimizers.items()
-            }
-        else:
-            self.gvs = {
-                k: optimizer.compute_gradients(self.losses[k], self.vars[k])
-                for k, optimizer in self.optimizers.items()
-            }
+        self.gvs = {
+            k: minimize_and_clip(optimizer, self.losses[k], self.vars[k],
+                                 self.config["grad_norm_clipping"])
+            for k, optimizer in self.optimizers.items()
+        }
         return self.gvs["critic"] + self.gvs["actor"]
 
     @override(TFPolicy)

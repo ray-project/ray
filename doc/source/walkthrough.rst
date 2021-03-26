@@ -26,6 +26,8 @@ Installation
 
     To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
+    Note: To run your Ray Java application, you need to install Ray Python with `pip install -U ray` first. (For Ray Java snapshot versions, install nightly Ray Python wheels.) The versions of Ray Java and Ray Python must match.
+
 Starting Ray
 ------------
 
@@ -92,8 +94,8 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 
       @ray.remote
       def slow_function():
-        time.sleep(10)
-        return 1
+          time.sleep(10)
+          return 1
 
       # Invocations of Ray remote functions happen in parallel.
       # All computation is performed in the background, driven by Ray's internal event loop.
@@ -401,21 +403,11 @@ works as follows.
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
 
-Object Eviction
+Object Spilling
 ---------------
 
-When the object store gets full, objects will be evicted to make room for new objects.
-This happens in approximate LRU (least recently used) order. To avoid objects from
-being evicted, you can call ``get`` and store their values instead. Numpy array
-objects cannot be evicted while they are mapped in any Python process.
-
-.. note::
-
-    Objects created with ``put`` are pinned in memory while a Python/Java reference
-    to the object ref returned by the put exists. This only applies to the specific
-    ref returned by put, not refs in general or copies of that refs.
-
-See also: `object spilling <memory-management.html#object-spilling>`__.
+When the object store gets full, objects will be `spilled to disk <memory-management.html#object-spilling>`__.
+This feature is available in Ray 1.3+.
 
 Remote Classes (Actors)
 -----------------------

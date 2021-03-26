@@ -91,6 +91,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus UnexpectedSystemExit()
 
         @staticmethod
+        CRayStatus CreationTaskError()
+
+        @staticmethod
         CRayStatus NotFound()
 
         c_bool ok()
@@ -105,7 +108,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRedisError()
         c_bool IsTimedOut()
         c_bool IsInterrupted()
-        c_bool IsSystemExit()
+        c_bool ShouldExitWorker()
         c_bool IsNotFound()
 
         c_string ToString()
@@ -270,11 +273,15 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CPlacementGroupCreationOptions(
             const c_string &name,
             CPlacementStrategy strategy,
-            const c_vector[unordered_map[c_string, double]] &bundles
+            const c_vector[unordered_map[c_string, double]] &bundles,
+            c_bool is_detached
         )
 
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
-                          const c_string &password,
-                          c_bool is_test_client)
+                          const c_string &password)
+
+cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
+    cdef cppclass CJobConfig "ray::rpc::JobConfig":
+        const c_string &SerializeAsString()

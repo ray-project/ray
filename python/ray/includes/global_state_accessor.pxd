@@ -13,8 +13,7 @@ from ray.includes.unique_ids cimport (
 cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
     cdef cppclass CGlobalStateAccessor "ray::gcs::GlobalStateAccessor":
         CGlobalStateAccessor(const c_string &redis_address,
-                             const c_string &redis_password,
-                             c_bool is_test)
+                             const c_string &redis_password)
         c_bool Connect()
         void Disconnect()
         c_vector[c_string] GetAllJobInfo()
@@ -32,4 +31,6 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         c_bool AddWorkerInfo(const c_string &serialized_string)
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
+        unique_ptr[c_string] GetPlacementGroupByName(
+            const c_string &placement_group_name)
         c_vector[c_string] GetAllPlacementGroupInfo()

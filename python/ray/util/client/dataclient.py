@@ -34,19 +34,22 @@ class DataClient:
         self.data_thread = self._start_datathread()
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
+        self.lock = threading.RLock()
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
+        self._in_shutdown = False
         self.data_thread.start()
 
     def _next_id(self) -> int:
-        self._req_id += 1
-        if self._req_id > INT32_MAX:
-            self._req_id = 1
-        # Responses that aren't tracked (like opportunistic releases)
-        # have req_id=0, so make sure we never mint such an id.
-        assert self._req_id != 0
-        return self._req_id
+        with self.lock:
+            self._req_id += 1
+            if self._req_id > INT32_MAX:
+                self._req_id = 1
+            # Responses that aren't tracked (like opportunistic releases)
+            # have req_id=0, so make sure we never mint such an id.
+            assert self._req_id != 0
+            return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
@@ -67,9 +70,20 @@ class DataClient:
                     self.ready_data[response.req_id] = response
                     self.cv.notify_all()
         except grpc.RpcError as e:
-            if grpc.StatusCode.CANCELLED == e.code():
+            with self.cv:
+                self._in_shutdown = True
+                self.cv.notify_all()
+            if e.code() == grpc.StatusCode.CANCELLED:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
+            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                              grpc.StatusCode.RESOURCE_EXHAUSTED):
+                # TODO(barakmich): The server may have
+                # dropped. In theory, we can retry, as per
+                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                # in practice we may need to think about the correct semantics
+                # here.
+                logger.info("Server disconnected from data channel")
             else:
                 logger.error(
                     f"Got Error from data channel -- shutting down: {e}")
@@ -88,10 +102,20 @@ class DataClient:
         self.request_queue.put(req)
         data = None
         with self.cv:
-            self.cv.wait_for(lambda: req_id in self.ready_data)
+            self.cv.wait_for(
+                lambda: req_id in self.ready_data or self._in_shutdown)
+            if self._in_shutdown:
+                raise ConnectionError(
+                    "Cannot send request due to data channel "
+                    f"shutting down. Request: {req}")
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
+
+    def _async_send(self, req: ray_client_pb2.DataRequest) -> None:
+        req_id = self._next_id()
+        req.req_id = req_id
+        self.request_queue.put(req)
 
     def ConnectionInfo(self,
                        context=None) -> ray_client_pb2.ConnectionInfoResponse:
@@ -116,4 +140,4 @@ class DataClient:
                       request: ray_client_pb2.ReleaseRequest,
                       context=None) -> None:
         datareq = ray_client_pb2.DataRequest(release=request, )
-        self.request_queue.put(datareq)
+        self._async_send(datareq)

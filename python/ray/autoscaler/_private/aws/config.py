@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 import time
+from typing import Any, Dict, List
 import logging
 
 import boto3
@@ -115,8 +116,10 @@ def log_to_cli(config):
                        key,
                        head_src_key,
                        workers_src_key,
-                       allowed_tags=["default"],
+                       allowed_tags=None,
                        list_value=False):
+            if allowed_tags is None:
+                allowed_tags = ["default"]
 
             head_tags = {}
             workers_tags = {}
@@ -154,11 +157,11 @@ def log_to_cli(config):
                     _tags=workers_tags)
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        cli_logger.labeled_value(
-            "IAM Profile",
-            "{}",
-            _arn_to_name(config["head_node"]["IamInstanceProfile"]["Arn"]),
-            _tags=tags)
+        profile_arn = config["head_node"]["IamInstanceProfile"].get("Arn")
+        profile_name = _arn_to_name(profile_arn) \
+            if profile_arn \
+            else config["head_node"]["IamInstanceProfile"]["Name"]
+        cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
         if ("KeyName" in config["head_node"]
                 and "KeyName" in config["worker_nodes"]):
@@ -357,9 +360,23 @@ def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     use_internal_ips = config["provider"].get("use_internal_ips", False)
 
+    # If head or worker security group is specified, filter down to subnets
+    # belonging to the same VPC as the security group.
+    sg_ids = (config["head_node"].get("SecurityGroupIds", []) +
+              config["worker_nodes"].get("SecurityGroupIds", []))
+    if sg_ids:
+        vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
+    else:
+        vpc_id_of_sg = None
+
     try:
+        candidate_subnets = ec2.subnets.all()
+        if vpc_id_of_sg:
+            candidate_subnets = [
+                s for s in candidate_subnets if s.vpc_id == vpc_id_of_sg
+            ]
         subnets = sorted(
-            (s for s in ec2.subnets.all() if s.state == "available" and (
+            (s for s in candidate_subnets if s.state == "available" and (
                 use_internal_ips or s.map_public_ip_on_launch)),
             reverse=True,  # sort from Z-A
             key=lambda subnet: subnet.availability_zone)
@@ -398,7 +415,14 @@ def _configure_subnet(config):
                 "to populate the list of subnets and trying this again.".
                 format(config["provider"]["availability_zone"]))
 
-    subnet_ids = [s.subnet_id for s in subnets]
+    # Use subnets in only one VPC, so that _configure_security_groups only
+    # needs to create a security group in this one VPC. Otherwise, we'd need
+    # to set up security groups in all of the user's VPCs and set up networking
+    # rules to allow traffic between these groups.
+    # See https://github.com/ray-project/ray/pull/14868.
+    subnet_ids = [
+        s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
+    ]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
@@ -412,6 +436,34 @@ def _configure_subnet(config):
         _set_config_info(workers_subnet_src="config")
 
     return config
+
+
+def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
+    """Returns the VPC id of the security groups with the provided security
+    group ids.
+
+    Errors if the provided security groups belong to multiple VPCs.
+    Errors if no security group with any of the provided ids is identified.
+    """
+    sg_ids = list(set(sg_ids))
+
+    ec2 = _resource("ec2", config)
+    filters = [{"Name": "group-id", "Values": sg_ids}]
+    security_groups = ec2.security_groups.filter(Filters=filters)
+    vpc_ids = [sg.vpc_id for sg in security_groups]
+    vpc_ids = list(set(vpc_ids))
+
+    multiple_vpc_msg = "All security groups specified in the cluster config "\
+        "should belong to the same VPC."
+    cli_logger.doassert(len(vpc_ids) <= 1, multiple_vpc_msg)
+    assert len(vpc_ids) <= 1, multiple_vpc_msg
+
+    no_sg_msg = "Failed to detect a security group with id equal to any of "\
+        "the configured SecurityGroupIds."
+    cli_logger.doassert(len(vpc_ids) > 0, no_sg_msg)
+    assert len(vpc_ids) > 0, no_sg_msg
+
+    return vpc_ids[0]
 
 
 def _configure_security_group(config):
@@ -453,11 +505,13 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
+    head_ami = config["head_node"].get("ImageId", "").lower()
+    if head_ami in ["", "latest_dlami"]:
         config["head_node"]["ImageId"] = default_ami
         _set_config_info(head_ami_src="dlami")
 
-    if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
+    worker_ami = config["worker_nodes"].get("ImageId", "").lower()
+    if worker_ami in ["", "latest_dlami"]:
         config["worker_nodes"]["ImageId"] = default_ami
         _set_config_info(workers_ami_src="dlami")
 
@@ -566,6 +620,13 @@ def _create_security_group(config, vpc_id, group_name):
 
 def _upsert_security_group_rules(conf, security_groups):
     sgids = {sg.id for sg in security_groups.values()}
+
+    # Update sgids to include user-specified security groups.
+    # This is necessary if the user specifies the head node type's security
+    # groups but not the worker's, or vice-versa.
+    for node_type in NODE_KIND_CONFIG_KEYS.values():
+        sgids.update(conf[node_type].get("SecurityGroupIds", []))
+
     # sort security group items for deterministic inbound rule config order
     # (mainly supports more precise stub-based boto3 unit testing)
     for node_type, sg in sorted(security_groups.items()):
@@ -582,8 +643,10 @@ def _update_inbound_rules(target_security_group, sgids, config):
     target_security_group.authorize_ingress(IpPermissions=ip_permissions)
 
 
-def _create_default_inbound_rules(sgids, extended_rules=[]):
-    intracluster_rules = _create_default_instracluster_inbound_rules(sgids)
+def _create_default_inbound_rules(sgids, extended_rules=None):
+    if extended_rules is None:
+        extended_rules = []
+    intracluster_rules = _create_default_intracluster_inbound_rules(sgids)
     ssh_rules = _create_default_ssh_inbound_rules()
     merged_rules = itertools.chain(
         intracluster_rules,
@@ -593,7 +656,7 @@ def _create_default_inbound_rules(sgids, extended_rules=[]):
     return list(merged_rules)
 
 
-def _create_default_instracluster_inbound_rules(intracluster_sgids):
+def _create_default_intracluster_inbound_rules(intracluster_sgids):
     return [{
         "FromPort": -1,
         "ToPort": -1,
