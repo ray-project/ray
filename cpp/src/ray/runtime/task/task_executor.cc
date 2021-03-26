@@ -9,6 +9,35 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
+
+namespace internal {
+/// Execute remote functions by networking stream.
+msgpack::sbuffer TaskExecutionHandler(
+    const std::string &func_name,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  if (func_name.empty()) {
+    return PackError("Task function name is empty");
+  }
+
+  msgpack::sbuffer result;
+  do {
+    try {
+      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+      if (func_ptr == nullptr) {
+        result = PackError("unknown function: " + func_name);
+        break;
+      }
+
+      result = (*func_ptr)(args_buffer);
+    } catch (const std::exception &ex) {
+      result = PackError(ex.what());
+    }
+  } while (0);
+
+  return result;
+}
+}  // namespace internal
+
 namespace api {
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
