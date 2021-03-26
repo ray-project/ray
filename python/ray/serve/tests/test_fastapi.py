@@ -5,7 +5,8 @@ import tempfile
 import pytest
 import inspect
 import requests
-from fastapi import Cookie, Depends, FastAPI, Header, Query, Request, APIRouter, BackgroundTasks
+from fastapi import (Cookie, Depends, FastAPI, Header, Query, Request,
+                     APIRouter, BackgroundTasks)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
