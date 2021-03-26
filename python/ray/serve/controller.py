@@ -29,7 +29,7 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 1.0
+CONTROL_LOOP_PERIOD_S = 0.1
 
 
 @ray.remote
