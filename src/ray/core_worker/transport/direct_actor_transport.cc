@@ -577,11 +577,11 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
   if (max_concurrency_ > 1) {
     if (is_asyncio_) {
       RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-      pool_.reset(new BoundedExecutor(max_concurrency));
+      fiber_state_.reset(new FiberState(max_concurrency));
     } else {
       RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
                     << ", creating new fiber thread.";
-      fiber_state_.reset(new FiberState(max_concurrency));
+      pool_.reset(new BoundedExecutor(max_concurrency));
     }
   }
 }
