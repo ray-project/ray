@@ -113,6 +113,10 @@ def test_make_fastapi_cbv_util():
 def test_fastapi_features(serve_instance):
     app = FastAPI(openapi_url="/my_api.json")
 
+    @app.on_event("startup")
+    def inject_state():
+        app.state.state_one = "app.state"
+
     @app.middleware("http")
     async def add_process_time_header(request: Request, call_next):
         start_time = time.time()
@@ -192,6 +196,7 @@ def test_fastapi_features(serve_instance):
                 user_agent,
                 commons,
                 db,
+                app.state.state_one,
             ],
             file_path=path,
         )
@@ -260,6 +265,7 @@ def test_fastapi_features(serve_instance):
             "q": "common_arg"
         },
         "db",
+        "app.state",
     ]
     assert open(resp.json()["file_path"]).read() == "hello"
 
