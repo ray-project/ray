@@ -16,7 +16,8 @@ from collections import (
 import ray
 from ray import profiling
 from ray import ray_constants
-from ray import cloudpickle as pickle
+# from ray import cloudpickle as pickle
+import kimchi
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
     check_oversized_pickle,
@@ -134,7 +135,8 @@ class FunctionActorManager:
             return
 
         function = remote_function._function
-        pickled_function = pickle.dumps(function)
+        # pickled_function = pickle.dumps(function)
+        pickled_function = kimchi.dumps(function)
 
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
@@ -177,7 +179,8 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
 
             try:
-                function = pickle.loads(serialized_function)
+                function = kimchi.loads(serialized_function)
+                # function = pickle.loads(serialized_function)
             except Exception:
 
                 def f(*args, **kwargs):
@@ -364,7 +367,8 @@ class FunctionActorManager:
             "class_name": actor_creation_function_descriptor.class_name.split(
                 ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
-            "class": pickle.dumps(Class),
+            # "class": pickle.dumps(Class),
+            "class": kimchi.dumps(Class),
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
@@ -503,7 +507,8 @@ class FunctionActorManager:
         actor_class = None
         try:
             with self.lock:
-                actor_class = pickle.loads(pickled_class)
+                # actor_class = pickle.loads(pickled_class)
+                actor_class = kimchi.loads(pickled_class)
         except Exception:
             logger.exception("Failed to load actor class %s.", class_name)
             # The actor class failed to be unpickled, create a fake actor

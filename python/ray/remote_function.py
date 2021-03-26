@@ -1,7 +1,8 @@
 import logging
 from functools import wraps
 
-from ray import cloudpickle as pickle
+# from ray import cloudpickle as pickle
+import kimchi
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
@@ -225,7 +226,7 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            self._pickled_function = pickle.dumps(self._function)
+            self._pickled_function = kimchi.dumps(self._function)
 
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._pickled_function)

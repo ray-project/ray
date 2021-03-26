@@ -6,7 +6,8 @@ import redis
 
 import ray
 from ray import ray_constants
-from ray import cloudpickle as pickle
+#from ray import cloudpickle as pickle
+import kimchi
 from ray import profiling
 
 import logging
@@ -169,7 +170,8 @@ class ImportThread:
             # Importing the same module in different threads causes deadlock.
             with self.worker.function_actor_manager.lock:
                 # Deserialize the function.
-                function = pickle.loads(serialized_function)
+                # function = pickle.loads(serialized_function)
+                function = kimchi.loads(serialized_function)
             # Run the function.
             function({"worker": self.worker})
         except Exception:

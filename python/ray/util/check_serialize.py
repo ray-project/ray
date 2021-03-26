@@ -1,7 +1,8 @@
 """A utility for debugging serialization issues."""
 from typing import Any, Tuple, Set, Optional
 import inspect
-import ray.cloudpickle as cp
+# import ray.cloudpickle as cp
+import kimchi
 import colorama
 from contextlib import contextmanager
 
@@ -165,7 +166,8 @@ def inspect_serializability(
     else:
         _printer.print(f"Serializing '{name}' {base_obj}...")
     try:
-        cp.dumps(base_obj)
+        # cp.dumps(base_obj)
+        kimchi.dumps(base_obj)
         return True, _failure_set
     except Exception as e:
         _printer.print(f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET} "

@@ -18,7 +18,8 @@ from typing import Any, Dict, List, Iterator
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
-import ray.cloudpickle as pickle
+# import ray.cloudpickle as pickle
+import kimchi
 import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
@@ -350,7 +351,8 @@ class Worker:
             # Attempt to pickle the function before we need it. This could
             # fail, and it is more convenient if the failure happens before we
             # actually run the function locally.
-            pickled_function = pickle.dumps(function)
+            # pickled_function = pickle.dumps(function)
+            pickled_function = kimchi.dumps(function)
 
             function_to_run_id = hashlib.shake_128(pickled_function).digest(
                 ray_constants.ID_SIZE)
