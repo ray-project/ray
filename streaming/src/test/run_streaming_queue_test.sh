@@ -34,7 +34,7 @@ if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "//:plasma_store_server" "//:redis-server" "//:redis-cli"
+bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:gcs_server" "//:libray_redis_module.so" "//:redis-server" "//:redis-cli"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
 
@@ -46,7 +46,6 @@ fi
 
 REDIS_MODULE="$RAY_ROOT/bazel-bin/libray_redis_module.so"
 REDIS_SERVER_EXEC="$RAY_ROOT/bazel-bin/external/com_github_antirez_redis/redis-server"
-STORE_EXEC="$RAY_ROOT/bazel-bin/plasma_store_server"
 REDIS_CLIENT_EXEC="$RAY_ROOT/bazel-bin/redis-cli"
 RAYLET_EXEC="$RAY_ROOT/bazel-bin/raylet"
 STREAMING_TEST_WORKER_EXEC="$RAY_ROOT/bazel-bin/streaming/streaming_test_worker"
@@ -63,5 +62,5 @@ set -e
 #$RAY_ROOT/bazel-bin/streaming/streaming_queue_tests $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $STREAMING_TEST_WORKER_EXEC $GCS_SERVER_EXEC $REDIS_SERVER_EXEC $REDIS_MODULE $REDIS_CLIENT_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_writer_exactly_once_test/0
 
 # run all tests
-"$RAY_ROOT"/bazel-bin/streaming/streaming_queue_tests "$STORE_EXEC" "$RAYLET_EXEC" "$RAYLET_PORT" "$STREAMING_TEST_WORKER_EXEC" "$GCS_SERVER_EXEC" "$REDIS_SERVER_EXEC" "$REDIS_MODULE" "$REDIS_CLIENT_EXEC"
+"$RAY_ROOT"/bazel-bin/streaming/streaming_queue_tests "$RAYLET_EXEC" "$RAYLET_PORT" "$STREAMING_TEST_WORKER_EXEC" "$GCS_SERVER_EXEC" "$REDIS_SERVER_EXEC" "$REDIS_MODULE" "$REDIS_CLIENT_EXEC"
 sleep 1s
