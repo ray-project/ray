@@ -122,11 +122,6 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
       ray::JoinPaths(ray::GetUserTempDir(), "raylet" + ObjectID::FromRandom().Hex());
   std::string plasma_store_socket_name =
       ray::JoinPaths(ray::GetUserTempDir(), "store" + ObjectID::FromRandom().Hex());
-#ifdef __linux__
-  const std::string plasma_directory = "/dev/shm";
-#else
-  const std::string plasma_directory = "/tmp";
-#endif
   std::vector<std::string> cmdargs(
       {TEST_RAYLET_EXEC_PATH, "--raylet_socket_name=" + raylet_socket_name,
        "--store_socket_name=" + plasma_store_socket_name, "--object_manager_port=0",
@@ -137,7 +132,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, plasma_store_socket_name,
                               raylet_socket_name, std::to_string(port)}),
-       "--object_store_memory=10000000", "--plasma_directory=" + plasma_directory});
+       "--object_store_memory=10000000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
