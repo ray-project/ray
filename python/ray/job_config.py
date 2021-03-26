@@ -41,6 +41,11 @@ class JobConfig:
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
+        # It's difficult to find the error that caused by the
+        # code_search_path is a string. So we assert here.
+        assert isinstance(self.code_search_path, (list, tuple)), \
+            f"The type of code search path is incorrect: " \
+            f"{type(code_search_path)}"
         self.runtime_env = runtime_env or dict()
         self.client_job = client_job
 

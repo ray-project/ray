@@ -323,7 +323,7 @@ def sac_actor_critic_loss(
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
     q_t_selected_target = tf.stop_gradient(
-        train_batch[SampleBatch.REWARDS] +
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped).
