@@ -992,7 +992,6 @@ class Node:
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
 
-
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.
 
