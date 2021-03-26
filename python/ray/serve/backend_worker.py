@@ -60,11 +60,20 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             # backend code will connect to the instance that this backend is
             # running in.
             ray.serve.api._set_internal_replica_context(
-                backend_tag, replica_tag, controller_name)
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=None)
             if is_function:
                 _callable = backend
             else:
                 _callable = backend(*init_args)
+            # Setting the context again to update the servable_object.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
@@ -245,6 +254,7 @@ class RayServeReplica:
         arg = parse_request_item(request_item)
 
         start = time.time()
+        method_to_call = None
         try:
             # TODO(simon): Split this section out when invoke_batch is removed.
             if self.config.internal_metadata.is_asgi_app:
@@ -276,7 +286,10 @@ class RayServeReplica:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(method_to_call.__name__, e)
+            function_name = "unknown"
+            if method_to_call is not None:
+                function_name = method_to_call.__name__
+            result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000

@@ -108,9 +108,8 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback =
-      std::function<void(const ObjectID &, const std::string &, const NodeID &,
-                         std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback = std::function<void(
+      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -212,12 +211,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(instrumented_io_context &main_service,
-                         const NodeID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback = nullptr,
-                         std::function<void()> object_store_full_callback = nullptr);
+  explicit ObjectManager(
+      instrumented_io_context &main_service, const NodeID &self_node_id,
+      const ObjectManagerConfig &config,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<std::string(const ObjectID &)> get_spilled_object_url,
+      SpillObjectsCallback spill_objects_callback = nullptr,
+      std::function<void()> object_store_full_callback = nullptr);
 
   ~ObjectManager();
 
@@ -483,7 +484,12 @@ class ObjectManager : public ObjectManagerInterface,
   std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 
+  /// Callback to trigger direct restoration of an object.
   const RestoreSpilledObjectCallback restore_spilled_object_;
+
+  /// Callback to get the URL of a locally spilled object.
+  /// This returns the empty string if the object was not spilled locally.
+  std::function<std::string(const ObjectID &)> get_spilled_object_url_;
 
   /// Pull manager retry timer .
   boost::asio::deadline_timer pull_retry_timer_;

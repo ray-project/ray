@@ -195,7 +195,12 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   virtual std::string CallString() const {
     const std::string &class_name = typed_message_->class_name();
     const std::string &function_name = typed_message_->function_name();
-    return class_name.empty() ? function_name : class_name + "." + function_name;
+    if (class_name.empty()) {
+      return function_name.substr(function_name.find_last_of(".") + 1);
+    } else {
+      return class_name.substr(class_name.find_last_of(".") + 1) + "." +
+             function_name.substr(function_name.find_last_of(".") + 1);
+    }
   }
 
   const std::string &ModuleName() const { return typed_message_->module_name(); }

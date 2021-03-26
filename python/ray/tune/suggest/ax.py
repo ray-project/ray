@@ -17,10 +17,11 @@ except ImportError:
 
 # This exception only exists in newer Ax releases for python 3.7
 try:
+    from ax.exceptions.core import DataRequiredError
     from ax.exceptions.generation_strategy import \
         MaxParallelismReachedException
 except ImportError:
-    MaxParallelismReachedException = Exception
+    MaxParallelismReachedException = DataRequiredError = Exception
 
 import logging
 
@@ -262,7 +263,7 @@ class AxSearch(Searcher):
         else:
             try:
                 parameters, trial_index = self._ax.get_next_trial()
-            except MaxParallelismReachedException:
+            except (MaxParallelismReachedException, DataRequiredError):
                 return None
 
         self._live_trial_mapping[trial_id] = trial_index

@@ -539,11 +539,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RestoreSpilledObject` request.
-  void HandleRestoreSpilledObject(const rpc::RestoreSpilledObjectRequest &request,
-                                  rpc::RestoreSpilledObjectReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -578,11 +573,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;
-
-  /// Send a object restoration request to a remote node of a given node id.
-  void SendSpilledObjectRestorationRequestToRemoteNode(const ObjectID &object_id,
-                                                       const std::string &spilled_url,
-                                                       const NodeID &node_id);
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
@@ -736,7 +726,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t metrics_last_recorded_time_ms_;
+  uint64_t last_metrics_recorded_at_ms_;
 
   /// Number of tasks that are received and scheduled.
   uint64_t metrics_num_task_scheduled_;
