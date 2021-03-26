@@ -1,14 +1,18 @@
 # coding: utf-8
 import collections
+from dataclasses import dataclass
 import io
 import logging
 import re
 import string
 import sys
+from typing import Any, Dict, Optional
 import weakref
 
+from fastapi import FastAPI
 import numpy as np
 from numpy import log
+from pydantic import BaseModel
 import pytest
 
 import ray
@@ -632,6 +636,159 @@ def test_numpy_ufunc(ray_start_shared_local_modes):
         log
 
     ray.get(f.remote())
+
+
+def test_serialize_cls(ray_start_shared_local_modes):
+    class User(BaseModel):
+        name: str
+
+    ray.get(ray.put(User))
+
+
+def test_serialize_instance(ray_start_shared_local_modes):
+    class User(BaseModel):
+        name: str
+
+    ray.get(ray.put(User(name="a")))
+
+
+def test_serialize_imported_cls(ray_start_shared_local_modes):
+    from pydantic_module import User
+
+    ray.get(ray.put(User))
+
+
+def test_serialize_imported_instance(ray_start_shared_local_modes):
+    from pydantic_module import user
+
+    ray.get(ray.put(user))
+
+
+def test_serialize_app_no_route(ray_start_shared_local_modes):
+    app = FastAPI()
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_no_validation(ray_start_shared_local_modes):
+    app = FastAPI()
+
+    @app.get("/")
+    def hello() -> str:
+        return "hi"
+
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_primitive_type(ray_start_shared_local_modes):
+    app = FastAPI()
+
+    @app.get("/")
+    def hello(v: str) -> str:
+        return "hi"
+
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_pydantic_type_imported(ray_start_shared_local_modes):
+    from pydantic_module import User
+
+    app = FastAPI()
+
+    @app.get("/")
+    def hello(v: str, u: User) -> str:
+        return "hi"
+
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_pydantic_type_inline(ray_start_shared_local_modes):
+    class User(BaseModel):
+        name: str
+
+    app = FastAPI()
+
+    @app.get("/")
+    def hello(v: str, u: User) -> str:
+        return "hi"
+
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_imported(ray_start_shared_local_modes):
+    from pydantic_module import app
+    ray.get(ray.put(app))
+
+
+def test_serialize_app_pydantic_type_closure_ref(ray_start_shared_local_modes):
+    class User(BaseModel):
+        name: str
+
+    def make():
+        app = FastAPI()
+
+        @app.get("/")
+        def hello(v: str, u: User) -> str:
+            return "hi"
+
+        return app
+
+    ray.get(ray.put(make))
+
+
+def test_serialize_app_pydantic_type_closure_ref_import(
+        ray_start_shared_local_modes):
+    from pydantic_module import User
+
+    def make():
+        app = FastAPI()
+
+        @app.get("/")
+        def hello(v: str, u: User) -> str:
+            return "hi"
+
+        return app
+
+    ray.get(ray.put(make))
+
+
+def test_serialize_app_pydantic_type_closure(ray_start_shared_local_modes):
+    def make():
+        class User(BaseModel):
+            name: str
+
+        app = FastAPI()
+
+        @app.get("/")
+        def hello(v: str, u: User) -> str:
+            return "hi"
+
+        return app
+
+    ray.get(ray.put(make))
+
+
+def test_serialize_app_imported_closure(ray_start_shared_local_modes):
+    from pydantic_module import closure
+    ray.get(ray.put(closure))
+
+
+def test_serialize_serve_dataclass(ray_start_shared_local_modes):
+    @dataclass
+    class BackendMetadata:
+        accepts_batches: bool = False
+        is_blocking: bool = True
+        autoscaling_config: Optional[Dict[str, Any]] = None
+
+    class BackendConfig(BaseModel):
+        internal_metadata: BackendMetadata = BackendMetadata()
+
+    ray.get(ray.put(BackendConfig()))
+
+    @ray.remote
+    def consume(f):
+        pass
+
+    ray.get(consume.remote(BackendConfig()))
 
 
 if __name__ == "__main__":

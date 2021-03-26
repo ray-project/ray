@@ -93,6 +93,50 @@ class SerializationContext:
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
 
+        # Register custom Pydantic serializer because Pydantic's Cython
+        # validators are not serializable. The validators will be reconstructed
+        # with the ModelField when deserialized.
+        # https://github.com/cloudpipe/cloudpickle/issues/408
+        try:
+            from pydantic.fields import ModelField
+
+            def model_field_serializer(obj):
+                return {
+                    "name": obj.name,
+                    "type_": obj.type_,
+                    "class_validators": obj.class_validators,
+                    "model_config": obj.model_config,
+                    "default": obj.default,
+                    "default_factory": obj.default_factory,
+                    "required": obj.required,
+                    "alias": obj.alias,
+                    "field_info": obj.field_info,
+                }
+
+            def model_field_deserializer(d):
+                return ModelField(**d)
+
+            self._register_cloudpickle_serializer(
+                ModelField, model_field_serializer, model_field_deserializer)
+        except ImportError:
+            pass
+
+        # FastAPI's app.state object is not serializable because it overrides
+        # __getattr__.
+        try:
+            from starlette.datastructures import State
+
+            def state_serializer(obj):
+                return obj._state
+
+            def state_deserializer(d):
+                return State(d)
+
+            self._register_cloudpickle_serializer(State, state_serializer,
+                                                  state_deserializer)
+        except ImportError:
+            pass
+
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer
 

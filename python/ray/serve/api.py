@@ -23,8 +23,7 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger, make_fastapi_class_based_view,
-                             register_custom_serializers)
+                             logger, make_fastapi_class_based_view)
 
 import ray
 
@@ -700,8 +699,6 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
-    register_custom_serializers()
-
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
@@ -767,8 +764,6 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
-
-    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
