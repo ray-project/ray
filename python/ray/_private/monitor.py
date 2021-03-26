@@ -28,7 +28,7 @@ import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
-from ray._raylet import connect_to_gcs, disconnect_to_gcs
+from ray._raylet import connect_to_gcs, disconnect_from_gcs
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class Monitor:
         logger.info("Monitor: Started")
 
     def __del__(self):
-        disconnect_to_gcs(self.gcs_client)
+        disconnect_from_gcs(self.gcs_client)
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:

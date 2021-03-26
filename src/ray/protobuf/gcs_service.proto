@@ -537,9 +537,7 @@ message InternalKVGetRequest {
 
 message InternalKVGetReply {
   GcsStatus status = 1;
-  oneof optional_value {
-    bytes value = 2;
-  }
+  bytes value = 2;
 }
 
 message InternalKVPutRequest {

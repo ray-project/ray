@@ -11,8 +11,11 @@ void GcsInternalKVManager::HandleInternalKVGet(
       cmd, [reply, send_reply_callback](auto redis_reply) {
         if (!redis_reply->IsNil()) {
           reply->set_value(redis_reply->ReadAsString());
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+        } else {
+          GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                             Status::NotFound("Failed to find the key"));
         }
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       }));
 }
 
