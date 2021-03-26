@@ -15,9 +15,9 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_placeholder
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -82,7 +82,7 @@ class DynamicTFPolicy(TFPolicy):
             existing_model: Optional[ModelV2] = None,
             get_batch_divisibility_req: Optional[Callable[[Policy],
                                                           int]] = None,
-            obs_include_prev_action_reward: bool = True):
+            obs_include_prev_action_reward=DEPRECATED_VALUE):
         """Initialize a dynamic TF policy.
 
         Args:
@@ -136,9 +136,10 @@ class DynamicTFPolicy(TFPolicy):
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
                 Optional callable that returns the divisibility requirement for
                 sample batches. If None, will assume a value of 1.
-            obs_include_prev_action_reward (bool): Whether to include the
-                previous action and reward in the model input (default: True).
         """
+        if obs_include_prev_action_reward != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="obs_include_prev_action_reward", error=False)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -146,7 +147,6 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
-        self._obs_include_prev_action_reward = obs_include_prev_action_reward
 
         dist_class = dist_inputs = None
         if action_sampler_fn or action_distribution_fn:
@@ -160,7 +160,11 @@ class DynamicTFPolicy(TFPolicy):
 
         # Setup self.model.
         if existing_model:
-            self.model = existing_model
+            if isinstance(existing_model, list):
+                self.model = existing_model[0]
+                # TODO: (sven) hack, but works for `target_[q_]?model`.
+                for i in range(1, len(existing_model)):
+                    setattr(self, existing_model[i][0], existing_model[i][1])
         elif make_model:
             self.model = make_model(self, obs_space, action_space, config)
         else:
@@ -181,19 +185,13 @@ class DynamicTFPolicy(TFPolicy):
             if self._state_inputs:
                 self._seq_lens = existing_inputs["seq_lens"]
         else:
-            if self.config["_use_trajectory_view_api"]:
-                self._state_inputs = [
-                    get_placeholder(
-                        space=vr.space,
-                        time_axis=not isinstance(vr.shift, int),
-                    ) for k, vr in self.model.view_requirements.items()
-                    if k.startswith("state_in_")
-                ]
-            else:
-                self._state_inputs = [
-                    tf1.placeholder(shape=(None, ) + s.shape, dtype=s.dtype)
-                    for s in self.model.get_initial_state()
-                ]
+            self._state_inputs = [
+                get_placeholder(
+                    space=vr.space,
+                    time_axis=not isinstance(vr.shift, int),
+                ) for k, vr in self.model.view_requirements.items()
+                if k.startswith("state_in_")
+            ]
 
         # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
@@ -210,28 +208,17 @@ class DynamicTFPolicy(TFPolicy):
                     self.view_requirements, existing_inputs)
         else:
             action_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_action_ph = ModelCatalog.get_action_placeholder(
-                action_space, "prev_action")
-            if self.config["_use_trajectory_view_api"]:
-                self._input_dict, self._dummy_batch = \
-                    self._get_input_dict_and_dummy_batch(
-                        self.view_requirements,
-                        {SampleBatch.ACTIONS: action_ph,
-                         SampleBatch.PREV_ACTIONS: prev_action_ph})
-            else:
-                self._input_dict = {
-                    SampleBatch.CUR_OBS: tf1.placeholder(
-                        tf.float32,
-                        shape=[None] + list(obs_space.shape),
-                        name="observation")
+            prev_action_ph = {}
+            if SampleBatch.PREV_ACTIONS not in self.view_requirements:
+                prev_action_ph = {
+                    SampleBatch.PREV_ACTIONS: ModelCatalog.
+                    get_action_placeholder(action_space, "prev_action")
                 }
-                self._input_dict[SampleBatch.ACTIONS] = action_ph
-                if self._obs_include_prev_action_reward:
-                    self._input_dict.update({
-                        SampleBatch.PREV_ACTIONS: prev_action_ph,
-                        SampleBatch.PREV_REWARDS: tf1.placeholder(
-                            tf.float32, [None], name="prev_reward"),
-                    })
+            self._input_dict, self._dummy_batch = \
+                self._get_input_dict_and_dummy_batch(
+                    self.view_requirements,
+                    dict({SampleBatch.ACTIONS: action_ph},
+                         **prev_action_ph))
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
@@ -389,7 +376,11 @@ class DynamicTFPolicy(TFPolicy):
             self.action_space,
             self.config,
             existing_inputs=input_dict,
-            existing_model=self.model)
+            existing_model=[
+                self.model,
+                ("target_q_model", getattr(self, "target_q_model", None)),
+                ("target_model", getattr(self, "target_model", None)),
+            ])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
@@ -404,7 +395,6 @@ class DynamicTFPolicy(TFPolicy):
                 instance._grad_stats_fn(instance, input_dict, instance._grads))
         return instance
 
-    # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
     @override(Policy)
     @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
@@ -470,103 +460,38 @@ class DynamicTFPolicy(TFPolicy):
         # Test calls depend on variable init, so initialize model first.
         self._sess.run(tf1.global_variables_initializer())
 
-        if self.config["_use_trajectory_view_api"]:
-            logger.info("Testing `compute_actions` w/ dummy batch.")
-            actions, state_outs, extra_fetches = \
-                self.compute_actions_from_input_dict(
-                    self._dummy_batch, explore=False, timestep=0)
-            for key, value in extra_fetches.items():
-                self._dummy_batch[key] = np.zeros_like(value)
-                self._input_dict[key] = get_placeholder(value=value, name=key)
-                if key not in self.view_requirements:
-                    logger.info("Adding extra-action-fetch `{}` to "
-                                "view-reqs.".format(key))
-                    self.view_requirements[key] = \
-                        ViewRequirement(space=gym.spaces.Box(
-                            -1.0, 1.0, shape=value.shape[1:],
-                            dtype=value.dtype))
-            dummy_batch = self._dummy_batch
-        else:
+        logger.info("Testing `compute_actions` w/ dummy batch.")
+        actions, state_outs, extra_fetches = \
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False, timestep=0)
+        for key, value in extra_fetches.items():
+            self._dummy_batch[key] = np.zeros_like(value)
+            self._input_dict[key] = get_placeholder(value=value, name=key)
+            if key not in self.view_requirements:
+                logger.info("Adding extra-action-fetch `{}` to "
+                            "view-reqs.".format(key))
+                self.view_requirements[key] = \
+                    ViewRequirement(space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:],
+                        dtype=value.dtype))
+        dummy_batch = self._dummy_batch
 
-            def fake_array(tensor):
-                shape = tensor.shape.as_list()
-                shape = [s if s is not None else 1 for s in shape]
-                return np.zeros(shape, dtype=tensor.dtype.as_numpy_dtype)
-
-            dummy_batch = {
-                SampleBatch.CUR_OBS: fake_array(self._obs_input),
-                SampleBatch.NEXT_OBS: fake_array(self._obs_input),
-                SampleBatch.DONES: np.array([False], dtype=np.bool),
-                SampleBatch.ACTIONS: fake_array(
-                    ModelCatalog.get_action_placeholder(self.action_space)),
-                SampleBatch.REWARDS: np.array([0], dtype=np.float32),
-            }
-            if self._obs_include_prev_action_reward:
-                dummy_batch.update({
-                    SampleBatch.PREV_ACTIONS: fake_array(
-                        self._prev_action_input),
-                    SampleBatch.PREV_REWARDS: fake_array(
-                        self._prev_reward_input),
-                })
-            state_init = self.get_initial_state()
-            state_batches = []
-            for i, h in enumerate(state_init):
-                dummy_batch["state_in_{}".format(i)] = np.expand_dims(h, 0)
-                dummy_batch["state_out_{}".format(i)] = np.expand_dims(h, 0)
-                state_batches.append(np.expand_dims(h, 0))
-            if state_init:
-                dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
-            for k, v in self.extra_compute_action_fetches().items():
-                dummy_batch[k] = fake_array(v)
-            dummy_batch = SampleBatch(dummy_batch)
-
-        batch_for_postproc = UsageTrackingDict(dummy_batch)
-        batch_for_postproc.count = dummy_batch.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, batch_for_postproc,
-                                                self._sess)
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        self.exploration.postprocess_trajectory(self, dummy_batch, self._sess)
+        _ = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
-        if self.config["_use_trajectory_view_api"]:
-            for key in batch_for_postproc.added_keys:
-                if key not in self._input_dict:
-                    self._input_dict[key] = get_placeholder(
-                        value=batch_for_postproc[key], name=key)
-                if key not in self.view_requirements:
-                    self.view_requirements[key] = \
-                        ViewRequirement(space=gym.spaces.Box(
-                            -1.0, 1.0, shape=batch_for_postproc[key].shape[1:],
-                            dtype=batch_for_postproc[key].dtype))
+        for key in dummy_batch.added_keys:
+            if key not in self._input_dict:
+                self._input_dict[key] = get_placeholder(
+                    value=dummy_batch[key], name=key)
+            if key not in self.view_requirements:
+                self.view_requirements[key] = \
+                    ViewRequirement(space=gym.spaces.Box(
+                        -1.0, 1.0, shape=dummy_batch[key].shape[1:],
+                        dtype=dummy_batch[key].dtype))
 
-        if not self.config["_use_trajectory_view_api"]:
-            train_batch = UsageTrackingDict(
-                dict({
-                    SampleBatch.CUR_OBS: self._obs_input,
-                }, **self._loss_input_dict))
-            if self._obs_include_prev_action_reward:
-                train_batch.update({
-                    SampleBatch.PREV_ACTIONS: self._prev_action_input,
-                    SampleBatch.PREV_REWARDS: self._prev_reward_input,
-                    SampleBatch.CUR_OBS: self._obs_input,
-                })
-
-            for k, v in postprocessed_batch.items():
-                if k in train_batch:
-                    continue
-                elif v.dtype == np.object:
-                    continue  # can't handle arbitrary objects in TF
-                elif k == "seq_lens" or k.startswith("state_in_"):
-                    continue
-                shape = (None, ) + v.shape[1:]
-                dtype = np.float32 if v.dtype == np.float64 else v.dtype
-                placeholder = tf1.placeholder(dtype, shape=shape, name=k)
-                train_batch[k] = placeholder
-
-            for i, si in enumerate(self._state_inputs):
-                train_batch["state_in_{}".format(i)] = si
-        else:
-            train_batch = UsageTrackingDict(
-                dict(self._input_dict, **self._loss_input_dict))
+        train_batch = SampleBatch(
+            dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
             train_batch["seq_lens"] = self._seq_lens
@@ -580,8 +505,8 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
-            train_batch.accessed_keys | batch_for_postproc.accessed_keys | \
-            batch_for_postproc.added_keys | set(
+            train_batch.accessed_keys | dummy_batch.accessed_keys | \
+            dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
         TFPolicy._initialize_loss(self, loss, [(k, v)
@@ -598,13 +523,12 @@ class DynamicTFPolicy(TFPolicy):
                 self._grad_stats_fn(self, train_batch, self._grads))
 
         # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys
+                                dummy_batch.accessed_keys
             # Tag those only needed for post-processing (with some exceptions).
-            for key in batch_for_postproc.accessed_keys:
+            for key in dummy_batch.accessed_keys:
                 if key not in train_batch.accessed_keys and \
                         key not in self.model.view_requirements and \
                         key not in [
@@ -627,7 +551,7 @@ class DynamicTFPolicy(TFPolicy):
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from
                     # view-requirements.
-                    if key in batch_for_postproc.deleted_keys:
+                    if key in dummy_batch.deleted_keys:
                         logger.warning(
                             "SampleBatch key '{}' was deleted manually in "
                             "postprocessing function! RLlib will "

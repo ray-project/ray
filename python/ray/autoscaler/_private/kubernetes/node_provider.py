@@ -1,3 +1,4 @@
+import copy
 import logging
 import time
 from uuid import uuid4
@@ -98,7 +99,7 @@ class KubernetesNodeProvider(NodeProvider):
         core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
-        conf = node_config.copy()
+        conf = copy.deepcopy(node_config)
         pod_spec = conf.get("pod", conf)
         service_spec = conf.get("service")
         ingress_spec = conf.get("ingress")

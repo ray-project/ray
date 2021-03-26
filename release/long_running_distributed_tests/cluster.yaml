@@ -1,12 +1,11 @@
 cluster_name: long-running-distributed-tests
 
-min_workers: 3
 max_workers: 3
 
 idle_timeout_minutes: 15
 
 docker:
-    image: anyscale/ray-ml:latest-gpu
+    image: anyscale/ray-ml:nightly-gpu
     container_name: ray_container
     pull_before_run: True
 
@@ -16,29 +15,23 @@ provider:
     availability_zone: us-west-2a
     cache_stopped_nodes: False
 
+
+available_node_types:
+    gpu_2_32:
+        node_config:
+            InstanceType: g3.8xlarge
+        resources: {"CPU": 32, "GPU": 2}
+        min_workers: 3
+        max_workers: 3
+
+
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: g3.8xlarge
+head_node_type: gpu_2_32
+worker_default_node_type: gpu_2_32
 
-worker_nodes:
-  InstanceType: g3.8xlarge
-  InstanceMarketOptions:
-    MarketType: spot
+file_mounts_sync_continuously: false
 
 setup_commands:
-  - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - ray stop
-    - export RAY_BACKEND_LOG_LEVEL=debug
-    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - export RAY_BACKEND_LOG_LEVEL=debug
-    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+   - pip install -U {{env["RAY_WHEEL"]}}

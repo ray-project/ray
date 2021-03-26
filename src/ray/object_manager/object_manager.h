@@ -29,6 +29,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -107,9 +108,8 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback =
-      std::function<void(const ObjectID &, const std::string &, const NodeID &,
-                         std::function<void(const ray::Status &)>)>;
+  using RestoreSpilledObjectCallback = std::function<void(
+      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
 
   /// Implementation of object manager service
 
@@ -211,12 +211,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(boost::asio::io_service &main_service,
-                         const NodeID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback = nullptr,
-                         std::function<void()> object_store_full_callback = nullptr);
+  explicit ObjectManager(
+      instrumented_io_context &main_service, const NodeID &self_node_id,
+      const ObjectManagerConfig &config,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<std::string(const ObjectID &)> get_spilled_object_url,
+      SpillObjectsCallback spill_objects_callback = nullptr,
+      std::function<void()> object_store_full_callback = nullptr);
 
   ~ObjectManager();
 
@@ -323,12 +325,11 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
 
   struct WaitState {
-    WaitState(boost::asio::io_service &service, int64_t timeout_ms,
+    WaitState(instrumented_io_context &service, int64_t timeout_ms,
               const WaitCallback &callback)
         : timeout_ms(timeout_ms),
-          timeout_timer(std::unique_ptr<boost::asio::deadline_timer>(
-              new boost::asio::deadline_timer(
-                  service, boost::posix_time::milliseconds(timeout_ms)))),
+          timeout_timer(std::make_unique<boost::asio::deadline_timer>(
+              service, boost::posix_time::milliseconds(timeout_ms))),
           callback(callback) {}
     /// The period of time to wait before invoking the callback.
     int64_t timeout_ms;
@@ -422,7 +423,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
+  instrumented_io_context *main_service_;
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
@@ -435,7 +436,7 @@ class ObjectManager : public ObjectManagerInterface,
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
-  boost::asio::io_service rpc_service_;
+  instrumented_io_context rpc_service_;
 
   /// Keep rpc service running when no task in rpc service.
   boost::asio::io_service::work rpc_work_;
@@ -483,7 +484,12 @@ class ObjectManager : public ObjectManagerInterface,
   std::unordered_map<NodeID, std::shared_ptr<rpc::ObjectManagerClient>>
       remote_object_manager_clients_;
 
+  /// Callback to trigger direct restoration of an object.
   const RestoreSpilledObjectCallback restore_spilled_object_;
+
+  /// Callback to get the URL of a locally spilled object.
+  /// This returns the empty string if the object was not spilled locally.
+  std::function<std::string(const ObjectID &)> get_spilled_object_url_;
 
   /// Pull manager retry timer .
   boost::asio::deadline_timer pull_retry_timer_;

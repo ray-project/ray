@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from enum import Enum
 
 from ray.serve.utils import get_random_letters
@@ -55,13 +55,17 @@ class RayServeHandle:
             self,
             router,  # ThreadProxiedRouter
             endpoint_name,
-            handle_options: Optional[HandleOptions] = None):
+            handle_options: Optional[HandleOptions] = None,
+            *,
+            known_python_methods: List[str] = [],
+    ):
         self.router = router
         self.endpoint_name = endpoint_name
+        self.known_python_methods = known_python_methods
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
 
-        self.request_counter = metrics.Count(
+        self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
                          "made on this handle."),
@@ -115,7 +119,7 @@ class RayServeHandle:
             ``**kwargs``: All keyword arguments will be available in
                 ``request.query_params``.
         """
-        self.request_counter.record(1)
+        self.request_counter.inc()
         return await self.router._remote(
             self.endpoint_name, self.handle_options, request_data, kwargs)
 
@@ -123,10 +127,26 @@ class RayServeHandle:
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
 
     def __reduce__(self):
-        deserializer = RayServeHandle
-        serialized_data = (self.router, self.endpoint_name,
-                           self.handle_options)
-        return deserializer, serialized_data
+        serialized_data = {
+            "router": self.router,
+            "endpoint_name": self.endpoint_name,
+            "handle_options": self.handle_options,
+            "known_python_methods": self.known_python_methods
+        }
+        return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
+
+    def __getattr__(self, name):
+        if name not in self.known_python_methods:
+            raise AttributeError(
+                f"ServeHandle for endpoint {self.endpoint_name} doesn't have "
+                f"python method {name}. Please check all Python methods via "
+                "`serve.list_endpoints()`. If you used the "
+                f"get_handle('{self.endpoint_name}', missing_ok=True) flag, "
+                f"Serve cannot know all methods for {self.endpoint_name}. "
+                "You can set the method manually via "
+                f"handle.options(method_name='{name}').remote().")
+
+        return self.options(method_name=name)
 
 
 class RayServeSyncHandle(RayServeHandle):
@@ -148,7 +168,7 @@ class RayServeSyncHandle(RayServeHandle):
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """
-        self.request_counter.record(1)
+        self.request_counter.inc()
         coro = self.router._remote(self.endpoint_name, self.handle_options,
                                    request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
@@ -156,7 +176,10 @@ class RayServeSyncHandle(RayServeHandle):
         return future.result()
 
     def __reduce__(self):
-        deserializer = RayServeSyncHandle
-        serialized_data = (self.router, self.endpoint_name,
-                           self.handle_options)
-        return deserializer, serialized_data
+        serialized_data = {
+            "router": self.router,
+            "endpoint_name": self.endpoint_name,
+            "handle_options": self.handle_options,
+            "known_python_methods": self.known_python_methods
+        }
+        return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )

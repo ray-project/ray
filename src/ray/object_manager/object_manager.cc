@@ -51,12 +51,14 @@ ObjectStoreRunner::~ObjectStoreRunner() {
   }
 }
 
-ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_node_id,
-                             const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                             RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback,
-                             std::function<void()> object_store_full_callback)
+ObjectManager::ObjectManager(
+    instrumented_io_context &main_service, const NodeID &self_node_id,
+    const ObjectManagerConfig &config,
+    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<std::string(const ObjectID &)> get_spilled_object_url,
+    SpillObjectsCallback spill_objects_callback,
+    std::function<void()> object_store_full_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -69,6 +71,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
+      get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -187,7 +190,8 @@ void ObjectManager::HandleObjectAdded(
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &node_id = pair.first;
-      main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); });
+      main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
+                          "ObjectManager.ObjectAddedPush");
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -257,19 +261,22 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
     // Try pulling from the client.
-    rpc_service_.post([this, object_id, client_id, rpc_client]() {
-      rpc::PullRequest pull_request;
-      pull_request.set_object_id(object_id.Binary());
-      pull_request.set_node_id(self_node_id_.Binary());
+    rpc_service_.post(
+        [this, object_id, client_id, rpc_client]() {
+          rpc::PullRequest pull_request;
+          pull_request.set_object_id(object_id.Binary());
+          pull_request.set_node_id(self_node_id_.Binary());
 
-      rpc_client->Pull(pull_request, [object_id, client_id](const Status &status,
-                                                            const rpc::PullReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Send pull " << object_id << " request to client "
-                           << client_id << " failed due to" << status.message();
-        }
-      });
-    });
+          rpc_client->Pull(
+              pull_request,
+              [object_id, client_id](const Status &status, const rpc::PullReply &reply) {
+                if (!status.ok()) {
+                  RAY_LOG(WARNING) << "Send pull " << object_id << " request to client "
+                                   << client_id << " failed due to" << status.message();
+                }
+              });
+        },
+        "ObjectManager.SendPull");
   } else {
     RAY_LOG(ERROR) << "Couldn't send pull request from " << self_node_id_ << " to "
                    << client_id << " of object " << object_id
@@ -336,10 +343,16 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and node pair.
     auto &nodes = unfulfilled_push_requests_[object_id];
+    // Issue a restore request if the object is on local disk. This is only relevant
+    // if the local filesystem storage type is being used.
+    auto object_url = get_spilled_object_url_(object_id);
+    if (!object_url.empty()) {
+      restore_spilled_object_(object_id, object_url, nullptr);
+    }
     if (nodes.count(node_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
-      auto timer = std::unique_ptr<boost::asio::deadline_timer>();
+      std::unique_ptr<boost::asio::deadline_timer> timer;
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
@@ -386,18 +399,23 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
     UniqueID push_id = UniqueID::FromRandom();
     push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-      rpc_service_.post([=]() {
-        // Post to the multithreaded RPC event loop so that data is copied
-        // off of the main thread.
-        SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
-                        metadata_size, chunk_id, rpc_client, [=](const Status &status) {
-                          // Post back to the main event loop because the
-                          // PushManager is thread-safe.
-                          main_service_->post([this, node_id, object_id]() {
-                            push_manager_->OnChunkComplete(node_id, object_id);
-                          });
-                        });
-      });
+      rpc_service_.post(
+          [=]() {
+            // Post to the multithreaded RPC event loop so that data is copied
+            // off of the main thread.
+            SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
+                            metadata_size, chunk_id, rpc_client,
+                            [=](const Status &status) {
+                              // Post back to the main event loop because the
+                              // PushManager is thread-safe.
+                              main_service_->post(
+                                  [this, node_id, object_id]() {
+                                    push_manager_->OnChunkComplete(node_id, object_id);
+                                  },
+                                  "ObjectManager.Push");
+                            });
+          },
+          "ObjectManager.Push");
     });
   } else {
     // Push is best effort, so do nothing here.
@@ -735,7 +753,8 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
     profile_events_.emplace_back(profile_event);
   }
 
-  main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); });
+  main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
+                      "ObjectManager.HandlePull");
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -762,9 +781,11 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
         rpc_clients.push_back(rpc_client);
       }
     }
-    rpc_service_.post([this, object_ids, rpc_clients]() {
-      SpreadFreeObjectsRequest(object_ids, rpc_clients);
-    });
+    rpc_service_.post(
+        [this, object_ids, rpc_clients]() {
+          SpreadFreeObjectsRequest(object_ids, rpc_clients);
+        },
+        "ObjectManager.FreeObjects");
   }
 }
 
@@ -835,6 +856,7 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed: " << num_chunks_received_failed_;
+  result << "\nEvent loop stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
   result << "\n" << store_notification_->DebugString();
@@ -869,9 +891,11 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
   // store.
   if (plasma::plasma_store_runner) {
     plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
-      main_service_->post([this, available_memory]() {
-        pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
-      });
+      main_service_->post(
+          [this, available_memory]() {
+            pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+          },
+          "ObjectManager.UpdateAvailableMemory");
     });
   }
 

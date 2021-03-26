@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
@@ -34,10 +35,10 @@ class GlobalStateAccessorTest : public ::testing::Test {
     config.grpc_server_name = "MockedGcsServer";
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
-    config.is_test = true;
+    config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    io_service_.reset(new boost::asio::io_service());
+    io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config, *io_service_));
     gcs_server_->Start();
 
@@ -54,14 +55,14 @@ class GlobalStateAccessorTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
-                                  config.redis_password, config.is_test);
+                                  config.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     // Create global state.
     std::stringstream address;
     address << config.redis_address << ":" << config.redis_port;
-    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), "", true));
+    global_state_.reset(new gcs::GlobalStateAccessor(address.str(), ""));
     RAY_CHECK(global_state_->Connect());
   }
 
@@ -81,7 +82,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 
   // GCS client.
   std::unique_ptr<gcs::GcsClient> gcs_client_;
