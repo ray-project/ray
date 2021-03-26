@@ -572,9 +572,9 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
   RAY_CHECK(max_concurrency_ == 0)
       << "SetMaxActorConcurrency should only be called at most once.";
   RAY_CHECK(max_concurrency >= 1);
-  max_concurrency_ = max_concurrency;
-  is_asyncio_ = is_asyncio;
   if (max_concurrency_ > 1) {
+    max_concurrency_ = max_concurrency;
+    is_asyncio_ = is_asyncio;
     if (is_asyncio_) {
       RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
       fiber_state_.reset(new FiberState(max_concurrency));
