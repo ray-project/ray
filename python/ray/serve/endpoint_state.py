@@ -108,6 +108,12 @@ class EndpointState:
         self._checkpoint()
         self._notify_traffic_policies_changed(endpoint)
 
+    def get_endpoint_route(self, endpoint: EndpointTag) -> Optional[str]:
+        for route, (route_endpoint, methods) in self._routes.items():
+            if route_endpoint == endpoint:
+                return route
+        return None
+
     def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         endpoints = {}
         for route, (endpoint, methods) in self._routes.items():

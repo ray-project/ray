@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 import numpy as np
@@ -18,6 +18,7 @@ class BackendInfo(BaseModel):
     # TODO(architkulkarni): Add type hint for worker_class after upgrading
     # cloudpickle and adding types to RayServeWrappedReplica
     worker_class: Any
+    version: Optional[str]
     backend_config: BackendConfig
     replica_config: ReplicaConfig
 

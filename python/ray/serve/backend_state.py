@@ -8,10 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig
+from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import (format_actor_name, get_random_letters, logger)
@@ -539,8 +539,7 @@ class BackendState:
         return self._backend_metadata.get(backend_tag)
 
     def _set_backend_goal(self, backend_tag: BackendTag,
-                          backend_info: BackendInfo,
-                          version: Optional[str]) -> None:
+                          backend_info: Optional[BackendInfo]) -> None:
         existing_goal_id = self._backend_goals.get(backend_tag)
         new_goal_id = self._goal_manager.create_goal()
 
@@ -548,48 +547,42 @@ class BackendState:
             self._backend_metadata[backend_tag] = backend_info
             self._target_replicas[
                 backend_tag] = backend_info.backend_config.num_replicas
+
+            if backend_info.version is not None:
+                version = backend_info.version
+            else:
+                version = get_random_letters()
+            self._target_versions[backend_tag] = version
         else:
             self._target_replicas[backend_tag] = 0
 
         self._backend_goals[backend_tag] = new_goal_id
-        self._target_versions[backend_tag] = version
 
         return new_goal_id, existing_goal_id
 
-    def deploy_backend(self,
-                       backend_tag: BackendTag,
-                       backend_config: BackendConfig,
-                       replica_config: ReplicaConfig,
-                       version: Optional[str] = None) -> Optional[GoalId]:
+    def deploy_backend(self, backend_tag: BackendTag,
+                       backend_info: BackendInfo) -> Optional[GoalId]:
         # Ensures this method is idempotent.
-        backend_info = self._backend_metadata.get(backend_tag)
-        if backend_info is not None:
+        existing_info = self._backend_metadata.get(backend_tag)
+        if existing_info is not None:
             # Old codepath.
-            if version is None:
-                if (backend_info.backend_config == backend_config
-                        and backend_info.replica_config == replica_config):
+            if backend_info.version == RESERVED_VERSION_TAG:
+                if (existing_info.backend_config == backend_info.backend_config
+                        and existing_info.replica_config ==
+                        backend_info.replica_config):
                     return self._backend_goals.get(backend_tag, None)
             # New codepath: treat version as ground truth for implementation.
             else:
-                if (backend_info.backend_config == backend_config
-                        and self._target_versions[backend_tag] == version):
+                if (existing_info.backend_config == backend_info.backend_config
+                        and backend_info.version is not None
+                        and existing_info.version == backend_info.version):
                     return self._backend_goals.get(backend_tag, None)
 
         if backend_tag not in self._replicas:
             self._replicas[backend_tag] = ReplicaStateContainer()
 
-        backend_replica_class = create_backend_replica(
-            replica_config.backend_def)
-
-        # Save creator that starts replicas, the arguments to be passed in,
-        # and the configuration for the backends.
-        backend_info = BackendInfo(
-            worker_class=backend_replica_class,
-            backend_config=backend_config,
-            replica_config=replica_config)
-
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, backend_info, version)
+            backend_tag, backend_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -609,7 +602,7 @@ class BackendState:
             return None
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
-            backend_tag, None, None)
+            backend_tag, None)
         if force_kill:
             self._backend_metadata[
                 backend_tag].backend_config.\
