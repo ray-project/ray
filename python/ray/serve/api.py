@@ -3,7 +3,6 @@ import asyncio
 import atexit
 import inspect
 import os
-import threading
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
     from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
-_global_async_loop = None
 _global_client = None
 
 
@@ -52,18 +50,6 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
-
-
-def create_or_get_async_loop_in_thread():
-    global _global_async_loop
-    if _global_async_loop is None:
-        _global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=_global_async_loop.run_forever,
-        )
-        thread.start()
-    return _global_async_loop
 
 
 def _set_internal_replica_context(backend_tag, replica_tag, controller_name):

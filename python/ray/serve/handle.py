@@ -2,13 +2,28 @@ import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union, Coroutine
+import threading
 from enum import Enum
-from ray.serve.common import EndpointTag
 
+from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
 from ray.serve.utils import get_random_letters
 from ray.serve.router import EndpointRouter, RequestMetadata
 from ray.util import metrics
+
+_global_async_loop = None
+
+
+def create_or_get_async_loop_in_thread():
+    global _global_async_loop
+    if _global_async_loop is None:
+        _global_async_loop = asyncio.new_event_loop()
+        thread = threading.Thread(
+            daemon=True,
+            target=_global_async_loop.run_forever,
+        )
+        thread.start()
+    return _global_async_loop
 
 
 @dataclass(frozen=True)
@@ -179,7 +194,6 @@ class RayServeHandle:
 class RayServeSyncHandle(RayServeHandle):
     def _make_router(self) -> EndpointRouter:
         # Delayed import because ray.serve.api depends on handles.
-        from ray.serve.api import create_or_get_async_loop_in_thread
         return EndpointRouter(
             self.controller_handle,
             self.endpoint_name,
