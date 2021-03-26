@@ -1318,8 +1318,7 @@ def get_deployment(name: str):
         ServeDeployment
     """
     try:
-        backend_info, version, route = _get_global_client(
-        ).get_deployment_info(name)
+        backend_info, route = _get_global_client().get_deployment_info(name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
@@ -1327,6 +1326,6 @@ def get_deployment(name: str):
         backend_info.replica_config.backend_def,
         name,
         backend_info.backend_config,
-        version=version,
+        version=backend_info.version,
         init_args=backend_info.replica_config.init_args,
         ray_actor_options=backend_info.replica_config.ray_actor_options)

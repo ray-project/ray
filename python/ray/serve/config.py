@@ -150,7 +150,7 @@ class ReplicaConfig:
         self.is_blocking = _callable_is_blocking(backend_def)
         self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
         self.path_prefix = getattr(backend_def, "_serve_path_prefix", None)
-        self.init_args = list(init_args)
+        self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:

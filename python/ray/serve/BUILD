@@ -34,6 +34,14 @@ py_test(
 )
 
 py_test(
+    name = "test_get_deployment",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "medium",
     srcs = serve_tests_srcs,
