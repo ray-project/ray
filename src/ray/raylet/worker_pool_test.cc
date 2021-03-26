@@ -420,9 +420,9 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   std::vector<std::string> actor_jvm_options;
-    actor_jvm_options.insert(
-        actor_jvm_options.end(),
-        {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
+  actor_jvm_options.insert(
+      actor_jvm_options.end(),
+      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
   auto task_id = TaskID::ForDriverTask(JOB_ID);
   auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
   TaskSpecification task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID,

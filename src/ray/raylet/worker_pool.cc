@@ -197,7 +197,7 @@ Process WorkerPool::StartWorkerProcess(
       }
       if (!code_search_path_str.empty()) {
         code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-      options.push_back(code_search_path_str);
+        options.push_back(code_search_path_str);
       }
     }
   }
