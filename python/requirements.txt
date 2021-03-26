@@ -79,3 +79,5 @@ starlette
 fastapi
 smart_open[s3]
 tqdm
+async-exit-stack
+async-generator
