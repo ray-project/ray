@@ -9,10 +9,11 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
                     Optional, Type, Union)
+from uuid import UUID
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag, GoalId
+from ray.serve.common import EndpointTag
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -211,16 +212,11 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(self,
-                       result_object_id: ray.ObjectRef,
-                       timeout: Optional[float] = None) -> bool:
-        goal_id: Optional[GoalId] = ray.get(result_object_id)
-        if goal_id is None:
-            return True
-
-        ready, _ = ray.wait(
-            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-        return len(ready) == 1
+    def _wait_for_goal(self, result_object_id: ray.ObjectRef) -> bool:
+        goal_id: Optional[UUID] = ray.get(result_object_id)
+        if goal_id is not None:
+            ray.get(self._controller.wait_for_goal.remote(goal_id))
+            logger.debug(f"Goal {goal_id} completed.")
 
     @_ensure_connected
     def create_endpoint(self,
@@ -459,8 +455,7 @@ class Client:
                *init_args: Any,
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-               version: Optional[str] = None,
-               _blocking: Optional[bool] = True) -> Optional[GoalId]:
+               version: Optional[str] = None) -> None:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -501,13 +496,9 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        goal_ref = self._controller.deploy.remote(name, backend_config,
-                                                  replica_config, version)
-
-        if _blocking:
-            self._wait_for_goal(goal_ref)
-        else:
-            return goal_ref
+        self._wait_for_goal(
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, version))
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
