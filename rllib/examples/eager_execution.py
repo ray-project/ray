@@ -59,7 +59,7 @@ MyTrainer = build_trainer(
 )
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)
     args = parser.parse_args()
     ModelCatalog.register_custom_model("eager_model", EagerModel)
 

@@ -104,7 +104,6 @@ if __name__ == "__main__":
     assert "callback_ok" in trials[0].last_result
 
     # Verify `on_learn_on_batch` custom metrics are there (per policy).
-    if args.torch:
-        info_custom_metrics = custom_metrics["default_policy"]
-        print(info_custom_metrics)
-        assert "sum_actions_in_train_batch" in info_custom_metrics
+    info_custom_metrics = custom_metrics["default_policy"]
+    print(info_custom_metrics)
+    assert "sum_actions_in_train_batch" in info_custom_metrics
