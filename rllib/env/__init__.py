@@ -13,6 +13,7 @@ from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
 from ray.rllib.env.wrappers.kaggle_wrapper import KaggleFootballMultiAgentEnv
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+from ray.rllib.env.wrappers.ue4_airsim_env import UnrealEngine4AirSimEnv
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
 __all__ = [
@@ -30,5 +31,6 @@ __all__ = [
     "PolicyServerInput",
     "RemoteVectorEnv",
     "Unity3DEnv",
+    "UnrealEngine4AirSimEnv",
     "VectorEnv",
 ]
