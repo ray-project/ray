@@ -6,13 +6,12 @@ import time
 from abc import ABC
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
-                    Optional, Type, Union)
-from uuid import UUID
+from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type,
+                    Union)
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag, GoalId
+from ray.serve.common import GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
