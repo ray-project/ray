@@ -37,10 +37,9 @@ def test_raylet_gdb(ray_gdb_start):
     assert ray.get(f.remote()) == 42
 
     # Check process name in `ps aux | grep gdb`
-    pgrep_command = subprocess.Popen(
-        [f"pgrep", "-f", "gdb.*raylet/raylet"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+    pgrep_command = subprocess.Popen([f"pgrep", "-f", "gdb.*raylet/raylet"],
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
     assert pgrep_command.communicate()[0]
 
 

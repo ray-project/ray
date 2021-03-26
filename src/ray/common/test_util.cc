@@ -137,8 +137,7 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
        "--python_worker_command=" +
            CreateCommandLine({TEST_MOCK_WORKER_EXEC_PATH, plasma_store_socket_name,
                               raylet_socket_name, std::to_string(port)}),
-       "--object_store_memory=10000000",
-       "--plasma_directory=" + plasma_directory});
+       "--object_store_memory=10000000", "--plasma_directory=" + plasma_directory});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));

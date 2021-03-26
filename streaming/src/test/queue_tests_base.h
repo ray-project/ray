@@ -38,9 +38,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
-          "127.0.0.1", node_manager_port_ + i, "127.0.0.1",
-          "\"CPU,4.0,resource" + std::to_string(i) + ",10\"", &raylet_store_socket_names_[i]);
+      raylet_socket_names_[i] =
+          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port_ + i, "127.0.0.1",
+                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+                                     &raylet_store_socket_names_[i]);
     }
   }
 
