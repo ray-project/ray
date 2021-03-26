@@ -749,11 +749,6 @@ cdef void delete_spilled_objects_handler(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
                 proctitle = (
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE)
-            elif <int> worker_type == <int> WORKER_TYPE_UTIL_WORKER:
-                original_proctitle = (
-                    ray_constants.WORKER_PROCESS_TYPE_UTIL_WORKER_IDLE)
-                proctitle = (
-                    ray_constants.WORKER_PROCESS_TYPE_UTIL_WORKER_DELETE)
             else:
                 assert False, ("This line shouldn't be reachable.")
 
