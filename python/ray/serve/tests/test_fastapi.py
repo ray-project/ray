@@ -110,7 +110,6 @@ def test_make_fastapi_cbv_util():
 
 
 def test_fastapi_features(serve_instance):
-    client = serve_instance
     app = FastAPI(openapi_url="/my_api.json")
 
     @app.middleware("http")
@@ -127,7 +126,7 @@ def test_fastapi_features(serve_instance):
     class BodyType(BaseModel):
         name: str
         price: float = Field(None, gt=1.0, description="High price!")
-        nests: List[Nested]
+        nests: Nested
 
     class RespModel(BaseModel):
         ok: bool
@@ -159,7 +158,7 @@ def test_fastapi_features(serve_instance):
         background_tasks.add_task(write_to_file, path)
         return path
 
-    app.add_middleware(CORSMiddleware)
+    app.add_middleware(CORSMiddleware, allow_origins="*")
 
     @app.get("/{path_arg}", response_model=RespModel, status_code=201)
     async def func(
@@ -185,7 +184,7 @@ def test_fastapi_features(serve_instance):
                 path_arg,
                 query_arg,
                 body_val.price,
-                body_val.nests[0].val,
+                body_val.nests.val,
                 do_error,
                 query_arg_valid,
                 cookie_arg,
@@ -229,22 +228,23 @@ def test_fastapi_features(serve_instance):
     assert "<!DOCTYPE html>" in resp.text
 
     resp = requests.get(f"{url}/path_arg")
-    assert resp.status_code == 522  # Malformed input
+    assert resp.status_code == 422  # Malformed input
 
     resp = requests.get(
         f"{url}/path_arg",
         json={
             "name": "serve",
             "price": 12,
-            "nests": [{
+            "nests": {
                 "val": 1
-            }]
+            }
         },
         params={
             "query_arg": "query_arg",
             "query_arg_valid": "at-least-three-chars",
             "q": "common_arg",
         })
+    assert resp.status_code == 201, resp.text
     assert resp.json()["ok"]
     assert resp.json()["vals"] == [
         "path_arg",
@@ -267,9 +267,9 @@ def test_fastapi_features(serve_instance):
         json={
             "name": "serve",
             "price": 12,
-            "nests": [{
+            "nests": {
                 "val": 1
-            }]
+            }
         },
         params={
             "query_arg": "query_arg",
@@ -280,16 +280,16 @@ def test_fastapi_features(serve_instance):
     assert resp.status_code == 500
     assert resp.json()["custom_error"] == "true"
 
+    resp = requests.get(f"{url}/prefix/subpath")
+    assert resp.status_code == 200
+
     resp = requests.get(
         f"{url}/docs",
         headers={
             "Access-Control-Request-Method": "GET",
             "Origin": "https://googlebot.com"
         })
-    assert resp.headers["access-control-allow-origin"] == "*"
-
-    resp = requests.get(f"{url}/prefix/subpath")
-    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
 if __name__ == "__main__":

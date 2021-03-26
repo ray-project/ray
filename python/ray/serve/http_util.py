@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import starlette.requests
@@ -12,7 +13,19 @@ def build_starlette_request(scope, serialized_body: bytes):
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
+    received = False
+
     async def mock_receive():
+        nonlocal received
+
+        # If the request has already been received, starlette will keep polling
+        # for HTTP disconnect. We will pause forever. The coroutine should be
+        # cancelled by starlette after the response has been sent.
+        if received:
+            block_forever = asyncio.Event()
+            await block_forever.wait()
+
+        received = True
         return {
             "body": serialized_body,
             "type": "http.request",
