@@ -1,6 +1,7 @@
 import random
 import subprocess
 
+from fastapi import FastAPI
 import pytest
 import requests
 
@@ -48,6 +49,39 @@ def test_ray_client(ray_client_instance):
     # ray.util.connect(ray_client_instance)
     # serve.delete_endpoint("test1")
     # serve.delete_backend("test1")
+
+
+def test_fastapi(ray_client_instance):
+    ray.util.connect(ray_client_instance)
+    serve.start(detached=True)
+
+    app = FastAPI()
+
+    @app.get("/other")
+    def hello():
+        return "hello"
+
+    @serve.deployment("fastapi")
+    @serve.ingress(app)
+    class A:
+        def __init__(self):
+            self.val = 1
+
+        @app.get("/calc/{i}")
+        def b(self, i: int):
+            return i + self.val
+
+        @app.post("/calc/{i}")
+        def c(self, i: int):
+            return i - self.val
+
+    A.deploy()
+    resp = requests.get("http://localhost:8000/fastapi/calc/41")
+    assert resp.json() == 42
+    resp = requests.post("http://localhost:8000/fastapi/calc/41")
+    assert resp.json() == 40
+    resp = requests.get("http://localhost:8000/fastapi/other")
+    assert resp.json() == "hello"
 
 
 if __name__ == "__main__":
