@@ -206,7 +206,7 @@ class WorkerPoolTest : public ::testing::Test {
       const rpc::JobConfig &job_config = rpc::JobConfig()) {
     auto driver = CreateWorker(Process::CreateNewDummy(), Language::PYTHON, job_id);
     driver->AssignTaskId(TaskID::ForDriverTask(job_id));
-    RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {}));
+    worker_pool_->RegisterDriver(driver, job_config, [](Status, int) {});
     return driver;
   }
 
