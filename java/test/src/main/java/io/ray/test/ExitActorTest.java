@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.exception.RayTaskException;
 import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
@@ -83,10 +82,8 @@ public class ExitActorTest extends BaseTest {
     Assert.assertEquals(
         2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ObjectRef<Boolean> obj1 = actor1.task(ExitingActor::exit).remote();
-    // Not allowed
-    Assert.assertThrows(RayTaskException.class, obj1::get);
+    Assert.assertThrows(RayActorException.class, obj1::get);
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
-    Assert.assertEquals((int) actor1.task(ExitingActor::getPid).remote().get(), pid);
     // Actor 2 shouldn't exit or be reconstructed.
     Assert.assertEquals(1, (int) actor2.task(ExitingActor::incr).remote().get());
     Assert.assertEquals(
