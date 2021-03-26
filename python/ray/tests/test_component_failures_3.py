@@ -90,7 +90,7 @@ def test_driver_lives_parallel(ray_start_regular):
                      all_processes[ray_constants.PROCESS_TYPE_RAYLET] +
                      all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] +
                      all_processes[ray_constants.PROCESS_TYPE_MONITOR])
-    assert len(process_infos) == 5
+    assert len(process_infos) == 4
 
     # Kill all the components in parallel.
     for process_info in process_infos:
