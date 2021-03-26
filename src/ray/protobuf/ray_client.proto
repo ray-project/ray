@@ -246,21 +246,12 @@ message InitRequest {
 }
 
 message InitResponse {
-  enum Status {
-    OK = 0;
-    MISSING_URIS = 1;
-    INCOMPATIBLE_RUNTIME_ENV = 2;
-  }
-  Status status = 1;
 }
 
 message PrepRuntimeEnvRequest {
-  RuntimeEnv runtime_env = 1;
 }
 
 message PrepRuntimeEnvResponse {
-  bool ok = 1;
-  string msg = 2;
 }
 
 service RayletDriver {

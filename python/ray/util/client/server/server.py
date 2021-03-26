@@ -57,8 +57,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
         import pickle
-        job_config = pickle.loads(request.job_config)
-        job_config.client_job = True
+        if request.job_config:
+            job_config = pickle.loads(request.job_config)
+            job_config.client_job = True
+        else:
+            job_config = None
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
@@ -66,31 +69,26 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 self.ray_connect_handler(job_config)
+        if job_config is None:
+            return ray_client_pb2.InitResponse()
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config and set(job_config.runtime_env.uris) != set(
                 current_job_config.runtime_env.uris):
-            return ray_client_pb2.InitResponse(
-                status=ray_client_pb2.InitResponse.Status.
-                INCOMPATIBLE_RUNTIME_ENV)
-        # We also need to check whether there are any uris missing
-        missing_uris = self._prepare_runtime_env(job_config.runtime_env)
-        if len(missing_uris) == 0:
-            return ray_client_pb2.InitResponse(
-                status=ray_client_pb2.InitResponse.Status.OK)
-        else:
-            return ray_client_pb2.InitResponse(
-                status=ray_client_pb2.InitResponse.Status.MISSING_URIS)
+            raise grpc.RpcError(
+                "Runtime environment doesn't match "
+                f"request one {job_config.runtime_env.uris} "
+                f"current one {current_job_config.runtime_env.uris}")
+        return ray_client_pb2.InitResponse()
 
     def PrepRuntimeEnv(self, request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        missing_uris = self._prepare_runtime_env(request.runtime_env)
-        if len(missing_uris) == 0:
-            return ray_client_pb2.PrepRuntimeEnvResponse(ok=True)
-        else:
-            return ray_client_pb2.PrepRuntimeEnvResponse(
-                ok=False, msg=f"Failed to fetch uris: {missing_uris}")
+        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        missing_uris = self._prepare_runtime_env(job_config.runtime_env)
+        if len(missing_uris) != 0:
+            raise grpc.RpcError(f"Missing uris: {missing_uris}")
+        return ray_client_pb2.PrepRuntimeEnvResponse()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():

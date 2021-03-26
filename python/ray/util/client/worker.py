@@ -439,60 +439,28 @@ class Worker:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
     def _server_init(self, job_config: JobConfig):
-        """Initialize the server
-
-        There are two steps communication between client and server.
-        First request is `Init`, which will call `ray.init` in
-        server side. The server will return a status which might
-        trigger the second request:
-          Status.OK: it means the serer is ready to accept request.
-              No future work is needed.
-          Status.INCOMPATIBLE_RUNTIME_ENV: it means the server is
-              having different runtime env as the client, the client
-              won't be able to run in this server.
-          Status.MISSING_URIS: it means server missed some uris and
-              client need to prepare them. After the preparation,
-              it need to send another request `PrepRuntimeEnvRequest`
-              to notify the server to fetch it.
-
-        Args:
-            job_config (JobConfig): Job config to pass to the server
-        """
-        import ray._private.runtime_env as runtime_env
-        import tempfile
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            if runtime_env.PKG_DIR is None:
-                runtime_env.PKG_DIR = tmp_dir
-            # Generate the uri for runtime env
+        """Initialize the server"""
+        try:
             if job_config is None:
-                job_config = JobConfig()
-            runtime_env.rewrite_working_dir_uri(job_config)
-            init_req = ray_client_pb2.InitRequest(
-                job_config=pickle.dumps(job_config))
-            try:
-                init_ret = self.data_client.Init(init_req)
-                Status = ray_client_pb2.InitResponse.Status
-                if init_ret.status == Status.OK:
-                    return
-                elif init_ret.status == Status.INCOMPATIBLE_RUNTIME_ENV:
-                    raise RuntimeError(
-                        "Client's runtime env is not the same as server's. "
-                        "Please start another server.")
-                elif init_ret.status == Status.MISSING_URIS:
-                    runtime_env.upload_runtime_env_package_if_needed(
-                        job_config)
-                    prep_req = ray_client_pb2.PrepRuntimeEnvRequest(
-                        runtime_env=job_config.get_proto_job_config()
-                        .runtime_env)
-                    prep_ret = self.data_client.PrepRuntimeEnv(prep_req)
-                    if not prep_ret.ok:
-                        raise RuntimeError(
-                            "Failed to prepare runtime environment",
-                            prep_ret.msg)
-                else:
-                    raise RuntimeError("Unknown type: ", init_req.status)
-            except grpc.RpcError as e:
-                raise decode_exception(e.details())
+                init_req = ray_client_pb2.InitRequest()
+                self.data_client.Init(init_req)
+                return
+
+            import ray._private.runtime_env as runtime_env
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                if runtime_env.PKG_DIR is None:
+                    runtime_env.PKG_DIR = tmp_dir
+                # Generate the uri for runtime env
+                runtime_env.rewrite_working_dir_uri(job_config)
+                init_req = ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(job_config))
+                self.data_client.Init(init_req)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

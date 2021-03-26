@@ -1238,7 +1238,10 @@ def connect(node,
         job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
         job_config = [job_config] if job_config else \
             worker.core_worker.get_job_config().runtime_env.uris
-        assert len(runtime_env.ensure_runtime_env_setup(job_config)) == 0
+        missing_uris = runtime_env.ensure_runtime_env_setup(job_config)
+        if missing_uris:
+            raise IOError("Failed to prepare runtime env."
+                          f" URIs {missing_uris} are missing")
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
