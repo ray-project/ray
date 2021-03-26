@@ -54,9 +54,11 @@ DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 #ifdef __linux__
-DEFINE_string(plasma_directory, "/dev/shm", "The shared memory directory of the object store.");
+DEFINE_string(plasma_directory, "/dev/shm",
+              "The shared memory directory of the object store.");
 #else
-DEFINE_string(plasma_directory, "/tmp", "The shared memory directory of the object store.");
+DEFINE_string(plasma_directory, "/tmp",
+              "The shared memory directory of the object store.");
 #endif
 DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 #ifndef RAYLET_TEST
