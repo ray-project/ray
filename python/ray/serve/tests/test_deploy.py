@@ -398,7 +398,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     # Tests redeploying with a new version and higher num_replicas.
     name = "test"
 
-    @serve.deployment(name, version="1", config={"num_replicas": 2})
+    @serve.deployment(name, version="1", num_replicas=2)
     def v1(request):
         return f"1|{os.getpid()}"
 
