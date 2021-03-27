@@ -79,19 +79,14 @@ public class PlacementGroupDemo {
     Assert.assertTrue(isCreated);
 
     // Won't be scheduled because there are no 2 cpus now.
-    ObjectRef<String> obj = Ray.task(Counter::ping)
-      .setResource("CPU", 2.0)
-      .remote();
+    ObjectRef<String> obj = Ray.task(Counter::ping).setResource("CPU", 2.0).remote();
 
     List<ObjectRef<String>> waitList = ImmutableList.of(obj);
     WaitResult<String> waitResult = Ray.wait(waitList, 1, 5 * 1000);
     Assert.assertEquals(1, waitResult.getUnready().size());
 
     // Will be scheduled because 2 cpus are reserved by the placement group.
-    obj = Ray.task(Counter::ping)
-      .setPlacementGroup(pg, 0)
-      .setResource("CPU", 2.0)
-      .remote();
+    obj = Ray.task(Counter::ping).setPlacementGroup(pg, 0).setResource("CPU", 2.0).remote();
     Assert.assertEquals(obj.get(), "pong");
 
     PlacementGroups.removePlacementGroup(pg.getId());
@@ -156,10 +151,10 @@ public class PlacementGroupDemo {
     List<Map<String, Double>> bundles = ImmutableList.of(bundle1, bundle2);
 
     PlacementGroupCreationOptions options =
-      new PlacementGroupCreationOptions.Builder()
-        .setBundles(bundles)
-        .setStrategy(PlacementStrategy.STRICT_PACK)
-        .build();
+        new PlacementGroupCreationOptions.Builder()
+            .setBundles(bundles)
+            .setStrategy(PlacementStrategy.STRICT_PACK)
+            .build();
 
     PlacementGroup pg = PlacementGroups.createPlacementGroup(options);
     boolean isCreated = pg.wait(60);
@@ -167,18 +162,16 @@ public class PlacementGroupDemo {
 
     // Create GPU actors on a gpu bundle.
     for (int index = 0; index < 2; index++) {
-        Ray.actor(Counter::new, 1)
-          .setResource("GPU", 1.0)
-          .setPlacementGroup(pg, 0)
-          .remote();
+      Ray.actor(Counter::new, 1).setResource("GPU", 1.0).setPlacementGroup(pg, 0).remote();
     }
 
     // Create extra_resource actors on a extra_resource bundle.
     for (int index = 0; index < 2; index++) {
       Ray.task(Counter::ping)
-        .setPlacementGroup(pg, 1)
-        .setResource("extra_resource", 1.0)
-        .remote().get();
+          .setPlacementGroup(pg, 1)
+          .setResource("extra_resource", 1.0)
+          .remote()
+          .get();
     }
   }
 
