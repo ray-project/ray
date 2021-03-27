@@ -405,33 +405,42 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
 void ClusterResourceScheduler::TransformResource(
-    const std::string &predefined_resource_name,
-    const std::string &customer_resource_name, const double &customer_resource_value,
+    const std::string &original_resource_name, const std::string &transform_resource_name,
+    const double &transform_resource_value,
     const std::shared_ptr<TaskResourceInstances> resource_instances) {
-  RAY_CHECK(resource_instances->custom_resources.size() == 0);
-
-  string_to_int_map_.Insert(customer_resource_name);
-  int64_t resource_id = string_to_int_map_.Get(customer_resource_name);
+  string_to_int_map_.Insert(transform_resource_name);
+  int64_t resource_id = string_to_int_map_.Get(transform_resource_name);
 
   int idx = -1;
-  if (predefined_resource_name == ray::kCPU_ResourceLabel) {
+  if (original_resource_name == ray::kCPU_ResourceLabel) {
     idx = (int)CPU;
-  } else if (predefined_resource_name == ray::kGPU_ResourceLabel) {
+  } else if (original_resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (predefined_resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+  } else if (original_resource_name == ray::kObjectStoreMemory_ResourceLabel) {
     idx = (int)OBJECT_STORE_MEM;
-  } else if (predefined_resource_name == ray::kMemory_ResourceLabel) {
+  } else if (original_resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   }
 
-  auto predefined_resource_instance = resource_instances->predefined_resources[idx];
+  std::vector<FixedPoint> original_resource_instance;
+
+  if (idx != -1) {
+    original_resource_instance = resource_instances->predefined_resources[idx];
+  } else {
+    // If the idx is not -1, it means that the placement group is converting a customer
+    // resource.
+    auto customer_resource_id = string_to_int_map_.Get(original_resource_name);
+    RAY_CHECK(customer_resource_id != -1);
+    original_resource_instance =
+        resource_instances->custom_resources[customer_resource_id];
+  }
 
   if (local_resources_.custom_resources.contains(resource_id)) {
     auto &instances = local_resources_.custom_resources[resource_id];
 
-    for (size_t index = 0; index < predefined_resource_instance.size(); index++) {
-      instances.total[index] += predefined_resource_instance[index];
-      instances.available[index] += predefined_resource_instance[index];
+    for (size_t index = 0; index < original_resource_instance.size(); index++) {
+      instances.total[index] += original_resource_instance[index];
+      instances.available[index] += original_resource_instance[index];
     }
 
     auto local_node_it = nodes_.find(local_node_id_);
@@ -439,18 +448,18 @@ void ClusterResourceScheduler::TransformResource(
     auto &capacity =
         local_node_it->second.GetMutableLocalView()->custom_resources[resource_id];
 
-    capacity.available += FixedPoint(customer_resource_value);
-    capacity.total += FixedPoint(customer_resource_value);
+    capacity.available += FixedPoint(transform_resource_value);
+    capacity.total += FixedPoint(transform_resource_value);
   } else {
     ResourceInstanceCapacities capacity;
-    capacity.total = predefined_resource_instance;
-    capacity.available = predefined_resource_instance;
+    capacity.total = original_resource_instance;
+    capacity.available = original_resource_instance;
 
     local_resources_.custom_resources.emplace(resource_id, capacity);
     std::string node_id_string = string_to_int_map_.Get(local_node_id_);
     RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
-    UpdateResourceCapacity(node_id_string, customer_resource_name,
-                           customer_resource_value);
+    UpdateResourceCapacity(node_id_string, transform_resource_name,
+                           transform_resource_value);
     UpdateLocalAvailableResourcesFromResourceInstances();
   }
 }

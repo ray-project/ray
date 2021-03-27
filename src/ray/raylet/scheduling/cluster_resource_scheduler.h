@@ -173,15 +173,15 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Transform the predefined resources into a new customer resource.
+  /// Transform the original resources into a new customer resource.
   ///
-  /// \param predefined_resource_name: The original resource which will be transformed.
-  /// \param customer_resource_name: The new customer resource name.
-  /// \param customer_resource_value: The new customer resource value.
+  /// \param original_resource_name: The original resource which will be transformed.
+  /// \param transform_resource_name: The resource name after being transformed.
+  /// \param transform_resource_value: The resource value after being transformed.
   /// \param resource_instances: The resources assigned to bundle.
-  void TransformResource(const std::string &predefined_resource_name,
-                         const std::string &customer_resource_name,
-                         const double &customer_resource_value,
+  void TransformResource(const std::string &original_resource_name,
+                         const std::string &transform_resource_name,
+                         const double &transform_resource_value,
                          const std::shared_ptr<TaskResourceInstances> resource_instances);
 
   /// Add a local resource that is available.
