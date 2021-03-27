@@ -137,9 +137,16 @@ in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
    1. The Ray Kubernetes Operator is still experimental. For the yaml files in the examples below, we recommend using the latest master version of Ray.
    2. The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command :bash:`kubectl version`.
 
+Starting the Operator
+---------------------
 
-Applying the RayCluster Custom Resource Definition
---------------------------------------------------
+Set-up for the Ray Operator consists of three steps --
+:ref:`applying a CRD <apply-crd>`, :ref:`picking a namespace <operator-namespace>`, and :ref:`launching the Operator Pod <operator-pod-launch>`.
+
+.. _apply-crd:
+
+(1) Applying the RayCluster Custom Resource Definition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The Ray Kubernetes operator works by managing a user-submitted `Kubernetes Custom Resource`_ (CR) called a ``RayCluster``.
 A RayCluster custom resource describes the desired state of the Ray cluster.
 
@@ -157,8 +164,10 @@ To get started, we need to apply the `Kubernetes Custom Resource Definition`_ (C
     The file ``cluster_crd.yaml`` defining the CRD is not meant to meant to be modified by the user. Rather, users :ref:`configure <operator-launch>` a RayCluster CR via a file like `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
     The Kubernetes API server then validates the user-submitted RayCluster resource against the CRD.
 
-Picking a Kubernetes Namespace
--------------------------------
+.. _operator-namespace:
+
+(2) Picking a Kubernetes Namespace
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The rest of the Kubernetes resources we will use are `namespaced`_.
 You can use an existing namespace for your Ray clusters or create a new one if you have permissions.
 For this example, we will create a namespace called ``ray``.
@@ -169,8 +178,10 @@ For this example, we will create a namespace called ``ray``.
 
  namespace/ray created
 
-Starting the Operator
-----------------------
+.. _operator-pod-launch:
+
+(3) Launching the Operator Pod
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To launch the operator in our namespace, we execute the following command.
 
@@ -190,7 +201,7 @@ The ServiceAccount, Role, and RoleBinding we have created grant the operator pod
 
 Launching Ray Clusters
 ----------------------
-Finally, to launch a Ray cluster, we create a RayCluster custom resource.
+Having set up the Operator, we can now launch Ray clusters. To launch a Ray cluster, we create a RayCluster custom resource.
 
 .. code-block:: shell
 
