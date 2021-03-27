@@ -49,7 +49,7 @@ def ppo_surrogate_loss(
         logits, state, extra_outs = model(train_batch)
         value_fn_out = extra_outs[SampleBatch.VF_PREDS]
     else:
-        logits, state = model(train_batch)
+        logits, state = model.from_batch(train_batch)
         value_fn_out = model.value_function()
 
     curr_action_dist = dist_class(logits, model)

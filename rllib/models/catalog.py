@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
+    # Experimental flag.
+    # If True, try to use a native (tf.keras.Model or torch.Module) model
+    # instead of our ModelV2 built-in default models.
+    # If False (default), use "classic" ModelV2 default models.
+    # Note that this currently only works for framework != torch AND fully
+    # connected default networks.
+    "_use_default_native_models": False,
+
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
     # These are used if no custom model is specified and the input space is 1D.
@@ -556,6 +564,15 @@ class ModelCatalog:
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+
+            if issubclass(wrapper, tf.keras.Model):
+                return wrapper(
+                    input_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    name=name,
+                    **dict(model_kwargs, **model_config),
+                )
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
 
@@ -728,10 +745,12 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
+        Keras_FCNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
-                FullyConnectedNetwork as FCNet
+                FullyConnectedNetwork as FCNet, \
+                Keras_FullyConnectedNetwork as Keras_FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
             from ray.rllib.models.tf.complex_input_net import \
@@ -765,12 +784,19 @@ class ModelCatalog:
                           for s in space_to_check.spaces)):
             return ComplexNet
 
-        # Single, flattenable/one-hot-abe space -> Simple FCNet.
+        # Single, flattenable/one-hot-able space -> Simple FCNet.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
-            return FCNet
+            # Keras native requested AND no auto-rnn-wrapping AND .
+            if model_config.get("_use_default_native_models") and \
+                    Keras_FCNet and not model_config.get("use_lstm") and \
+                    not model_config.get("use_attention"):
+                return Keras_FCNet
+            # Classic ModelV2 FCNet.
+            else:
+                return FCNet
 
         elif framework == "jax":
             raise NotImplementedError("No non-FC default net for JAX yet!")

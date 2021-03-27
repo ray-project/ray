@@ -763,6 +763,8 @@ class Policy(metaclass=ABCMeta):
         if hasattr(obj, "get_initial_state") and callable(
                 obj.get_initial_state):
             init_state = obj.get_initial_state()
+        else:
+            obj.get_initial_state = lambda: []
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state

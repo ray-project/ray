@@ -82,6 +82,9 @@ class TestPPO(unittest.TestCase):
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
+        # Use default-native keras model whenever possible.
+        config["model"]["_use_default_native_models"] = True
+
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
@@ -95,6 +98,7 @@ class TestPPO(unittest.TestCase):
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
                     config["model"]["lstm_use_prev_reward"] = lstm
+
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
                         trainer.train()
