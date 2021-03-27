@@ -249,10 +249,6 @@ class Policy(metaclass=ABCMeta):
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
 
-        Note: This is an experimental API method.
-
-        Only used so far by the Sampler iff `_use_trajectory_view_api=True`
-        (also only supported for torch).
         Uses the currently "forward-pass-registered" samples from the collector
         to construct the input_dict for the Model.
 
@@ -279,11 +275,7 @@ class Policy(metaclass=ABCMeta):
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
-            # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config.get("_use_trajectory_view_api", False) else
-            s.unsqueeze(0)
-            if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
-            for k, s in input_dict.items() if k[:9] == "state_in_"
+            s for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
@@ -662,8 +654,7 @@ class Policy(metaclass=ABCMeta):
             stats_fn(self, train_batch)
 
         # Add new columns automatically to view-reqs.
-        if self.config["_use_trajectory_view_api"] and \
-                auto_remove_unneeded_view_reqs:
+        if auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
                                 self._dummy_batch.accessed_keys | \

@@ -410,17 +410,42 @@ class ReplicaStateContainer:
 
         return replicas
 
-    def count(self, states: Optional[List[ReplicaState]] = None):
+    def count(self,
+              exclude_version: Optional[str] = None,
+              version: Optional[str] = None,
+              states: Optional[List[ReplicaState]] = None):
         """Get the total count of replicas of the given states.
 
         Args:
+            exclude_version(str): version to exclude. If not specified, all
+                versions are considered.
+            version(str): version to filter to. If not specified, all versions
+                are considered.
             states (str): states to consider. If not specified, all replicas
                 are considered.
         """
         if states is None:
             states = ALL_REPLICA_STATES
         assert isinstance(states, list)
-        return sum(len(self._replicas[state]) for state in states)
+        assert exclude_version is None or isinstance(exclude_version, str)
+        assert version is None or isinstance(version, str)
+        if exclude_version is None and version is None:
+            return sum(len(self._replicas[state]) for state in states)
+        elif exclude_version is None and version is not None:
+            return sum(
+                len(
+                    list(
+                        filter(lambda r: r.version == version, self._replicas[
+                            state]))) for state in states)
+        elif exclude_version is not None and version is None:
+            return sum(
+                len(
+                    list(
+                        filter(lambda r: r.version != exclude_version,
+                               self._replicas[state]))) for state in states)
+        else:
+            raise ValueError(
+                "Only one of `version` or `exclude_version` may be provided.")
 
     def __str__(self):
         return str(self._replicas)
@@ -596,40 +621,75 @@ class BackendState:
         return new_goal_id
 
     def _stop_wrong_version_replicas(
-            self, backend_tag: BackendTag, version: str,
-            graceful_shutdown_timeout_s: float) -> int:
+            self, replicas: ReplicaStateContainer, target_replicas: int,
+            target_version: str, graceful_shutdown_timeout_s: float) -> int:
+        """Stops replicas with outdated versions to implement rolling updates.
+
+        TODO
+        """
         # NOTE(edoakes): this short-circuits when using the legacy
         # `create_backend` codepath -- it can be removed once we deprecate
         # that as the version should never be None.
-        if version is None:
-            return
+        if target_version is None:
+            return 0
 
-        # TODO(edoakes): to implement rolling upgrade, all we should need to
-        # do is cap the number of old version replicas that are stopped here.
-        replicas_to_stop = self._replicas[backend_tag].pop(
-            exclude_version=version,
+        # Short circuit if target replicas is 0 (the backend is being deleted)
+        # because this will be handled in the main loop.
+        if target_replicas == 0:
+            return 0
+
+        # We include SHOULD_START and STARTING replicas here because if there
+        # are replicas still pending startup, we may as well terminate them
+        # and start new version replicas instead.
+        old_running_replicas = replicas.count(
+            exclude_version=target_version,
             states=[
                 ReplicaState.SHOULD_START, ReplicaState.STARTING,
                 ReplicaState.RUNNING
             ])
+        old_stopping_replicas = replicas.count(
+            exclude_version=target_version,
+            states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
+        new_running_replicas = replicas.count(
+            version=target_version, states=[ReplicaState.RUNNING])
 
-        # Inform the routers and backend replicas about config changes.
-        # TODO(edoakes): this should only happen if we change something other
-        # than num_replicas.
-        self._notify_backend_configs_changed(backend_tag)
-        if len(replicas_to_stop) > 0:
-            logger.info(f"Stopping {len(replicas_to_stop)} replicas of "
-                        f"backend '{backend_tag}' with outdated versions.")
+        # If the backend is currently scaling down, let the scale down
+        # complete before doing a rolling update.
+        if target_replicas < old_running_replicas + old_stopping_replicas:
+            return 0
+
+        # The number of replicas that are currently in transition between
+        # an old version and the new version. Note that we cannot directly
+        # count the number of stopping replicas because once replicas finish
+        # stopping, they are removed from the data structure.
+        pending_replicas = (
+            target_replicas - new_running_replicas - old_running_replicas)
+
+        # Maximum number of replicas that can be updating at any given time.
+        # There should never be more than rollout_size old replicas stopping
+        # or rollout_size new replicas starting.
+        rollout_size = max(int(0.2 * target_replicas), 1)
+        max_to_stop = max(rollout_size - pending_replicas, 0)
+
+        replicas_to_stop = replicas.pop(
+            exclude_version=target_version,
+            states=[
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
+            ],
+            max_replicas=max_to_stop)
 
         for replica in replicas_to_stop:
             replica.set_should_stop(graceful_shutdown_timeout_s)
-            self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP, replica)
+            replicas.add(ReplicaState.SHOULD_STOP, replica)
+
+        return len(replicas_to_stop)
 
     def _scale_backend_replicas(
             self,
             backend_tag: BackendTag,
-            num_replicas: int,
-            version: str,
+            target_replicas: int,
+            target_version: str,
     ) -> bool:
         """Scale the given backend to the number of replicas.
 
@@ -642,58 +702,62 @@ class BackendState:
         """
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
-        assert num_replicas >= 0, ("Number of replicas must be"
-                                   " greater than or equal to 0.")
+        assert target_replicas >= 0, ("Number of replicas must be"
+                                      " greater than or equal to 0.")
 
         backend_info: BackendInfo = self._backend_metadata[backend_tag]
         graceful_shutdown_timeout_s = (
             backend_info.backend_config.
             experimental_graceful_shutdown_timeout_s)
 
-        self._stop_wrong_version_replicas(backend_tag, version,
-                                          graceful_shutdown_timeout_s)
+        stopped = self._stop_wrong_version_replicas(
+            self._replicas[backend_tag], target_replicas, target_version,
+            graceful_shutdown_timeout_s)
+        if stopped > 0:
+            logger.info(f"Stopping {stopped} replicas of backend "
+                        f"'{backend_tag}' with outdated versions.")
 
-        current_num_replicas = self._replicas[backend_tag].count(states=[
+        current_replicas = self._replicas[backend_tag].count(states=[
             ReplicaState.SHOULD_START, ReplicaState.STARTING,
             ReplicaState.RUNNING
         ])
 
-        delta_num_replicas = num_replicas - current_num_replicas
-
-        if delta_num_replicas == 0:
+        delta_replicas = target_replicas - current_replicas
+        if delta_replicas == 0:
             return False
 
-        logger.debug(
-            f"Scaling backend '{backend_tag}' from {current_num_replicas} "
-            f"to {num_replicas} replicas")
-
-        if delta_num_replicas > 0:
-            logger.debug("Adding {} replicas to backend {}".format(
-                delta_num_replicas, backend_tag))
-            for _ in range(delta_num_replicas):
+        elif delta_replicas > 0:
+            # Don't ever exceed target_replicas.
+            stopping_replicas = self._replicas[backend_tag].count(states=[
+                ReplicaState.SHOULD_STOP,
+                ReplicaState.STOPPING,
+            ])
+            to_add = max(delta_replicas - stopping_replicas, 0)
+            if to_add > 0:
+                logger.info(f"Adding {to_add} replicas "
+                            f"to backend '{backend_tag}'.")
+            for _ in range(to_add):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag, version))
+                                   replica_tag, backend_tag, target_version))
 
-        elif delta_num_replicas < 0:
-            logger.debug("Removing {} replicas from backend '{}'".format(
-                -delta_num_replicas, backend_tag))
-            assert self._target_replicas[backend_tag] >= delta_num_replicas
+        elif delta_replicas < 0:
+            to_remove = -delta_replicas
+            logger.info(f"Removing {to_remove} replicas "
+                        f"from backend '{backend_tag}'.")
+            replicas_to_stop = self._replicas[backend_tag].pop(
+                states=[
+                    ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                    ReplicaState.RUNNING
+                ],
+                max_replicas=to_remove)
 
-            for _ in range(-delta_num_replicas):
-                replicas_to_stop = self._replicas[backend_tag].pop(
-                    states=[
-                        ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                        ReplicaState.RUNNING
-                    ],
-                    max_replicas=-delta_num_replicas)
-
-                for replica in replicas_to_stop:
-                    replica.set_should_stop(graceful_shutdown_timeout_s)
-                    self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
-                                                    replica)
+            for replica in replicas_to_stop:
+                replica.set_should_stop(graceful_shutdown_timeout_s)
+                self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
+                                                replica)
 
         return True
 
@@ -762,6 +826,7 @@ class BackendState:
                 replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
+                transitioned_backend_tags.add(backend_tag)
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
@@ -773,9 +838,7 @@ class BackendState:
                     replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STOPPING]):
-                if replica.check_stopped():
-                    transitioned_backend_tags.add(backend_tag)
-                else:
+                if not replica.check_stopped():
                     replicas.add(ReplicaState.STOPPING, replica)
 
         if len(transitioned_backend_tags) > 0:

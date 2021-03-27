@@ -6,7 +6,6 @@ import shutil
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 
 import skopt
 import numpy as np
@@ -206,9 +205,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         shutil.rmtree(self.logdir)
         ray.shutdown()
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeGridSearch(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         config = dict(
             num_samples=3,
             fail_fast=True,
@@ -237,9 +236,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         test2_counter = Counter([t.config["test2"] for t in analysis.trials])
         assert all(v == 9 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeWithPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -280,9 +279,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeAfterPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -324,9 +323,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testMultiExperimentFail(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         experiments = []
         for i in range(3):
             experiments.append(

@@ -189,7 +189,7 @@ def make_ddpg_optimizers(policy, config):
     return policy._actor_optimizer, policy._critic_optimizer
 
 
-def apply_gradients_fn(policy):
+def apply_gradients_fn(policy, gradients):
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     if policy.global_step % policy.config["policy_delay"] == 0:

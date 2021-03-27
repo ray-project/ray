@@ -1,3 +1,4 @@
+from abc import ABC
 import asyncio
 import atexit
 import inspect
@@ -8,11 +9,10 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
                     Optional, Type, Union)
-from uuid import UUID
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag
+from ray.serve.common import EndpointTag, GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -23,7 +23,8 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger, register_custom_serializers)
+                             logger, make_fastapi_class_based_view,
+                             register_custom_serializers)
 
 import ray
 
@@ -53,6 +54,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    servable_object: Callable
 
 
 def create_or_get_async_loop_in_thread():
@@ -67,10 +69,15 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
+def _set_internal_replica_context(
+        backend_tag: BackendTag,
+        replica_tag: ReplicaTag,
+        controller_name: str,
+        servable_object: Callable,
+):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(backend_tag, replica_tag,
-                                               controller_name)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+        backend_tag, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -204,11 +211,16 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(self, result_object_id: ray.ObjectRef) -> bool:
-        goal_id: Optional[UUID] = ray.get(result_object_id)
-        if goal_id is not None:
-            ray.get(self._controller.wait_for_goal.remote(goal_id))
-            logger.debug(f"Goal {goal_id} completed.")
+    def _wait_for_goal(self,
+                       result_object_id: ray.ObjectRef,
+                       timeout: Optional[float] = None) -> bool:
+        goal_id: Optional[GoalId] = ray.get(result_object_id)
+        if goal_id is None:
+            return True
+
+        ready, _ = ray.wait(
+            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        return len(ready) == 1
 
     @_ensure_connected
     def create_endpoint(self,
@@ -447,7 +459,8 @@ class Client:
                *init_args: Any,
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-               version: Optional[str] = None) -> None:
+               version: Optional[str] = None,
+               _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -488,9 +501,17 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        self._wait_for_goal(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, version))
+        goal_ref = self._controller.deploy.remote(name, backend_config,
+                                                  replica_config, version)
+
+        if _blocking:
+            self._wait_for_goal(goal_ref)
+        else:
+            return goal_ref
+
+    @_ensure_connected
+    def delete_deployment(self, name: str) -> None:
+        self._wait_for_goal(self._controller.delete_deployment.remote(name))
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
@@ -580,8 +601,8 @@ class Client:
         Returns:
             RayServeHandle
         """
-        if not missing_ok and endpoint_name not in ray.get(
-                self._controller.get_all_endpoints.remote()):
+        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
+        if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
         if asyncio.get_event_loop().is_running() and sync:
@@ -589,7 +610,7 @@ class Client:
                 "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
                 "performance. Learn more at https://docs.ray.io/en/master/"
-                "serve/advanced.html#sync-and-async-handles")
+                "serve/http-servehandle.html#sync-and-async-handles")
 
         if not asyncio.get_event_loop().is_running() and not sync:
             logger.warning(
@@ -597,15 +618,26 @@ class Client:
                 "You should make sure client.get_handle is called inside a "
                 "running event loop. Or call client.get_handle(.., sync=True) "
                 "to create sync handle. Learn more at https://docs.ray.io/en/"
-                "master/serve/advanced.html#sync-and-async-handles")
+                "master/serve/http-servehandle.html#sync-and-async-handles")
+
+        if endpoint_name in all_endpoints:
+            this_endpoint = all_endpoints[endpoint_name]
+            python_methods: List[str] = this_endpoint["python_methods"]
+        else:
+            # This can happen in the missing_ok=True case.
+            # handle.method_name.remote won't work and user must
+            # use the legacy handle.options(method).remote().
+            python_methods: List[str] = []
 
         # NOTE(simon): this extra layer of router seems unnecessary
         # BUT it's needed still because of the shared asyncio thread.
         router = self._get_proxied_router(sync=sync, endpoint=endpoint_name)
         if sync:
-            handle = RayServeSyncHandle(router, endpoint_name)
+            handle = RayServeSyncHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         else:
-            handle = RayServeHandle(router, endpoint_name)
+            handle = RayServeHandle(
+                router, endpoint_name, known_python_methods=python_methods)
         return handle
 
 
@@ -1056,9 +1088,149 @@ def ingress(
 
         if app is not None:
             cls._serve_asgi_app = app
+            # Sometimes there are decorators on the methods. We want to fix
+            # the fast api routes here.
+            make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
             cls._serve_path_prefix = path_prefix
 
         return cls
+
+    return decorator
+
+
+class ServeDeployment(ABC):
+    @classmethod
+    def deploy(self, *init_args) -> None:
+        """Deploy this deployment.
+
+        Args:
+            *init_args (optional): the arguments to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
+        """
+        # TODO(edoakes): how to avoid copy-pasting the docstrings here?
+        raise NotImplementedError()
+
+    @classmethod
+    def delete(self) -> None:
+        """Delete this deployment."""
+        raise NotImplementedError()
+
+    @classmethod
+    def get_handle(self, sync: Optional[bool] = True
+                   ) -> Union[RayServeHandle, RayServeSyncHandle]:
+        raise NotImplementedError()
+
+    @classmethod
+    def options(self,
+                backend_def: Optional[Callable] = None,
+                name: Optional[str] = None,
+                version: Optional[str] = None,
+                ray_actor_options: Optional[Dict] = None,
+                config: Optional[BackendConfig] = None) -> "ServeDeployment":
+        """Return a new deployment with the specified options set."""
+        raise NotImplementedError()
+
+
+def make_deployment_cls(
+        backend_def: Callable,
+        name: str,
+        version: str,
+        ray_actor_options: Optional[Dict] = None,
+        config: Optional[BackendConfig] = None) -> ServeDeployment:
+    class Deployment(ServeDeployment):
+        _backend_def = backend_def
+        _name = name
+        _version = version
+        _ray_actor_options = ray_actor_options
+        _config = config
+
+        @classmethod
+        def deploy(self, *init_args):
+            """Deploy this deployment.
+
+            Args:
+                *init_args (optional): args to pass to the class __init__
+                    method. Not valid if this deployment wraps a function.
+            """
+            return _get_global_client().deploy(
+                Deployment._name,
+                Deployment._backend_def,
+                *init_args,
+                ray_actor_options=Deployment._ray_actor_options,
+                config=Deployment._config,
+                version=Deployment._version,
+                _internal=True)
+
+        @classmethod
+        def delete(self):
+            """Delete this deployment."""
+            return _get_global_client().delete_deployment(Deployment._name)
+
+        @classmethod
+        def get_handle(self, sync: Optional[bool] = True
+                       ) -> Union[RayServeHandle, RayServeSyncHandle]:
+            """Get a ServeHandle to this deployment."""
+            return _get_global_client().get_handle(
+                Deployment._name, missing_ok=False, sync=sync, _internal=True)
+
+        @classmethod
+        def options(self,
+                    backend_def: Optional[Callable] = None,
+                    name: Optional[str] = None,
+                    version: Optional[str] = None,
+                    ray_actor_options: Optional[Dict] = None,
+                    config: Optional[BackendConfig] = None) -> "Deployment":
+            """Return a new deployment with the specified options set."""
+            return make_deployment_cls(
+                backend_def or Deployment._backend_def,
+                name or Deployment._name,
+                version or Deployment._version,
+                ray_actor_options=ray_actor_options
+                or Deployment._ray_actor_options,
+                config=config or Deployment._config,
+            )
+
+    return Deployment
+
+
+# TODO(edoakes): better typing on the return value of the decorator.
+def deployment(name: str,
+               version: Optional[str] = None,
+               ray_actor_options: Optional[Dict] = None,
+               config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
+               ) -> Callable[[Callable], ServeDeployment]:
+    """Define a Serve deployment.
+
+    Args:
+        name (str): Globally-unique name identifying this deployment.
+        version (str): Version of the deployment. This is used to indicate a
+            code change for the deployment; when it is re-deployed with a
+            version change, a rolling update of the replicas will be performed.
+        ray_actor_options (dict): Options to be passed to the Ray actor
+            constructor such as resource requirements.
+        config (dict, serve.BackendConfig, optional): Configuration options
+            for this backend. Either a BackendConfig, or a dictionary
+            mapping strings to values for the following supported options:
+            - "num_replicas": number of processes to start up that
+            will handle requests to this backend.
+            - "max_concurrent_queries": the maximum number of queries that
+            will be sent to a replica of this backend without receiving a
+            response.
+            - "user_config" (experimental): Arguments to pass to the
+            reconfigure method of the backend. The reconfigure method is
+            called if "user_config" is not None.
+
+    Example:
+    >>> @serve.deployment("deployment1", version="v1")
+        class MyDeployment:
+            pass
+
+    >>> MyDeployment.deploy(*init_args)
+    """
+
+    def decorator(backend_def):
+        return make_deployment_cls(backend_def, name, version,
+                                   ray_actor_options, config)
 
     return decorator
