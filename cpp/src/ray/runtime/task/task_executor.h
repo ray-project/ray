@@ -2,21 +2,36 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
-#include <boost/dll.hpp>
 #include <memory>
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/core.h"
 
 namespace ray {
-
 namespace internal {
-/// Execute remote functions by networking stream.
-msgpack::sbuffer TaskExecutionHandler(
-    const std::string &func_name,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer);
 
-BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
+/// Execute remote functions by networking stream.
+inline static msgpack::sbuffer TaskExecutionHandler(const char *data, std::size_t size) {
+  msgpack::sbuffer result;
+  do {
+    try {
+      auto p = ray::api::Serializer::Deserialize<std::tuple<std::string>>(data, size);
+      auto &func_name = std::get<0>(p);
+      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+      if (func_ptr == nullptr) {
+        result = PackReturnValue(internal::ErrorCode::FAIL,
+                                 "unknown function: " + func_name, 0);
+        break;
+      }
+
+      result = (*func_ptr)(data, size);
+    } catch (const std::exception &ex) {
+      result = PackReturnValue(internal::ErrorCode::FAIL, ex.what());
+    }
+  } while (0);
+
+  return result;
+}
 }  // namespace internal
 
 namespace api {

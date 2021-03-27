@@ -32,8 +32,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   auto exec_func_offset =
       (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset),
-      invocation.fptr.function_name);
+      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset));
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;

@@ -104,27 +104,21 @@ inline const char *ConstBasename(const char *filepath) {
 
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
-/// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
-/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
 class DefaultStdErrLogger final {
  public:
-  std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
-
-  static DefaultStdErrLogger &Instance() {
-    static DefaultStdErrLogger instance;
-    return instance;
-  }
-
- private:
   DefaultStdErrLogger() {
     default_stderr_logger_ = spdlog::stderr_color_mt("stderr");
     default_stderr_logger_->set_pattern(RayLog::GetLogFormatPattern());
   }
-  ~DefaultStdErrLogger() = default;
-  DefaultStdErrLogger(DefaultStdErrLogger const &) = delete;
-  DefaultStdErrLogger(DefaultStdErrLogger &&) = delete;
+  std::shared_ptr<spdlog::logger> GetDefaultLogger() { return default_stderr_logger_; }
+
+ private:
   std::shared_ptr<spdlog::logger> default_stderr_logger_;
 };
+
+/// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
+/// variable so core worker process can invoke `RAY_LOG` in its whole lifecyle.
+std::unique_ptr<DefaultStdErrLogger> default_stderr_logger(new DefaultStdErrLogger());
 
 class SpdLogMessage final {
  public:
@@ -135,7 +129,7 @@ class SpdLogMessage final {
   inline void Flush() {
     auto logger = spdlog::get(RayLog::GetLoggerName());
     if (!logger) {
-      logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
+      logger = default_stderr_logger->GetDefaultLogger();
     }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
