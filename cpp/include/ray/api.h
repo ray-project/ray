@@ -181,6 +181,14 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
   RemoteFunctionPtrHolder ptr;
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
+    if (function_name.empty()) {
+      throw RayException(
+          "Function not found. Please use RAY_REMOTE to register this function.");
+    }
+    ptr.function_name = std::move(function_name);
+  }
   return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr,
                                 std::move(task_args));
 }
@@ -203,6 +211,7 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 template <typename F, typename... Args>
 TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
+
   return TaskInternal<ReturnType>(
       func, NormalExecFunction<ReturnType, typename FilterArgType<Args>::type...>,
       args...);

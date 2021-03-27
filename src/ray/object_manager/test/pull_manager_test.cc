@@ -25,7 +25,7 @@ class PullManagerTestWithCapacity {
               num_send_pull_request_calls_++;
             },
             [this](const ObjectID &object_id) { num_abort_calls_[object_id]++; },
-            [this](const ObjectID &, const std::string &, const NodeID &,
+            [this](const ObjectID &, const std::string &,
                    std::function<void(const ray::Status &)> callback) {
               num_restore_spilled_object_calls_++;
               restore_object_callback_ = callback;
@@ -126,7 +126,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   AssertNoLeaks();
 }
 
-TEST_F(PullManagerTest, TestRestoreSpilledObject) {
+TEST_F(PullManagerTest, TestRestoreSpilledObjectRemote) {
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -147,27 +147,29 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
 
-  // The behavior is supposed to be to always restore the spilled object if possible (even
-  // if it exists elsewhere in the cluster).
-  ASSERT_EQ(num_send_pull_request_calls_, 0);
-  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+  // We request a remote pull to restore the object.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  // The restore object call will ask the remote node to restore the object, and the
-  // client location is updated accordingly.
+  // No retry yet.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
+                                 node_that_object_spilled, 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // The call can be retried after a delay.
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
-
-  // Now the pull requests are sent.
-  ASSERT_EQ(num_send_pull_request_calls_, 1);
-  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // Don't restore an object if it's local.
   object_is_local_ = true;
-  num_restore_spilled_object_calls_ = 0;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  NodeID::FromRandom(), 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   ASSERT_TRUE(num_abort_calls_.empty());
@@ -179,7 +181,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   AssertNoLeaks();
 }
 
-TEST_F(PullManagerTest, TestRestoreObjectFailed) {
+TEST_F(PullManagerTest, TestRestoreSpilledObjectLocal) {
   auto refs = CreateObjectRefs(1);
   auto obj1 = ObjectRefsToIds(refs)[0];
   rpc::Address addr1;
@@ -187,50 +189,41 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+
   std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(obj1, client_ids, "", NodeID::Nil(), 0);
-  AssertNumActiveRequestsEquals(1);
 
   // client_ids is empty here, so there's nowhere to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  // Object is now spilled to a remote node, but the client_ids are still empty.
-  const NodeID remote_node_object_spilled = NodeID::FromRandom();
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled, 0);
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
 
+  // We request a local restore.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
-  restore_object_callback_(ray::Status::IOError(":("));
-
-  // Now the restore request has failed, the remote object shouldn't have been properly
-  // restored.
-  fake_time_ += 10.0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled, 0);
-
+  // No retry yet.
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
-  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
-  restore_object_callback_(ray::Status::OK());
-  // Now the remote restoration request succeeds, so we sholud be able to pull the object.
-  client_ids.insert(remote_node_object_spilled);
-  // Since it is the second retry, the interval gets doubled.
-  fake_time_ += 20.0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
-                                 remote_node_object_spilled, 0);
-
-  // Now that we've successfully sent a pull request, we need to wait for the retry period
-  // before sending another one.
-  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  // The call can be retried after a delay.
+  fake_time_ += 10.;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
+                                 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
   ASSERT_TRUE(num_abort_calls_.empty());
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
+  ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
   ASSERT_EQ(num_abort_calls_[obj1], 1);
+
   AssertNoLeaks();
 }
 

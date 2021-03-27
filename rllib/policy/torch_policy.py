@@ -398,8 +398,7 @@ class TorchPolicy(Policy):
         grads, fetches = self.compute_gradients(postprocessed_batch)
 
         # Step the optimizers.
-        for i, opt in enumerate(self._optimizers):
-            opt.step()
+        self.apply_gradients(_directStepOptimizerSingleton)
 
         if self.model:
             fetches["model"] = self.model.metrics()
@@ -497,13 +496,17 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
-        # TODO(sven): Not supported for multiple optimizers yet.
-        assert len(self._optimizers) == 1
-        for g, p in zip(gradients, self.model.parameters()):
-            if g is not None:
-                p.grad = torch.from_numpy(g).to(self.device)
+        if gradients == _directStepOptimizerSingleton:
+            for i, opt in enumerate(self._optimizers):
+                opt.step()
+        else:
+            # TODO(sven): Not supported for multiple optimizers yet.
+            assert len(self._optimizers) == 1
+            for g, p in zip(gradients, self.model.parameters()):
+                if g is not None:
+                    p.grad = torch.from_numpy(g).to(self.device)
 
-        self._optimizers[0].step()
+            self._optimizers[0].step()
 
     @override(Policy)
     @DeveloperAPI
@@ -748,3 +751,25 @@ class EntropyCoeffSchedule:
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         self.entropy_coeff = self.entropy_coeff_schedule.value(
             global_vars["timestep"])
+
+
+@DeveloperAPI
+class DirectStepOptimizer:
+    """Typesafe method for indicating apply gradients can directly step the
+       optimizers with in-place gradients.
+    """
+    _instance = None
+
+    def __new__(cls):
+        if DirectStepOptimizer._instance is None:
+            DirectStepOptimizer._instance = super().__new__(cls)
+        return DirectStepOptimizer._instance
+
+    def __eq__(self, other):
+        return type(self) == type(other)
+
+    def __repr__(self):
+        return "DirectStepOptimizer"
+
+
+_directStepOptimizerSingleton = DirectStepOptimizer()

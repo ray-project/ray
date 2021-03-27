@@ -486,7 +486,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
