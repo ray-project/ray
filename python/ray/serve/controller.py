@@ -228,8 +228,9 @@ class ServeController:
             if backend_info is None:
                 raise ValueError(f"Backend {backend_tag} is not registered.")
 
-            backend_info.backend_config.update(
-                config_options.dict(exclude_unset=True))
+            new_backend_config = backend_info.backend_config.copy(
+                                update=config_options.dict(exclude_unset=True))
+            backend_info.backend_config = new_backend_config
             return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
