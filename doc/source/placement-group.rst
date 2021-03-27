@@ -5,6 +5,8 @@ Placement Groups
 
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors to be packed as close as possible for locality (PACK), or spread apart (SPREAD).
 
+Java demo code in this documentation can be found here `<https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/PlacementGroupDemo.java>`__.
+
 Here are some use cases:
 
 - **Gang Scheduling**: Your application requires all tasks/actors to be scheduled and start at the same time.
@@ -35,7 +37,7 @@ A **placement group strategy** is an algorithm for selecting nodes for bundle pl
 Starting a placement group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group`` API if you are using Python. With Java, you can use ``PlacementGroups.createPlacementGroup`` API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+Ray placement group can be created via the ``ray.util.placement_group``(Python) or ``PlacementGroups.createPlacementGroup``(Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
 .. tabs::
   .. group-tab:: Python
@@ -66,11 +68,8 @@ Ray placement group can be created via the ``ray.util.placement_group`` API if y
       Ray.init();
 
       // Construct a list of bundles.
-      List<Map<String, Double>> bundles = new ArrayList<>();
-      Map<String, Double> bundle = new HashMap<>();
-      bundle.put("CPU", 1.0);
-
-      bundles.add(bundle);
+      Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
+      List<Map<String, Double>> bundles = ImmutableList.of(bundle);
 
       // Make a creation option with bundles and strategy.
       PlacementGroupCreationOptions options =
@@ -198,7 +197,9 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. code-block:: java
 
-        // Before you run this code, you need to make sure there are only two "CPU" are available.
+        System.setProperty("ray.head-args.0", "--num-cpus=2");
+        Ray.init();
+
         public static class Counter {
           public static String ping() {
             return "pong";
@@ -206,10 +207,8 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         }
 
         // Construct a list of bundles.
-        List<Map<String, Double>> bundles = new ArrayList<>();
-        Map<String, Double> bundle = new HashMap<>();
-        bundle.put("CPU", 2.0);
-        bundles.add(bundle);
+        Map<String, Double> bundle = ImmutableMap.of("CPU", 2.0);
+        List<Map<String, Double>> bundles = ImmutableList.of(bundle);
 
         // Create a placement group and make sure its creation is successful.
         PlacementGroupCreationOptions options =
@@ -222,16 +221,21 @@ Let's create a placement group. Recall that each bundle is a collection of resou
         boolean isCreated = pg.wait(60);
         Assert.assertTrue(isCreated);
 
-        // Won't be scheduled because there are no 2 cpus.
-        Ray.task(Counter::ping)
-          .setResource("CPU", 1.0)
+        // Won't be scheduled because there are no 2 cpus now.
+        ObjectRef<String> obj = Ray.task(Counter::ping)
+          .setResource("CPU", 2.0)
           .remote();
 
+        List<ObjectRef<String>> waitList = ImmutableList.of(obj);
+        WaitResult<String> waitResult = Ray.wait(waitList, 1, 5 * 1000);
+        Assert.assertEquals(1, waitResult.getUnready().size());
+
         // Will be scheduled because 2 cpus are reserved by the placement group.
-        Ray.task(Counter::ping)
+        obj = Ray.task(Counter::ping)
           .setPlacementGroup(pg, 0)
           .setResource("CPU", 2.0)
           .remote();
+        Assert.assertEquals(obj.get(), "pong");
 
 .. note::
 
@@ -260,15 +264,9 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
       .. code-block:: java
 
-        // Before you run this code, you need to make sure there are two "CPU" and two "extra_resource" are available.
-        List<Map<String, Double>> bundles = new ArrayList<>();
-        Map<String, Double> bundle1 = new HashMap<>();
-        Map<String, Double> bundle2 = new HashMap<>();
-        bundle1.put("GPU", 2.0);
-        bundle2.put("extra_resource", 2.0);
-
-        bundles.add(bundle1);
-        bundles.add(bundle2);
+        Map<String, Double> bundle1 = ImmutableMap.of("GPU", 2.0);
+        Map<String, Double> bundle2 = ImmutableMap.of("extra_resource", 2.0);
+        List<Map<String, Double>> bundles = ImmutableList.of(bundle1, bundle2);
 
         /**
          * Reserve bundles with strict pack strategy.
@@ -324,7 +322,6 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
 
     .. code-block:: java
 
-      // Before you run this code, you need to make sure there are two "CPU" and two "extra_resource" are available.
       public static class Counter {
         private int value;
 
@@ -335,29 +332,26 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
         public int getValue() {
           return value;
         }
-      }
 
-      public static class NormalTask {
         public static String ping() {
           return "pong";
         }
       }
 
       // Create GPU actors on a gpu bundle.
-      for (int index = 0; index < 2; index ++) {
-        ActorHandle<Counter> actor =
-          Ray.actor(Counter::new, 1)
-            .setResource("CPU", 1.0)
-            .setPlacementGroup(placementGroup, 0)
-            .remote();
+      for (int index = 0; index < 2; index++) {
+        Ray.actor(Counter::new, 1)
+          .setResource("GPU", 1.0)
+          .setPlacementGroup(pg, 0)
+          .remote();
       }
 
       // Create extra_resource actors on a extra_resource bundle.
-      for(int index = 0; index < 2; index++) {
-        Ray.task(NormalTask::ping)
-          .setPlacementGroup(placementGroup, 0)
+      for (int index = 0; index < 2; index++) {
+        Ray.task(Counter::ping)
+          .setPlacementGroup(pg, 1)
           .setResource("extra_resource", 1.0)
-          .remote();
+          .remote().get();
       }
 
 
@@ -474,10 +468,8 @@ See :ref:`placement-group-lifetimes` for more details.
     .. code-block:: java
 
       // Create a placement group with a globally unique name.
-      List<Map<String, Double>> bundles = new ArrayList<>();
-      Map<String, Double> bundle1 = new HashMap<>();
-      bundle1.put("CPU", 1.0);
-      bundles.add(bundle1);
+      Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
+      List<Map<String, Double>> bundles = ImmutableList.of(bundle);
 
       PlacementGroupCreationOptions options =
         new PlacementGroupCreationOptions.Builder()
@@ -500,10 +492,8 @@ See :ref:`placement-group-lifetimes` for more details.
     .. code-block:: java
 
       // Create a placement group with a job-scope-unique name.
-      List<Map<String, Double>> bundles = new ArrayList<>();
-      Map<String, Double> bundle1 = new HashMap<>();
-      bundle1.put("CPU", 1.0);
-      bundles.add(bundle1);
+      Map<String, Double> bundle = ImmutableMap.of("CPU", 1.0);
+      List<Map<String, Double>> bundles = ImmutableList.of(bundle);
 
       PlacementGroupCreationOptions options =
       new PlacementGroupCreationOptions.Builder()
