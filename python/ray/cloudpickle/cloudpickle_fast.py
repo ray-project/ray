@@ -511,7 +511,7 @@ def _pydantic_model_field_reduce(model_field):
     return _pydantic_model_field_deserializer, (serializer(model_field), )
 
 
-def _starlette_state_deserializer(d)
+def _starlette_state_deserializer(d):
     from starlette.datastructures import State
 
     return State(d)
