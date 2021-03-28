@@ -37,7 +37,7 @@ A **placement group strategy** is an algorithm for selecting nodes for bundle pl
 Starting a placement group
 --------------------------
 
-Ray placement group can be created via the ``ray.util.placement_group``(Python) or ``PlacementGroups.createPlacementGroup``(Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
+Ray placement group can be created via the ``ray.util.placement_group`` (Python) or ``PlacementGroups.createPlacementGroup`` (Java) API. Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`:
 
 .. tabs::
   .. group-tab:: Python
