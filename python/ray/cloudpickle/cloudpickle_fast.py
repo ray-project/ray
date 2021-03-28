@@ -551,13 +551,15 @@ class CloudPickler(Pickler):
 
 
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
-    # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
-    # We import 'numpy.core' here, so numpy would register the
-    # ufunc serializer to 'copyreg.dispatch_table' before we override it.
-    import numpy.core
-    import numpy
-    # Override the original numpy ufunc serializer.
-    dispatch_table[numpy.ufunc] = _ufunc_reduce
+
+    if sys.version_info[:2] >= (3, 7):
+        # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
+        # We import 'numpy.core' here, so numpy would register the
+        # ufunc serializer to 'copyreg.dispatch_table' before we override it.
+        import numpy.core
+        import numpy
+        # Override the original numpy ufunc serializer.
+        dispatch_table[numpy.ufunc] = _ufunc_reduce
 
     try:
         from pydantic.fields import ModelField
