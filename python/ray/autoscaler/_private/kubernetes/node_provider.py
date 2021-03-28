@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 MAX_TAG_RETRIES = 3
 DELAY_BEFORE_TAG_RETRY = .5
+TERMINATION_WAIT_S = 10
 
 
 def to_label_selector(tags):
@@ -51,7 +52,12 @@ class KubernetesNodeProvider(NodeProvider):
             field_selector=field_selector,
             label_selector=label_selector)
 
-        return [pod.metadata.name for pod in pod_list.items]
+        # Don't return pods marked for deletion,
+        # i.e. pods with non-null metadata.DeletionTimestamp.
+        return [
+            pod.metadata.name for pod in pod_list.items
+            if pod.metadata.deletion_timestamp is None
+        ]
 
     def is_running(self, node_id):
         pod = core_api().read_namespaced_pod(node_id, self.namespace)
@@ -159,16 +165,6 @@ class KubernetesNodeProvider(NodeProvider):
             )
         except ApiException:
             pass
-
-        # Block until autoscaler knows the node is gone.
-        # See <PR URL>.
-        wait_seconds = 35  # Default pod termination grace period + fudge
-        for _ in range(wait_seconds):
-            if node_id in self.non_terminated_nodes({}):
-                time.sleep(1)
-            else:
-                return
-        assert False, "Failed to terminate pod {}.".format(node_id)
 
     def terminate_nodes(self, node_ids):
         for node_id in node_ids:
