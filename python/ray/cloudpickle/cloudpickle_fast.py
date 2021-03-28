@@ -484,12 +484,16 @@ def _ufunc_reduce(func):
     return func.__name__
 
 
+def _pydantic_model_field_deserializer(d):
+    from pydantic.fields import ModelField
+
+    return ModelField(**d)
+
 # Register custom Pydantic serializer because Pydantic's Cython
 # validators are not serializable. The validators will be reconstructed
 # with the ModelField when deserialized.
 # https://github.com/cloudpipe/cloudpickle/issues/408
 def _pydantic_model_field_reduce(model_field):
-    from pydantic.fields import ModelField
 
     def serializer(obj):
         return {
@@ -504,24 +508,23 @@ def _pydantic_model_field_reduce(model_field):
             "field_info": obj.field_info,
         }
 
-    def deserializer(d):
-        return ModelField(**d)
+    return _pydantic_model_field_deserializer, (serializer(model_field), )
 
-    return deserializer, (serializer(model_field), )
+
+def _starlette_state_deserializer(d)
+    from starlette.datastructures import State
+
+    return State(d)
 
 
 # FastAPI's app.state object is not serializable because it overrides
 # __getattr__.
 def _starlette_state_reduce(model_field):
-    from starlette.datastructures import State
 
     def serializer(state):
         return state._state
 
-    def deserializer(d):
-        return State(d)
-
-    return deserializer, (serializer(model_field), )
+    return _starlette_state_deserializer, (serializer(model_field), )
 
 
 class CloudPickler(Pickler):
