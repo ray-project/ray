@@ -8,6 +8,7 @@ import inspect
 from ray.util.inspect import is_cython
 import json
 import threading
+import kimchi
 from typing import Any
 from typing import List
 from typing import Dict
@@ -109,6 +110,7 @@ class ClientRemoteFunc(ClientStub):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self._ref)
 
     def _ensure_ref(self):
+        # import pudb; pudb.set_trace()
         with self._lock:
             if self._ref is None:
                 # While calling ray.put() on our function, if
@@ -120,8 +122,9 @@ class ClientRemoteFunc(ClientStub):
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
                 self._ref = InProgressSentinel()
+                self._serialized_func = kimchi.dumps(self._func)
                 self._ref = ray.put(
-                    self._func, client_ref_id=self._client_side_ref.id)
+                    self._serialized_func, client_ref_id=self._client_side_ref.id)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()

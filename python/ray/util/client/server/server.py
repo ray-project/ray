@@ -5,6 +5,8 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 
+import kimchi
+
 import threading
 from typing import Any
 from typing import Dict
@@ -283,6 +285,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                      task.type)))
         try:
             with disable_client_hook():
+                print("ARE WE ON THE CLIENT OR SERVER RN???")
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
                     result = self._schedule_function(task, context)
                 elif task.type == ray_client_pb2.ClientTask.ACTOR:
@@ -377,7 +380,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             if id not in self.function_refs:
                 funcref = self.object_refs[client_id][id]
-                func = ray.get(funcref)
+                serialized_func = ray.get(funcref)
+                func = kimchi.loads(serialized_func)
                 if not inspect.isfunction(func):
                     raise Exception("Attempting to register function that "
                                     "isn't a function.")
