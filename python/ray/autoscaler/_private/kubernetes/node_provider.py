@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 MAX_TAG_RETRIES = 3
 DELAY_BEFORE_TAG_RETRY = .5
-TERMINATION_WAIT_S = 10
 
 
 def to_label_selector(tags):
