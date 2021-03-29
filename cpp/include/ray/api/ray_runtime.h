@@ -23,6 +23,7 @@ struct RemoteFunctionPtrHolder {
   uintptr_t function_pointer;
   /// The executable function pointer
   uintptr_t exec_function_pointer;
+  std::string function_name;
 };
 
 class RayRuntime {
