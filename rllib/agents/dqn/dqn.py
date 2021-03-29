@@ -230,9 +230,8 @@ def execution_plan(workers: WorkerSet,
                 #  break e.g. DDPPO!).
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
-                samples.policy_batches[policy_id].set_get_interceptor(None)
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .get("batch_indexes"), td_error)
+                                        .data.get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 

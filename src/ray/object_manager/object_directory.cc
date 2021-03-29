@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/object_directory.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(instrumented_io_context &io_service,
@@ -285,6 +287,10 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         });
   }
   return status;
+}
+
+void ObjectDirectory::RecordMetrics(uint64_t duration_ms) {
+  stats::ObjectDirectoryLocationSubscriptions().Record(listeners_.size());
 }
 
 std::string ObjectDirectory::DebugString() const {

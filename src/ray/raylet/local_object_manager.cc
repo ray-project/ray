@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
@@ -41,18 +42,22 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    // Callback that is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
-      ReleaseFreedObject(object_id);
-      core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
-    };
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this](const ObjectID &object_id) {
-      ReleaseFreedObject(object_id);
-    };
-    // TODO(sang): Batch this request.
-    core_worker_subscriber_->SubcribeObject(owner_address, object_id,
-                                            subscription_callback, owner_dead_callback);
+    // Send a long-running RPC request to the owner for each object. When we get a
+    // response or the RPC fails (due to the owner crashing), unpin the object.
+    // TODO(edoakes): we should be batching these requests instead of sending one per
+    // pinned object.
+    rpc::WaitForObjectEvictionRequest wait_request;
+    wait_request.set_object_id(object_id.Binary());
+    wait_request.set_intended_worker_id(owner_address.worker_id());
+    auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
+    owner_client->WaitForObjectEviction(
+        wait_request,
+        [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
+          }
+          ReleaseFreedObject(object_id);
+        });
   }
 }
 
@@ -339,43 +344,20 @@ void LocalObjectManager::AddSpilledUrls(
   }
 }
 
+std::string LocalObjectManager::GetSpilledObjectURL(const ObjectID &object_id) {
+  auto entry = spilled_objects_url_.find(object_id);
+  if (entry != spilled_objects_url_.end()) {
+    return entry->second;
+  } else {
+    return "";
+  }
+}
+
 void LocalObjectManager::AsyncRestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url, const NodeID &node_id,
+    const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
   if (objects_pending_restore_.count(object_id) > 0) {
     // If the same object is restoring, we dedup here.
-    return;
-  }
-
-  if (is_external_storage_type_fs_ && node_id != self_node_id_) {
-    RAY_CHECK(!node_id.IsNil());
-    // If we know where this object was spilled, and the current node is not that one,
-    // send a RPC to a remote node that spilled the object to restore it.
-    RAY_LOG(DEBUG) << "Send an object restoration request of id: " << object_id
-                   << " to a remote node: " << node_id;
-    // TODO(sang): We need to deduplicate this remote RPC. Since restore request
-    // is retried every 10ms without exponential backoff, this can add huge overhead to
-    // a remote node that spilled the object.
-    restore_object_from_remote_node_(object_id, object_url, node_id);
-    if (callback) {
-      callback(Status::OK());
-    }
-    return;
-  }
-
-  // Restore the object.
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
-                 << object_url;
-  if (is_external_storage_type_fs_ && spilled_objects_url_.count(object_id) == 0) {
-    RAY_CHECK(!node_id.IsNil());
-    RAY_LOG(DEBUG)
-        << "Restoration request was ignored because the node didn't spill the object "
-        << object_id << " yet. It will be retried...";
-    // If the object wasn't spilled yet on this node, just return. The caller should retry
-    // in this case.
-    if (callback) {
-      callback(Status::OK());
-    }
     return;
   }
 

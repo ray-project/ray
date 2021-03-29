@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
@@ -82,8 +84,13 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
           NodeID::FromBinary(location_reply.spilled_node_id());
       RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
                      << new_spilled_node_id;
-      *spilled_url = new_spilled_url;
-      *spilled_node_id = new_spilled_node_id;
+      if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
+        *spilled_url = "";
+        *spilled_node_id = NodeID::Nil();
+      } else {
+        *spilled_url = new_spilled_url;
+        *spilled_node_id = new_spilled_node_id;
+      }
       is_updated = true;
     }
   }
@@ -136,6 +143,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
 
+  metrics_num_object_locations_added_++;
+
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id, node_id](
                    Status status, const rpc::AddObjectLocationOwnerReply &reply) {
@@ -169,6 +178,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   request.set_intended_worker_id(object_info.owner_worker_id);
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+
+  metrics_num_object_locations_removed_++;
 
   rpc_client->RemoveObjectLocationOwner(
       request, [worker_id, object_id, node_id](
@@ -207,6 +218,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
                    << " locations, spilled_url: " << it->second.spilled_url
                    << ", spilled node ID: " << it->second.spilled_node_id
                    << ", object size: " << it->second.object_size;
+    metrics_num_object_location_updates_++;
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -309,6 +321,7 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
 ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     const ObjectID &object_id, const rpc::Address &owner_address,
     const OnLocationsFound &callback) {
+  metrics_num_object_location_lookups_++;
   auto it = listeners_.find(object_id);
   if (it != listeners_.end() && it->second.subscribed) {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
@@ -377,10 +390,48 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   return Status::OK();
 }
 
+void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
+  stats::ObjectDirectoryLocationSubscriptions.Record(listeners_.size());
+
+  // Record number of object location updates per second.
+  metrics_num_object_location_updates_per_second_ =
+      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryLocationUpdates.Record(
+      metrics_num_object_location_updates_per_second_);
+  metrics_num_object_location_updates_ = 0;
+  // Record number of object location lookups per second.
+  metrics_num_object_location_lookups_per_second_ =
+      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryLocationLookups.Record(
+      metrics_num_object_location_lookups_per_second_);
+  metrics_num_object_location_lookups_ = 0;
+  // Record number of object locations added per second.
+  metrics_num_object_locations_added_per_second_ =
+      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryAddedLocations.Record(
+      metrics_num_object_locations_added_per_second_);
+  metrics_num_object_locations_added_ = 0;
+  // Record number of object locations removed per second.
+  metrics_num_object_locations_removed_per_second_ =
+      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryRemovedLocations.Record(
+      metrics_num_object_locations_removed_per_second_);
+  metrics_num_object_locations_removed_ = 0;
+}
+
 std::string OwnershipBasedObjectDirectory::DebugString() const {
   std::stringstream result;
+  result << std::fixed << std::setprecision(3);
   result << "OwnershipBasedObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
+  result << "\n- num location updates per second: "
+         << metrics_num_object_location_updates_per_second_;
+  result << "\n- num location lookups per second: "
+         << metrics_num_object_location_lookups_per_second_;
+  result << "\n- num locations added per second: "
+         << metrics_num_object_locations_added_per_second_;
+  result << "\n- num locations removed per second: "
+         << metrics_num_object_locations_removed_per_second_;
   return result.str();
 }
 

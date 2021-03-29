@@ -2,6 +2,7 @@
 #pragma once
 #include <memory>
 #include <string>
+
 #include "ray/core.h"
 
 namespace ray {
@@ -31,6 +32,8 @@ class RayConfig {
   std::string raylet_socket = "";
 
   std::string session_dir = "";
+
+  bool use_ray_remote = false;
 
   static std::shared_ptr<RayConfig> GetInstance();
 

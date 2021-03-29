@@ -15,9 +15,16 @@
 #pragma once
 
 #include <ray/api/arguments.h>
+#include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
 
+#include <msgpack.hpp>
+
+#include "absl/utility/utility.h"
+#include "ray/core.h"
+
 namespace ray {
+
 namespace api {
 /// The following execution functions are wrappers of remote functions.
 /// Execution functions make remote functions executable in distributed system.
@@ -26,10 +33,10 @@ namespace api {
 /// ActorExecFunction the wrapper of actor member function.
 
 template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
-std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
-    uintptr_t base_addr, size_t func_offset,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
-    std::shared_ptr<OtherArgTypes> &&... args) {
+absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
+ExecuteNormalFunction(uintptr_t base_addr, size_t func_offset,
+                      const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+                      TaskType task_type, std::shared_ptr<OtherArgTypes> &&...args) {
   int arg_index = 0;
   Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
@@ -43,12 +50,20 @@ std::shared_ptr<msgpack::sbuffer> ExecuteNormalFunction(
       Serializer::Serialize((CastReturnType)(return_value)));
 }
 
+template <typename ReturnType, typename CastReturnType, typename... OtherArgTypes>
+absl::enable_if_t<std::is_void<ReturnType>::value> ExecuteNormalFunction(
+    uintptr_t base_addr, size_t func_offset,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
+    std::shared_ptr<OtherArgTypes> &&...args) {
+  // TODO: Will support void functions for old api later.
+}
+
 template <typename ReturnType, typename ActorType, typename... OtherArgTypes>
 std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer,
-    std::shared_ptr<OtherArgTypes> &&... args) {
+    std::shared_ptr<OtherArgTypes> &&...args) {
   uintptr_t actor_ptr = Serializer::Deserialize<uintptr_t>(
       (const char *)actor_buffer->data(), actor_buffer->size());
   ActorType *actor_object = (ActorType *)actor_ptr;
@@ -69,10 +84,19 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
 }
 
 template <typename ReturnType, typename... Args>
-std::shared_ptr<msgpack::sbuffer> NormalExecFunction(
+absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
+NormalExecFunction(uintptr_t base_addr, size_t func_offset,
+                   const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
+  return ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
+      base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK,
+      std::shared_ptr<Args>{}...);
+}
+
+template <typename ReturnType, typename... Args>
+absl::enable_if_t<std::is_void<ReturnType>::value> NormalExecFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-  return ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
+  ExecuteNormalFunction<ReturnType, ReturnType, Args...>(
       base_addr, func_offset, args_buffer, TaskType::NORMAL_TASK,
       std::shared_ptr<Args>{}...);
 }

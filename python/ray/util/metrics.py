@@ -165,7 +165,7 @@ class Counter(Metric):
                                    self._tag_keys)
 
     def __reduce__(self):
-        deserializer = Count
+        deserializer = self.__class__
         serialized_data = (self._name, self._description, self._tag_keys)
         return deserializer, serialized_data
 

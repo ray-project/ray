@@ -60,6 +60,8 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     query_dict = urllib.parse.parse_qs(parsed_result.query)
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
+    if "offset" not in query_dict or "size" not in query_dict:
+        raise ValueError("Failed to parse URL: {}".format(url_with_offset))
     offset = int(query_dict["offset"][0])
     size = int(query_dict["size"][0])
     return ParsedURL(base_url=base_url, offset=offset, size=size)

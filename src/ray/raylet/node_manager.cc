@@ -17,6 +17,7 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
+
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
@@ -181,15 +182,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       initial_config_(config),
-      worker_pool_(io_service, self_node_id_, config.node_manager_address,
-                   config.num_workers_soft_limit,
-                   config.num_initial_python_workers_for_first_job,
-                   config.maximum_startup_concurrency, config.min_worker_port,
-                   config.max_worker_port, config.worker_ports, gcs_client_,
-                   config.worker_commands,
-                   /*starting_worker_timeout_callback=*/
-                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(
+          io_service, self_node_id_, config.node_manager_address,
+          config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
+          config.maximum_startup_concurrency, config.min_worker_port,
+          config.max_worker_port, config.worker_ports, gcs_client_,
+          config.worker_commands,
+          /*starting_worker_timeout_callback=*/
+          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       dependency_manager_(object_manager),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -199,8 +200,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       local_object_manager_(
-          self_node_id_, config.node_manager_address, config.node_manager_port,
-          RayConfig::instance().free_objects_batch_size(),
+          self_node_id_, RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
           gcs_client_->Objects(), worker_rpc_pool_,
           /* automatic_object_deletion_enabled */
@@ -214,16 +214,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             object_manager_.FreeObjects(object_ids,
                                         /*local_only=*/false);
           },
-          is_plasma_object_spillable,
-          /*restore_object_from_remote_node*/
-          [this](const ObjectID &object_id, const std::string &spilled_url,
-                 const NodeID &node_id) {
-            SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
-                                                            node_id);
-          },
-          /*core_worker_subscriber_=*/
-          std::make_shared<Subscriber>(self_node_id_, config.node_manager_address,
-                                       config.node_manager_port, worker_rpc_pool_)),
+          is_plasma_object_spillable),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -375,6 +366,8 @@ ray::Status NodeManager::RegisterGcs() {
         WarnResourceDeadlock();
       },
       RayConfig::instance().debug_dump_period_milliseconds());
+  uint64_t now_ms = current_time_ms();
+  last_metrics_recorded_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
                                        record_metrics_period_ms_);
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
@@ -382,7 +375,7 @@ ray::Status NodeManager::RegisterGcs() {
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds());
   }
-  last_resource_report_at_ms_ = current_time_ms();
+  last_resource_report_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
                                        report_resources_period_ms_);
   // Start the timer that gets object manager profiling information and sends it
@@ -546,24 +539,6 @@ void NodeManager::HandleRequestObjectSpillage(
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-}
-
-void NodeManager::HandleRestoreSpilledObject(
-    const rpc::RestoreSpilledObjectRequest &request,
-    rpc::RestoreSpilledObjectReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  const auto object_id = ObjectID::FromBinary(request.object_id());
-  const auto spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
-  const auto object_url = request.object_url();
-  RAY_CHECK(spilled_node_id == self_node_id_);
-  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
-                 << " spilled_node_id: " << self_node_id_
-                 << " object url: " << object_url;
-  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
-                                                  nullptr);
-  // Just reply right away. The caller will keep hitting this RPC endpoint until
-  // restoration succeeds, so we can safely reply here without waiting for the
-  // restoreSpilledObject to be done.
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReleaseUnusedBundles(
@@ -981,8 +956,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER &&
-        worker_type != rpc::WorkerType::UTIL_WORKER)) ||
+        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -1014,8 +988,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
-      worker_type == rpc::WorkerType::RESTORE_WORKER ||
-      worker_type == rpc::WorkerType::UTIL_WORKER) {
+      worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1078,12 +1051,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   }
 
   if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
-    // Return the worker to the idle pool.
-    worker_pool_.PushRestoreWorker(worker);
-    return;
-  }
-
-  if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushRestoreWorker(worker);
     return;
@@ -2254,7 +2221,7 @@ void NodeManager::RecordMetrics() {
   }
   // Last recorded time will be reset in the caller side.
   uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - metrics_last_recorded_time_ms_;
+  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
 
   // Record average number of tasks information per second.
   stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *
@@ -2267,8 +2234,11 @@ void NodeManager::RecordMetrics() {
                                        (1000.0 / (double)duration_ms));
   metrics_num_task_spilled_back_ = 0;
 
+  object_directory_->RecordMetrics(duration_ms);
   object_manager_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();
+
+  last_metrics_recorded_at_ms_ = current_time;
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
@@ -2298,30 +2268,6 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
-}
-
-void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
-    const ObjectID &object_id, const std::string &spilled_url, const NodeID &node_id) {
-  // Fetch from a remote node.
-  if (!remote_node_manager_addresses_.contains(node_id)) {
-    // It is possible the new node information is not received at this point.
-    // In this case, the PullManager will handle retry, so we just return.
-    return;
-  }
-  const auto &entry = remote_node_manager_addresses_.find(node_id);
-  // TODO(sang): Use a node manager pool instead.
-  auto raylet_client =
-      std::make_shared<ray::raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
-          entry->second.first, entry->second.second, client_call_manager_));
-  raylet_client->RestoreSpilledObject(
-      object_id, spilled_url, node_id,
-      [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
-                              "remote node. This request will be retried. Error message: "
-                           << status.ToString();
-        }
-      });
 }
 
 }  // namespace raylet
