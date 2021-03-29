@@ -646,7 +646,7 @@ def start(detached: bool = False,
           http_port: int = DEFAULT_HTTP_PORT,
           http_middlewares: List[Any] = [],
           http_options: Optional[Union[dict, HTTPOptions]] = None,
-          dedicated_cpu: bool = False) -> Client:
+          dedicated_cpu: bool = False,) -> Client:
     """Initialize a serve instance.
 
     By default, the instance will be scoped to the lifetime of the returned
