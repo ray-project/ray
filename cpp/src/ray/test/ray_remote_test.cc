@@ -16,14 +16,31 @@
 #include <ray/api.h>
 #include <ray/api/serializer.h>
 #include "cpp/src/ray/runtime/task/task_executor.h"
+#include "cpp/src/ray/util/function_helper.h"
+#include "ray/core.h"
 
 using namespace ray::api;
 using namespace ray::internal;
 
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
+int PlusTwo(int x, int y) { return x + y; }
+
+int out_for_void_func = 0;
+int out_for_void_func_no_args = 0;
+
+void VoidFuncNoArgs() { out_for_void_func = 1; }
+void VoidFuncWithArgs(int x, int y) { out_for_void_func_no_args = (x + y); }
+
+int NotRegisteredFunc(int x) { return x; }
+
+void ExceptionFunc(int x) { throw std::invalid_argument(std::to_string(x)); }
 
 RAY_REMOTE(PlusOne);
+RAY_REMOTE(PlusTwo);
+RAY_REMOTE(VoidFuncNoArgs);
+RAY_REMOTE(VoidFuncWithArgs);
+RAY_REMOTE(ExceptionFunc);
 
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
@@ -37,44 +54,69 @@ TEST(RayApiTest, DuplicateRegister) {
   EXPECT_FALSE(r2);
 }
 
-TEST(RayApiTest, FindAndExecuteFunction) {
-  /// Find and call the registered function.
-  auto args = std::make_tuple("PlusOne", 1);
-  auto buf = Serializer::Serialize(args);
-  auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
+TEST(RayApiTest, NormalTask) {
+  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
 
-  /// Deserialize result.
-  auto response =
-      Serializer::Deserialize<Response<int>>(result_buf.data(), result_buf.size());
+  auto r = Ray::Task(Return).Remote();
+  EXPECT_EQ(1, *(r.Get()));
 
-  EXPECT_EQ(response.error_code, ErrorCode::OK);
-  EXPECT_EQ(response.data, 2);
+  auto r1 = Ray::Task(PlusOne, 1).Remote();
+  EXPECT_EQ(2, *(r1.Get()));
 }
 
 TEST(RayApiTest, VoidFunction) {
-  auto buf1 = Serializer::Serialize(std::make_tuple("Return"));
-  auto result_buf = TaskExecutionHandler(buf1.data(), buf1.size());
-  auto response =
-      Serializer::Deserialize<VoidResponse>(result_buf.data(), result_buf.size());
-  EXPECT_EQ(response.error_code, ErrorCode::OK);
+  auto r2 = Ray::Task(VoidFuncNoArgs).Remote();
+  r2.Get();
+  EXPECT_EQ(1, out_for_void_func);
+
+  auto r3 = Ray::Task(VoidFuncWithArgs, 1, 2).Remote();
+  r3.Get();
+  EXPECT_EQ(3, out_for_void_func_no_args);
+}
+
+TEST(RayApiTest, CallWithObjectRef) {
+  auto rt0 = Ray::Task(Return).Remote();
+  auto rt1 = Ray::Task(PlusOne, rt0).Remote();
+  auto rt2 = Ray::Task(PlusTwo, rt1, 3).Remote();
+  auto rt3 = Ray::Task(PlusOne, 3).Remote();
+  auto rt4 = Ray::Task(PlusTwo, rt2, rt3).Remote();
+
+  int return0 = *(rt0.Get());
+  int return1 = *(rt1.Get());
+  int return2 = *(rt2.Get());
+  int return3 = *(rt3.Get());
+  int return4 = *(rt4.Get());
+
+  EXPECT_EQ(return0, 1);
+  EXPECT_EQ(return1, 2);
+  EXPECT_EQ(return2, 5);
+  EXPECT_EQ(return3, 4);
+  EXPECT_EQ(return4, 9);
 }
 
 /// We should consider the driver so is not same with the worker so, and find the error
 /// reason.
 TEST(RayApiTest, NotExistFunction) {
-  auto buf2 = Serializer::Serialize(std::make_tuple("Return11"));
-  auto result_buf = TaskExecutionHandler(buf2.data(), buf2.size());
-  auto response =
-      Serializer::Deserialize<VoidResponse>(result_buf.data(), result_buf.size());
-  EXPECT_EQ(response.error_code, ErrorCode::FAIL);
-  EXPECT_FALSE(response.error_msg.empty());
+  EXPECT_THROW(Ray::Task(NotRegisteredFunc), RayException);
 }
 
 TEST(RayApiTest, ArgumentsNotMatch) {
-  auto buf = Serializer::Serialize(std::make_tuple("PlusOne", "invalid arguments"));
-  auto result_buf = TaskExecutionHandler(buf.data(), buf.size());
-  auto response =
-      Serializer::Deserialize<Response<int>>(result_buf.data(), result_buf.size());
-  EXPECT_EQ(response.error_code, ErrorCode::FAIL);
-  EXPECT_FALSE(response.error_msg.empty());
+  /// Arguments number is not match.
+  auto r = Ray::Task(PlusOne).Remote();
+  EXPECT_THROW(r.Get(), RayException);
+
+  auto r1 = Ray::Task(PlusOne, 1, 2).Remote();
+  EXPECT_THROW(r1.Get(), RayException);
+
+  auto r2 = Ray::Task(ExceptionFunc).Remote();
+  EXPECT_THROW(r2.Get(), RayException);
+
+  auto r3 = Ray::Task(ExceptionFunc, 1, 2).Remote();
+  EXPECT_THROW(r3.Get(), RayException);
+
+  /// Normal task Exception.
+  auto r4 = Ray::Task(ExceptionFunc, 2).Remote();
+  EXPECT_THROW(r4.Get(), RayException);
+
+  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }
