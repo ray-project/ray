@@ -1162,45 +1162,45 @@ def make_deployment_cls(
         _ray_actor_options = ray_actor_options
 
         @classmethod
-        def deploy(self, *init_args):
+        def deploy(cls, *init_args):
             """Deploy this deployment.
 
             Args:
                 *init_args (optional): args to pass to the class __init__
                     method. Not valid if this deployment wraps a function.
             """
-            if len(init_args) == 0 and Deployment._init_args is not None:
-                init_args = Deployment._init_args
+            if len(init_args) == 0 and cls._init_args is not None:
+                init_args = cls._init_args
 
-            if Deployment._version is not None:
-                version = Deployment._version
+            if cls._version is not None:
+                version = cls._version
             else:
                 version = get_random_letters()
 
             return _get_global_client().deploy(
-                Deployment._name,
-                Deployment._backend_def,
+                cls._name,
+                cls._backend_def,
                 *init_args,
-                ray_actor_options=Deployment._ray_actor_options,
-                config=Deployment._config,
+                ray_actor_options=cls._ray_actor_options,
+                config=cls._config,
                 version=version,
                 _internal=True)
 
         @classmethod
-        def delete(self):
+        def delete(cls):
             """Delete this deployment."""
-            return _get_global_client().delete_deployment(Deployment._name)
+            return _get_global_client().delete_deployment(cls._name)
 
         @classmethod
-        def get_handle(self, sync: Optional[bool] = True
+        def get_handle(cls, sync: Optional[bool] = True
                        ) -> Union[RayServeHandle, RayServeSyncHandle]:
             """Get a ServeHandle to this deployment."""
             return _get_global_client().get_handle(
-                Deployment._name, missing_ok=True, sync=sync, _internal=True)
+                cls._name, missing_ok=True, sync=sync, _internal=True)
 
         @classmethod
         def options(
-                self,
+                cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
                 version: Optional[str] = None,
@@ -1220,19 +1220,19 @@ def make_deployment_cls(
                 new_config.max_concurrent_queries = max_concurrent_queries
 
             if backend_def is None:
-                backend_def = Deployment._backend_def
+                backend_def = cls._backend_def
 
             if name is None:
-                name = Deployment._name
+                name = cls._name
 
             if version is None:
-                version = Deployment._version
+                version = cls._version
 
             if init_args is None:
-                init_args = Deployment._init_args
+                init_args = cls._init_args
 
             if ray_actor_options is None:
-                ray_actor_options = Deployment._ray_actor_options
+                ray_actor_options = cls._ray_actor_options
 
             return make_deployment_cls(
                 backend_def,
