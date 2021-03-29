@@ -14,11 +14,16 @@ class TaskCaller {
   TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
              std::vector<std::unique_ptr<::ray::TaskArg>> &&args);
 
-  ObjectRef<ReturnType> Remote();
+  template <typename... Args>
+  ObjectRef<ReturnType> Remote(Args... args) {
+    auto returned_object_id = runtime_->Call(ptr_, args_);
+    return ObjectRef<ReturnType>(returned_object_id);
+  }
 
  private:
   RayRuntime *runtime_;
-  RemoteFunctionPtrHolder ptr_;
+  RemoteFunctionPtrHolder ptr_{};
+  std::string function_name_;
   std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
 
@@ -31,11 +36,5 @@ template <typename ReturnType>
 TaskCaller<ReturnType>::TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr,
                                    std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
     : runtime_(runtime), ptr_(ptr), args_(std::move(args)) {}
-
-template <typename ReturnType>
-ObjectRef<ReturnType> TaskCaller<ReturnType>::Remote() {
-  auto returned_object_id = runtime_->Call(ptr_, args_);
-  return ObjectRef<ReturnType>(returned_object_id);
-}
 }  // namespace api
 }  // namespace ray
