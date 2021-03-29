@@ -229,6 +229,10 @@ class ClientCallManager {
     // pointer.
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    // Create a mock post request to record the number of requests sent.
+    main_service_.post(
+        []() {},
+        tag->GetCall()->GetName() + ".request");
     return call;
   }
 
@@ -266,7 +270,7 @@ class ClientCallManager {
                 // The call is finished, and we can delete this tag now.
                 delete tag;
               },
-              tag->GetCall()->GetName());
+              tag->GetCall()->GetName() + ".reply_received");
         } else {
           delete tag;
         }
