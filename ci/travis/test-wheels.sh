@@ -83,7 +83,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS="$(find "$ROOT_DIR"/../../.whl/ -mindepth 1 -maxdepth 1 -name "*.whl" | wc -l)"
-  if [[ "$NUMBER_OF_WHEELS" != "3" ]]; then
+  if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
     echo "Wrong number of wheels found."
     ls -l "$ROOT_DIR/../.whl/"
     exit 2
@@ -91,10 +91,11 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
   PY_MMS=("3.6"
           "3.7"
-          "3.8")
+          "3.8"
+          "3.9")
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
