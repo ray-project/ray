@@ -356,19 +356,13 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
         pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
-        lock = FileLock(str(pkg_file) + ".lock")
-        try:
-            with lock:
-                # TODO(yic): checksum calculation is required
-                if pkg_file.exists():
-                    logger.debug(
-                        f"{pkg_uri} has existed locally, skip downloading")
-                else:
-                    pkg_size = fetch_package(pkg_uri, pkg_file)
-                    logger.debug(
-                        f"Downloaded {pkg_size} bytes into {pkg_file}")
-            sys.path.insert(0, str(pkg_file))
-        except IOError as e:
-            logger.error(e)
-            failed_uris.add(pkg_uri)
-    return failed_uris
+        with FileLock(str(pkg_file) + ".lock") as lock:
+            # TODO(yic): checksum calculation is required
+            if pkg_file.exists():
+                logger.debug(
+                    f"{pkg_uri} has existed locally, skip downloading")
+            else:
+                pkg_size = fetch_package(pkg_uri, pkg_file)
+                logger.debug(
+                    f"Downloaded {pkg_size} bytes into {pkg_file}")
+        sys.path.insert(0, str(pkg_file))

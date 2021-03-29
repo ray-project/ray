@@ -29,7 +29,7 @@ job_config = ray.job_config.JobConfig(
     runtime_env={runtime_env}
 )
 
-if os.environ.get("CLIENT"):
+if os.environ.get("USE_RAY_CLIENT"):
     ray.util.connect("{address}", job_config=job_config)
 else:
     ray.init(address="{address}",
@@ -48,7 +48,7 @@ class TestActor(object):
 
 {execute_statement}
 
-if os.environ.get("CLIENT"):
+if os.environ.get("USE_RAY_CLIENT"):
     ray.util.disconnect()
 else:
     ray.shutdown()
@@ -79,7 +79,7 @@ from test_module.test import one
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_single_node(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -91,7 +91,7 @@ def test_single_node(call_ray_start, working_dir, env):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_two_node(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -103,7 +103,7 @@ def test_two_node(call_ray_start, working_dir, env):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_two_node_module(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
@@ -115,7 +115,7 @@ def test_two_node_module(call_ray_start, working_dir, env):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_two_node_uri(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     import ray._private.runtime_env as runtime_env
@@ -136,7 +136,7 @@ def test_two_node_uri(call_ray_start, working_dir, env):
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_regular_actors(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -151,7 +151,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-@pytest.mark.parametrize("env", [None, {"CLIENT": "1"}])
+@pytest.mark.parametrize("env", [None, {"USE_RAY_CLIENT": "1"}])
 def test_detached_actors(call_ray_start, working_dir, env):
     address = call_ray_start if not env else "localhost:10001"
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
