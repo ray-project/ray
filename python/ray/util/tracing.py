@@ -27,7 +27,8 @@ from ray.util.inspect import is_function_or_method
 import ray.worker
 
 _nameable = Union[str, Callable[..., Any]]
-is_tracing_enabled = os.environ.get("RAY_TRACING_ENABLED", False)
+is_tracing_enabled = os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]
+print(f"is_tracing_enabled in tracing.py: {is_tracing_enabled}")
 
 
 class DictPropagator:
@@ -43,16 +44,18 @@ class DictPropagator:
 def get_formatted_current_trace_id() -> str:
     current_span = trace.get_current_span()
 
-    assert (current_span is not None,
-            "Expected to find a trace-id for this API request")
+    assert (
+        current_span is not None,
+        "Expected to find a trace-id for this API request",
+    )
 
     trace_id = current_span.get_span_context().trace_id
-    return trace.format_trace_id(trace_id)[
-        2:] if trace_id != 0 else "NO_TRACE_ID"
+    return trace.format_trace_id(trace_id)[2:] if trace_id != 0 else "NO_TRACE_ID"
 
 
-def nest_tracing_attributes(attributes: Dict[str, types.AttributeValue],
-                            parent: str) -> Dict[str, types.AttributeValue]:
+def nest_tracing_attributes(
+    attributes: Dict[str, types.AttributeValue], parent: str
+) -> Dict[str, types.AttributeValue]:
     return {f"{parent}.{key}": value for (key, value) in attributes.items()}
 
 
@@ -79,8 +82,9 @@ def _function_hydrate_span_args(func: Callable[..., Any]) -> Attributes:
 
     # We only get task ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
-        task_id = runtime_context["task_id"].hex() if runtime_context[
-            "task_id"] else None
+        task_id = (
+            runtime_context["task_id"].hex() if runtime_context["task_id"] else None
+        )
         if task_id:
             span_args["ray.task_id"] = task_id
 
@@ -107,8 +111,7 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable,
-                             method: _nameable) -> Attributes:
+def _actor_hydrate_span_args(class_: _nameable, method: _nameable) -> Attributes:
     if callable(class_):
         class_ = class_.__name__
     if callable(method):
@@ -128,8 +131,9 @@ def _actor_hydrate_span_args(class_: _nameable,
 
     # We only get actor ID for workers
     if ray.worker.global_worker.mode == ray.worker.WORKER_MODE:
-        actor_id = runtime_context["actor_id"].hex() if runtime_context[
-            "actor_id"] else None
+        actor_id = (
+            runtime_context["actor_id"].hex() if runtime_context["actor_id"] else None
+        )
 
         if actor_id:
             span_args["ray.actor_id"] = actor_id
@@ -163,11 +167,11 @@ def _tracing_task_invocation(method):
 
     @wraps(method)
     def _invocation_remote_span(
-            self,
-            args: Any,  # from tracing
-            kwargs: MutableMapping[Any, Any],  # from tracing
-            *_args: Any,  # from Ray
-            **_kwargs: Any,  # from Ray
+        self,
+        args: Any,  # from tracing
+        kwargs: MutableMapping[Any, Any],  # from tracing
+        *_args: Any,  # from Ray
+        **_kwargs: Any,  # from Ray
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled:
@@ -175,9 +179,9 @@ def _tracing_task_invocation(method):
         assert "_ray_trace_ctx" not in kwargs
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
-                _function_span_producer_name("tester"),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_function_hydrate_span_args("tester"),
+            _function_span_producer_name("tester"),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_function_hydrate_span_args("tester"),
         ):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
@@ -193,9 +197,7 @@ def _inject_tracing_into_function(function):
     """
 
     def _function_with_tracing(
-            *args: Any,
-            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-            **kwargs: Any,
+        *args: Any, _ray_trace_ctx: Optional[Dict[str, Any]] = None, **kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled:
@@ -203,16 +205,16 @@ def _inject_tracing_into_function(function):
 
         tracer = trace.get_tracer(__name__)
 
-        assert (_ray_trace_ctx is
-                not None), f"Missing ray_trace_ctx!: {args}, {kwargs}"
+        assert _ray_trace_ctx is not None, f"Missing ray_trace_ctx!: {args}, {kwargs}"
 
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
-        with use_context(DictPropagator.extract(
-                _ray_trace_ctx)), tracer.start_as_current_span(
-                    _function_span_consumer_name(function.__name__),
-                    kind=trace.SpanKind.CONSUMER,
-                    attributes=_function_hydrate_span_args(function.__name__),
-                ):
+        with use_context(
+            DictPropagator.extract(_ray_trace_ctx)
+        ), tracer.start_as_current_span(
+            _function_span_consumer_name(function.__name__),
+            kind=trace.SpanKind.CONSUMER,
+            attributes=_function_hydrate_span_args(function.__name__),
+        ):
             return function(*args, **kwargs)
 
     return _function_with_tracing
@@ -224,11 +226,11 @@ def _tracing_actor_class_invocation(method):
 
     @wraps(method)
     def _invocation_actor_class_remote_span(
-            self,
-            args: Any,  # from tracing
-            kwargs: MutableMapping[Any, Any],  # from tracing
-            *_args: Any,  # from Ray
-            **_kwargs: Any,  # from Ray
+        self,
+        args: Any,  # from tracing
+        kwargs: MutableMapping[Any, Any],  # from tracing
+        *_args: Any,  # from Ray
+        **_kwargs: Any,  # from Ray
     ):
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled:
@@ -240,9 +242,9 @@ def _tracing_actor_class_invocation(method):
 
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
-                name=_actor_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_actor_hydrate_span_args(class_name, method_name),
+            name=_actor_span_producer_name(class_name, method_name),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
@@ -261,32 +263,32 @@ def _tracing_actor_method_invocation(method):
 
     @wraps(method)
     def _start_span(
-            self,
-            args: Sequence[Any],
-            kwargs: MutableMapping[Any, Any],
-            *_args: Any,
-            **_kwargs: Any,
+        self,
+        args: Sequence[Any],
+        kwargs: MutableMapping[Any, Any],
+        *_args: Any,
+        **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled:
             return method(self, args, kwargs, *_args, **_kwargs)
 
-        class_name = (self._actor_ref()
-                      ._ray_actor_creation_function_descriptor.class_name)
+        class_name = (
+            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
+        )
         method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
-                name=_actor_span_producer_name(class_name, method_name),
-                kind=trace.SpanKind.PRODUCER,
-                attributes=_actor_hydrate_span_args(class_name, method_name),
+            name=_actor_span_producer_name(class_name, method_name),
+            kind=trace.SpanKind.PRODUCER,
+            attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
 
-            span.set_attribute("ray.actor_id",
-                               self._actor_ref()._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
 
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -299,10 +301,10 @@ def _inject_tracing_into_class(_cls):
 
     def span_wrapper(method: Callable[..., Any]) -> Any:
         def _resume_span(
-                self: Any,
-                *_args: Any,
-                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-                **_kwargs: Any,
+            self: Any,
+            *_args: Any,
+            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+            **_kwargs: Any,
         ) -> Any:
             """
             Wrap the user's function with a function that
@@ -313,22 +315,23 @@ def _inject_tracing_into_class(_cls):
             # Retrieves the context from the _ray_trace_ctx dictionary we
             # injected, or starts a new context
             if _ray_trace_ctx:
-                with use_context(DictPropagator.extract(
-                        _ray_trace_ctx)), tracer.start_as_current_span(
-                            _actor_span_consumer_name(self.__class__.__name__,
-                                                      method),
-                            kind=trace.SpanKind.CONSUMER,
-                            attributes=_actor_hydrate_span_args(
-                                self.__class__.__name__, method),
-                        ):
+                with use_context(
+                    DictPropagator.extract(_ray_trace_ctx)
+                ), tracer.start_as_current_span(
+                    _actor_span_consumer_name(self.__class__.__name__, method),
+                    kind=trace.SpanKind.CONSUMER,
+                    attributes=_actor_hydrate_span_args(
+                        self.__class__.__name__, method
+                    ),
+                ):
                     return method(self, *_args, **_kwargs)
             else:
                 with tracer.start_as_current_span(
-                        _actor_span_consumer_name(self.__class__.__name__,
-                                                  method),
-                        kind=trace.SpanKind.CONSUMER,
-                        attributes=_actor_hydrate_span_args(
-                            self.__class__.__name__, method),
+                    _actor_span_consumer_name(self.__class__.__name__, method),
+                    kind=trace.SpanKind.CONSUMER,
+                    attributes=_actor_hydrate_span_args(
+                        self.__class__.__name__, method
+                    ),
                 ):
                     return method(self, *_args, **_kwargs)
 
@@ -336,10 +339,10 @@ def _inject_tracing_into_class(_cls):
 
     def async_span_wrapper(method: Callable[..., Any]) -> Any:
         async def _resume_span(
-                self: Any,
-                *_args: Any,
-                _ray_trace_ctx: Optional[Dict[str, Any]] = None,
-                **_kwargs: Any,
+            self: Any,
+            *_args: Any,
+            _ray_trace_ctx: Optional[Dict[str, Any]] = None,
+            **_kwargs: Any,
         ) -> Any:
             """
             Wrap the user's function with a function that
@@ -350,22 +353,23 @@ def _inject_tracing_into_class(_cls):
             # Retrieves the context from the _ray_trace_ctx dictionary we
             # injected, or starts a new context
             if _ray_trace_ctx:
-                with use_context(DictPropagator.extract(
-                        _ray_trace_ctx)), tracer.start_as_current_span(
-                            _actor_span_consumer_name(self._wrapped.__name__,
-                                                      method.__name__),
-                            kind=trace.SpanKind.CONSUMER,
-                            attributes=_actor_hydrate_span_args(
-                                self._wrapped.__name__, method.__name__),
-                        ):
+                with use_context(
+                    DictPropagator.extract(_ray_trace_ctx)
+                ), tracer.start_as_current_span(
+                    _actor_span_consumer_name(self._wrapped.__name__, method.__name__),
+                    kind=trace.SpanKind.CONSUMER,
+                    attributes=_actor_hydrate_span_args(
+                        self._wrapped.__name__, method.__name__
+                    ),
+                ):
                     return await method(self, *_args, **_kwargs)
             else:
                 with tracer.start_as_current_span(
-                        _actor_span_consumer_name(self._wrapped.__name__,
-                                                  method.__name__),
-                        kind=trace.SpanKind.CONSUMER,
-                        attributes=_actor_hydrate_span_args(
-                            self._wrapped.__name__, method.__name__),
+                    _actor_span_consumer_name(self._wrapped.__name__, method.__name__),
+                    kind=trace.SpanKind.CONSUMER,
+                    attributes=_actor_hydrate_span_args(
+                        self._wrapped.__name__, method.__name__
+                    ),
                 ):
                     return await method(self, *_args, **_kwargs)
 
