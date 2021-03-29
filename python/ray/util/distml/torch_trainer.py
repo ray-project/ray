@@ -63,6 +63,14 @@ class ProgressMeter(object):
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
 
+
+import ray.util.distml.torch_operator import TrainingOperator
+
+
+class MyTrainingOperator(TrainingOperator):
+    def setup(self):
+        pass
+
 def main():
     """Setup Ray instances."""
     # ray.init(resources={"machine": 2})
@@ -71,7 +79,7 @@ def main():
     strategy = PSStrategy(
         num_worker=args.num_workers,
         num_ps=args.num_ps,
-        model=args.model,
+        model=MyTrainingOperator
         batch_size=args.batch_size)
 
     # strategy.initialize()
