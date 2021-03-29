@@ -552,15 +552,6 @@ class CloudPickler(Pickler):
 
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
 
-    if sys.version_info[:2] >= (3, 7):
-        # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
-        # We import 'numpy.core' here, so numpy would register the
-        # ufunc serializer to 'copyreg.dispatch_table' before we override it.
-        import numpy.core
-        import numpy
-        # Override the original numpy ufunc serializer.
-        dispatch_table[numpy.ufunc] = _ufunc_reduce
-
     try:
         from pydantic.fields import ModelField
         dispatch_table[ModelField] = _pydantic_model_field_reduce
@@ -572,6 +563,14 @@ class CloudPickler(Pickler):
         dispatch_table[State] = _starlette_state_reduce
     except ImportError:
         pass
+
+    # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
+    # We import 'numpy.core' here, so numpy would register the
+    # ufunc serializer to 'copyreg.dispatch_table' before we override it.
+    import numpy.core
+    import numpy
+    # Override the original numpy ufunc serializer.
+    dispatch_table[numpy.ufunc] = _ufunc_reduce
 
     # function reducers are defined as instance methods of CloudPickler
     # objects, as they rely on a CloudPickler attribute (globals_ref)
