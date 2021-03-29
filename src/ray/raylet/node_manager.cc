@@ -215,12 +215,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                                         /*local_only=*/false);
           },
           is_plasma_object_spillable,
-          /*restore_object_from_remote_node*/
-          [this](const ObjectID &object_id, const std::string &spilled_url,
-                 const NodeID &node_id) {
-            SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
-                                                            node_id);
-          },
           /*core_worker_subscriber_=*/
           std::make_shared<Subscriber>(self_node_id_, config.node_manager_address,
                                        config.node_manager_port, worker_rpc_pool_)),
@@ -548,24 +542,6 @@ void NodeManager::HandleRequestObjectSpillage(
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-}
-
-void NodeManager::HandleRestoreSpilledObject(
-    const rpc::RestoreSpilledObjectRequest &request,
-    rpc::RestoreSpilledObjectReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  const auto object_id = ObjectID::FromBinary(request.object_id());
-  const auto spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
-  const auto object_url = request.object_url();
-  RAY_CHECK(spilled_node_id == self_node_id_);
-  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
-                 << " spilled_node_id: " << self_node_id_
-                 << " object url: " << object_url;
-  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
-                                                  nullptr);
-  // Just reply right away. The caller will keep hitting this RPC endpoint until
-  // restoration succeeds, so we can safely reply here without waiting for the
-  // restoreSpilledObject to be done.
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReleaseUnusedBundles(
@@ -2295,30 +2271,6 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
-}
-
-void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
-    const ObjectID &object_id, const std::string &spilled_url, const NodeID &node_id) {
-  // Fetch from a remote node.
-  if (!remote_node_manager_addresses_.contains(node_id)) {
-    // It is possible the new node information is not received at this point.
-    // In this case, the PullManager will handle retry, so we just return.
-    return;
-  }
-  const auto &entry = remote_node_manager_addresses_.find(node_id);
-  // TODO(sang): Use a node manager pool instead.
-  auto raylet_client =
-      std::make_shared<ray::raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
-          entry->second.first, entry->second.second, client_call_manager_));
-  raylet_client->RestoreSpilledObject(
-      object_id, spilled_url, node_id,
-      [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
-                              "remote node. This request will be retried. Error message: "
-                           << status.ToString();
-        }
-      });
 }
 
 }  // namespace raylet

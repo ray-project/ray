@@ -541,9 +541,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    if (!options_.is_local_mode) {
-      RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
-    }
     SetCurrentTaskId(task_id);
   }
 

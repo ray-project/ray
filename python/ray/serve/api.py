@@ -9,11 +9,10 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
                     Optional, Type, Union)
-from uuid import UUID
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag
+from ray.serve.common import EndpointTag, GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -24,7 +23,8 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
-                             logger, register_custom_serializers)
+                             logger, make_fastapi_class_based_view,
+                             register_custom_serializers)
 
 import ray
 
@@ -54,6 +54,7 @@ class ReplicaContext:
     backend_tag: BackendTag
     replica_tag: ReplicaTag
     _internal_controller_name: str
+    servable_object: Callable
 
 
 def create_or_get_async_loop_in_thread():
@@ -68,10 +69,15 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
+def _set_internal_replica_context(
+        backend_tag: BackendTag,
+        replica_tag: ReplicaTag,
+        controller_name: str,
+        servable_object: Callable,
+):
     global _INTERNAL_REPLICA_CONTEXT
-    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(backend_tag, replica_tag,
-                                               controller_name)
+    _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
+        backend_tag, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -205,11 +211,16 @@ class Client:
 
             self._shutdown = True
 
-    def _wait_for_goal(self, result_object_id: ray.ObjectRef) -> bool:
-        goal_id: Optional[UUID] = ray.get(result_object_id)
-        if goal_id is not None:
-            ray.get(self._controller.wait_for_goal.remote(goal_id))
-            logger.debug(f"Goal {goal_id} completed.")
+    def _wait_for_goal(self,
+                       result_object_id: ray.ObjectRef,
+                       timeout: Optional[float] = None) -> bool:
+        goal_id: Optional[GoalId] = ray.get(result_object_id)
+        if goal_id is None:
+            return True
+
+        ready, _ = ray.wait(
+            [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
+        return len(ready) == 1
 
     @_ensure_connected
     def create_endpoint(self,
@@ -448,7 +459,8 @@ class Client:
                *init_args: Any,
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-               version: Optional[str] = None) -> None:
+               version: Optional[str] = None,
+               _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -489,9 +501,13 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        self._wait_for_goal(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, version))
+        goal_ref = self._controller.deploy.remote(name, backend_config,
+                                                  replica_config, version)
+
+        if _blocking:
+            self._wait_for_goal(goal_ref)
+        else:
+            return goal_ref
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
@@ -1072,6 +1088,9 @@ def ingress(
 
         if app is not None:
             cls._serve_asgi_app = app
+            # Sometimes there are decorators on the methods. We want to fix
+            # the fast api routes here.
+            make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
             cls._serve_path_prefix = path_prefix
 
