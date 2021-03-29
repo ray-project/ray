@@ -13,7 +13,7 @@ def _internal_kv_initialized():
     inited = hasattr(worker, "mode") and worker.mode is not None
     if inited:
         try:
-            _internal_kv_exist("dummy")
+            _internal_kv_exists("dummy")
         except grpc.RpcError:
             redis = True
     return inited
