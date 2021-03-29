@@ -726,26 +726,6 @@ class Node:
             redis_client = self.create_redis_client()
             redis_client.hset("webui", mapping={"url": self._webui_url})
 
-    def start_plasma_store(self, plasma_directory, object_store_memory):
-        """Start the plasma store."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "plasma_store", unique=True)
-        process_info = ray._private.services.start_plasma_store(
-            self.get_resource_spec(),
-            plasma_directory,
-            object_store_memory,
-            self._plasma_store_socket_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            huge_pages=self._ray_params.huge_pages,
-            keep_idle=bool(self._config.get("plasma_store_as_thread")),
-            fate_share=self.kernel_fate_share)
-        assert (
-            ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
-        self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info,
-        ]
-
     def start_gcs_server(self):
         """Start the gcs server.
         """
@@ -896,7 +876,6 @@ class Node:
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
             )
-        self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
@@ -1012,16 +991,6 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
-
-    def kill_plasma_store(self, check_alive=True):
-        """Kill the plasma store.
-
-        Args:
-            check_alive (bool): Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.
