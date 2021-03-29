@@ -340,6 +340,7 @@ class TestPPO(unittest.TestCase):
                                policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
+            train_batch.set_get_interceptor(None)
             expected_rho = np.exp(expected_logp.detach().cpu().numpy() -
                                   train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.

@@ -1183,7 +1183,6 @@ class Trainer(Trainable):
                 raise ValueError("`simple_optimizer=False` not supported for "
                                  "framework={}!".format(framework))
 
-
         # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
