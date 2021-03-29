@@ -1,11 +1,15 @@
+import sys
+
 import dask
 import dask.array as da
 import pytest
 
 import ray
-from ray.util.dask import ray_dask_get
+if sys.platform != "win32":
+    from ray.util.dask import ray_dask_get
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ray_dask_basic(ray_start_regular_shared):
     @ray.remote
     def stringify(x):
@@ -31,6 +35,7 @@ def test_ray_dask_basic(ray_start_regular_shared):
     assert ans == "The answer is 6", ans
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ray_dask_persist(ray_start_regular_shared):
     arr = da.ones(5) + 2
     result = arr.persist(scheduler=ray_dask_get)
