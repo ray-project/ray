@@ -328,10 +328,28 @@ def construct_memory_table(workers_stats: List,
     return memory_table
 
 
+def track_reference_size(group):
+    """Returns dictionary mapping reference type
+    to memory usage for a given memory table group."""
+    d = defaultdict(int)
+    table_name = {
+        "LOCAL_REFERENCE": "total_local_ref_count",
+        "PINNED_IN_MEMORY": "total_pinned_in_memory",
+        "USED_BY_PENDING_TASK": "total_used_by_pending_task",
+        "CAPTURED_IN_OBJECT": "total_captured_in_objects",
+        "ACTOR_HANDLE": "total_actor_handles"
+    }
+    for entry in group["entries"]:
+        d[table_name[entry["reference_type"]]] += entry["object_size"]
+    return d
+
+
 def memory_summary(state,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
-                   line_wrap=True) -> str:
+                   line_wrap=True,
+                   unit="B",
+                   num_entries=None) -> str:
     from ray.new_dashboard.modules.stats_collector.stats_collector_head\
          import node_stats_to_dict
 
@@ -339,6 +357,9 @@ def memory_summary(state,
     import shutil
     size = shutil.get_terminal_size((80, 20)).columns
     line_wrap_threshold = 137
+
+    # Unit conversions
+    units = {"B": 10**0, "KB": 10**3, "MB": 10**6, "GB": 10**9}
 
     # Fetch core memory worker stats, store as a dictionary
     core_worker_stats = []
@@ -360,8 +381,8 @@ def memory_summary(state,
     group_by, sort_by = group_by.name.lower().replace(
         "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
-        "Mem Used by Objects", "Local References", "Pinned Count",
-        "Pending Tasks", "Captured in Objects", "Actor Handles"
+        "Mem Used by Objects", "Local References", "Pinned", "Pending Tasks",
+        "Captured in Objects", "Actor Handles"
     ]
     summary_string = "{:<19}  {:<16}  {:<12}  {:<13}  {:<19}  {:<13}\n"
 
@@ -369,18 +390,28 @@ def memory_summary(state,
         "IP Address", "PID", "Type", "Call Site", "Size", "Reference Type",
         "Object Ref"
     ]
-    object_ref_string = "{:<8}  {:<3}  {:<4}  {:<9}  {:<4}  {:<14}  {:<10}\n"
+    object_ref_string = "{:<8} | {:<3} | {:<4} | {:<9} \
+| {:<4} | {:<14} | {:<10}\n"
+
     if size > line_wrap_threshold and line_wrap:
         object_ref_string = "{:<12}  {:<5}  {:<6}  {:<22}  {:<6}  {:<18}  \
 {:<56}\n"
 
     mem += f"Grouping by {group_by}...\
-        Sorting by {sort_by}...\n\n\n\n"
+        Sorting by {sort_by}...\
+        Display {num_entries if num_entries is not None else 'all'}\
+entries per group...\n\n\n"
 
     for key, group in memory_table["group"].items():
         # Group summary
         summary = group["summary"]
-        summary["total_object_size"] = str(summary["total_object_size"]) + " B"
+        ref_size = track_reference_size(group)
+        for key in summary:
+            if key == "total_object_size":
+                summary[key] = str(summary[key] / units[unit]) + f" {unit}"
+            else:
+                summary[key] = str(
+                    summary[key]) + f", ({ref_size[key] / units[unit]} {unit})"
         mem += f"--- Summary for {group_by}: {key} ---\n"
         mem += summary_string\
             .format(*summary_labels)
@@ -391,10 +422,13 @@ def memory_summary(state,
         mem += f"--- Object references for {group_by}: {key} ---\n"
         mem += object_ref_string\
             .format(*object_ref_labels)
+        n = 1  # Counter for num entries per group
         for entry in group["entries"]:
+            if num_entries is not None and n > num_entries:
+                break
             entry["object_size"] = str(
-                entry["object_size"]
-            ) + " B" if entry["object_size"] > -1 else "?"
+                entry["object_size"] /
+                units[unit]) + f" {unit}" if entry["object_size"] > -1 else "?"
             num_lines = 1
             if size > line_wrap_threshold and line_wrap:
                 call_site_length = 22
@@ -403,6 +437,8 @@ def memory_summary(state,
                         0, len(entry["call_site"]), call_site_length)
                 ]
                 num_lines = len(entry["call_site"])
+            else:
+                mem += "\n"
             object_ref_values = [
                 entry["node_ip_address"], entry["pid"], entry["type"],
                 entry["call_site"], entry["object_size"],
@@ -418,5 +454,6 @@ def memory_summary(state,
                 mem += object_ref_string\
                     .format(*row)
             mem += "\n"
-        mem += "\n\n\n"
+            n += 1
+        mem += "\n\n"
     return mem

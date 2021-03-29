@@ -87,9 +87,11 @@ def test_starlette_response(serve_instance):
 
 
 def test_backend_user_config(serve_instance):
-    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
-
-    @serve.deployment("counter", config=config)
+    @serve.deployment(
+        "counter", num_replicas=2, user_config={
+            "count": 123,
+            "b": 2
+        })
     class Counter:
         def __init__(self):
             self.count = 10
@@ -114,13 +116,11 @@ def test_backend_user_config(serve_instance):
 
     wait_for_condition(lambda: check("123", 2))
 
-    config.num_replicas = 3
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(num_replicas=3)
     Counter.deploy()
     wait_for_condition(lambda: check("123", 3))
 
-    config.user_config = {"count": 456}
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(user_config={"count": 456})
     Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
 
@@ -157,7 +157,7 @@ def test_reject_duplicate_route(serve_instance):
 
 
 def test_scaling_replicas(serve_instance):
-    @serve.deployment("counter", config=BackendConfig(num_replicas=2))
+    @serve.deployment("counter", num_replicas=2)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -176,7 +176,7 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    Counter.options(config=BackendConfig(num_replicas=1)).deploy()
+    Counter.options(num_replicas=1).deploy()
 
     counter_result = []
     for _ in range(10):
@@ -185,38 +185,6 @@ def test_scaling_replicas(serve_instance):
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
     assert max(counter_result) - min(counter_result) > 6
-
-
-def test_updating_config(serve_instance):
-    @serve.deployment(
-        "bsimple", config=BackendConfig(max_batch_size=2, num_replicas=2))
-    class BatchSimple:
-        def __init__(self):
-            self.count = 0
-
-        @serve.accept_batch
-        def __call__(self, request):
-            return [1] * len(request)
-
-    BatchSimple.deploy()
-
-    controller = serve.api._global_client._controller
-    old_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-
-    BatchSimple.options(
-        config=BackendConfig(max_batch_size=5, num_replicas=2)).deploy()
-    new_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            controller._all_replica_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the old and new replica tag list should be identical
-    # and should be subset of all_tag_list
-    assert set(old_replica_tag_list) <= set(new_all_tag_list)
-    assert set(old_replica_tag_list) == set(new_replica_tag_list)
 
 
 def test_delete_backend(serve_instance):
