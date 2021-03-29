@@ -242,7 +242,7 @@ class HTTPOptions(pydantic.BaseModel):
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     dedicated_cpu: bool = False
-    
+
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
