@@ -1162,18 +1162,27 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning("simple_optimizer", error=False)
 
+        framework = config.get("framework")
         if config.get("num_gpus", 0) > 1:
-            if config.get("framework") in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2", "torch"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
-                                 "framework={}!".format(
-                                     config.get("framework")))
+                                 "framework={}!".format(framework))
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
                     "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = False
+        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = True
+            config["simple_optimizer"] = \
+                framework != "tf" or len(config["multiagent"]["policies"]) > 0
+        # User manually set simple-optimizer to False -> Error if not tf.
+        elif simple_optim_setting is False:
+            if framework in ["tfe", "tf2", "torch"]:
+                raise ValueError("`simple_optimizer=False` not supported for "
+                                 "framework={}!".format(framework))
+
 
         # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):
