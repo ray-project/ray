@@ -12,9 +12,10 @@ from typing import Any, Dict, List
 import ray
 import ray.ray_constants
 import ray._private.services as services
+from ray.autoscaler._private import constants
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
-from ray.autoscaler._private import constants
+from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
@@ -144,11 +145,12 @@ def merge_legacy_yaml_with_defaults(
     """Rewrite legacy config's available node types after it has been merged
     with defaults yaml.
     """
-    logger.warning("Converting legacy cluster config to multi node types.\n"
-                   "Refer to the docs for examples of multi-node-type "
-                   "autoscaling:\n"
-                   "https://docs.ray.io/en/master/cluster/config.html"
-                   "#full-configuration")
+    cli_logger.warning(
+        "Converting legacy cluster config to a multi node type cluster "
+        "config. Multi-node-type cluster configs are the recommended "
+        "format for configuring Ray clusters. "
+        "See the docs for more information:\n"
+        "https://docs.ray.io/en/master/cluster/config.html#full-configuration")
 
     # Get default head and worker types.
     default_head_type = merged_config["head_node_type"]
