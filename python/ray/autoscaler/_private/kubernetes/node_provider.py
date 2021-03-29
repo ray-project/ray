@@ -51,7 +51,12 @@ class KubernetesNodeProvider(NodeProvider):
             field_selector=field_selector,
             label_selector=label_selector)
 
-        return [pod.metadata.name for pod in pod_list.items]
+        # Don't return pods marked for deletion,
+        # i.e. pods with non-null metadata.DeletionTimestamp.
+        return [
+            pod.metadata.name for pod in pod_list.items
+            if pod.metadata.deletion_timestamp is None
+        ]
 
     def is_running(self, node_id):
         pod = core_api().read_namespaced_pod(node_id, self.namespace)
