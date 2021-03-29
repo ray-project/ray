@@ -552,17 +552,11 @@ class CloudPickler(Pickler):
 
     dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
 
-    try:
-        from pydantic.fields import ModelField
+    if importlib.util.find_spec("pydantic") is not None:
         dispatch_table[ModelField] = _pydantic_model_field_reduce
-    except ImportError:
-        pass
 
-    try:
-        from starlette.datastructures import State
+    if importlib.util.find_spec("starlette") is not None:
         dispatch_table[State] = _starlette_state_reduce
-    except ImportError:
-        pass
 
     # TODO(suquark): Remove this patch when we use numpy >= 1.20.0 by default.
     # We import 'numpy.core' here, so numpy would register the
