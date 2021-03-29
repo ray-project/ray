@@ -1506,13 +1506,33 @@ py_test(
 
 # Test train/rollout scripts (w/o confirming rollout performance).
 py_test(
-    name = "test_rollout_no_learning",
+    name = "test_rollout_no_learning1",
     main = "tests/test_rollout.py",
     tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"],
-    args = ["TestRolloutSimple"]
+    args = ["TestRolloutSimple1"]
+)
+
+py_test(
+    name = "test_rollout_no_learning2",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple2"]
+)
+
+py_test(
+    name = "test_rollout_no_learning3",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple3"]
 )
 
 # Test train/rollout scripts (and confirm `rllib rollout` performance is same

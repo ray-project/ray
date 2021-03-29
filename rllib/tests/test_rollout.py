@@ -226,19 +226,23 @@ def learn_test_multi_agent_plus_rollout(algo):
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-class TestRolloutSimple(unittest.TestCase):
+class TestRolloutSimple1(unittest.TestCase):
     def test_a3c(self):
         rollout_test("A3C")
 
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
+
+class TestRolloutSimple2(unittest.TestCase):
     def test_dqn(self):
         rollout_test("DQN")
 
     def test_es(self):
         rollout_test("ES")
 
+
+class TestRolloutSimple3(unittest.TestCase):
     def test_impala(self):
         rollout_test("IMPALA", env="CartPole-v0")
 
