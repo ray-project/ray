@@ -141,7 +141,7 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_ + ".received");
+      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -194,9 +194,6 @@ class ServerCallImpl : public ServerCall {
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
-    // Make a mock post here in order to record the number of requests that are replied.
-    // .received - .reply == number of in flight grpc requests.
-    io_service_.post([]() {}, call_name_ + ".reply");
   }
 
   /// State of this call.
