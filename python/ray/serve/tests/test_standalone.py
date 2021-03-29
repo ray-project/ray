@@ -121,6 +121,7 @@ def test_connect(detached, ray_shutdown):
     ray.get(serve.get_handle("endpoint").remote())
     assert "backend-ception" in serve.list_backends().keys()
 
+
 @pytest.mark.parametrize("controller_cpu", [True, False])
 @pytest.mark.parametrize("proxy_cpu", [True, False])
 def test_dedicated_cpu(controller_cpu, proxy_cpu, ray_cluster):
@@ -132,7 +133,8 @@ def test_dedicated_cpu(controller_cpu, proxy_cpu, ray_cluster):
     serve.start(
         dedicated_cpu=controller_cpu,
         http_options=HTTPOptions(dedicated_cpu=proxy_cpu))
-    wait_for_condition(lambda: ray.available_resources().get("CPU") == 4 - num_cpus_used)
+    wait_for_condition(
+        lambda: ray.available_resources().get("CPU") == 4 - num_cpus_used)
 
 
 @pytest.mark.skipif(
