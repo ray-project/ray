@@ -1219,7 +1219,6 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
-    worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1237,10 +1236,7 @@ def connect(node,
         job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
         job_config = [job_config] if job_config else \
             worker.core_worker.get_job_config().runtime_env.uris
-        missing_uris = runtime_env.ensure_runtime_env_setup(job_config)
-        if missing_uris:
-            raise IOError("Failed to prepare runtime env."
-                          f" URIs {missing_uris} are missing")
+        runtime_env.ensure_runtime_env_setup(job_config)
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

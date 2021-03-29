@@ -2812,8 +2812,6 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 
-std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
-
 bool CoreWorker::IsExiting() const { return exiting_; }
 
 }  // namespace ray

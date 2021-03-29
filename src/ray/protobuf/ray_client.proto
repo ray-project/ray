@@ -257,7 +257,7 @@ message PrepRuntimeEnvResponse {
 service RayletDriver {
   rpc Init(InitRequest) returns (InitResponse) {
   }
-  rpc PrepRuntimeeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
+  rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
   rpc GetObject(GetRequest) returns (GetResponse) {
   }

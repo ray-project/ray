@@ -65,7 +65,8 @@ import ray._raylet  # noqa: E402
 from ray._raylet import (  # noqa: E402
     ActorClassID, ActorID, NodeID, Config as _Config, JobID, WorkerID,
     FunctionID, ObjectID, ObjectRef, TaskID, UniqueID, Language,
-    PlacementGroupID)
+    PlacementGroupID,
+)
 
 _config = _Config()
 

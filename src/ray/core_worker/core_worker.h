@@ -985,9 +985,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
 
-  // Get gcs_client
-  std::shared_ptr<gcs::GcsClient> GetGcsClient() const;
-
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 

@@ -96,7 +96,6 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_job.py",
     "test_k8s_operator_mock.py",
-    "test_kv.py",
     "test_memstat.py",
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
