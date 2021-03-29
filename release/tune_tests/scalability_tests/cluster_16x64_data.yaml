@@ -38,12 +38,12 @@ auth:
 head_node_type: cpu_64_ondemand
 worker_default_node_type: cpu_64_spot
 
-file_mounts: {
-    "~/release-automation-tune_scalability_tests": "."
-}
+#file_mounts: {
+#    "~/release-automation-tune_scalability_tests": "."
+#}
 
 setup_commands:
-    - ray install-nightly
+    - pip install -U {{env["RAY_WHEEL"]}}
     - pip install pytest xgboost_ray
     - mkdir -p ~/data || true
     - rm -rf ~/data/train.parquet || true

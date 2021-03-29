@@ -26,7 +26,7 @@ from ray import tune
 from xgboost_ray import train, RayParams, RayDMatrix
 
 
-def xgboost_train(config, num_actors=128, num_boost_round=200):
+def xgboost_train(config, ray_params, num_boost_round=200):
     train_set = RayDMatrix(
         os.path.expanduser("~/data/train.parquet"), "labels")
     test_set = RayDMatrix(os.path.expanduser("~/data/test.parquet"), "labels")
@@ -38,11 +38,7 @@ def xgboost_train(config, num_actors=128, num_boost_round=200):
         dtrain=train_set,
         evals=[(test_set, "eval")],
         evals_result=evals_result,
-        ray_params=RayParams(
-            max_actor_restarts=1,
-            gpus_per_actor=0,
-            cpus_per_actor=1,
-            num_actors=num_actors),
+        ray_params=ray_params,
         verbose_eval=False,
         num_boost_round=num_boost_round)
 
@@ -71,14 +67,19 @@ def main():
         "max_depth": 4
     }
 
+    ray_params = RayParams(
+        max_actor_restarts=1,
+        gpus_per_actor=0,
+        cpus_per_actor=1,
+        num_actors=num_actors_per_sample)
+
     start_time = time.monotonic()
     tune.run(
         tune.with_parameters(
-            xgboost_train,
-            num_actors=num_actors_per_sample,
-            num_boost_round=100),
+            xgboost_train, ray_params=ray_params, num_boost_round=100),
         config=config,
-        num_samples=num_samples)
+        num_samples=num_samples,
+        resources_per_trial=ray_params.get_tune_resources())
     time_taken = time.monotonic() - start_time
 
     assert time_taken < max_runtime, \

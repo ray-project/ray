@@ -19,7 +19,6 @@ import os
 import time
 
 import ray
-from ray.util import get_node_ip_address
 
 from xgboost_ray import RayParams
 from xgboost_ray.session import get_actor_rank, put_queue
@@ -46,18 +45,14 @@ class FailureState:
 
 
 class FailureInjection(TrainingCallback):
-    def __init__(self, id, state, ranks, iteration, allow_ips=None):
+    def __init__(self, id, state, ranks, iteration):
         self._id = id
         self._state = state
         self._ranks = ranks or []
         self._iteration = iteration
-        self._allow_ips = allow_ips
         super(FailureInjection).__init__()
 
     def after_iteration(self, model, epoch, evals_log):
-        if self._allow_ips and get_node_ip_address() not in self._allow_ips:
-            return
-
         if epoch == self._iteration:
             rank = get_actor_rank()
             if rank in self._ranks:
