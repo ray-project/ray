@@ -26,7 +26,7 @@ matrix:
   include:
     - os: linux
       env:
-        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
+        - PYTHON=3.7 SMALL_AND_LARGE_TESTS=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -38,7 +38,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1
+        - PYTHON=3.7 MEDIUM_TESTS_A_TO_J=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -54,7 +54,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1
+        - PYTHON=3.7 MEDIUM_TESTS_K_TO_Z=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -69,7 +69,7 @@ matrix:
 
     - os: linux
       env:
-        - PYTHON=3.6 BAZEL_CONFIG="asan"
+        - PYTHON=3.7 BAZEL_CONFIG="asan"
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
       install:
@@ -85,7 +85,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
+        - PYTHON=3.7 SMALL_AND_LARGE_TESTS=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -98,7 +98,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1
+        - PYTHON=3.7 MEDIUM_TESTS_A_TO_J=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -114,7 +114,7 @@ matrix:
     - os: osx
       osx_image: xcode7
       env:
-        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1
+        - PYTHON=3.7 MEDIUM_TESTS_K_TO_Z=1
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
@@ -130,7 +130,7 @@ matrix:
     - os: linux
       env:
         - JAVA_TESTS=1
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - PYTHON=3.7 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       language: java
       jdk: openjdk8
@@ -145,7 +145,7 @@ matrix:
       env:
         - STREAMING_TESTS=1
         - RAY_INSTALL_JAVA=1
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - PYTHON=3.7 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
         - RAY_ENABLE_NEW_SCHEDULER=0
       language: java
@@ -195,7 +195,7 @@ matrix:
     # Build Linux wheels and jars.
     - os: linux
       env:
-        # - PYTHON=3.6
+        # - PYTHON=3.7
         - LINUX_WHEELS=1 LINUX_JARS=1
         - DOCKER_BUILD_PY37=1
         - PYTHONWARNINGS=ignore
@@ -260,7 +260,7 @@ matrix:
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
@@ -277,7 +277,7 @@ matrix:
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
         - TORCH_VERSION=1.6
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
@@ -293,7 +293,7 @@ matrix:
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
@@ -309,7 +309,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
         - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
@@ -330,7 +330,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
         - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
@@ -351,7 +351,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
         - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
@@ -369,7 +369,7 @@ matrix:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
         - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.6
@@ -386,7 +386,7 @@ matrix:
     - os: linux
       env:
         - TUNE_TESTING=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -403,7 +403,7 @@ matrix:
     - os: linux
       env:
         - SGD_TESTING=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
@@ -419,7 +419,7 @@ matrix:
     - os: linux
       env:
         - DOC_TESTING=1
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
@@ -452,7 +452,7 @@ matrix:
     - os: linux
       env:
         - TESTSUITE=cpp_worker
-        - PYTHON=3.6
+        - PYTHON=3.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init

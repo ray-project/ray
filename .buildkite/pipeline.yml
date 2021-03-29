@@ -28,7 +28,7 @@
   commands:
     - LINUX_WHEELS=1 ./ci/travis/ci.sh build
     - pip install docker
-    - python ./ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type BUILDKITE --build-base
+    - python ./ci/travis/build-docker-images.py --py-versions PY37 PY38 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
