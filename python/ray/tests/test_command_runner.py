@@ -370,6 +370,41 @@ def test_rsync_without_exclude_and_filter():
         "1.2.3.4", pattern=f"--filter dir-merge,- .ignore")
 
 
+@pytest.mark.parametrize("run_option_type",
+                         ["run_options", "head_run_options"])
+def test_docker_shm_override(run_option_type):
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+
+    docker_config = {
+        "container_name": "container",
+        "image": "rayproject/ray:latest",
+        run_option_type: ["--shm-size=80g"]
+    }
+    args = {
+        "log_prefix": "prefix",
+        "node_id": 0,
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+        "docker_config": docker_config,
+    }
+    cmd_runner = DockerCommandRunner(**args)
+
+    process_runner.respond_to_call("json .Config.Env", 2 * ["[]"])
+    cmd_runner.run_init(as_head=True, file_mounts={}, sync_run_yet=True)
+
+    # Ensure the user-provided SHM size is used.
+    process_runner.assert_has_call("1.2.3.4", pattern="--shm-size=80g")
+
+    # Ensure that SHM auto detection is bypassed
+    process_runner.assert_not_has_call("1.2.3.4", pattern="/proc/meminfo")
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
