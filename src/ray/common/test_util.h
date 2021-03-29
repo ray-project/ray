@@ -94,9 +94,6 @@ extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 
-/// Path to object store executable binary.
-extern std::string TEST_STORE_EXEC_PATH;
-
 /// Path to gcs server executable binary.
 extern std::string TEST_GCS_SERVER_EXEC_PATH;
 
@@ -120,17 +117,12 @@ class TestSetupUtil {
   static void ShutDownRedisServers();
   static void FlushAllRedisServers();
 
-  static std::string StartObjectStore(
-      const boost::optional<std::string> &socket_name = boost::none);
-  static void StopObjectStore(const std::string &store_socket_name);
-
   static std::string StartGcsServer(const std::string &redis_address);
   static void StopGcsServer(const std::string &gcs_server_socket_name);
-
-  static std::string StartRaylet(const std::string &store_socket_name,
-                                 const std::string &node_ip_address, const int &port,
+  static std::string StartRaylet(const std::string &node_ip_address, const int &port,
                                  const std::string &redis_address,
-                                 const std::string &resource);
+                                 const std::string &resource,
+                                 std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);
 
  private:
