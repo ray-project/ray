@@ -179,8 +179,10 @@ def one_hot(x, space):
 
 def reduce_mean_ignore_inf(x, axis):
     """Same as torch.mean() but ignores -inf values."""
-    mask = torch.le(x, FLOAT_MIN)
-    x_zeroed = torch.where(mask, torch.zeros_like(x), x)
+    mask_inf = torch.ne(x, float("-inf"))
+    mask_small = torch.ge(x, FLOAT_MIN)
+    mask = torch.logical_or(mask_inf, mask_small)
+    x_zeroed = torch.where(mask, x, torch.zeros_like(x))
     return torch.sum(x_zeroed, axis) / torch.sum(mask.float(), axis)
 
 
