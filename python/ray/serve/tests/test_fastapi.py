@@ -193,7 +193,7 @@ def test_fastapi_features(serve_instance):
                 do_error,
                 query_arg_valid,
                 cookie_arg,
-                user_agent,
+                user_agent.split("/")[0],  # returns python-requests
                 commons,
                 db,
                 app.state.state_one,
@@ -260,7 +260,7 @@ def test_fastapi_features(serve_instance):
         False,
         "at-least-three-chars",
         None,
-        "python-requests/2.24.0",
+        "python-requests",
         {
             "q": "common_arg"
         },
