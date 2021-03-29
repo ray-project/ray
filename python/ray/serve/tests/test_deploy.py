@@ -347,7 +347,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     # Tests redeploying with a new version and lower num_replicas.
     name = "test"
 
-    @serve.deployment(name, version="1", config={"num_replicas": 4})
+    @serve.deployment(name, version="1", num_replicas=4)
     def v1(request):
         return f"1|{os.getpid()}"
 
@@ -388,7 +388,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
-    @serve.deployment(name, version="2", config={"num_replicas": 2})
+    @serve.deployment(name, version="2", num_replicas=2)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -444,7 +444,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
-    @serve.deployment(name, version="2", config={"num_replicas": 4})
+    @serve.deployment(name, version="2", num_replicas=4)
     def v2(*args):
         return f"2|{os.getpid()}"
 
