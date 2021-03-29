@@ -15,10 +15,21 @@
 #pragma once
 
 #include <ray/api/function_manager.h>
+#include <ray/api/remote_function_name.h>
 
 namespace ray {
 
-namespace {
+namespace internal {
+template <typename T, typename... U>
+inline static int RegisterRemoteFunctions(const T &t, U... u) {
+  int index = 0;
+  (void)std::initializer_list<int>{
+      (ray::internal::FunctionManager::Instance().RegisterRemoteFunction(
+           t[index++].data(), u),
+       0)...};
+  return 0;
+}
+
 #define CONCATENATE_DIRECT(s1, s2) s1##s2
 #define CONCATENATE(s1, s2) CONCATENATE_DIRECT(s1, s2)
 #ifdef _MSC_VER
@@ -26,13 +37,15 @@ namespace {
 #else
 #define ANONYMOUS_VARIABLE(str) CONCATENATE(str, __LINE__)
 #endif
-}  // namespace
+}  // namespace internal
 
 namespace api {
 
-#define RAY_REMOTE(f)                   \
-  static auto ANONYMOUS_VARIABLE(var) = \
-      ray::internal::FunctionManager::Instance().RegisterRemoteFunction(#f, f);
+#define RAY_REMOTE(...)                                                                  \
+  static auto ANONYMOUS_VARIABLE(var) = ray::internal::RegisterRemoteFunctions(          \
+      std::array<absl::string_view, GET_ARG_COUNT(__VA_ARGS__)>{                         \
+          MARCO_EXPAND(MACRO_CONCAT(CON_STR, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__))}, \
+      __VA_ARGS__);
 
 }  // namespace api
 }  // namespace ray
