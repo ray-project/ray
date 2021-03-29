@@ -14,8 +14,13 @@ from ray.test_utils import run_string_as_driver
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
 
-PKG_DIR = Path(tempfile.gettempdir()) / "ray" / "session_latest" \
-  / "runtime_resources"
+if sys.platform != "win32":
+    # Ideally we should use tempfile.gettempdir() for
+    # temp dir, which will give different result in mac
+    # and linux. But since in node.py, we use "/tmp" as
+    # default, here we use "/tmp" directly
+    PKG_DIR = Path("/tmp") / "ray" / "session_latest" \
+        / "runtime_resources"
 
 driver_script = """
 import sys
