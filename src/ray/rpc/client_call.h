@@ -230,9 +230,7 @@ class ClientCallManager {
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     // Create a mock post request to record the number of requests sent.
-    main_service_.post(
-        []() {},
-        tag->GetCall()->GetName() + ".request");
+    main_service_.post([]() {}, tag->GetCall()->GetName() + ".request");
     return call;
   }
 
