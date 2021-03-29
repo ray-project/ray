@@ -194,6 +194,8 @@ class ServerCallImpl : public ServerCall {
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    // Make a mock post here in order to record the number of requests that are replied.
+    // .received - .reply == number of in flight grpc requests.
     io_service_.post([]() {}, call_name_ + ".reply");
   }
 

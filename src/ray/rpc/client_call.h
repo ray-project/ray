@@ -229,7 +229,8 @@ class ClientCallManager {
     // pointer.
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
-    // Create a mock post request to record the number of requests sent.
+    // Make a mock post here in order to record the number of requests that are replied.
+    // .request - .reply_received == number of in flight grpc requests.
     main_service_.post([]() {}, tag->GetCall()->GetName() + ".request");
     return call;
   }
