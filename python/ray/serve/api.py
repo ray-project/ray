@@ -670,7 +670,7 @@ def start(detached: bool = False,
               this to "0.0.0.0".
             - port(int): Port for HTTP server. Defaults to 8000.
             - middlewares(list): A list of Starlette middlewares that will be
-              applied to the HTTP servers in the cluster.
+              applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
 
@@ -680,9 +680,9 @@ def start(detached: bool = False,
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
             - dedicated_cpu(bool): Whether to set `num_cpus=1` for each
-              internal HTTP proxy Actor.  Defaults to False (`num_cpus=0`).
+              internal HTTP proxy actor.  Defaults to False (`num_cpus=0`).
         dedicated_cpu (bool): Whether to set `num_cpus=1` for the internal
-          Serve controller Actor.  Defaults to False (`num_cpus=0`).
+          Serve controller actor.  Defaults to False (`num_cpus=0`).
     """
     if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
             or (len(http_middlewares) != 0)):

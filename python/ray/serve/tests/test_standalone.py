@@ -15,6 +15,7 @@ from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
+from ray.serve.config import HTTPOptions
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
 
@@ -119,6 +120,19 @@ def test_connect(detached, ray_shutdown):
     serve.create_endpoint("endpoint", backend="connect_in_backend")
     ray.get(serve.get_handle("endpoint").remote())
     assert "backend-ception" in serve.list_backends().keys()
+
+@pytest.mark.parametrize("controller_cpu", [True, False])
+@pytest.mark.parametrize("proxy_cpu", [True, False])
+def test_dedicated_cpu(controller_cpu, proxy_cpu, ray_cluster):
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=4)
+    ray.init(head_node.address)
+    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == 4)
+    num_cpus_used = int(controller_cpu) + int(proxy_cpu)
+    serve.start(
+        dedicated_cpu=controller_cpu,
+        http_options=HTTPOptions(dedicated_cpu=proxy_cpu))
+    wait_for_condition(lambda: ray.available_resources().get("CPU") == 4 - num_cpus_used)
 
 
 @pytest.mark.skipif(
