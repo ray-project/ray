@@ -6,6 +6,7 @@ from ray._private.client_mode_hook import client_mode_hook
 
 redis = False
 
+
 @client_mode_hook
 def _internal_kv_initialized():
     global redis
@@ -50,9 +51,9 @@ def _internal_kv_put(key: Union[str, bytes],
     """
     if redis:
         if overwrite:
-            updated = worker.redis_client.hset(key, "value", value)
+            updated = ray.worker.redis_client.hset(key, "value", value)
         else:
-            updated = worker.redis_client.hsetnx(key, "value", value)
+            updated = ray.worker.redis_client.hsetnx(key, "value", value)
         return updated == 0  # already exists
     else:
         return not ray.worker.global_worker.gcs_client.kv_put(
