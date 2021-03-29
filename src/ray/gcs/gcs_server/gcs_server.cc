@@ -104,6 +104,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init KV Manager
   InitKVManager();
 
+  // Init resource report polling.
+  InitResourceReportPolling(gcs_init_data);
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -134,6 +137,10 @@ void GcsServer::Stop() {
     rpc_server_.Shutdown();
 
     gcs_heartbeat_manager_->Stop();
+
+    if (config_.pull_based_resource_reporting) {
+      gcs_resource_report_poller_->Stop();
+    }
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
@@ -287,6 +294,19 @@ void GcsServer::InitTaskInfoHandler() {
   rpc_server_.RegisterService(*task_info_service_);
 }
 
+void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
+  if (config_.pull_based_resource_reporting) {
+    gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
+        gcs_resource_manager_, raylet_client_pool_,
+        [this](const rpc::ResourcesData &report) {
+          gcs_resource_manager_->UpdateFromResourceReport(report);
+        }));
+
+    gcs_resource_report_poller_->Initialize(gcs_init_data);
+    gcs_resource_report_poller_->Start();
+  }
+}
+
 void GcsServer::InitStatsHandler() {
   RAY_CHECK(gcs_table_storage_);
   stats_handler_.reset(new rpc::DefaultStatsHandler(gcs_table_storage_));
@@ -320,6 +340,9 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
+    if (config_.pull_based_resource_reporting) {
+      gcs_resource_report_poller_->HandleNodeAdded(*node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -330,6 +353,9 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
+        if (config_.pull_based_resource_reporting) {
+          gcs_resource_report_poller_->HandleNodeRemoved(*node);
+        }
       });
 
   // Install worker event listener.
