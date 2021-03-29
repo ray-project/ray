@@ -17,18 +17,18 @@ provider:
     cache_stopped_nodes: false
 
 available_node_types:
-    cpu_4_ondemand:
+    cpu_16_ondemand:
         node_config:
-            InstanceType: m5.xlarge
-        resources: {"CPU": 4}
+            InstanceType: m5.4xlarge
+        resources: {"CPU": 16}
         min_workers: 0
         max_workers: 0
 
 auth:
     ssh_user: ubuntu
 
-head_node_type: cpu_4_ondemand
-worker_default_node_type: cpu_4_ondemand
+head_node_type: cpu_16_ondemand
+worker_default_node_type: cpu_16_ondemand
 
 setup_commands:
-    - ray install-nightly
+    - pip install -U {{env["RAY_WHEEL"]}}

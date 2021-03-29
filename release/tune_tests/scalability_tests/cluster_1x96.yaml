@@ -31,4 +31,4 @@ head_node_type: cpu_96_ondemand
 worker_default_node_type: cpu_96_ondemand
 
 setup_commands:
-    - ray install-nightly
+    - pip install -U {{env["RAY_WHEEL"]}}

@@ -20,6 +20,15 @@ available_node_types:
     gpu_2_32:
         node_config:
             InstanceType: g3.8xlarge
+
+            TagSpecifications:
+                - ResourceType: "instance"
+                  Tags:
+                - Key: anyscale-user
+                  Value: '{{env["ANYSCALE_USER"]}}'
+                - Key: anyscale-expiration
+                  Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+
         resources: {"CPU": 32, "GPU": 2}
         min_workers: 3
         max_workers: 3

@@ -26,6 +26,14 @@ available_node_types:
                   Ebs:
                       VolumeSize: 160
 
+            TagSpecifications:
+                - ResourceType: "instance"
+                  Tags:
+                    - Key: anyscale-user
+                      Value: '{{env["ANYSCALE_USER"]}}'
+                    - Key: anyscale-expiration
+                      Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+
         resources: {"CPU": 32}  # 128 GB memory
         min_workers: 0
         max_workers: 0
@@ -33,8 +41,12 @@ available_node_types:
 auth:
     ssh_user: ubuntu
 
+file_mounts: {
+    "~/aws/credentials": "./aws_secrets.txt"
+}
+
 head_node_type: cpu_32_hd_ondemand
 worker_default_node_type: cpu_32_hd_ondemand
 
 setup_commands:
-    - ray install-nightly
+    - pip install -U {{env["RAY_WHEEL"]}}
