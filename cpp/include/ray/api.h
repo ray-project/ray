@@ -78,8 +78,8 @@ class Ray {
   /// \param[in] func The function to be remote executed.
   /// \param[in] args The function arguments passed by a value or ObjectRef.
   /// \return TaskCaller.
-  template <typename F, typename... Args>
-  static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func, Args... args);
+  template <typename F>
+  static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func);
 
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
@@ -98,10 +98,8 @@ class Ray {
  private:
   static std::once_flag is_inited_;
 
-  template <typename ReturnType, typename FuncType, typename ExecFuncType,
-            typename... ArgTypes>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                             ArgTypes &... args);
+  template <typename ReturnType, typename FuncType>
+  static TaskCaller<ReturnType> TaskInternal(FuncType &func);
 
   template <typename ActorType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
@@ -172,15 +170,10 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return ray::internal::RayRuntime()->Wait(ids, num_objects, timeout_ms);
 }
 
-template <typename ReturnType, typename FuncType, typename ExecFuncType,
-          typename... ArgTypes>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &exec_func,
-                                                ArgTypes &... args) {
-  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
-  Arguments::WrapArgs(&task_args, args...);
-  RemoteFunctionPtrHolder ptr;
+template <typename ReturnType, typename FuncType>
+inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func) {
+  RemoteFunctionPtrHolder ptr{};
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
     auto function_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
     if (function_name.empty()) {
@@ -189,8 +182,7 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func, ExecFuncType &ex
     }
     ptr.function_name = std::move(function_name);
   }
-  return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr,
-                                std::move(task_args));
+  return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr);
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -208,13 +200,11 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 }
 
 /// Normal task.
-template <typename F, typename... Args>
-TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func, Args... args) {
+template <typename F>
+TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
 
-  return TaskInternal<ReturnType>(
-      func, NormalExecFunction<ReturnType, typename FilterArgType<Args>::type...>,
-      args...);
+  return TaskInternal<ReturnType>(func);
 }
 
 /// Generic version of creating an actor.
