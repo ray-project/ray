@@ -32,7 +32,7 @@ CHECKPOINT_KEY = "serve-controller-checkpoint"
 CONTROL_LOOP_PERIOD_S = 0.1
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
