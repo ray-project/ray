@@ -1,3 +1,9 @@
+#TODO: goes into ray/rllib/examples/.
+
+# To run:
+# While the game is playing in your local UE4 editor, run:
+# >> $ python ue4_airsim_env_local.py
+
 """
 Example of running an RLlib Trainer against a locally running UE4 editor
 instance (available as UnrealEngine4AirSimCarEnv inside RLlib).
@@ -19,6 +25,15 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
+    "--env",
+    type=str,
+    default="Car",
+    choices=[
+        "Car",
+    ],
+    help="The name of the Env to run in the UE4 editor."
+         "Only `Car` supported right now (feel free to add more and PR!)")
+parser.add_argument(
     "--from-checkpoint",
     type=str,
     default=None,
@@ -38,30 +53,32 @@ parser.add_argument(
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(local_mode=True)#TODO
 
     args = parser.parse_args()
 
     tune.register_env(
         "ue4_airsim_car",
         lambda c: UnrealEngine4AirSimCarEnv(
-            episode_horizon=c["episode_horizon"],
+            ip=c.get("ip"),
+            episode_horizon=c.get("episode_horizon", 1000),
         ))
 
     # Get policies (different agent types; "behaviors" in MLAgents) and
     # the mappings from individual agents to Policies.
     policies, policy_mapping_fn = \
-        UnrealEngine4AirSimCarEnv.get_policy_configs_for_game()
+        UnrealEngine4AirSimCarEnv.get_policy_configs_for_game(args.env)
 
     config = {
         "env": "ue4_airsim_car",
         "env_config": {
-            "file_name": args.file_name,
+            #"file_name": args.file_name,
+            #"ip": "192.168.2.107",
             "episode_horizon": args.horizon,
         },
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
-        "num_workers": args.num_workers if args.file_name else 0,
+        "num_workers": 0,#args.num_workers if args.file_name else 0,
         # Other settings.
         "lr": 0.0003,
         "lambda": 0.95,

@@ -1,3 +1,5 @@
+#TODO: goes into ray/rllib/env/wrappers/.
+
 from gym.spaces import Box, Discrete
 import logging
 import math
@@ -22,7 +24,7 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
                  port: Optional[int] = None,
                  image_shape: Tuple[int] = (84, 84, 3),
                  #action_frequency: float = 1.0,
-                 episode_horizon: int = 1000):
+                 episode_horizon: int = 10000):
         """Initializes an Unreal4Env object.
         """
 
@@ -36,7 +38,7 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         self.observation_space = Box(0, 255, shape=image_shape, dtype=np.uint8)
         self.action_space = Discrete(6)
 
-        self.car = airsim.CarClient(ip=self.ip + ":" + str(self.port))
+        self.car = airsim.CarClient(ip=self.ip, port=self.port)
 
         self.image_request = airsim.ImageRequest(
             "0", airsim.ImageType.DepthPerspective, pixels_as_float=True,
@@ -79,14 +81,15 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         # Global horizon reached? -> Return __all__ done=True, so user
         # can reset. Set all agents' individual `done` to True as well.
         self.episode_timesteps += 1
-        if self.episode_timesteps > self.episode_horizon:
+        if self.episode_horizon and \
+                self.episode_timesteps > self.episode_horizon:
             return obs, rewards, dict({
                 "__all__": True
             }, **{agent_id: True
                   for agent_id in dones}), infos
 
-        dones["__all__"] = dones
-        return {"car0": obs}, {"car0": rewards}, {"car0": dones}, infos
+        dones["__all__"] = dones["car0"]
+        return obs, rewards, dones, infos
 
     @override(MultiAgentEnv)
     def reset(self) -> MultiAgentDict:
@@ -96,8 +99,8 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         self.car.enableApiControl(True)
         self.car.armDisarm(True)
         time.sleep(0.01)
-        self._set_actions(1)
-        return {"car0": self._get_obs()}
+        self._set_actions({"car0": 1})
+        return self._get_obs()
 
     def _get_obs(self):
         from PIL import Image
@@ -110,8 +113,9 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
 
         image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((84, 84)).convert("L"))
-        image = im_final.reshape([84, 84, 1])
+        image = np.array(image.resize((84, 84)).convert("L"))
+        image = image.reshape([84, 84, 1]).astype(np.float32)
+        image /= 255.0
 
         # Update our (internal) state.
         self.car_state = self.car.getCarState()
@@ -120,14 +124,39 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         self.state["pose"] = self.car_state.kinematics_estimated
         self.state["collision"] = collision
 
-        return image
+        return {"car0": image}
+
+    @staticmethod
+    def get_policy_configs_for_game(game_name="Car"):
+        # The RLlib server must know about the Spaces that the Client will be
+        # using inside UE4, up-front.
+        obs_spaces = {
+            # Car.
+            "Car": Box(float("-inf"), float("inf"), (84, 84, 1)),
+        }
+        action_spaces = {
+            # Car.
+            "Car": Discrete(7),
+        }
+
+        policies = {
+            game_name: (None, obs_spaces[game_name],
+                        action_spaces[game_name], {}),
+        }
+
+        def policy_mapping_fn(agent_id):
+            return game_name
+
+        return policies, policy_mapping_fn
 
     def _set_actions(self, action):
         """Sends a valid gym action to the AirSim car."""
-
         # By default, do not break and hit the gas pedal (throttle=1).
         self.car_controls.brake = 0
         self.car_controls.throttle = 1
+
+        action = action["car0"]
+        print(action)
 
         # Brake.
         if action == 0:
@@ -146,8 +175,15 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
         elif action == 4:
             self.car_controls.steering = 0.25
         # Steer a little left.
-        else:
+        elif action == 5:
             self.car_controls.steering = -0.25
+        # Revert.
+        elif action == 6:
+            #self.car_controls.throttle = 0
+            #self.car_controls.brake = 1
+            self.car_controls.set_throttle(1.0, forward=False)
+        else:
+            raise ValueError(f"Invalid action: {action}")
 
         # Send the controls back.
         self.car.setCarControls(self.car_controls)
@@ -193,13 +229,14 @@ class UnrealEngine4AirSimCarEnv(MultiAgentEnv):
             reward = reward_dist + reward_speed
 
         # Figure out whether we are done.
-        done = 0
-        if reward < -1:
-            done = 1
-        if self.car_controls.brake == 0:
-            if self.car_state.speed <= 1:
-                done = 1
+        done = False
+        #if reward < -1:
+        #    done = True
+        #if self.car_controls.brake == 0:
+        #    if self.car_state.speed <= 1:
+        #        done = True
         if self.state["collision"]:
-            done = 1
+            done = True
+            reward -= 10
 
         return {"car0": reward}, {"car0": done}
