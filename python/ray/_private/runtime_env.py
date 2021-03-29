@@ -351,18 +351,16 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
     """
 
     assert _internal_kv_initialized()
-    failed_uris = []
     for pkg_uri in pkg_uris:
         pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
-        with FileLock(str(pkg_file) + ".lock") as lock:
+        with FileLock(str(pkg_file) + ".lock"):
             # TODO(yic): checksum calculation is required
             if pkg_file.exists():
                 logger.debug(
                     f"{pkg_uri} has existed locally, skip downloading")
             else:
                 pkg_size = fetch_package(pkg_uri, pkg_file)
-                logger.debug(
-                    f"Downloaded {pkg_size} bytes into {pkg_file}")
+                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
         sys.path.insert(0, str(pkg_file))
