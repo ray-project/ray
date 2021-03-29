@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Iterator
+from typing import Any, Dict, List, Iterator, TypeVar
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS

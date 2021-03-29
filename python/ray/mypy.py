@@ -6,7 +6,7 @@ from mypy.nodes import (ARG_POS, MDEF, Argument, Block, ClassDef, FuncDef,
 from mypy.plugin import (AttributeContext, ClassDefContext, Plugin,
                          SemanticAnalyzerPluginInterface)
 from mypy.semanal import set_callable_name
-from mypy.types import CallableType, Instance, Type, TypeType
+from mypy.types import CallableType, Instance, Type, TypeType, UnionType
 from mypy.typevars import fill_typevars
 
 
@@ -114,8 +114,17 @@ def generate_actor_method_type(ctx: AttributeContext, plugin_obj: Plugin):
     remote_signature = remote_node.node
     remote_signature.arguments[0] = Argument(
         Var("self"), ray_method_type, None, ARG_POS)
+    unioned_arg_types = [
+        UnionType([
+            arg_type,
+            Instance(
+                plugin_obj.lookup_fully_qualified("ray._raylet.ObjectRef")
+                .node,
+                args=[arg_type])
+        ]) for arg_type in original_func_def.type.arg_types[1:]
+    ]
     remote_signature.type = original_func_def.type.copy_modified(
-        arg_types=[ray_method_type] + original_func_def.type.arg_types[1:],
+        arg_types=[ray_method_type] + unioned_arg_types,
         ret_type=remote_return_type,
     )
 
