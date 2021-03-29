@@ -346,7 +346,8 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
 def test_object_unpin(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
-    head_node = cluster.add_node(num_cpus=0, object_store_memory=100 * 1024 * 1024)
+    head_node = cluster.add_node(
+        num_cpus=0, object_store_memory=100 * 1024 * 1024)
     ray.init(address=cluster.address)
 
     # Add worker nodes.
@@ -395,8 +396,7 @@ def test_object_unpin(ray_start_cluster):
     def check_memory(mb):
         return ((f"Plasma memory usage {mb} "
                  "MiB" in memory_summary(
-                     address=head_node.address,
-                     stats_only=True)))
+                     address=head_node.address, stats_only=True)))
 
     wait_for_condition(lambda: check_memory(11))
 
