@@ -647,6 +647,7 @@ def start(
         http_port: int = DEFAULT_HTTP_PORT,
         http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
+        dedicated_cpu: bool = False
 ) -> Client:
     """Initialize a serve instance.
 
@@ -680,6 +681,10 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
+            - dedicated_cpu(bool): Whether to set `num_cpus=1` for each
+              internal HTTP proxy Actor.  Defaults to False (`num_cpus=0`).
+        dedicated_cpu (bool): Whether to set `num_cpus=1` for the internal
+          Serve controller Actor.  Defaults to False (`num_cpus=0`).
     """
     if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
             or (len(http_middlewares) != 0)):
@@ -724,6 +729,7 @@ def start(
             host=http_host, port=http_port, middlewares=http_middlewares)
 
     controller = ServeController.options(
+        num_cpus=(1 if dedicated_cpu else 0),
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
