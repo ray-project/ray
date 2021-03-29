@@ -1277,7 +1277,7 @@ py_test(
 py_test(
     name = "test_parameter_noise",
     tags = ["utils"],
-    size = "small",
+    size = "medium",
     srcs = ["utils/exploration/tests/test_parameter_noise.py"]
 )
 
@@ -1603,7 +1603,7 @@ py_test(
     tags = ["examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=80"]
+    args = ["--as-test", "--stop-reward=20"]
 )
 
 py_test(
@@ -1612,7 +1612,7 @@ py_test(
     tags = ["examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=80", "--framework torch"]
+    args = ["--as-test", "--stop-reward=20", "--framework torch"]
 )
 
 py_test(
