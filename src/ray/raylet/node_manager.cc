@@ -383,6 +383,18 @@ ray::Status NodeManager::RegisterGcs() {
       [this] { GetObjectManagerProfileInfo(); },
       RayConfig::instance().raylet_heartbeat_period_milliseconds());
 
+  /// If periodic asio stats print is enabled, it will print it.
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms != -1 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+        },
+        asio_stats_print_interval_ms);
+  }
+
   return ray::Status::OK();
 }
 
@@ -467,9 +479,22 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
     resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  auto now = absl::GetCurrentTimeNanos();
+  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
+      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
+    DoLocalGC();
+    should_local_gc_ = false;
+    last_local_gc_ns_ = now;
+  }
 }
 
 void NodeManager::ReportResourceUsage() {
+  if (initial_config_.pull_based_resource_reporting) {
+    return;
+  }
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_resource_report_at_ms_;
   if (interval >
@@ -484,16 +509,6 @@ void NodeManager::ReportResourceUsage() {
   last_resource_report_at_ms_ = now_ms;
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   FillResourceReport(*resources_data);
-
-  // Trigger local GC if needed. This throttles the frequency of local GC calls
-  // to at most once per heartbeat interval.
-  auto now = absl::GetCurrentTimeNanos();
-  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
-      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
-    DoLocalGC();
-    should_local_gc_ = false;
-    last_local_gc_ns_ = now;
-  }
 
   if (resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
@@ -1396,6 +1411,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // RAY_LOG(ERROR) << "Resource report requested";
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
 

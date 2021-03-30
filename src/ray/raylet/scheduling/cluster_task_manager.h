@@ -202,6 +202,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void SpillWaitingTasks();
 
   const NodeID &self_node_id_;
+  /// Responsible for resource tracking/view of the cluster.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
