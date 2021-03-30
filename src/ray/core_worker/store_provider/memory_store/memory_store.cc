@@ -486,7 +486,6 @@ inline void CoreWorkerMemoryStore::EraseObject(const ObjectID &object_id) {
     return;
   }
 
-  objects_.erase(it);
   if (it->second->IsInPlasmaError()) {
     num_in_plasma_ -= 1;
   } else {
@@ -495,6 +494,7 @@ inline void CoreWorkerMemoryStore::EraseObject(const ObjectID &object_id) {
   }
   RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
             used_object_store_memory_ >= 0);
+  objects_.erase(it);
 }
 
 inline void CoreWorkerMemoryStore::EmplaceObject(
