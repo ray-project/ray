@@ -198,7 +198,6 @@ message TerminateResponse {
   bool ok = 1;
 }
 
-
 message KVExistsRequest {
   bytes key = 1;
 }
