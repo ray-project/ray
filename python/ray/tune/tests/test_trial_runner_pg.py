@@ -69,6 +69,9 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
 
         Eventually they should be scheduled sequentially (i.e. in pairs
         of two)."""
+        # Since we check per-step placement groups, set the reconcilation
+        # interval to 0
+        os.environ["TUNE_PLACEMENT_GROUP_RECON_INTERVAL"] = "0"
 
         def train(config):
             time.sleep(1)

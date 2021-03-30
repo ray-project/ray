@@ -1005,8 +1005,9 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self):
+    def cleanup(self, trial_runner):
         self._trial_cleanup.cleanup(partial=False)
+        self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
 
