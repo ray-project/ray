@@ -30,7 +30,6 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
-RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
@@ -40,10 +39,6 @@ REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/redis_module/libray_redis_module.so")
-
-# Location of the plasma object store executable.
-PLASMA_STORE_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(RAY_PATH,
@@ -1133,7 +1128,7 @@ def start_dashboard(require_dashboard,
                     redis_address,
                     temp_dir,
                     logdir,
-                    port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                    port=None,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
@@ -1166,45 +1161,55 @@ def start_dashboard(require_dashboard,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port_retries = 10
-    if port != ray_constants.DEFAULT_DASHBOARD_PORT:
-        port_test_socket = socket.socket()
-        port_test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            port_test_socket.bind(("127.0.0.1", port))
-            port_test_socket.close()
-        except socket.error:
-            raise ValueError(
-                f"The given dashboard port {port} is already in use")
-        port_retries = 0
-
-    dashboard_dir = "new_dashboard"
-    dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
-    command = [
-        sys.executable, "-u", dashboard_filepath, f"--host={host}",
-        f"--port={port}", f"--port-retries={port_retries}",
-        f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
-        f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}"
-    ]
-
-    if redis_password:
-        command += ["--redis-password", redis_password]
-
-    dashboard_dependencies_present = True
     try:
-        import aiohttp  # noqa: F401
-        import grpc  # noqa: F401
-    except ImportError:
-        dashboard_dependencies_present = False
-        warning_message = (
-            "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp grpcio'.")
-        if require_dashboard:
-            raise ImportError(warning_message)
+        # Make sure port is available.
+        if port is None:
+            port_retries = 50
+            port = ray_constants.DEFAULT_DASHBOARD_PORT
         else:
-            logger.warning(warning_message)
-    if dashboard_dependencies_present:
+            port_retries = 0
+            port_test_socket = socket.socket()
+            port_test_socket.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_REUSEADDR,
+                1,
+            )
+            try:
+                port_test_socket.bind((host, port))
+                port_test_socket.close()
+            except socket.error as e:
+                if e.errno in {48, 98}:  # address already in use.
+                    raise ValueError(
+                        f"Failed to bind to {host}:{port} because it's "
+                        "already occupied. You can use `ray start "
+                        "--dashboard-port ...` or `ray.init(dashboard_port=..."
+                        ")` to select a different port.")
+                else:
+                    raise e
+
+        # Make sure the process can start.
+        try:
+            import aiohttp  # noqa: F401
+            import grpc  # noqa: F401
+        except ImportError:
+            warning_message = (
+                "Missing dependencies for dashboard. Please run "
+                "pip install aiohttp grpcio'.")
+            raise ImportError(warning_message)
+
+        # Start the dashboard process.
+        dashboard_dir = "new_dashboard"
+        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir,
+                                          "dashboard.py")
+        command = [
+            sys.executable, "-u", dashboard_filepath, f"--host={host}",
+            f"--port={port}", f"--port-retries={port_retries}",
+            f"--redis-address={redis_address}", f"--temp-dir={temp_dir}",
+            f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}"
+        ]
+        if redis_password:
+            command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1212,12 +1217,12 @@ def start_dashboard(require_dashboard,
             stderr_file=stderr_file,
             fate_share=fate_share)
 
+        # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
-
         dashboard_url = None
         dashboard_returncode = None
-        for _ in range(20):
+        for _ in range(200):
             dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
@@ -1225,7 +1230,9 @@ def start_dashboard(require_dashboard,
             dashboard_returncode = process_info.process.poll()
             if dashboard_returncode is not None:
                 break
-            time.sleep(1)
+            # This is often on the critical path of ray.init() and ray start,
+            # so we need to poll often.
+            time.sleep(0.1)
         if dashboard_url is None:
             dashboard_log = os.path.join(logdir, "dashboard.log")
             returncode_str = (f", return code {dashboard_returncode}"
@@ -1245,8 +1252,9 @@ def start_dashboard(require_dashboard,
                             lines.append(mm[sep + 1:end].decode("utf-8"))
                             end = sep
                 lines.append(f" The last {n} lines of {dashboard_log}:")
-            except Exception:
-                pass
+            except Exception as e:
+                raise Exception(f"Failed to read dashbord log: {e}")
+
             last_log_str = "\n".join(reversed(lines[-n:]))
             raise Exception("Failed to start the dashboard"
                             f"{returncode_str}.{last_log_str}")
@@ -1256,8 +1264,12 @@ def start_dashboard(require_dashboard,
                     colorama.Fore.RESET, colorama.Style.NORMAL)
 
         return dashboard_url, process_info
-    else:
-        return None, None
+    except Exception as e:
+        if require_dashboard:
+            raise e from e
+        else:
+            logger.error(f"Failed to start the dashboard: {e}")
+            return None, None
 
 
 def start_gcs_server(redis_address,
@@ -1319,6 +1331,7 @@ def start_raylet(redis_address,
                  worker_path,
                  temp_dir,
                  session_dir,
+                 resource_dir,
                  log_dir,
                  resource_spec,
                  plasma_directory,
@@ -1338,7 +1351,6 @@ def start_raylet(redis_address,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
-                 head_node=False,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
                  backup_count=0):
@@ -1356,6 +1368,7 @@ def start_raylet(redis_address,
             processes will execute.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
+        resource_dir(str): The path of resource of this session .
         log_dir (str): The path of the dir where log files are created.
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
@@ -1510,6 +1523,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
     ]
@@ -1653,7 +1667,7 @@ def determine_plasma_store_config(object_store_memory,
     values will be preserved.
 
     Args:
-        object_store_memory (int): The objec store memory to use.
+        object_store_memory (int): The object store memory to use.
         plasma_directory (str): The user-specified plasma directory parameter.
         huge_pages (bool): The user-specified huge pages parameter.
 
@@ -1681,14 +1695,17 @@ def determine_plasma_store_config(object_store_memory,
             # /dev/shm.
             if shm_avail > object_store_memory:
                 plasma_directory = "/dev/shm"
-            elif not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+            elif (not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
+                  and object_store_memory >
+                  ray_constants.REQUIRE_SHM_SIZE_THRESHOLD):
                 raise ValueError(
-                    "The configured object store size exceeds the capacity of "
-                    "/dev/shm. This will harm performance. To proceed "
-                    "regardless of this warning, you can set "
-                    "RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1. Consider deleting "
-                    "files in /dev/shm or increasing its size with "
-                    "--shm-size in Docker.")
+                    "The configured object store size ({} GB) exceeds "
+                    "/dev/shm size ({} GB). This will harm performance. "
+                    "Consider deleting files in /dev/shm or increasing its "
+                    "size with "
+                    "--shm-size in Docker. To ignore this warning, "
+                    "set RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE=1.".format(
+                        object_store_memory / 1e9, shm_avail / 1e9))
             else:
                 plasma_directory = ray._private.utils.get_user_temp_dir()
                 logger.warning(
@@ -1736,65 +1753,6 @@ def determine_plasma_store_config(object_store_memory,
             round(object_store_memory / 10**9, 2), plasma_directory))
 
     return plasma_directory, object_store_memory
-
-
-def start_plasma_store(resource_spec,
-                       plasma_directory,
-                       object_store_memory,
-                       plasma_store_socket_name,
-                       stdout_file=None,
-                       stderr_file=None,
-                       keep_idle=False,
-                       huge_pages=False,
-                       fate_share=None,
-                       use_valgrind=False):
-    """This method starts an object store process.
-
-    Args:
-        resource_spec (ResourceSpec): Resources for the node.
-        plasma_store_socket_name (str): The path/name of the plasma
-            store socket.
-        stdout_file: A file handle opened for writing to redirect stdout
-            to. If no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr
-            to. If no redirection should happen, then this should be None.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        keep_idle: If True, run the plasma store as an idle placeholder.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    # Start the Plasma store.
-    if use_valgrind and RUN_PLASMA_STORE_PROFILER:
-        raise ValueError("Cannot use valgrind and profiler at the same time.")
-
-    assert resource_spec.resolved()
-
-    command = [
-        PLASMA_STORE_EXECUTABLE,
-        "-s",
-        plasma_store_socket_name,
-        "-m",
-        str(object_store_memory),
-    ]
-    if plasma_directory is not None:
-        command += ["-d", plasma_directory]
-    if huge_pages:
-        command += ["-h"]
-    if keep_idle:
-        command.append("-z")
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_PLASMA_STORE,
-        use_valgrind=use_valgrind,
-        use_valgrind_profiler=RUN_PLASMA_STORE_PROFILER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
 
 
 def start_worker(node_ip_address,

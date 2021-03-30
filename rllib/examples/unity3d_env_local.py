@@ -34,12 +34,19 @@ parser.add_argument(
     type=str,
     default="3DBall",
     choices=[
-        "3DBall", "3DBallHard", "Pyramids", "SoccerStrikersVsGoalie", "Tennis",
-        "VisualHallway", "Walker"
+        "3DBall",
+        "3DBallHard",
+        "GridFoodCollector",
+        "Pyramids",
+        "SoccerStrikersVsGoalie",
+        "Sorter",
+        "Tennis",
+        "VisualHallway",
+        "Walker",
     ],
     help="The name of the Env to run in the Unity3D editor: `3DBall(Hard)?|"
-    "Pyramids|SoccerStrikersVsGoalie|Tennis|VisualHallway|Walker`"
-    "(feel free to add more and PR!)")
+    "Pyramids|GridFoodCollector|SoccerStrikersVsGoalie|Sorter|Tennis|"
+    "VisualHallway|Walker` (feel free to add more and PR!)")
 parser.add_argument(
     "--file-name",
     type=str,
@@ -135,6 +142,13 @@ if __name__ == "__main__":
             "forward_net_activation": "relu",
             "inverse_net_activation": "relu",
         }
+    elif args.env == "GridFoodCollector":
+        config["model"] = {
+            "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2],
+                             [256, [10, 10], 1]],
+        }
+    elif args.env == "Sorter":
+        config["model"]["use_attention"] = True
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -148,7 +162,8 @@ if __name__ == "__main__":
         config=config,
         stop=stop,
         verbose=1,
-        checkpoint_freq=10,
+        checkpoint_freq=5,
+        checkpoint_at_end=True,
         restore=args.from_checkpoint)
 
     # And check the results.

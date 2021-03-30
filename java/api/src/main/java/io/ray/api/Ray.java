@@ -260,7 +260,7 @@ public final class Ray extends RayCall {
    * for the resource to be updated and rescheduled.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
+   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
@@ -275,14 +275,14 @@ public final class Ray extends RayCall {
             .setBundles(bundles)
             .setStrategy(strategy)
             .build();
-    return createPlacementGroup(creationOptions);
+    return PlacementGroups.createPlacementGroup(creationOptions);
   }
 
   /**
    * Create a placement group with an empty name.
    *
    * @deprecated This method is no longer recommended to create a new placement group, use {@link
-   *     Ray#createPlacementGroup(PlacementGroupCreationOptions)} instead.
+   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    */
   @Deprecated
   public static PlacementGroup createPlacementGroup(
@@ -296,11 +296,14 @@ public final class Ray extends RayCall {
    * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
    * for the resource to be updated and rescheduled.
    *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     PlacementGroups#createPlacementGroup(PlacementGroupCreationOptions)} instead.
    * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.
    */
+  @Deprecated
   public static PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
-    return internal().createPlacementGroup(creationOptions);
+    return PlacementGroups.createPlacementGroup(creationOptions);
   }
 
   /**
@@ -318,48 +321,62 @@ public final class Ray extends RayCall {
   /**
    * Get a placement group by placement group Id.
    *
+   * @deprecated This method is no longer recommended, use {@link
+   *     PlacementGroups#getPlacementGroup(PlacementGroupId)} instead.
    * @param id placement group id.
    * @return The placement group.
    */
+  @Deprecated
   public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
-    return internal().getPlacementGroup(id);
+    return PlacementGroups.getPlacementGroup(id);
   }
 
   /**
    * Get a placement group by placement group name from current job.
    *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     PlacementGroups#getPlacementGroup(String)} instead.
    * @param name The placement group name.
    * @return The placement group.
    */
+  @Deprecated
   public static PlacementGroup getPlacementGroup(String name) {
-    return internal().getPlacementGroup(name, false);
+    return PlacementGroups.getPlacementGroup(name);
   }
 
   /**
    * Get a placement group by placement group name from all jobs.
    *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     PlacementGroups#getGlobalPlacementGroup(String)} instead.
    * @param name The placement group name.
    * @return The placement group.
    */
+  @Deprecated
   public static PlacementGroup getGlobalPlacementGroup(String name) {
-    return internal().getPlacementGroup(name, true);
+    return PlacementGroups.getGlobalPlacementGroup(name);
   }
 
   /**
    * Get all placement groups in this cluster.
    *
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     PlacementGroups#getAllPlacementGroups()} instead.
    * @return All placement groups.
    */
+  @Deprecated
   public static List<PlacementGroup> getAllPlacementGroups() {
-    return internal().getAllPlacementGroups();
+    return PlacementGroups.getAllPlacementGroups();
   }
 
   /**
    * Remove a placement group by id. Throw RayException if remove failed.
    *
    * @param id Id of the placement group.
+   * @deprecated This method is no longer recommended to create a new placement group, use {@link
+   *     PlacementGroups#removePlacementGroup(PlacementGroupId)} instead.
    */
   public static void removePlacementGroup(PlacementGroupId id) {
-    internal().removePlacementGroup(id);
+    PlacementGroups.removePlacementGroup(id);
   }
 }

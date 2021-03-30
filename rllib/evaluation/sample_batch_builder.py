@@ -3,13 +3,14 @@ import logging
 import numpy as np
 from typing import List, Any, Dict, Optional, TYPE_CHECKING
 
+from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.debug import summarize
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import PolicyID, AgentID
-from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -25,9 +26,7 @@ def to_float_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-# TODO(sven): Remove the following class once we switch to trajectory view API.
-
-
+# Deprecated class: Use a child class of `SampleCollector` instead.
 @PublicAPI
 class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
@@ -40,6 +39,10 @@ class SampleBatchBuilder:
 
     @PublicAPI
     def __init__(self):
+        deprecation_warning(
+            old="SampleBatchBuilder",
+            new="child class of `SampleCollector`",
+            error=False)
         self.buffers: Dict[str, List] = collections.defaultdict(list)
         self.count = 0
 
@@ -66,8 +69,8 @@ class SampleBatchBuilder:
         batch = SampleBatch(
             {k: to_float_array(v)
              for k, v in self.buffers.items()})
-        if SampleBatch.UNROLL_ID not in batch.data:
-            batch.data[SampleBatch.UNROLL_ID] = np.repeat(
+        if SampleBatch.UNROLL_ID not in batch:
+            batch[SampleBatch.UNROLL_ID] = np.repeat(
                 SampleBatchBuilder._next_unroll_id, batch.count)
             SampleBatchBuilder._next_unroll_id += 1
         self.buffers.clear()
@@ -75,9 +78,8 @@ class SampleBatchBuilder:
         return batch
 
 
-# TODO(sven): Remove the following class once we switch to trajectory view API.
-
-
+# Deprecated class: Use a child class of `SampleCollector` instead
+#  (which handles multi-agent setups as well).
 @DeveloperAPI
 class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
@@ -98,7 +100,7 @@ class MultiAgentSampleBatchBuilder:
                 postprocessing (at +/-1.0) or the actual value to +/- clip.
             callbacks (DefaultCallbacks): RLlib callbacks.
         """
-
+        deprecation_warning(old="MultiAgentSampleBatchBuilder", error=False)
         self.policy_map = policy_map
         self.clip_rewards = clip_rewards
         # Build the Policies' SampleBatchBuilders.

@@ -2,9 +2,9 @@
 Deploying Ray Serve
 ===================
 
-In the :doc:`core-apis`, you saw some of the basics of how to write serve applications.
+In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
 This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your serve application over time.
+to deploy and update your Serve application over time.
 
 .. contents:: Deploying Ray Serve
 
@@ -14,9 +14,8 @@ Lifetime of a Ray Serve Instance
 ================================
 
 Ray Serve instances run on top of Ray clusters and are started using :mod:`serve.start <ray.serve.start>`.
-:mod:`serve.start <ray.serve.start>` returns a :mod:`Client <ray.serve.api.Client>` object that can be used to create the backends and endpoints
-that will be used to serve your Python code (including ML models).
-The Serve instance will be torn down when the client object goes out of scope or the script exits.
+Once :mod:`serve.start <ray.serve.start>` has been called, further API calls can be used to create the backends and endpoints that will be used to serve your Python code (including ML models).
+The Serve instance will be torn down when the script exits.
 
 When running on a long-lived Ray cluster (e.g., one started using ``ray start`` and connected
 to using ``ray.init(address="auto")``, you can also deploy a Ray Serve instance as a long-running
@@ -40,12 +39,12 @@ In general, **Option 2 is recommended for most users** because it allows you to 
   from ray import serve
 
   # This will start Ray locally and start Serve on top of it.
-  client = serve.start()
+  serve.start()
 
   def my_backend_func(request):
     return "hello"
 
-  client.create_backend("my_backend", my_backend_func)
+  serve.create_backend("my_backend", my_backend_func)
 
   # Serve will be shut down once the script exits, so keep it alive manually.
   while True:
@@ -66,12 +65,11 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   # This will connect to the running Ray cluster.
   ray.init(address="auto")
-  client = serve.connect()
 
   def my_backend_func(request):
     return "hello"
 
-  client.create_backend("my_backend", my_backend_func)
+  serve.create_backend("my_backend", my_backend_func)
 
 Deploying on Kubernetes
 =======================
@@ -168,13 +166,13 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Connect to the running Ray cluster.
     ray.init(address="auto")
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
-    client = serve.start(detached=True, http_options={"host": "0.0.0.0"})
+    serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
     def hello():
         return "hello world"
 
-    client.create_backend("hello_backend", hello)
-    client.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
+    serve.create_backend("hello_backend", hello)
+    serve.create_endpoint("hello_endpoint", backend="hello_backend", route="/hello")
 
 Save this script locally as ``deploy.py`` and run it on the head node using ``ray submit``:
 
@@ -360,7 +358,7 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_backend_replica_starts``
      - The number of times this replica has been restarted due to failure.
    * - ``serve_backend_queuing_latency_ms``
-     - The latency for queries in the replica's queue waiting to be processed or batched.
+     - The latency for queries in the replica's queue waiting to be processed.
    * - ``serve_backend_processing_latency_ms``
      - The latency for queries to be processed.
    * - ``serve_replica_queued_queries``

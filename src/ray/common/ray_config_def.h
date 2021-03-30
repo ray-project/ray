@@ -42,11 +42,15 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
+/// For a raylet, if the last resource report was sent more than this many
+/// report periods ago, then a warning will be logged that the report
+/// handler is drifting.
+RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -225,6 +229,13 @@ RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
+// The interval at which the gcs server will pull a new resource.
+RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
+// The number of concurrent polls to polls to GCS.
+RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
+// Feature flag to turn on resource report polling. Polling and raylet pushing are
+// mutually exlusive.
+RAY_CONFIG(bool, pull_based_resource_reporting, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -366,3 +377,14 @@ RAY_CONFIG(int64_t, log_rotation_max_bytes, 100 * 1024 * 1024)
 /// Parameters for log rotation. This value is equivalent to RotatingFileHandler's
 /// backupCount argument.
 RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
+
+/// When tasks that can't be sent because of network error. we'll never receive a DEAD
+/// notification, in this case we'll wait for a fixed timeout value and then mark it
+/// as failed.
+RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The interval of periodic asio event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)

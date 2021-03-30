@@ -130,7 +130,13 @@ def cli(logging_level, logging_format):
     type=int,
     default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
-def dashboard(cluster_config_file, cluster_name, port, remote_port):
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+def dashboard(cluster_config_file, cluster_name, port, remote_port,
+              no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
@@ -147,7 +153,8 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
         exec_cluster(
             cluster_config_file,
             override_cluster_name=cluster_name,
-            port_forward=port_forward)
+            port_forward=port_forward,
+            no_config_cache=no_config_cache)
         click.echo("Successfully established connection.")
     except Exception as e:
         raise click.ClickException(
@@ -1359,6 +1366,12 @@ def timeline(address):
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 @click.option(
+    "--units",
+    type=click.Choice(["B", "KB", "MB", "GB"]),
+    default="B",
+    help="Specify unit metrics for displaying object sizes \
+(e.g. B, KB, MB, GB).")
+@click.option(
     "--no-format",
     is_flag=True,
     type=bool,
@@ -1370,14 +1383,21 @@ terminal width is less than 137 characters.")
     is_flag=True,
     default=False,
     help="Display plasma store stats only.")
-def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
+@click.option(
+    "--num-entries",
+    "--n",
+    type=int,
+    default=None,
+    help="Specify number of sorted entries per group.")
+def memory(address, redis_password, group_by, sort_by, units, no_format,
+           stats_only, num_entries):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by,
-                               no_format, stats_only)
+                               units, no_format, stats_only, num_entries)
     print(f"{header}\n{mem_stats}")
 
 

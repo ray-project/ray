@@ -111,11 +111,13 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
   primary_context_ = std::make_shared<RedisContext>(*io_services[0]);
 
-  RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
-                                         /*sharding=*/true,
-                                         /*password=*/options_.password_));
+  RAY_CHECK_OK(primary_context_->Connect(
+      options_.server_ip_, options_.server_port_,
+      /*sharding=*/true,
+      /*password=*/options_.password_, options_.enable_sync_conn_,
+      options_.enable_async_conn_, options_.enable_subscribe_conn_));
 
-  if (!options_.is_test_client_) {
+  if (options_.enable_sharding_conn_) {
     // Moving sharding into constructor defaultly means that sharding = true.
     // This design decision may worth a look.
     std::vector<std::string> addresses;
@@ -132,14 +134,20 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
       instrumented_io_context &io_service = *io_services[io_service_index];
       // Populate shard_contexts.
       shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
-      RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
-                                               /*password=*/options_.password_));
+      // Only async context is used in sharding context, so wen disable the other two.
+      RAY_CHECK_OK(shard_contexts_[i]->Connect(
+          addresses[i], ports[i], /*sharding=*/true,
+          /*password=*/options_.password_, /*enable_sync_conn=*/false,
+          /*enable_async_conn=*/true, /*enable_subscribe_conn=*/false));
     }
   } else {
     shard_contexts_.push_back(std::make_shared<RedisContext>(*io_services[0]));
-    RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
-                                             /*sharding=*/true,
-                                             /*password=*/options_.password_));
+    // Only async context is used in sharding context, so wen disable the other two.
+    RAY_CHECK_OK(shard_contexts_[0]->Connect(
+        options_.server_ip_, options_.server_port_,
+        /*sharding=*/true,
+        /*password=*/options_.password_, /*enable_sync_conn=*/false,
+        /*enable_async_conn=*/true, /*enable_subscribe_conn=*/false));
   }
 
   Attach();
@@ -157,15 +165,17 @@ void RedisClient::Attach() {
     instrumented_io_context &io_service = context->io_service();
     shard_asio_async_clients_.emplace_back(
         new RedisAsioClient(io_service, context->async_context()));
-    shard_asio_subscribe_clients_.emplace_back(
-        new RedisAsioClient(io_service, context->subscribe_context()));
   }
 
   instrumented_io_context &io_service = primary_context_->io_service();
-  asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
-  asio_subscribe_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  if (options_.enable_async_conn_) {
+    asio_async_auxiliary_client_.reset(
+        new RedisAsioClient(io_service, primary_context_->async_context()));
+  }
+  if (options_.enable_subscribe_conn_) {
+    asio_subscribe_auxiliary_client_.reset(
+        new RedisAsioClient(io_service, primary_context_->subscribe_context()));
+  }
 }
 
 void RedisClient::Disconnect() {
@@ -175,6 +185,7 @@ void RedisClient::Disconnect() {
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {
+  RAY_CHECK(!shard_contexts_.empty());
   static std::hash<std::string> hash;
   size_t index = hash(shard_key) % shard_contexts_.size();
   return shard_contexts_[index];

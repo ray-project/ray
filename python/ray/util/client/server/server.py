@@ -5,6 +5,7 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 
+import threading
 from typing import Any
 from typing import Dict
 from typing import Set
@@ -18,7 +19,8 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
+from ray.util.client.common import (GRPC_MAX_MESSAGE_SIZE,
+                                    CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
@@ -42,6 +44,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
+        self.named_actors = set()
+        self.state_lock = threading.Lock()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -113,24 +117,34 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return json.dumps(data)
 
     def release(self, client_id: str, id: bytes) -> bool:
-        if client_id in self.object_refs:
-            if id in self.object_refs[client_id]:
-                logger.debug(f"Releasing object {id.hex()} for {client_id}")
-                del self.object_refs[client_id][id]
-                return True
+        with self.state_lock:
+            if client_id in self.object_refs:
+                if id in self.object_refs[client_id]:
+                    logger.debug(
+                        f"Releasing object {id.hex()} for {client_id}")
+                    del self.object_refs[client_id][id]
+                    return True
 
-        if client_id in self.actor_owners:
-            if id in self.actor_owners[client_id]:
-                logger.debug(f"Releasing actor {id.hex()} for {client_id}")
-                del self.actor_refs[id]
-                self.actor_owners[client_id].remove(id)
-                return True
+            if client_id in self.actor_owners:
+                if id in self.actor_owners[client_id]:
+                    logger.debug(f"Releasing actor {id.hex()} for {client_id}")
+                    self.actor_owners[client_id].remove(id)
+                    if self._can_remove_actor_ref(id):
+                        logger.debug(f"Deleting reference to actor {id.hex()}")
+                        del self.actor_refs[id]
+                    return True
 
-        return False
+            return False
 
     def release_all(self, client_id):
-        self._release_objects(client_id)
-        self._release_actors(client_id)
+        with self.state_lock:
+            self._release_objects(client_id)
+            self._release_actors(client_id)
+
+    def _can_remove_actor_ref(self, actor_id_bytes):
+        no_owner = not any(actor_id_bytes in actor_list
+                           for actor_list in self.actor_owners.values())
+        return no_owner and actor_id_bytes not in self.named_actors
 
     def _release_objects(self, client_id):
         if client_id not in self.object_refs:
@@ -145,11 +159,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _release_actors(self, client_id):
         if client_id not in self.actor_owners:
             logger.debug(f"Releasing client with no actors: {client_id}")
+            return
+
         count = 0
-        for id_bytes in self.actor_owners[client_id]:
+        actors_to_remove = self.actor_owners.pop(client_id)
+        for id_bytes in actors_to_remove:
             count += 1
-            del self.actor_refs[id_bytes]
-        del self.actor_owners[client_id]
+            if self._can_remove_actor_ref(id_bytes):
+                logger.debug(f"Deleting reference to actor {id_bytes.hex()}")
+                del self.actor_refs[id_bytes]
+
         logger.debug(f"Released all {count} actors for client: {client_id}")
 
     def Terminate(self, req, context=None):
@@ -335,8 +354,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                               context=None) -> ray_client_pb2.ClientTaskTicket:
         assert len(task.payload_id) == 0
         actor = ray.get_actor(task.name)
-        self.actor_refs[actor._actor_id.binary()] = actor
-        self.actor_owners[task.client_id].add(actor._actor_id.binary())
+        bin_actor_id = actor._actor_id.binary()
+        self.actor_refs[bin_actor_id] = actor
+        self.actor_owners[task.client_id].add(bin_actor_id)
+        self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(
             return_ids=[actor._actor_id.binary()])
 
@@ -439,7 +460,7 @@ def serve(connection_str, ray_connect_handler=None):
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10),
+        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=[
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
             ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),

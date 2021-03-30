@@ -13,15 +13,20 @@ import aioredis
 import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
+from ray.new_dashboard import k8s_utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
 from ray._private.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
+
+# Are we in a K8s pod?
+IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
@@ -82,6 +87,9 @@ METRICS_GAUGES = {
     "node_disk_usage": Gauge("node_disk_usage",
                              "Total disk usage (bytes) on a ray node", "bytes",
                              ["ip"]),
+    "node_disk_free": Gauge("node_disk_free",
+                            "Total disk free (bytes) on a ray node", "bytes",
+                            ["ip"]),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node", "percentage",
@@ -98,7 +106,16 @@ METRICS_GAUGES = {
     "raylet_cpu": Gauge("raylet_cpu", "CPU usage of the raylet on a node.",
                         "percentage", ["ip", "pid"]),
     "raylet_mem": Gauge("raylet_mem", "Memory usage of the raylet on a node",
-                        "mb", ["ip", "pid"])
+                        "mb", ["ip", "pid"]),
+    "cluster_active_nodes": Gauge("cluster_active_nodes",
+                                  "Active nodes on the cluster", "count",
+                                  ["node_type"]),
+    "cluster_failed_nodes": Gauge("cluster_failed_nodes",
+                                  "Failed nodes on the cluster", "count",
+                                  ["node_type"]),
+    "cluster_pending_nodes": Gauge("cluster_pending_nodes",
+                                   "Pending nodes on the cluster", "count",
+                                   ["node_type"]),
 }
 
 
@@ -113,9 +130,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        self._cpu_counts = (psutil.cpu_count(),
-                            psutil.cpu_count(logical=False))
-        self._ip = ray._private.services.get_node_ip_address()
+        if IN_KUBERNETES_POD:
+            # psutil does not compute this correctly when in a K8s pod.
+            # Use ray._private.utils instead.
+            cpu_count = ray._private.utils.get_num_cpus()
+            self._cpu_counts = (cpu_count, cpu_count)
+        else:
+            self._cpu_counts = (psutil.cpu_count(),
+                                psutil.cpu_count(logical=False))
+
+        self._ip = ray.util.get_node_ip_address()
+        self._redis_address, _ = dashboard_agent.redis_address
+        self._is_head_node = (self._ip == self._redis_address)
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
@@ -156,7 +182,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_cpu_percent():
-        return psutil.cpu_percent()
+        if IN_KUBERNETES_POD:
+            return k8s_utils.cpu_percent()
+        else:
+            return psutil.cpu_percent()
 
     @staticmethod
     def _get_gpu_usage():
@@ -180,7 +209,11 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_boot_time():
-        return psutil.boot_time()
+        if IN_KUBERNETES_POD:
+            # Return start time of container entrypoint
+            return psutil.Process(pid=1).create_time()
+        else:
+            return psutil.boot_time()
 
     @staticmethod
     def _get_network_stats():
@@ -299,11 +332,51 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet().get("cmdline", []),
         }
 
-    @staticmethod
-    def _record_stats(stats):
+    def _record_stats(self, stats, cluster_stats):
         records_reported = []
-
         ip = stats["ip"]
+
+        # -- Instance count of cluster --
+        # Only report cluster stats on head node
+        if "autoscaler_report" in cluster_stats and self._is_head_node:
+            active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
+            for node_type, active_node_count in active_nodes.items():
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["cluster_active_nodes"],
+                        value=active_node_count,
+                        tags={"node_type": node_type}))
+
+            failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
+            failed_nodes_dict = {}
+            for node_ip, node_type in failed_nodes:
+                if node_type in failed_nodes_dict:
+                    failed_nodes_dict[node_type] += 1
+                else:
+                    failed_nodes_dict[node_type] = 1
+
+            for node_type, failed_node_count in failed_nodes_dict.items():
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["cluster_failed_nodes"],
+                        value=failed_node_count,
+                        tags={"node_type": node_type}))
+
+            pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
+            pending_nodes_dict = {}
+            for node_ip, node_type, status_message in pending_nodes:
+                if node_type in pending_nodes_dict:
+                    pending_nodes_dict[node_type] += 1
+                else:
+                    pending_nodes_dict[node_type] = 1
+
+            for node_type, pending_node_count in pending_nodes_dict.items():
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["cluster_pending_nodes"],
+                        value=pending_node_count,
+                        tags={"node_type": node_type}))
+
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
         cpu_record = Record(
@@ -376,6 +449,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gauge=METRICS_GAUGES["node_disk_usage"],
             value=used,
             tags={"ip": ip})
+        disk_free_record = Record(
+            gauge=METRICS_GAUGES["node_disk_free"],
+            value=free,
+            tags={"ip": ip})
         disk_utilization_percentage_record = Record(
             gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
@@ -430,9 +507,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         records_reported.extend([
             cpu_record, cpu_count_record, mem_used_record,
             mem_available_record, mem_total_record, disk_usage_record,
-            disk_utilization_percentage_record, network_sent_record,
-            network_received_record, network_send_speed_record,
-            network_receive_speed_record
+            disk_free_record, disk_utilization_percentage_record,
+            network_sent_record, network_received_record,
+            network_send_speed_record, network_receive_speed_record
         ])
         return records_reported
 
@@ -440,10 +517,16 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
+                formatted_status_string = await aioredis_client.hget(
+                    DEBUG_AUTOSCALING_STATUS, "value")
+                formatted_status = json.loads(formatted_status_string.decode(
+                )) if formatted_status_string else {}
+
                 stats = self._get_all_stats()
-                records_reported = self._record_stats(stats)
+                records_reported = self._record_stats(stats, formatted_status)
                 self._metrics_agent.record_reporter_stats(records_reported)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
+
             except Exception:
                 logger.exception("Error publishing node physical stats.")
             await asyncio.sleep(

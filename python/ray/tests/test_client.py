@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 import sys
@@ -8,6 +9,39 @@ import _thread
 import ray.util.client.server.server as ray_client_server
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_thread_safe(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def block():
+            print("blocking run")
+            time.sleep(99)
+
+        @ray.remote
+        def fast():
+            print("fast run")
+            return "ok"
+
+        class Blocker(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.daemon = True
+
+            def run(self):
+                ray.get(block.remote())
+
+        b = Blocker()
+        b.start()
+        time.sleep(1)
+
+        # Can concurrently execute the get.
+        assert ray.get(fast.remote(), timeout=5) == "ok"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -380,6 +414,21 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
+
+
+def test_error_serialization(ray_start_regular_shared):
+    """Test that errors will be serialized properly."""
+    fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
+    with pytest.raises(FileNotFoundError):
+        with ray_start_client_server() as ray:
+
+            @ray.remote
+            def g():
+                with open(fake_path, "r") as f:
+                    f.read()
+
+            # Raises a FileNotFoundError
+            ray.get(g.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

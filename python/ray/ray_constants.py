@@ -34,6 +34,9 @@ OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
 # The smallest cap on the memory used by Redis that we allow.
 REDIS_MINIMUM_MEMORY_BYTES = 10**7
+# Above this number of bytes, raise an error by default unless the user sets
+# RAY_ALLOW_SLOW_STORAGE=1. This avoids swapping with large object stores.
+REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
@@ -162,7 +165,6 @@ PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
-PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"

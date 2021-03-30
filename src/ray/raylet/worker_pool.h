@@ -80,6 +80,10 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -252,6 +256,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This method just finds more available I/O workers from either spill or restore pool
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///

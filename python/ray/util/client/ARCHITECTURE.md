@@ -28,7 +28,7 @@ How the two interchange is talked about under Protocol.
 
 ## Protocol
 
-There's one gRPC spec for the client, and that lives at `//src/ray/protobuf/ray_client.proto`. 
+There's one gRPC spec for the client, and that lives at [`/src/ray/protobuf/ray_client.proto`](/src/ray/protobuf/ray_client.proto). 
 
 There's another protocol at play, however, and that is _the way in which functions and data are encoded_. 
 This is particularly important in the context of the Ray client; since both ends are Python, this is a `pickle`.

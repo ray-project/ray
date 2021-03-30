@@ -62,6 +62,7 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 SPILL_WORKER_MODE = 3
 RESTORE_WORKER_MODE = 4
+GENERAL_IO_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -85,7 +86,6 @@ class Worker:
         functions outside of this class are considered exposed.
 
     Attributes:
-        connected (bool): True if Ray has been started and False otherwise.
         node (ray.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
@@ -98,7 +98,6 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run = []
-        self.actor_init_error = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -125,6 +124,7 @@ class Worker:
 
     @property
     def connected(self):
+        """bool: True if Ray has been started and False otherwise."""
         return self.node is not None
 
     @property
@@ -171,17 +171,6 @@ class Worker:
         assert isinstance(self._session_index, int)
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
-
-    def mark_actor_init_failed(self, error):
-        """Called to mark this actor as failed during initialization."""
-
-        self.actor_init_error = error
-
-    def reraise_actor_init_error(self):
-        """Raises any previous actor initialization error."""
-
-        if self.actor_init_error is not None:
-            raise self.actor_init_error
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
@@ -500,7 +489,7 @@ def init(
         ignore_reinit_error=False,
         include_dashboard=None,
         dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
-        dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+        dashboard_port=None,
         job_config=None,
         configure_logging=True,
         logging_level=logging.INFO,
@@ -573,8 +562,9 @@ def init(
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
-        dashboard_port: The port to bind the dashboard server to. Defaults to
-            8265.
+        dashboard_port(int, None): The port to bind the dashboard server to.
+            Defaults to 8265 and Ray will automatically find a free port if
+            8265 is not available.
         job_config (ray.job_config.JobConfig): The job configuration.
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
@@ -1229,6 +1219,8 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
+    # Notify raylet that the core worker is ready.
+    worker.core_worker.notify_raylet()
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
@@ -1238,20 +1230,22 @@ def connect(node,
     if mode == SCRIPT_MODE:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
-        runtime_env.ensure_runtime_env_setup(
-            os.environ.get(
-                "RAY_RUNTIME_ENV_FILES",
-                worker.core_worker.get_job_config()
-                .runtime_env.working_dir_uri))
+        # TODO(ekl) get rid of the env var hack and get runtime env from the
+        # task spec and/or job config only.
+        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        job_config = [job_config] if job_config else \
+            worker.core_worker.get_job_config().runtime_env.uris
+        runtime_env.ensure_runtime_env_setup(job_config)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
             f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
-    worker.import_thread = import_thread.ImportThread(worker, mode,
-                                                      worker.threads_stopped)
-    worker.import_thread.start()
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+        worker.import_thread = import_thread.ImportThread(
+            worker, mode, worker.threads_stopped)
+        worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -1640,8 +1634,8 @@ def cancel(object_ref, *, force=False, recursive=True):
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
     flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
-    and when ``force=True``, the executing the task will immediately exit. If
-    the task is already finished, nothing will happen.
+    and when ``force=True``, the executing task will immediately exit.
+    If the task is already finished, nothing will happen.
 
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
@@ -1845,9 +1839,8 @@ def remote(*args, **kwargs):
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children.  Currently supports the
-            key "conda_env", whose value should be a string which is the
-            name of the desired conda environment.
+            this actor or task and its children. See``runtime_env.py`` for
+            detailed documentation.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This

@@ -18,7 +18,7 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
@@ -237,13 +237,6 @@ def temporary_helper_function():
     with pytest.raises(Exception, match="failed to be imported"):
         ray.get(foo.get_val.remote(1, arg2=2))
 
-    # Wait for the error from when the call to get_val.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert ("failed to be imported, and so cannot execute this method" in
-            errors[0].error_message)
-
     f.close()
 
     # Clean up the junk we added to sys.path.
@@ -271,12 +264,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.TASK_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
-    # Make sure that we get errors from a failed method.
-    a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0].error_message
+    # Incoming methods will get the exception in creation task
+    with pytest.raises(ray.exceptions.RayActorError) as e:
+        ray.get(a.fail_method.remote())
+    assert error_message1 in str(e.value)
 
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
@@ -1014,6 +1005,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     ray.init(address=cluster.address)
     p = init_error_pubsub()
     errors = get_error_message(p, 1, timeout=5)
+    print(errors)
     assert len(errors) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0)
@@ -1243,16 +1235,6 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_node_failure(node_to_kill, use_actors)
     else:
         test_process_failure(use_actors)
-
-    ray.state.state._check_connected()
-    keys = [
-        key for r in ray.state.state.redis_clients
-        for key in r.keys("WORKER_FAILURE*")
-    ]
-    if node_failure:
-        assert len(keys) <= 1, len(keys)
-    else:
-        assert len(keys) <= 2, len(keys)
 
 
 @pytest.mark.parametrize(

@@ -116,8 +116,10 @@ def log_to_cli(config):
                        key,
                        head_src_key,
                        workers_src_key,
-                       allowed_tags=["default"],
+                       allowed_tags=None,
                        list_value=False):
+            if allowed_tags is None:
+                allowed_tags = ["default"]
 
             head_tags = {}
             workers_tags = {}
@@ -413,7 +415,14 @@ def _configure_subnet(config):
                 "to populate the list of subnets and trying this again.".
                 format(config["provider"]["availability_zone"]))
 
-    subnet_ids = [s.subnet_id for s in subnets]
+    # Use subnets in only one VPC, so that _configure_security_groups only
+    # needs to create a security group in this one VPC. Otherwise, we'd need
+    # to set up security groups in all of the user's VPCs and set up networking
+    # rules to allow traffic between these groups.
+    # See https://github.com/ray-project/ray/pull/14868.
+    subnet_ids = [
+        s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
+    ]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
@@ -634,7 +643,9 @@ def _update_inbound_rules(target_security_group, sgids, config):
     target_security_group.authorize_ingress(IpPermissions=ip_permissions)
 
 
-def _create_default_inbound_rules(sgids, extended_rules=[]):
+def _create_default_inbound_rules(sgids, extended_rules=None):
+    if extended_rules is None:
+        extended_rules = []
     intracluster_rules = _create_default_intracluster_inbound_rules(sgids)
     ssh_rules = _create_default_ssh_inbound_rules()
     merged_rules = itertools.chain(
