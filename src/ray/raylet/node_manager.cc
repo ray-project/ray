@@ -208,7 +208,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
           RayConfig::instance().is_external_storage_type_fs(),
-          /*max_fused_object_size*/ RayConfig::instance().max_fused_object_size(),
+          /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
           /*on_objects_freed*/
           [this](const std::vector<ObjectID> &object_ids) {
             object_manager_.FreeObjects(object_ids,

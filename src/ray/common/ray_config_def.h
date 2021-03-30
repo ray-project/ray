@@ -353,7 +353,7 @@ RAY_CONFIG(int, max_io_workers, 4)
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// Maximum number of objects that can be fused into a single file.
-RAY_CONFIG(int64_t, max_fused_object_size, 10000)
+RAY_CONFIG(int64_t, max_fused_object_count, 10000)
 
 /// Whether to enable automatic object deletion when refs are gone out of scope.
 /// When it is true, manual (force) spilling is not available.
