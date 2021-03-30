@@ -134,6 +134,9 @@ class GcsServer {
   /// Print debug info periodically.
   void PrintDebugInfo();
 
+  /// Print the asio event loop stats for debugging.
+  void PrintAsioStats();
+
   /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
