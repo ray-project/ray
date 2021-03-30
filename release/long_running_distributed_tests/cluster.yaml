@@ -21,6 +21,11 @@ available_node_types:
         node_config:
             InstanceType: g3.8xlarge
 
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 201
+
             TagSpecifications:
                 - ResourceType: "instance"
                   Tags:
