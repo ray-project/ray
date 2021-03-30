@@ -75,17 +75,18 @@ class CifarTrainingOperator(PyTorchTrainingOperator):
         validation_loader = DataLoader(
             validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
 
-        # Create scheduler.
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer, milestones=[150, 250, 350], gamma=0.1)
+        # # Create scheduler.
+        # scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        #     optimizer, milestones=[150, 250, 350], gamma=0.1)
 
         # Create loss.
         criterion = nn.CrossEntropyLoss()
 
         # Register all components.
-        self.model, self.optimizer, self.criterion, self.scheduler = \
-            self.register(models=model, optimizers=optimizer,
-                          criterion=criterion, schedulers=scheduler)
+        # # self.model, self.optimizer, self.criterion, self.scheduler = \
+        #     # self.register(models=model, optimizers=optimizer,
+        #                   criterion=criterion, schedulers=scheduler)
+        self.register(models=model, optimizers=optimizer, criterion=criterion)
         self.register_data(
             train_loader=train_loader, validation_loader=validation_loader)
 
@@ -130,7 +131,7 @@ if __name__ == "__main__":
     trainer1 = AllReduceStrategy(
         training_operator_cls=CifarTrainingOperator,
         initialization_hook=initialization_hook,
-        num_workers=args.num_workers,
+        world_size=args.num_workers,
         config={
             "lr": 0.1,
             "test_mode": args.smoke_test,  # subset the data
