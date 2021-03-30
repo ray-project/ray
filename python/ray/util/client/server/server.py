@@ -518,7 +518,7 @@ class ClientServerHandle:
 
 
 def serve(connection_str, ray_connect_handler=None):
-    def default_connect_handler(job_config: JobConfig=None):
+    def default_connect_handler(job_config: JobConfig = None):
         with disable_client_hook():
             if not ray.is_initialized():
                 return ray.init(job_config=job_config)
