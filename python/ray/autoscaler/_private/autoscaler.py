@@ -234,7 +234,14 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
+            # Some of the nodes in nodes_to_terminate may have been terminated
+            # during an update. Only terminate currently active nodes.
+            active_nodes = self.workers()
+            active_nodes_to_terminate = [
+                node for node in nodes_to_terminate if node in active_nodes
+            ]
+            self.provider.terminate_nodes(active_nodes_to_terminate)
+
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
             nodes = self.workers()
