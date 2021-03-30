@@ -89,3 +89,6 @@ RAY_PROCESSES = [
     ["new_dashboard/agent.py", False],
     ["ray_process_reaper.py", False],
 ]
+
+# Max Concurrent SSH Calls to stop Docker
+MAX_PARALLEL_SHUTDOWN_WORKERS = 50
