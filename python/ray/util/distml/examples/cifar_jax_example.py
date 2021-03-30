@@ -88,6 +88,14 @@ class CifarTrainingOperator(JAXTrainingOperator):
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
 
+        # def accuracy_batch(outputs, targets):
+        #     predicted_class = jnp.argmax(outputs, axis=-1)
+        #     target_class = jnp.argmax(targets, axis=-1)
+        #     return np.mean(list(predicted_class == target_class))
+        # self.register_metrics({"accuracy": accuracy_batch})
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -120,6 +128,8 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+
+    os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None

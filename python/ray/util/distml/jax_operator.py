@@ -2,14 +2,15 @@
 from jax import grad
 import jax.numpy as jnp
 from jax.lib import xla_client
-
+from jax.tree_util import tree_flatten
 from ray.util.distml.base_operator import TrainingOperator
 
+import cupy as cp
 
 class JAXTrainingOperator(TrainingOperator):
 
     def __init__(self, operator_config):
-        self.train_steps = 0 # use to record the training step that has passed.
+        self.train_step_num = 0 # use to record the training step that has passed.
         super(JAXTrainingOperator, self).__init__(operator_config)
 
     def setup(self, *args, **kwargs):
@@ -53,10 +54,8 @@ class JAXTrainingOperator(TrainingOperator):
 
     def loss_fn(self, params, batch):
         inputs, targets = batch
-        print(inputs.shape)
-        print(targets.shape)
         logits = self._predict_fun(params, inputs)
-        return self._critition(logits, targets)
+        return self._criterion(logits, targets)
 
     def yield_train_loader(self):
         for batch in self.train_loader:
@@ -94,11 +93,11 @@ class JAXTrainingOperator(TrainingOperator):
         return self._calculate_gradient(self._opt_state, batch)
         
     def apply_updates(self, gradient):
-        self._opt_state = self._opt_update(self.train_step, gradient, self._opt_state)
-        self.train_step += 1
+        self._opt_state = self._opt_update(self.train_step_num, gradient, self._opt_state)
+        self.train_step_num += 1
 
     def updates_transform(self, updates):
-        flatten_grads = tree_flatten(gradient)[0]
+        flatten_grads = tree_flatten(updates)[0]
 
         for g in flatten_grads:
             if not len(g):
