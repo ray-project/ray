@@ -74,6 +74,10 @@ class TestSAC(unittest.TestCase):
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
+        # If we use default buffer size (1e6), the buffer will take up
+        # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
+        # available system memory (8.34816 GB).
+        config["buffer_size"] = 40000
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
