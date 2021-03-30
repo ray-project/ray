@@ -82,11 +82,11 @@ class Replica:
         # figure out the signature of training_operator_cls later.
         self.training_operator = self.training_operator_cls(self.operator_config)
 
-    def setup_collective_group(self, rank, world_size, backend):
+    def setup_collective_group(self, rank, world_size, backend, group_name="default"):
         self.rank = rank
-        self.group_name = "123"
+        self.group_name = group_name
         col.init_collective_group(world_size, rank,
-                                  backend=backend, group_name=self.group_name)
+                                  backend=backend, group_name=group_name)
         return
 
     def train(self):
@@ -95,6 +95,7 @@ class Replica:
 
     def train_batch(self, batch):
         updates = self.derive_updates(batch)
+        assert updates
         # TODO: make the signature correct
         
         # HUI: maybe need a transform for updates to make a list.
@@ -106,9 +107,10 @@ class Replica:
     def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
         # TODO (Hao): change it to derive_update and apply_update.
-        self.training_operator.derive_updates(batch)
+        return self.training_operator.derive_updates(batch)
 
     def apply_updates(self, updates):
+        assert updates
         self.training_operator.apply_updates(updates)
 
     def updates_transform(self, updates):
