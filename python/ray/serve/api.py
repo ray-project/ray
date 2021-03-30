@@ -514,7 +514,7 @@ class Client:
         self._wait_for_goal(self._controller.delete_deployment.remote(name))
 
     @_ensure_connected
-    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str, str]:
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
@@ -1312,12 +1312,12 @@ def deployment(
     return decorator
 
 
-def get_deployment(name: str):
+def get_deployment(name: str) -> ServeDeployment:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
-        name(str): name of the deployment. This must have already been.
-        deployed
+        name(str): name of the deployment. This must have already been
+        deployed.
 
     Returns:
         ServeDeployment

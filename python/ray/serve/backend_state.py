@@ -565,7 +565,9 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
-            # Old codepath.
+            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
+            # we shouldn't use versions at all to determine redeployment
+            # because `None` is used to indicate always redeploying.
             if backend_info.version == RESERVED_VERSION_TAG:
                 if (existing_info.backend_config == backend_info.backend_config
                         and existing_info.replica_config ==
