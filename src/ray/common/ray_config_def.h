@@ -382,3 +382,9 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The interval of periodic asio event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
