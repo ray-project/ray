@@ -151,12 +151,13 @@ class CoreWorkerMemoryStore {
   /// Called when an object is deleted from the store.
   void OnDelete(std::shared_ptr<RayObject> obj);
 
-  /// Emplace the given object entry to the in-memory-store.
+  /// Emplace the given object entry to the in-memory-store and update stats properly.
   void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
                                    std::shared_ptr<RayObject> &object_entry)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Erase the object of the object id from the in memory store.
+  /// Erase the object of the object id from the in memory store and update stats
+  /// properly.
   void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Optional callback for putting objects into the plasma store.
@@ -176,6 +177,8 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
 
   /// Map from object ID to `RayObject`.
+  /// NOTE: This map should be modified by EmplaceObjectAndUpdateStats and
+  /// EraseObjectAndUpdateStats.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
 
   /// Map from object ID to its get requests.
