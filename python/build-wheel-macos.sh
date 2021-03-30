@@ -16,19 +16,21 @@ DOWNLOAD_DIR=python_downloads
 NODE_VERSION="14"
 PY_VERSIONS=("3.6.1"
              "3.7.0"
-             "3.8.2")
+             "3.8.2"
+             "3.9.1")
 PY_INSTS=("python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
-          "python-3.8.2-macosx10.9.pkg")
+          "python-3.8.2-macosx10.9.pkg"
+          "python-3.9.1-macosx10.9.pkg")
 PY_MMS=("3.6"
         "3.7"
-        "3.8")
+        "3.8"
+        "3.9")
 
-# The minimum supported numpy version is 1.14, see
-# https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
-                "1.14.5")
+                "1.14.5"
+                "1.19.3")
 
 ./ci/travis/install-bazel.sh
 

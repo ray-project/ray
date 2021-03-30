@@ -198,28 +198,22 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(
-          self_node_id_, RayConfig::instance().free_objects_batch_size(),
-          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
-          gcs_client_->Objects(), worker_rpc_pool_,
-          /* automatic_object_deletion_enabled */
-          config.automatic_object_deletion_enabled,
-          /*max_io_workers*/ config.max_io_workers,
-          /*min_spilling_size*/ config.min_spilling_size,
-          /*is_external_storage_type_fs*/
-          RayConfig::instance().is_external_storage_type_fs(),
-          /*on_objects_freed*/
-          [this](const std::vector<ObjectID> &object_ids) {
-            object_manager_.FreeObjects(object_ids,
-                                        /*local_only=*/false);
-          },
-          is_plasma_object_spillable,
-          /*restore_object_from_remote_node*/
-          [this](const ObjectID &object_id, const std::string &spilled_url,
-                 const NodeID &node_id) {
-            SendSpilledObjectRestorationRequestToRemoteNode(object_id, spilled_url,
-                                                            node_id);
-          }),
+      local_object_manager_(self_node_id_,
+                            RayConfig::instance().free_objects_batch_size(),
+                            RayConfig::instance().free_objects_period_milliseconds(),
+                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            /* automatic_object_deletion_enabled */
+                            config.automatic_object_deletion_enabled,
+                            /*max_io_workers*/ config.max_io_workers,
+                            /*min_spilling_size*/ config.min_spilling_size,
+                            /*is_external_storage_type_fs*/
+                            RayConfig::instance().is_external_storage_type_fs(),
+                            /*on_objects_freed*/
+                            [this](const std::vector<ObjectID> &object_ids) {
+                              object_manager_.FreeObjects(object_ids,
+                                                          /*local_only=*/false);
+                            },
+                            is_plasma_object_spillable),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -389,6 +383,18 @@ ray::Status NodeManager::RegisterGcs() {
       [this] { GetObjectManagerProfileInfo(); },
       RayConfig::instance().raylet_heartbeat_period_milliseconds());
 
+  /// If periodic asio stats print is enabled, it will print it.
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms != -1 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+        },
+        asio_stats_print_interval_ms);
+  }
+
   return ray::Status::OK();
 }
 
@@ -473,9 +479,22 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
     resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
+
+  // Trigger local GC if needed. This throttles the frequency of local GC calls
+  // to at most once per heartbeat interval.
+  auto now = absl::GetCurrentTimeNanos();
+  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
+      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
+    DoLocalGC();
+    should_local_gc_ = false;
+    last_local_gc_ns_ = now;
+  }
 }
 
 void NodeManager::ReportResourceUsage() {
+  if (initial_config_.pull_based_resource_reporting) {
+    return;
+  }
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_resource_report_at_ms_;
   if (interval >
@@ -490,16 +509,6 @@ void NodeManager::ReportResourceUsage() {
   last_resource_report_at_ms_ = now_ms;
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   FillResourceReport(*resources_data);
-
-  // Trigger local GC if needed. This throttles the frequency of local GC calls
-  // to at most once per heartbeat interval.
-  auto now = absl::GetCurrentTimeNanos();
-  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
-      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
-    DoLocalGC();
-    should_local_gc_ = false;
-    last_local_gc_ns_ = now;
-  }
 
   if (resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
@@ -544,24 +553,6 @@ void NodeManager::HandleRequestObjectSpillage(
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-}
-
-void NodeManager::HandleRestoreSpilledObject(
-    const rpc::RestoreSpilledObjectRequest &request,
-    rpc::RestoreSpilledObjectReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  const auto object_id = ObjectID::FromBinary(request.object_id());
-  const auto spilled_node_id = NodeID::FromBinary(request.spilled_node_id());
-  const auto object_url = request.object_url();
-  RAY_CHECK(spilled_node_id == self_node_id_);
-  RAY_LOG(DEBUG) << "Restore spilled object request received. Object id: " << object_id
-                 << " spilled_node_id: " << self_node_id_
-                 << " object url: " << object_url;
-  local_object_manager_.AsyncRestoreSpilledObject(object_id, object_url, spilled_node_id,
-                                                  nullptr);
-  // Just reply right away. The caller will keep hitting this RPC endpoint until
-  // restoration succeeds, so we can safely reply here without waiting for the
-  // restoreSpilledObject to be done.
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReleaseUnusedBundles(
@@ -1420,6 +1411,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // RAY_LOG(ERROR) << "Resource report requested";
   auto resources_data = reply->mutable_resources();
   FillResourceReport(*resources_data);
 
@@ -2291,30 +2283,6 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
                                   task.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
-}
-
-void NodeManager::SendSpilledObjectRestorationRequestToRemoteNode(
-    const ObjectID &object_id, const std::string &spilled_url, const NodeID &node_id) {
-  // Fetch from a remote node.
-  if (!remote_node_manager_addresses_.contains(node_id)) {
-    // It is possible the new node information is not received at this point.
-    // In this case, the PullManager will handle retry, so we just return.
-    return;
-  }
-  const auto &entry = remote_node_manager_addresses_.find(node_id);
-  // TODO(sang): Use a node manager pool instead.
-  auto raylet_client =
-      std::make_shared<ray::raylet::RayletClient>(rpc::NodeManagerWorkerClient::make(
-          entry->second.first, entry->second.second, client_call_manager_));
-  raylet_client->RestoreSpilledObject(
-      object_id, spilled_url, node_id,
-      [](const ray::Status &status, const rpc::RestoreSpilledObjectReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to send a spilled object restoration request to a "
-                              "remote node. This request will be retried. Error message: "
-                           << status.ToString();
-        }
-      });
 }
 
 }  // namespace raylet

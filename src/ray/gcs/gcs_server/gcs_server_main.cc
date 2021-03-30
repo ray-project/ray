@@ -101,6 +101,8 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.pull_based_resource_reporting =
+      RayConfig::instance().pull_based_resource_reporting();
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
