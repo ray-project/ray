@@ -1,4 +1,7 @@
 import ray
+import os
+import shutil
+import sys
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -7,27 +10,21 @@ from opentelemetry.sdk.trace.export import (
 )
 from typing import Any
 
-import json
-import os
-import pytest
-
-# We will write the span output to "/tmp/tracing.json"
-span_output_file = "/tmp/tracing.json"
+spans_dir = "/tmp/spans"
 
 
 def _setup_tracing(*args: Any, **kwargs: Any) -> None:
     if getattr(ray, "__traced__", False):
         return
 
-    print("file exists in setup tracing" + str(os.path.exists(span_output_file)))
-
     ray.__traced__ = True
     # Sets the tracer_provider. This is only allowed once per execution context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(
         SimpleExportSpanProcessor(
+            # ConsoleSpanExporter()
             ConsoleSpanExporter(
-                out=open(span_output_file, "a"),
+                out=open(f"{spans_dir}/{os.getpid()}.json", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
             )
         )
@@ -36,42 +33,52 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
 
 def test_tracing_task():
     os.environ["RAY_TRACING_ENABLED"] = "True"
-    if os.path.exists(span_output_file):
-        os.remove(span_output_file)
-    print("file exists in test_tracing" + str(os.path.exists(span_output_file)))
-    ray.worker.global_worker.run_function_on_all_workers(_setup_tracing)
-
+    if os.path.exists(spans_dir):
+        shutil.rmtree(spans_dir)
+    os.mkdir(spans_dir)
     ray.init()
 
-    @ray.remote
-    def f():
-        print("foo")
+    ray.worker.global_worker.run_function_on_all_workers(_setup_tracing)
 
-    obj_ref = f.remote()
+    @ray.remote
+    def f(value):
+        return value + 1
+
+    obj_ref = f.remote(2)
     ray.get(obj_ref)
 
+    # @ray.remote
+    # class Counter(object):
+    #     def __init__(self):
+    #         self.value = 0
+
+    #     def increment(self):
+    #         self.value += 1
+    #         return self.value
+
+    # # Create an actor from this class.
+    # counter = Counter.remote()
+    # obj_ref = counter.increment.remote()
+    # assert ray.get(obj_ref) == 1
+
     span_string = ""
-    with open(span_output_file) as f:
-        Lines = f.readlines()
-        for line in Lines:
-            span_string += line
-            # json_obj = json.loads(line)
+    num_spans = 0
+    for entry in os.listdir(spans_dir):
+        if os.path.exists(f"{spans_dir}/{entry}"):
+            with open(f"{spans_dir}/{entry}") as f:
+                Lines = f.readlines()
+                # print("lines" + str(Lines))
+                for line in Lines:
+                    span_string += line
+                    num_spans += 1
+    print(span_string)
+    # json_obj = json.loads(span_string)
+    # print(json_obj)
+    assert num_spans == 2
 
-    json_obj = json.loads(span_string)
-    assert len(json_obj) == 2
 
-
-# @ray.remote
-# class Counter(object):
-#     def __init__(self):
-#         self.value = 0
-
-#     def increment(self):
-#         self.value += 1
-#         return self.value
-
-# # Create an actor from this class.
-# counter = Counter.remote()
+# json_obj = json.loads(span_string)
+# assert len(json_obj) == 2
 
 if __name__ == "__main__":
     import pytest
