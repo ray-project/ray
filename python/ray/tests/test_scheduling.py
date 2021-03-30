@@ -137,7 +137,7 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     locations = ray.get([actor.get_location.remote() for actor in actors])
     counter = collections.Counter(locations)
     spread = max(counter.values()) - min(counter.values())
-    assert spread < 6
+    assert spread < 7
     assert len(counter) > 1
 
 
