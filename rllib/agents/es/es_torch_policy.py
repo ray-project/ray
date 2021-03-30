@@ -74,7 +74,8 @@ def before_init(policy, observation_space, action_space, config):
 
         def _add_noise(single_action, single_action_space):
             single_action = single_action.detach().cpu().numpy()
-            if add_noise and isinstance(single_action_space, gym.spaces.Box):
+            if add_noise and isinstance(single_action_space, gym.spaces.Box) \
+                    and single_action_space.dtype.name.startswith("float"):
                 single_action += np.random.randn(*single_action.shape) * \
                                  policy.action_noise_std
             return single_action
