@@ -26,7 +26,7 @@ matrix:
   include:
     - os: linux
       env:
-        - PYTHON=3.6 FLAKY_TESTS=1
+        - FLAKY_TESTS=1 PYTHON=3.6
         - PYTHONWARNINGS=ignore
         - RAY_DEFAULT_BUILD=1
         - RAY_CYTHON_EXAMPLES=1
