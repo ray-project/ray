@@ -215,7 +215,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
-      EmplaceObject(object_id, object_entry);
+      EmplaceObjectAndUpdateStats(object_id, object_entry);
     } else {
       // It is equivalent to that object is added and immidiately deleted from the store.
       OnDelete(object_entry);
@@ -284,7 +284,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // Clean up the objects if ref counting is off.
     if (ref_counter_ == nullptr) {
       for (const auto &object_id : ids_to_remove) {
-        EraseObject(object_id);
+        EraseObjectAndUpdateStats(object_id);
       }
     }
 
@@ -438,7 +438,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
         plasma_ids_to_delete->insert(object_id);
       } else {
         OnDelete(it->second);
-        EraseObject(object_id);
+        EraseObjectAndUpdateStats(object_id);
       }
     }
   }
@@ -450,7 +450,7 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       OnDelete(it->second);
-      EraseObject(object_id);
+      EraseObjectAndUpdateStats(object_id);
     }
   }
 }
@@ -480,7 +480,7 @@ void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
   }
 }
 
-inline void CoreWorkerMemoryStore::EraseObject(const ObjectID &object_id) {
+inline void CoreWorkerMemoryStore::EraseObjectAndUpdateStats(const ObjectID &object_id) {
   auto it = objects_.find(object_id);
   if (it == objects_.end()) {
     return;
@@ -497,7 +497,7 @@ inline void CoreWorkerMemoryStore::EraseObject(const ObjectID &object_id) {
   objects_.erase(it);
 }
 
-inline void CoreWorkerMemoryStore::EmplaceObject(
+inline void CoreWorkerMemoryStore::EmplaceObjectAndUpdateStats(
     const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry) {
   auto inserted = objects_.emplace(object_id, object_entry).second;
   if (inserted) {

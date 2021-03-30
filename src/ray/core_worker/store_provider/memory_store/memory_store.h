@@ -152,11 +152,12 @@ class CoreWorkerMemoryStore {
   void OnDelete(std::shared_ptr<RayObject> obj);
 
   /// Emplace the given object entry to the in-memory-store.
-  void EmplaceObject(const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry)
+  void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
+                                   std::shared_ptr<RayObject> &object_entry)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Erase the object of the object id from the in memory store.
-  void EraseObject(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
