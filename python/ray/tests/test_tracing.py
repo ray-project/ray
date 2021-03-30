@@ -1,7 +1,9 @@
-import ray
 import os
+
+# TODO: use py_test(env = ...) in the build file with bazel 4.0
+os.environ["RAY_TRACING_ENABLED"] = "True"
+
 import shutil
-import sys
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -9,11 +11,13 @@ from opentelemetry.sdk.trace.export import (
     SimpleExportSpanProcessor,
 )
 from typing import Any
+import ray
 
 spans_dir = "/tmp/spans"
 
 
 def _setup_tracing(*args: Any, **kwargs: Any) -> None:
+
     if getattr(ray, "__traced__", False):
         return
 
@@ -32,7 +36,7 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
 
 
 def test_tracing_task():
-    os.environ["RAY_TRACING_ENABLED"] = "True"
+
     if os.path.exists(spans_dir):
         shutil.rmtree(spans_dir)
     os.mkdir(spans_dir)
@@ -72,15 +76,11 @@ def test_tracing_task():
                     span_string += line
                     num_spans += 1
     print(span_string)
-    # json_obj = json.loads(span_string)
-    # print(json_obj)
     assert num_spans == 2
 
 
-# json_obj = json.loads(span_string)
-# assert len(json_obj) == 2
-
 if __name__ == "__main__":
     import pytest
+    import sys
 
     sys.exit(pytest.main(["-v", __file__]))
