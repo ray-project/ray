@@ -219,26 +219,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     isContextSet.set(true);
   }
 
-  // TODO (kfstorm): Simplify the duplicate code in wrap*** methods.
-
   @Override
   public final Runnable wrapRunnable(Runnable runnable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         runnable.run();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
@@ -247,20 +233,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public final <T> Callable<T> wrapCallable(Callable<T> callable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         return callable.call();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
@@ -326,6 +300,34 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
+  }
+
+  /// An auto closable class that is used for updating the async context when invoking Ray APIs.
+  private static final class RayAsyncContextUpdater implements AutoCloseable {
+
+    private AbstractRayRuntime runtime;
+
+    private boolean oldIsContextSet;
+
+    private Object oldAsyncContext = null;
+
+    public RayAsyncContextUpdater(Object asyncContext, AbstractRayRuntime runtime) {
+      this.runtime = runtime;
+      oldIsContextSet = runtime.isContextSet.get();
+      if (oldIsContextSet) {
+        oldAsyncContext = runtime.getAsyncContext();
+      }
+      runtime.setAsyncContext(asyncContext);
+    }
+
+    @Override
+    public void close() {
+      if (oldIsContextSet) {
+        runtime.setAsyncContext(oldAsyncContext);
+      } else {
+        runtime.setIsContextSet(false);
+      }
+    }
   }
 
   @Override

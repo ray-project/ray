@@ -30,7 +30,6 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
-RUN_PLASMA_STORE_PROFILER = False
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
@@ -40,10 +39,6 @@ REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/redis_module/libray_redis_module.so")
-
-# Location of the plasma object store executable.
-PLASMA_STORE_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/plasma/plasma_store_server" + EXE_SUFFIX)
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(RAY_PATH,
@@ -1758,65 +1753,6 @@ def determine_plasma_store_config(object_store_memory,
             round(object_store_memory / 10**9, 2), plasma_directory))
 
     return plasma_directory, object_store_memory
-
-
-def start_plasma_store(resource_spec,
-                       plasma_directory,
-                       object_store_memory,
-                       plasma_store_socket_name,
-                       stdout_file=None,
-                       stderr_file=None,
-                       keep_idle=False,
-                       huge_pages=False,
-                       fate_share=None,
-                       use_valgrind=False):
-    """This method starts an object store process.
-
-    Args:
-        resource_spec (ResourceSpec): Resources for the node.
-        plasma_store_socket_name (str): The path/name of the plasma
-            store socket.
-        stdout_file: A file handle opened for writing to redirect stdout
-            to. If no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr
-            to. If no redirection should happen, then this should be None.
-        plasma_directory: A directory where the Plasma memory mapped files will
-            be created.
-        huge_pages: Boolean flag indicating whether to start the Object
-            Store with hugetlbfs support. Requires plasma_directory.
-        keep_idle: If True, run the plasma store as an idle placeholder.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    # Start the Plasma store.
-    if use_valgrind and RUN_PLASMA_STORE_PROFILER:
-        raise ValueError("Cannot use valgrind and profiler at the same time.")
-
-    assert resource_spec.resolved()
-
-    command = [
-        PLASMA_STORE_EXECUTABLE,
-        "-s",
-        plasma_store_socket_name,
-        "-m",
-        str(object_store_memory),
-    ]
-    if plasma_directory is not None:
-        command += ["-d", plasma_directory]
-    if huge_pages:
-        command += ["-h"]
-    if keep_idle:
-        command.append("-z")
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_PLASMA_STORE,
-        use_valgrind=use_valgrind,
-        use_valgrind_profiler=RUN_PLASMA_STORE_PROFILER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
 
 
 def start_worker(node_ip_address,

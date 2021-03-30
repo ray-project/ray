@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # before these files have been created, so we have to move the files
 # manually.
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -51,7 +51,6 @@ pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -131,7 +130,8 @@ install_requires = [
     "grpcio >= 1.28.1",
     "jsonschema",
     "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16",
+    "numpy >= 1.16; python_version < '3.9'",
+    "numpy >= 1.19.3; python_version >= '3.9'",
     "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
     "pyyaml",
@@ -432,6 +432,12 @@ setuptools.setup(
     url="https://github.com/ray-project/ray",
     keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
               "reinforcement-learning deep-learning serving python"),
+    classifiers=[
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.

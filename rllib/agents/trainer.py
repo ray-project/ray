@@ -239,10 +239,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # advisable to turn on unless your env specifically requires it).
     "sample_async": False,
 
-    # Experimental flag to speed up sampling and use "trajectory views" as
-    # generic ModelV2 `input_dicts` that can be requested by the model to
-    # contain different information on the ongoing episode.
-    "_use_trajectory_view_api": True,
     # The SampleCollector class to be used to collect and retrieve
     # environment-, model-, and sampler data. Override the SampleCollector base
     # class to implement your own collection/buffering/retrieval logic.
@@ -1166,29 +1162,26 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning("simple_optimizer", error=False)
 
+        framework = config.get("framework")
         if config.get("num_gpus", 0) > 1:
-            if config.get("framework") in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2", "torch"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
-                                 "framework={}!".format(
-                                     config.get("framework")))
+                                 "framework={}!".format(framework))
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
                     "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = False
+        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = True
-
-        # Trajectory View API settings.
-        if not config.get("_use_trajectory_view_api"):
-            traj_view_framestacks = model_config.get("num_framestacks", "auto")
-            if model_config.get("_time_major"):
-                raise ValueError("`model._time_major` only supported "
-                                 "iff `_use_trajectory_view_api` is True!")
-            elif traj_view_framestacks not in ["auto", 0]:
-                raise ValueError("`model.num_framestacks` only supported "
-                                 "iff `_use_trajectory_view_api` is True!")
-            model_config["num_framestacks"] = 0
+            config["simple_optimizer"] = \
+                framework != "tf" or len(config["multiagent"]["policies"]) > 0
+        # User manually set simple-optimizer to False -> Error if not tf.
+        elif simple_optim_setting is False:
+            if framework in ["tfe", "tf2", "torch"]:
+                raise ValueError("`simple_optimizer=False` not supported for "
+                                 "framework={}!".format(framework))
 
         # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):

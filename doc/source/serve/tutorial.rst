@@ -54,9 +54,13 @@ For our Counter class to work with Ray Serve, it needs to be a *callable* class,
         self.count += 1
         return {"count": self.count}
 
-.. note::
+.. tip::
   
-  In addition to callable classes, you can also serve functions using Ray Serve.
+  You can also serve :ref:`other class methods<serve-custom-methods>` besides ``__call__``.
+
+.. note::
+
+  Besides classes, you can also serve standalone functions with Ray Serve in the same way.
 
 Now we are ready to deploy our class using Ray Serve.  First, create a Ray Serve backend and pass in the Counter class:
 
