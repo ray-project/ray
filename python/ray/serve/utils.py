@@ -2,14 +2,14 @@ import asyncio
 from functools import singledispatch
 import importlib
 from itertools import groupby
+import inspect
 import json
 import logging
 import random
 import string
 import time
-from typing import Iterable, List, Tuple, Dict, Optional
+from typing import Iterable, List, Tuple, Dict, Optional, Type
 import os
-from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
 import starlette.requests
@@ -20,6 +20,7 @@ import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.exceptions import RayServeException
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -431,3 +432,68 @@ class ASGIHTTPSender:
             b"".join(self.buffer),
             status_code=self.status_code,
             headers=dict(self.header))
+
+
+def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
+    """Transform the `cls`'s methods and class annotations to FastAPI routes.
+
+    Modified from
+    https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
+
+    Usage:
+    >>> app = FastAPI()
+    >>> class A:
+            @app.route("/{i}")
+            def func(self, i: int) -> str:
+                return self.dep + i
+    >>> # just running the app won't work, here.
+    >>> make_fastapi_class_based_view(app, A)
+    >>> # now app can be run properly
+    """
+    # Delayed import to prevent ciruclar imports in workers.
+    from fastapi import Depends, APIRouter
+    from fastapi.routing import APIRoute
+
+    def get_current_servable_instance():
+        from ray import serve
+        return serve.get_replica_context().servable_object
+
+    # Find all the class method routes
+    member_methods = {
+        func
+        for _, func in inspect.getmembers(cls, inspect.isfunction)
+    }
+    class_method_routes = [
+        route for route in fastapi_app.routes
+        if isinstance(route, APIRoute) and route.endpoint in member_methods
+    ]
+
+    # Modify these routes and mount it to a new APIRouter.
+    # We need to to this (instead of modifying in place) because we want to use
+    # the laster fastapi_app.include_router to re-run the dependency analysis
+    # for each routes.
+    new_router = APIRouter()
+    for route in class_method_routes:
+        fastapi_app.routes.remove(route)
+
+        # This block just adds a default values to the self parameters so that
+        # FastAPI knows to inject the object when calling the route.
+        # Before: def method(self, i): ...
+        # After: def method(self=Depends(...), *, i):...
+        old_endpoint = route.endpoint
+        old_signature = inspect.signature(old_endpoint)
+        old_parameters = list(old_signature.parameters.values())
+        old_self_parameter = old_parameters[0]
+        new_self_parameter = old_self_parameter.replace(
+            default=Depends(get_current_servable_instance))
+        new_parameters = [new_self_parameter] + [
+            # Make the rest of the parameters keyword only because
+            # the first argument is no longer positional.
+            parameter.replace(kind=inspect.Parameter.KEYWORD_ONLY)
+            for parameter in old_parameters[1:]
+        ]
+        new_signature = old_signature.replace(parameters=new_parameters)
+        setattr(route.endpoint, "__signature__", new_signature)
+        # route.endpoint.__signature__ = new_signature
+        new_router.routes.append(route)
+    fastapi_app.include_router(new_router)

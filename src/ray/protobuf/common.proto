@@ -79,6 +79,7 @@ message CppFunctionDescriptor {
   string function_offset = 2;
   /// Executable function offset from base address.
   string exec_function_offset = 3;
+  string function_name = 4;
 }
 
 // A union wrapper for various function descriptor types.

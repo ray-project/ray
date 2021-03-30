@@ -51,7 +51,6 @@ pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,

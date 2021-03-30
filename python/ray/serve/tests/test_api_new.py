@@ -87,9 +87,11 @@ def test_starlette_response(serve_instance):
 
 
 def test_backend_user_config(serve_instance):
-    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
-
-    @serve.deployment("counter", config=config)
+    @serve.deployment(
+        "counter", num_replicas=2, user_config={
+            "count": 123,
+            "b": 2
+        })
     class Counter:
         def __init__(self):
             self.count = 10
@@ -114,13 +116,11 @@ def test_backend_user_config(serve_instance):
 
     wait_for_condition(lambda: check("123", 2))
 
-    config.num_replicas = 3
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(num_replicas=3)
     Counter.deploy()
     wait_for_condition(lambda: check("123", 3))
 
-    config.user_config = {"count": 456}
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(user_config={"count": 456})
     Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
 
@@ -157,7 +157,7 @@ def test_reject_duplicate_route(serve_instance):
 
 
 def test_scaling_replicas(serve_instance):
-    @serve.deployment("counter", config=BackendConfig(num_replicas=2))
+    @serve.deployment("counter", num_replicas=2)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -176,7 +176,7 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    Counter.options(config=BackendConfig(num_replicas=1)).deploy()
+    Counter.options(num_replicas=1).deploy()
 
     counter_result = []
     for _ in range(10):
@@ -187,84 +187,31 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_updating_config(serve_instance):
-    @serve.deployment(
-        "bsimple", config=BackendConfig(max_batch_size=2, num_replicas=2))
-    class BatchSimple:
-        def __init__(self):
-            self.count = 0
-
-        @serve.accept_batch
-        def __call__(self, request):
-            return [1] * len(request)
-
-    BatchSimple.deploy()
-
-    controller = serve.api._global_client._controller
-    old_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-
-    BatchSimple.options(
-        config=BackendConfig(max_batch_size=5, num_replicas=2)).deploy()
-    new_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            controller._all_replica_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the old and new replica tag list should be identical
-    # and should be subset of all_tag_list
-    assert set(old_replica_tag_list) <= set(new_all_tag_list)
-    assert set(old_replica_tag_list) == set(new_replica_tag_list)
-
-
-@pytest.mark.skip("delete() not implemented yet")
 def test_delete_backend(serve_instance):
+    @serve.deployment("delete")
     def function(_):
         return "hello"
 
-    serve.create_backend("delete:v1", function)
-    serve.create_endpoint(
-        "delete_backend", backend="delete:v1", route="/delete-backend")
+    function.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
 
-    # Check that we can't delete the backend while it's in use.
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
+    function.delete()
 
-    serve.create_backend("delete:v2", function)
-    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
-
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
-
-    # Check that the backend can be deleted once it's no longer in use.
-    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
-    serve.delete_backend("delete:v1")
-
-    # Check that we can no longer use the previously deleted backend.
-    with pytest.raises(ValueError):
-        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
-
+    @serve.deployment("delete")
     def function2(_):
         return "olleh"
 
-    # Check that we can now reuse the previously delete backend's tag.
-    serve.create_backend("delete:v1", function2)
-    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+    function2.deploy()
 
     for _ in range(10):
         try:
-            assert requests.get(
-                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
             break
         except AssertionError:
-            time.sleep(0.5)  # wait for the traffic policy to propogate
+            time.sleep(0.5)  # Wait for the change to propagate.
     else:
-        assert requests.get(
-            "http://127.0.0.1:8000/delete-backend").text == "olleh"
+        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
 
 
 @pytest.mark.skip("Not implemented yet")

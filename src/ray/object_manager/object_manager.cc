@@ -51,13 +51,14 @@ ObjectStoreRunner::~ObjectStoreRunner() {
   }
 }
 
-ObjectManager::ObjectManager(instrumented_io_context &main_service,
-                             const NodeID &self_node_id,
-                             const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                             RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback,
-                             std::function<void()> object_store_full_callback)
+ObjectManager::ObjectManager(
+    instrumented_io_context &main_service, const NodeID &self_node_id,
+    const ObjectManagerConfig &config,
+    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<std::string(const ObjectID &)> get_spilled_object_url,
+    SpillObjectsCallback spill_objects_callback,
+    std::function<void()> object_store_full_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -70,6 +71,7 @@ ObjectManager::ObjectManager(instrumented_io_context &main_service,
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
+      get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -341,6 +343,12 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and node pair.
     auto &nodes = unfulfilled_push_requests_[object_id];
+    // Issue a restore request if the object is on local disk. This is only relevant
+    // if the local filesystem storage type is being used.
+    auto object_url = get_spilled_object_url_(object_id);
+    if (!object_url.empty()) {
+      restore_spilled_object_(object_id, object_url, nullptr);
+    }
     if (nodes.count(node_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.

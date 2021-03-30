@@ -63,8 +63,8 @@ TEST(RayApiTest, StaticGetTest) {
 TEST(RayApiTest, WaitTest) {
   Ray::Init();
   auto r0 = Ray::Task(Return1).Remote();
-  auto r1 = Ray::Task(Plus1, 3).Remote();
-  auto r2 = Ray::Task(Plus, 2, 3).Remote();
+  auto r1 = Ray::Task(Plus1).Remote(3);
+  auto r2 = Ray::Task(Plus).Remote(2, 3);
   std::vector<ObjectID> objects = {r0.ID(), r1.ID(), r2.ID()};
   WaitResult result = Ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
@@ -78,9 +78,9 @@ TEST(RayApiTest, WaitTest) {
 
 TEST(RayApiTest, CallWithValueTest) {
   auto r0 = Ray::Task(Return1).Remote();
-  auto r1 = Ray::Task(Plus1, 3).Remote();
-  auto r2 = Ray::Task(Plus, 2, 3).Remote();
-  auto r3 = Ray::Task(Triple, 1, 2, 3).Remote();
+  auto r1 = Ray::Task(Plus1).Remote(3);
+  auto r2 = Ray::Task(Plus).Remote(2, 3);
+  auto r3 = Ray::Task(Triple).Remote(1, 2, 3);
 
   int result0 = *(r0.Get());
   int result1 = *(r1.Get());
@@ -95,10 +95,10 @@ TEST(RayApiTest, CallWithValueTest) {
 
 TEST(RayApiTest, CallWithObjectTest) {
   auto rt0 = Ray::Task(Return1).Remote();
-  auto rt1 = Ray::Task(Plus1, rt0).Remote();
-  auto rt2 = Ray::Task(Plus, rt1, 3).Remote();
-  auto rt3 = Ray::Task(Plus1, 3).Remote();
-  auto rt4 = Ray::Task(Plus, rt2, rt3).Remote();
+  auto rt1 = Ray::Task(Plus1).Remote(rt0);
+  auto rt2 = Ray::Task(Plus).Remote(rt1, 3);
+  auto rt3 = Ray::Task(Plus1).Remote(3);
+  auto rt4 = Ray::Task(Plus).Remote(rt2, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -148,7 +148,7 @@ TEST(RayApiTest, CompareWithFuture) {
 
   // Ray API
   Ray::Init();
-  auto f3 = Ray::Task(Plus1, 1).Remote();
+  auto f3 = Ray::Task(Plus1).Remote(1);
   int rt3 = *f3.Get();
 
   EXPECT_EQ(rt1, 2);
