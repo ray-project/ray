@@ -1,6 +1,7 @@
 """TODO(Runhui): JAX Operator"""
-import jax.numpy as jnp
 from jax import grad
+import jax.numpy as jnp
+from jax.lib import xla_client
 
 from ray.util.distml.base_operator import TrainingOperator
 
@@ -110,7 +111,11 @@ class JAXTrainingOperator(TrainingOperator):
         params = self._get_params(opt_state)
         gradient = grad(self.loss_fn)(params, batch)
         return gradient
-        
+
+    def get_jax_dlpack(self, tensor):
+        return xla_client._xla.buffer_to_dlpack_managed_tensor(tensor.device_buffer,
+                                                               take_ownership=False)
+
     def set_parameters(self, params):
         # need in place parameters in opt_state
         
