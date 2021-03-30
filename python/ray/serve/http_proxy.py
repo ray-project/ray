@@ -85,7 +85,7 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name))
     """
 
-    def __init__(self, controller_name):
+    def __init__(self, controller_name: str):
         # Set the controller name so that serve.connect() will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(None, None,
@@ -107,7 +107,7 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
-    def _update_route_table(self, route_table):
+    def _update_route_table(self, route_table: Dict[str, List[str]]):
         logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 
@@ -158,9 +158,9 @@ class HTTPProxy:
 @ray.remote
 class HTTPProxyActor:
     def __init__(self,
-                 host,
-                 port,
-                 controller_name,
+                 host: str,
+                 port: int,
+                 controller_name: str,
                  http_middlewares: List[
                      "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
