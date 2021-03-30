@@ -249,6 +249,8 @@ class TestRolloutSimple3(unittest.TestCase):
     def test_ppo(self):
         rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
+
+class TestRolloutSimple4(unittest.TestCase):
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
 

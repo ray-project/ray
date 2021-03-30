@@ -1535,6 +1535,16 @@ py_test(
     args = ["TestRolloutSimple3"]
 )
 
+py_test(
+    name = "test_rollout_no_learning4",
+    main = "tests/test_rollout.py",
+    tags = ["tests_dir", "tests_dir_R"],
+    size = "large",
+    data = ["train.py", "rollout.py"],
+    srcs = ["tests/test_rollout.py"],
+    args = ["TestRolloutSimple4"]
+)
+
 # Test train/rollout scripts (and confirm `rllib rollout` performance is same
 # as the final one from the `rllib train` run).
 py_test(
