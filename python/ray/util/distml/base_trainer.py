@@ -9,53 +9,31 @@ class BaseTrainer:
     def __init__(self, 
                  *, 
                  training_operator_cls, 
-                 world_size=1, 
-                 backend="auto", 
+                 world_size=1,
                  num_cpus_per_worker=1,
-                 num_gpus_per_worker=1,
-                 distributed_strategy="allreduce"
-                 ):
-    
+                 num_gpus_per_worker=1):
+        self.training_operator_cls = training_operator_cls
         self.world_size = world_size
-        self.backend = backend
-        self.distributed_strategy = distributed_strategy
+        self.num_cpus_per_worker = num_cpus_per_worker
+        self.num_gpus_per_worker = num_gpus_per_worker
 
         if not ray.is_initialized() and self.max_replicas > 1:
             logger.info("Automatically initializing single-node Ray. To use "
                         "multi-node training, be sure to run `ray.init("
                         "address='auto')` before instantiating the Trainer.")
             ray.init()
-        self._start_workers(training_operator_cls, 
-                            num_cpus_per_worker, 
-                            num_gpus_per_worker, 
-                            world_size, 
-                            backend)
-
-        self._init_strategy(distributed_strategy)
-
-    def _start_workers(self,
-                       training_operator_cls, 
-                       num_cpus_per_worker, 
-                       num_gpus_per_worker, 
-                       world_size, 
-                       backend):
-        """Create worker(actor), maybe need worker group to manager these workers.
-           Or, send these workers to strategy to manager?
-
-           set workers or worker group
-           set worker info, record rank, backend, use_num_gpus?
-        """
-        pass
+        self._init_strategy()
+        self._start_workers(world_size)
 
     def train(self):
         """Call operator train_one_epoch. Or run all epoches?
         """
-        pass
+        raise NotImplementedError()
 
     def validate(self):
         """Call operator validate to evaluate val_dataloader.
         """
-        pass
+        raise NotImplementedError()
 
     def step(self):
         """Call step in self.train(). different strategy calling here?
@@ -83,4 +61,7 @@ class BaseTrainer:
     def shutdown(self, force=False):
         """Kill all workers.
         """
-        pass
+        raise NotImplementedError()
+
+    def _init_strategy(self):
+        raise NotImplementedError()

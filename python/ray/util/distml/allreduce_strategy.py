@@ -6,30 +6,57 @@ import ray.util.collective as col
 # TODO(Hao): could make an interface class and use factory pattern to
 #            set up strategies/trainers.
 class AllReduceStrategy(BaseTrainer):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, fusion=False, **kwargs):
+        self._fusion = fusion
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
 
 
     def _init_strategy(self):
+        """Do initialization for the distributed strategy."""
         pass
 
-    def _start_workers(self,
-                       training_operator_cls,
-                       num_cpus_per_worker,
-                       num_gpus_per_worker,
-                       world_size,
-                       backend):
-        params = dict()
-        dist_params = dict()
-        self.data_parallel_group = DataParallelGroup(params, dist_params, 1, 1)
-        self.data_parallel_group.start_replicas(world_size)
 
     def train_batch(self, batches):
         # First, let each worker proceed with a train_step
         # self.data_parallel_group.train()
-        rets = [replica.train_step.remote(batches[i])
+        rets = [replica.train_batch.remote(batches[i])
                 for i, replica in enumerate(self.data_parallel_group.replicas)]
         ray.get(rets)
+
+    def _start_workers(self, num_workers):
+        """Create worker(actor), maybe need worker group to manager these workers.
+           Or, send these workers to strategy to manager?
+
+           set workers or worker group
+           set worker info, record rank, backend, use_num_gpus?
+        """
+
+        # TODO (Hao): infer the per-replica batch size here...
+
+        # so here we get two set of params that will be passed around:
+        # (1) Those for setting up training logic in training_operator, including:
+        # batchsize, use_tqdm, user defined operator_config.
+        operator_config = self.config.copy()
+        params = dict(
+            training_operator_cls = self.training_operator_cls,
+            operator_config = operator_config
+        )
+        # (2) params for setting up collective group and the strategy-related things;
+        # For now, we do not have many of them though.
+        dist_params = dict(
+            group_name="default",
+            num_cpus_per_worker=self.num_cpus_per_worker,
+            num_gpus_per_worker=self.num_gpus_per_worker,
+        )
+        group_init_args = {
+            "params": params,
+            "dist_params": dist_params
+        }
+
+        self.data_parallel_group = DataParallelGroup(**group_init_args)
+
+        # Once the group is created, we start it.
+        self.data_parallel_group.start_replicas(num_workers)
 
 
 class Replica:
@@ -58,10 +85,19 @@ class Replica:
                                   backend=backend, group_name=self.group_name)
         return
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
+        updates = self.derive_update(batch)
+        # TODO: make the signature correct
+        col.allreduce(updates)
+        self.apply_update(updates)
+
+    def derive_update(self, batch):
         # TODO (Hao): handling data loader next.
         # TODO (Hao): change it to derive_update and apply_update.
-        self.training_operator.train_step(batch)
+        self.training_operator.derive_update(batch)
+
+    def apply_update(self, updates):
+        self.training_operator.apply_updates(updates)
 
     def shutdown(self):
         # destroy the collective group resources on this process
@@ -74,12 +110,10 @@ class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
     def __init__(self,
                  params,
-                 dist_params,
-                 num_cpus_per_replica=1,
-                 num_gpus_per_replica=1):
+                 dist_params):
         self._params = params
         self._dist_params = dist_params
-        self._num_cpus_per_replica = num_cpus_per_replica
+        self._num_cpus_per_replica = self._dist_params[]
         self._num_gpus_per_replica = num_gpus_per_replica
         self._distributed_replicas = None
 
