@@ -49,6 +49,7 @@ cdef extern from * namespace "_gcs_maker":
         ~RayletGcsClient() {
           RAY_LOG(DEBUG)
             << "Destructing GCS client and associated event loop thread.";
+          Disconnect();
           io_context_.stop();
           thread_.join();
         }
