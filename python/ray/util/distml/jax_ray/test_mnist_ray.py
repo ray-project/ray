@@ -215,7 +215,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    gpu_ids = [2,6,7]
+    gpu_ids = [3,4]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
     num_gpus = len(gpu_ids)
     enable_jit = False

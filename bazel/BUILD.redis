@@ -19,7 +19,7 @@ genrule(
         cp -p -L -R -- "$${p%/*}" "$${tmpdir}"
         chmod +x "$${tmpdir}"/deps/jemalloc/configure
         parallel="$$(getconf _NPROCESSORS_ONLN || echo 1)"
-        make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
+        make -s -C "$${tmpdir}" -j"$${parallel}" V=0 CFLAGS="$${CFLAGS-} -fPIC -DLUA_USE_MKSTEMP -Wno-pragmas -Wno-empty-body"
         mv "$${tmpdir}"/src/redis-server $(location redis-server)
         chmod +x $(location redis-server)
         mv "$${tmpdir}"/src/redis-cli $(location redis-cli)

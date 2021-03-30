@@ -1,134 +1,120 @@
 """TODO(Runhui): JAX Operator"""
+import jax.numpy as jnp
+from jax import grad
 
-class TrainingOperator:
+from ray.util.distml.base_operator import TrainingOperator
 
-    def __init__(self):
+
+class JAXTrainingOperator(TrainingOperator):
+
+    def __init__(self, operator_config):
+        self.train_steps = 0 # use to record the training step that has passed.
+        super(JAXTrainingOperator, self).__init__(operator_config)
+
+    def setup(self, *args, **kwargs):
+        """Function that needs to be override by users.
+        
+        Example:
+            # some code is the same for all users, maybe we can put it in register.
+            rng_key = random.PRNGKey(0)
+            input_shape = (28, 28, 1, batch_size)
+            lr=0.01
+            init_fun, predict_fun = ResNet18(num_classes)
+            _, init_params = init_fun(rng_key, input_shape)
+            
+            opt_init, opt_update, get_params = optimizers.adam(lr)
+            opt_state = opt_init(init_params)
+            
+            self.register(model=(opt_state, get_params, predict_fun), optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets)
+        
+        """
+        
         pass
 
-    def setup():
-        """Function that needs to be override by users."""
-        pass
-
-    def register(self, *, model, optimizer, critierion):
+    def register(self, *, model, optimizer, criterion, jit_mode=False):
         """Register a few critical information about the model to operator."""
-        model = ...
-        optimizer = ...
+        self._criterion = criterion
+        
         self._register_model(model)
         self._register_optimizer(optimizer)
-
+            
     def _register_model(self, model):
-        pass
+        self._opt_state = model[0]
+        self._get_params = model[1]
+        self._predict_fun = model[2]
 
     def _register_optimizer(self, optimizer):
-        pass
+        self._opt_update = optimizer
 
     def register_data(self, *, train_loader=None, validation_loader=None):
-
         self.train_loader = train_loader
         self.validation_loader = validation_loader
 
+    def loss_fn(self, params, batch):
+        inputs, targets = batch
+        print(inputs.shape)
+        print(targets.shape)
+        logits = self._predict_fun(params, inputs)
+        return self._critition(logits, targets)
 
-    def train_epoch(self, iterator, info):
-        if not self.train_dataloader:
-            raise RuntimeError("Train dataloader hasn't been set.")
+    def yield_train_loader(self):
+        for batch in self.train_loader:
+            yield batch
 
-        for idx, batch in enumerate(self.train_dataloader):
-            self.opt_state = self.update(self.steps,
-                                            self.opt_state,
-                                            batch)
+    def yield_validation_loader(self):
+        for batch in self.validation_loader:
+            yield batch
+    # def train_epoch(self, iterator, info):
+    #     if not self.train_dataloader:
+    #         raise RuntimeError("Train dataloader hasn't been set.")
 
-        params = self.get_params(self.opt_state)
-        # train_acc = self.accuracy(params, self.train_dataloader)
-        test_acc = self.accuracy(params, self.test_dataloader)
-        test_time = time.time() - test_start_time
-        print("Epoch {} in {:0.2f} sec, test time {:0.2f} sec."
-            .format(epoch, epoch_time, test_time))
-        # print("Training set accuracy {}".format(train_acc))
-        print("Test set accuracy {}".format(test_acc))
+    #     for idx, batch in enumerate(self.train_dataloader):
+    #         self.train_step(batch)
 
-        if not hasattr(self, "model"):
-            raise RuntimeError("Either set self.model in setup function or "
-                               "override this method to implement a custom "
-                               "training loop.")
-        if not hasattr(self, "optimizer"):
-            raise RuntimeError("Either set self.optimizer in setup function "
-                               "or override this method to implement a custom "
-                               "training loop.")
-        if not hasattr(self, "criterion"):
-            raise RuntimeError("Either set self.criterion in setup function "
-                               "or override this method to implement a custom "
-                               "training loop.")
-        model = self.model
-        optimizer = self.optimizer
-        criterion = self.criterion
-        # unpack features into list to support multiple inputs model
-        *features, target = batch
-        # Create non_blocking tensors for distributed training
-        if self.use_gpu:
-            features = [
-                feature.cuda(non_blocking=True) for feature in features
-            ]
-            target = target.cuda(non_blocking=True)
+    #     params = self.get_params(self.opt_state)
+        
+    #     return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
 
-        # Compute output.
-        output = model(*features)
-        loss = criterion(output, target)
+    # def train_step(self, batch):
+    #     gradient = self.derive_updates(batch, opt_state, loss_fn)     
+        
+    #     flatten_gradient, _ = tree_flatten(gradient)
+    #     # <=allreduce strategy=>
+    #     #for g in ftree:
+    #     #    if not len(g):
+    #     #        continue
+    #     #    cp_g = cp.fromDlpack(self.get_jax_dlpack(g))
+    #     #    col.allreduce(cp_g, group_name="default")
+    #     #    cp_g/=self.world_size
+     
+    #     self.apply_updates(gradient)
 
+    def derive_updates(self, batch):
+        return self._calculate_gradient(self._opt_state, batch)
+        
+    def apply_updates(self, gradient):
+        self._opt_state = self._opt_update(self.train_step, gradient, self._opt_state)
+        self.train_step += 1
 
-        # Call step of optimizer to update model params.
-        with self.timers.record("apply"):
-            optimizer.step()
+    def updates_transform(self, updates):
+        flatten_grads = tree_flatten(gradient)[0]
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
+        for g in flatten_grads:
+            if not len(g):
+               continue
+            yield cp.fromDlpack(self.get_jax_dlpack(g))
+            # col.allreduce(cp_g, group_name="default")
+            # cp_g/=self.world_size
 
-
-if __name__ == "__main__":
-    class Dataloader:
-        def __init__(self, data, target, batch_size=128, shuffle=False):
-            '''
-            data: shape(width, height, channel, num)
-            target: shape(num, num_classes)
-            '''
-            self.data = data
-            self.target = target
-            self.batch_size = batch_size
-            num_data = self.target.shape[0]
-            num_complete_batches, leftover = divmod(num_data, batch_size)
-            self.num_batches = num_complete_batches + bool(leftover)
-            self.shuffle = shuffle
-
-        def synth_batches(self):
-            num_imgs = self.target.shape[0]
-            rng = npr.RandomState(np.random.randint(10))
-            perm = rng.permutation(num_imgs) if self.shuffle else np.arange(num_imgs)
-            for i in range(self.num_batches):
-                batch_idx = perm[i * self.batch_size:(i + 1) * self.batch_size]
-                img_batch = self.data[:, :, :, batch_idx]
-                label_batch = self.target[batch_idx]
-                yield img_batch, label_batch
-
-        def __iter__(self):
-            return self.synth_batches()
-
-
-    class MyTrainingOperator(TrainingOperator):
-        def setup(self, config):
-            model = nn.Linear(1, 1)
-            optimizer = torch.optim.SGD(
-                model.parameters(), lr=config.get("lr", 1e-4))
-            loss = torch.nn.MSELoss()
-
-            batch_size = config["batch_size"]
-            train_data, val_data = LinearDataset(2, 5), LinearDataset(2, 5)
-            train_target, val_target = LinearDataset(2, 5), LinearDataset(2, 5)
-            train_loader = Dataloader(train_data, train_target, batch_size=batch_size, shuffle=True)
-            val_loader = Dataloader(val_data, val_target, batch_size=batch_size)
-
-            self.model, self.optimizer = self.register(
-                models=model,
-                optimizers=optimizer,
-                criterion=loss)
-
-            self.register_data(
-                train_loader=train_loader,
-                validation_loader=val_loader)
+    def _calculate_gradient(self, opt_state, batch):
+        params = self._get_params(opt_state)
+        gradient = grad(self.loss_fn)(params, batch)
+        return gradient
+        
+    def set_parameters(self, params):
+        # need in place parameters in opt_state
+        
+        pass
+        
+    def get_parameters(self):
+        return self._get_params(self._opt_state)
