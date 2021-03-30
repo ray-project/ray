@@ -1,5 +1,3 @@
-import gc
-
 import pytest
 import requests
 
