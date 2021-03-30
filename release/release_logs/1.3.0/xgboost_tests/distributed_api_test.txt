@@ -1,0 +1,48 @@
+Script started on 2021-03-30 04:50:47-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:47,605	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.26.203:6379
+Waiting for more nodes to come up: 0/4 (0 seconds passed)
+Waiting for more nodes to come up: 1/4 (10 seconds passed)
+Waiting for more nodes to come up: 1/4 (20 seconds passed)
+Waiting for more nodes to come up: 1/4 (30 seconds passed)
+Waiting for more nodes to come up: 1/4 (40 seconds passed)
+Waiting for more nodes to come up: 1/4 (50 seconds passed)
+Waiting for more nodes to come up: 1/4 (60 seconds passed)
+Waiting for more nodes to come up: 1/4 (70 seconds passed)
+Waiting for more nodes to come up: 1/4 (80 seconds passed)
+Waiting for more nodes to come up: 1/4 (90 seconds passed)
+Waiting for more nodes to come up: 1/4 (100 seconds passed)
+Waiting for more nodes to come up: 1/4 (110 seconds passed)
+Waiting for more nodes to come up: 1/4 (120 seconds passed)
+Waiting for more nodes to come up: 1/4 (130 seconds passed)
+Waiting for more nodes to come up: 1/4 (140 seconds passed)
+Waiting for more nodes to come up: 1/4 (150 seconds passed)
+Waiting for more nodes to come up: 3/4 (160 seconds passed)
+Cluster is up: 4/4 nodes online after 170 seconds
+[1m============================= test session starts ==============================[0m
+platform linux -- Python 3.7.7, pytest-6.2.2, py-1.10.0, pluggy-0.13.1 -- /home/ray/anaconda3/bin/python
+cachedir: .pytest_cache
+rootdir: /home/ray/release-automation-xgboost_tests
+[1mcollecting ... [0m[1m
+collected 3 items                                                              [0m
+
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCallbacks [32mPASSED[0m[32m [ 33%][0m
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomMetricFunction [32mPASSED[0m[33m [ 66%][0m
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomObjectiveFunction [32mPASSED[0m[33m [100%][0m
+
+[33m=============================== warnings summary ===============================[0m
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCallbacks
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomMetricFunction
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomObjectiveFunction
+  /home/ray/anaconda3/lib/python3.7/site-packages/xgboost_ray/main.py:673: DeprecationWarning: ray.services.get_node_ip_address has been moved to ray.util.get_node_ip_address. 'ray.services' will be removed after Ray 1.4.
+    node_ip = get_node_ip_address()
+
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCallbacks
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomMetricFunction
+workloads/distributed_api_test.py::XGBoostDistributedAPITest::testCustomObjectiveFunction
+  /home/ray/anaconda3/lib/python3.7/site-packages/xgboost_ray/main.py:139: DeprecationWarning: ray.services.get_node_ip_address has been moved to ray.util.get_node_ip_address. 'ray.services' will be removed after Ray 1.4.
+    host = get_node_ip_address()
+
+-- Docs: https://docs.pytest.org/en/stable/warnings.html
+[33m======================== [32m3 passed[0m, [33m[1m6 warnings[0m[33m in 5.67s[0m[33m =========================[0m
+
+Script done on 2021-03-30 04:53:45-07:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,220 @@
+Script started on 2021-03-30 04:50:46-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:47,333	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.5.155:6379
+Waiting for more nodes to come up: 0/4 (0 seconds passed)
+Waiting for more nodes to come up: 1/4 (10 seconds passed)
+Waiting for more nodes to come up: 1/4 (20 seconds passed)
+Waiting for more nodes to come up: 1/4 (30 seconds passed)
+Waiting for more nodes to come up: 1/4 (40 seconds passed)
+Waiting for more nodes to come up: 1/4 (50 seconds passed)
+Waiting for more nodes to come up: 1/4 (60 seconds passed)
+Waiting for more nodes to come up: 1/4 (70 seconds passed)
+Waiting for more nodes to come up: 1/4 (80 seconds passed)
+Waiting for more nodes to come up: 1/4 (90 seconds passed)
+Waiting for more nodes to come up: 1/4 (100 seconds passed)
+Waiting for more nodes to come up: 1/4 (110 seconds passed)
+Waiting for more nodes to come up: 1/4 (120 seconds passed)
+Waiting for more nodes to come up: 1/4 (130 seconds passed)
+Waiting for more nodes to come up: 1/4 (140 seconds passed)
+Waiting for more nodes to come up: 3/4 (150 seconds passed)
+Cluster is up: 4/4 nodes online after 155 seconds
+2021-03-30 04:53:23,888	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.5.155:6379
+2021-03-30 04:53:23,927	DEBUG main.py:1170 -- Boost rounds left: 100
+2021-03-30 04:53:23,943	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:53:26,159	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+2021-03-30 04:53:26,165	DEBUG main.py:150 -- Started Rabit tracker process with PID 1538
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [04:53:26] task [xgboost.ray]:140259273076304 got new rank 0
+[2m[36m(pid=1035, ip=172.31.22.200)[0m [04:53:26] task [xgboost.ray]:140523560567056 got new rank 1
+[2m[36m(pid=1030, ip=172.31.3.89)[0m [04:53:26] task [xgboost.ray]:139960854177104 got new rank 2
+[2m[36m(pid=1361)[0m [04:53:26] task [xgboost.ray]:140277609229584 got new rank 3
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1030, ip=172.31.3.89)[0m Killing process: 1030 for actor rank 2
+2021-03-30 04:53:33,715	DEBUG main.py:919 -- Caught exception in training loop: The actor died unexpectedly before finishing this task.
+2021-03-30 04:53:33,716	DEBUG elastic.py:152 -- Actor Actor(RayXGBoostActor,47b4e344262b8f0cd19d592c02000000) is _not_ alive.
+2021-03-30 04:53:33,720	WARNING worker.py:1083 -- A worker died or was killed while executing task ffffffffffffffff47b4e344262b8f0cd19d592c02000000.
+2021-03-30 04:53:33,782	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,3d49663ba74768427b4f237202000000) with PID 1361 is alive.
+2021-03-30 04:53:33,785	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,c18f3d9e920cac773879ff4802000000) with PID 1035 is alive.
+2021-03-30 04:53:33,787	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,69b3c59ef0023bd6f35bccee02000000) with PID 1035 is alive.
+2021-03-30 04:53:33,787	INFO elastic.py:155 -- Actor status: 3 alive, 1 dead (4 total)
+2021-03-30 04:53:33,787	DEBUG main.py:156 -- Stopping Rabit process with PID 1538
+2021-03-30 04:53:38,795	WARNING main.py:1231 -- A Ray actor died during training. Trying to continue training on the remaining actors. This will use 3 existing actors and start 0 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:53:48,849	DEBUG main.py:1170 -- Boost rounds left: 89
+2021-03-30 04:53:48,850	INFO main.py:791 -- [RayXGBoost] Created 0 new actors (3 total actors). Waiting until actors are ready for training.
+2021-03-30 04:53:48,955	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+2021-03-30 04:53:48,959	DEBUG main.py:150 -- Started Rabit tracker process with PID 1568
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [04:53:49] task [xgboost.ray]:140259273076304 got new rank 0
+[2m[36m(pid=1361)[0m [04:53:49] task [xgboost.ray]:140277609229584 got new rank 2
+2021-03-30 04:53:49,055	DEBUG elastic.py:69 -- Re-scheduled actor with rank 2. Waiting for placement and data loading before promoting it to training.
+[2m[36m(pid=1035, ip=172.31.22.200)[0m [04:53:49] task [xgboost.ray]:140523560567056 got new rank 1
+2021-03-30 04:53:49,056	INFO elastic.py:74 -- Re-scheduled 1 actors for training. Once data loading finished, they will be integrated into training again.
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 0
+2021-03-30 04:53:50,277	DEBUG main.py:919 -- Caught exception in training loop: A new RayXGBoostActor became available for training. Triggering restart.
+2021-03-30 04:53:50,279	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,4cfa6ecb5832ce5b6c75fb8a02000000) with PID 1031 is alive.
+2021-03-30 04:53:50,599	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,c18f3d9e920cac773879ff4802000000) with PID 1035 is alive.
+2021-03-30 04:53:50,599	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,69b3c59ef0023bd6f35bccee02000000) with PID 1035 is alive.
+2021-03-30 04:53:50,600	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,3d49663ba74768427b4f237202000000) with PID 1361 is alive.
+2021-03-30 04:53:50,600	INFO elastic.py:155 -- Actor status: 4 alive, 0 dead (4 total)
+2021-03-30 04:53:50,600	DEBUG main.py:156 -- Stopping Rabit process with PID 1568
+2021-03-30 04:53:51,757	INFO main.py:1221 -- A new actor became available. Re-starting training from latest checkpoint with new actor. This will use 4 existing actors and start 0 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:54:01,778	DEBUG main.py:1170 -- Boost rounds left: 89
+2021-03-30 04:54:01,779	INFO main.py:791 -- [RayXGBoost] Created 0 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:01,891	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+2021-03-30 04:54:01,895	DEBUG main.py:150 -- Started Rabit tracker process with PID 1658
+[2m[36m(pid=1035, ip=172.31.22.200)[0m [04:54:01] task [xgboost.ray]:140523560567056 got new rank 1
+[2m[36m(pid=1361)[0m [04:54:01] task [xgboost.ray]:140277609229584 got new rank 3
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [04:54:01] task [xgboost.ray]:140259273076304 got new rank 0
+[2m[36m(pid=1031, ip=172.31.3.89)[0m [04:54:01] task [xgboost.ray]:139779878455312 got new rank 2
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 16
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 17
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 18
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 19
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 20
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 21
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 22
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 23
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 24
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 25
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 26
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 27
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 28
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 29
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 30
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 31
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 32
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 33
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 34
+[2m[36m(pid=1361)[0m Killing process: 1361 for actor rank 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 35
+2021-03-30 04:54:15,195	WARNING worker.py:1083 -- A worker died or was killed while executing task ffffffffffffffff3d49663ba74768427b4f237202000000.
+2021-03-30 04:54:15,195	DEBUG main.py:919 -- Caught exception in training loop: The actor died unexpectedly before finishing this task.
+2021-03-30 04:54:15,197	DEBUG elastic.py:152 -- Actor Actor(RayXGBoostActor,3d49663ba74768427b4f237202000000) is _not_ alive.
+2021-03-30 04:54:15,205	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,c18f3d9e920cac773879ff4802000000) with PID 1035 is alive.
+2021-03-30 04:54:15,206	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,69b3c59ef0023bd6f35bccee02000000) with PID 1035 is alive.
+2021-03-30 04:54:15,206	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,4cfa6ecb5832ce5b6c75fb8a02000000) with PID 1031 is alive.
+2021-03-30 04:54:15,206	INFO elastic.py:155 -- Actor status: 3 alive, 1 dead (4 total)
+2021-03-30 04:54:15,206	DEBUG main.py:156 -- Stopping Rabit process with PID 1658
+2021-03-30 04:54:20,210	WARNING main.py:1231 -- A Ray actor died during training. Trying to continue training on the remaining actors. This will use 3 existing actors and start 0 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:54:30,228	DEBUG main.py:1170 -- Boost rounds left: 58
+2021-03-30 04:54:30,228	INFO main.py:791 -- [RayXGBoost] Created 0 new actors (3 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:30,333	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+2021-03-30 04:54:30,338	DEBUG main.py:150 -- Started Rabit tracker process with PID 1756
+2021-03-30 04:54:30,539	DEBUG elastic.py:69 -- Re-scheduled actor with rank 0. Waiting for placement and data loading before promoting it to training.
+2021-03-30 04:54:30,539	INFO elastic.py:74 -- Re-scheduled 1 actors for training. Once data loading finished, they will be integrated into training again.
+[2m[36m(pid=1035, ip=172.31.22.200)[0m [04:54:30] task [xgboost.ray]:140523560567056 got new rank 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [04:54:30] task [xgboost.ray]:140259273076304 got new rank 0
+[2m[36m(pid=1031, ip=172.31.3.89)[0m [04:54:30] task [xgboost.ray]:139779878455312 got new rank 2
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 2
+2021-03-30 04:54:32,499	DEBUG main.py:919 -- Caught exception in training loop: A new RayXGBoostActor became available for training. Triggering restart.
+2021-03-30 04:54:32,500	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,64f4b0db86ad24e17dc4e15b02000000) with PID 1747 is alive.
+2021-03-30 04:54:32,522	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,69b3c59ef0023bd6f35bccee02000000) with PID 1035 is alive.
+2021-03-30 04:54:32,522	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,4cfa6ecb5832ce5b6c75fb8a02000000) with PID 1031 is alive.
+2021-03-30 04:54:32,523	DEBUG elastic.py:148 -- Actor Actor(RayXGBoostActor,c18f3d9e920cac773879ff4802000000) with PID 1035 is alive.
+2021-03-30 04:54:32,524	INFO elastic.py:155 -- Actor status: 4 alive, 0 dead (4 total)
+2021-03-30 04:54:32,524	DEBUG main.py:156 -- Stopping Rabit process with PID 1756
+2021-03-30 04:54:32,586	INFO main.py:1221 -- A new actor became available. Re-starting training from latest checkpoint with new actor. This will use 4 existing actors and start 0 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:54:42,605	DEBUG main.py:1170 -- Boost rounds left: 58
+2021-03-30 04:54:42,605	INFO main.py:791 -- [RayXGBoost] Created 0 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:42,712	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+2021-03-30 04:54:42,717	DEBUG main.py:150 -- Started Rabit tracker process with PID 1915
+[2m[36m(pid=1031, ip=172.31.3.89)[0m [04:54:42] task [xgboost.ray]:139779878455312 got new rank 2
+[2m[36m(pid=1747)[0m [04:54:42] task [xgboost.ray]:140407791141072 got new rank 3
+[2m[36m(pid=1035, ip=172.31.22.200)[0m [04:54:42] task [xgboost.ray]:140523560567056 got new rank 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [04:54:42] task [xgboost.ray]:140259273076304 got new rank 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 16
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 17
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 18
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 19
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 20
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 21
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 22
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 23
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 24
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 25
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 26
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 27
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 28
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 29
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 30
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 31
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 32
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 33
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 34
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 35
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 36
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 37
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 38
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 39
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 40
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 41
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 42
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 43
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 44
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 45
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 46
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 47
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 48
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 49
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 50
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 51
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 52
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 53
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 54
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 55
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 56
+[2m[36m(pid=1035, ip=172.31.21.227)[0m [Rank 3] I am at iteration 57
+2021-03-30 04:55:01,676	DEBUG main.py:907 -- [RayXGBoost] Waiting for results...
+2021-03-30 04:55:01,795	DEBUG main.py:156 -- Stopping Rabit process with PID 1915
+2021-03-30 04:55:01,906	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=2,000,000 in 97.99 seconds (55.09 pure XGBoost training time).
+TRAIN TIME TAKEN: 98.00 seconds
+Final training error: 0.4184
+PASSED.
+
+Script done on 2021-03-30 04:55:02-07:00 [COMMAND_EXIT_CODE="0"]

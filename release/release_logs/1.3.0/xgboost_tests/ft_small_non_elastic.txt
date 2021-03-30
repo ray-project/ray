@@ -1,0 +1,162 @@
+Script started on 2021-03-30 04:50:46-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:47,257	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.0.144:6379
+Waiting for more nodes to come up: 0/4 (0 seconds passed)
+Waiting for more nodes to come up: 1/4 (10 seconds passed)
+Waiting for more nodes to come up: 1/4 (20 seconds passed)
+Waiting for more nodes to come up: 1/4 (30 seconds passed)
+Waiting for more nodes to come up: 1/4 (40 seconds passed)
+Waiting for more nodes to come up: 1/4 (50 seconds passed)
+Waiting for more nodes to come up: 1/4 (60 seconds passed)
+Waiting for more nodes to come up: 1/4 (70 seconds passed)
+Waiting for more nodes to come up: 1/4 (80 seconds passed)
+Waiting for more nodes to come up: 1/4 (90 seconds passed)
+Waiting for more nodes to come up: 1/4 (100 seconds passed)
+Waiting for more nodes to come up: 1/4 (110 seconds passed)
+Waiting for more nodes to come up: 1/4 (120 seconds passed)
+Waiting for more nodes to come up: 2/4 (130 seconds passed)
+Waiting for more nodes to come up: 2/4 (140 seconds passed)
+Waiting for more nodes to come up: 3/4 (150 seconds passed)
+Cluster is up: 4/4 nodes online after 160 seconds
+2021-03-30 04:53:28,700	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.0.144:6379
+2021-03-30 04:53:29,168	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:53:30,986	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1033, ip=172.31.4.145)[0m [04:53:30] task [xgboost.ray]:139889296592976 got new rank 3
+[2m[36m(pid=1359)[0m [04:53:31] task [xgboost.ray]:140021277401168 got new rank 0
+[2m[36m(pid=1034, ip=172.31.24.146)[0m [04:53:30] task [xgboost.ray]:139962175573648 got new rank 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [04:53:30] task [xgboost.ray]:139834298175120 got new rank 1
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1034, ip=172.31.24.146)[0m Killing process: 1034 for actor rank 2
+2021-03-30 04:53:38,397	WARNING worker.py:1083 -- A worker died or was killed while executing task ffffffffffffffff5d2f1e6bffbed9e5f8e2546d02000000.
+2021-03-30 04:53:38,404	INFO elastic.py:155 -- Actor status: 3 alive, 1 dead (4 total)
+2021-03-30 04:53:43,416	WARNING main.py:1240 -- A Ray actor died during training. Trying to restart and continue training from last checkpoint (restart 1 of 2). This will use 3 existing actors and start 1 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:53:53,440	INFO main.py:791 -- [RayXGBoost] Created 1 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:53:54,754	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1359)[0m [04:53:54] task [xgboost.ray]:140021277401168 got new rank 0
+[2m[36m(pid=1037, ip=172.31.24.146)[0m [04:53:54] task [xgboost.ray]:140640497463440 got new rank 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [04:53:54] task [xgboost.ray]:139834298175120 got new rank 1
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1033, ip=172.31.4.145)[0m [04:53:54] task [xgboost.ray]:139889296592976 got new rank 3
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 16
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 17
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 18
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 19
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 20
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 21
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 22
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 23
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 24
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 25
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 26
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 27
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 28
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 29
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 30
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 31
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 32
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 33
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 34
+[2m[36m(pid=1359)[0m Killing process: 1359 for actor rank 0
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 35
+2021-03-30 04:54:07,548	WARNING worker.py:1083 -- A worker died or was killed while executing task ffffffffffffffff4dfe00fae3c789b5f6b93e0202000000.
+2021-03-30 04:54:07,571	INFO elastic.py:155 -- Actor status: 3 alive, 1 dead (4 total)
+2021-03-30 04:54:12,574	WARNING main.py:1240 -- A Ray actor died during training. Trying to restart and continue training from last checkpoint (restart 2 of 2). This will use 3 existing actors and start 1 new actors. Sleeping for 10 seconds for cleanup.
+2021-03-30 04:54:22,596	INFO main.py:791 -- [RayXGBoost] Created 1 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:24,410	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [04:54:24] task [xgboost.ray]:139834298175120 got new rank 1
+[2m[36m(pid=1033, ip=172.31.4.145)[0m [04:54:24] task [xgboost.ray]:139889296592976 got new rank 3
+[2m[36m(pid=1652)[0m [04:54:24] task [xgboost.ray]:139882822636752 got new rank 0
+[2m[36m(pid=1037, ip=172.31.24.146)[0m [04:54:24] task [xgboost.ray]:140640497463440 got new rank 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 0
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 1
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 2
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 3
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 4
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 5
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 6
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 7
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 8
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 9
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 10
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 11
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 12
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 13
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 14
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 15
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 16
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 17
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 18
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 19
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 20
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 21
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 22
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 23
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 24
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 25
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 26
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 27
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 28
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 29
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 30
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 31
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 32
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 33
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 34
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 35
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 36
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 37
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 38
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 39
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 40
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 41
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 42
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 43
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 44
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 45
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 46
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 47
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 48
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 49
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 50
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 51
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 52
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 53
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 54
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 55
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 56
+[2m[36m(pid=1037, ip=172.31.19.180)[0m [Rank 3] I am at iteration 57
+2021-03-30 04:54:43,626	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=2,000,000 in 74.89 seconds (49.43 pure XGBoost training time).
+TRAIN TIME TAKEN: 74.91 seconds
+Final training error: 0.4193
+PASSED.
+
+Script done on 2021-03-30 04:54:44-07:00 [COMMAND_EXIT_CODE="0"]

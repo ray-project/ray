@@ -1,0 +1,3054 @@
+Script started on 2021-03-30 04:50:41-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:42,212	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.11.100:6379
+Waiting for more nodes to come up: 0/32 (0 seconds passed)
+Waiting for more nodes to come up: 1/32 (10 seconds passed)
+Waiting for more nodes to come up: 1/32 (20 seconds passed)
+Waiting for more nodes to come up: 1/32 (30 seconds passed)
+Waiting for more nodes to come up: 1/32 (40 seconds passed)
+Waiting for more nodes to come up: 1/32 (50 seconds passed)
+Waiting for more nodes to come up: 1/32 (60 seconds passed)
+Waiting for more nodes to come up: 1/32 (70 seconds passed)
+Waiting for more nodes to come up: 1/32 (80 seconds passed)
+Waiting for more nodes to come up: 1/32 (90 seconds passed)
+Waiting for more nodes to come up: 1/32 (100 seconds passed)
+Waiting for more nodes to come up: 1/32 (110 seconds passed)
+Waiting for more nodes to come up: 1/32 (120 seconds passed)
+Waiting for more nodes to come up: 5/32 (130 seconds passed)
+Waiting for more nodes to come up: 5/32 (140 seconds passed)
+Waiting for more nodes to come up: 5/32 (150 seconds passed)
+Waiting for more nodes to come up: 11/32 (160 seconds passed)
+Waiting for more nodes to come up: 27/32 (170 seconds passed)
+Waiting for more nodes to come up: 28/32 (180 seconds passed)
+Waiting for more nodes to come up: 28/32 (190 seconds passed)
+Waiting for more nodes to come up: 31/32 (200 seconds passed)
+Cluster is up: 32/32 nodes online after 205 seconds
+2021-03-30 04:54:08,661	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.11.100:6379
+2021-03-30 04:54:08,704	WARNING function_runner.py:545 -- Function checkpointing is disabled. This may result in unexpected behavior when using checkpointing features or certain schedulers. To enable, set the train function arguments to be `func(config, checkpoint_dir=None)`.
+2021-03-30 04:54:08,939	WARNING trial.py:347 -- Passing `extra_*` resource requirements to `resources_per_trial` is deprecated. Please use a `PlacementGroupFactory` object to define your resource requirements instead.
+== Status ==
+Memory usage on this node: 1.3/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 5/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (31 PENDING, 1 RUNNING)
++---------------------------+----------+-------+-------------+-------------+-------------+
+| Trial name                | status   | loc   |         eta |   max_depth |   subsample |
+|---------------------------+----------+-------+-------------+-------------+-------------|
+| train_wrapper_a2aed_00000 | RUNNING  |       | 0.00454648  |           5 |    0.903957 |
+| train_wrapper_a2aed_00001 | PENDING  |       | 0.00737698  |           1 |    0.876937 |
+| train_wrapper_a2aed_00002 | PENDING  |       | 0.0319654   |           5 |    0.906936 |
+| train_wrapper_a2aed_00003 | PENDING  |       | 0.000706749 |           8 |    0.600479 |
+| train_wrapper_a2aed_00004 | PENDING  |       | 0.0441172   |           5 |    0.612182 |
+| train_wrapper_a2aed_00005 | PENDING  |       | 0.000160406 |           5 |    0.813173 |
+| train_wrapper_a2aed_00006 | PENDING  |       | 0.000397038 |           1 |    0.599266 |
+| train_wrapper_a2aed_00007 | PENDING  |       | 0.00765867  |           2 |    0.95363  |
+| train_wrapper_a2aed_00008 | PENDING  |       | 0.000969519 |           8 |    0.947184 |
+| train_wrapper_a2aed_00009 | PENDING  |       | 0.0112884   |           2 |    0.606444 |
+| train_wrapper_a2aed_00010 | PENDING  |       | 0.00726145  |           7 |    0.627432 |
+| train_wrapper_a2aed_00011 | PENDING  |       | 0.000438104 |           8 |    0.742981 |
+| train_wrapper_a2aed_00012 | PENDING  |       | 0.000198551 |           6 |    0.724026 |
+| train_wrapper_a2aed_00013 | PENDING  |       | 0.000110195 |           3 |    0.638028 |
+| train_wrapper_a2aed_00014 | PENDING  |       | 0.0851576   |           6 |    0.608135 |
+| train_wrapper_a2aed_00015 | PENDING  |       | 0.000103142 |           2 |    0.925168 |
+| train_wrapper_a2aed_00016 | PENDING  |       | 0.000221438 |           2 |    0.907066 |
+| train_wrapper_a2aed_00017 | PENDING  |       | 0.000761954 |           7 |    0.927148 |
+| train_wrapper_a2aed_00018 | PENDING  |       | 0.007926    |           3 |    0.831667 |
+| train_wrapper_a2aed_00019 | PENDING  |       | 0.000172714 |           4 |    0.655181 |
++---------------------------+----------+-------+-------------+-------------+-------------+
+... 12 more trials not shown (12 PENDING)
+
+
+[2m[36m(pid=1040, ip=172.31.17.189)[0m 2021-03-30 04:54:10,943	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1377)[0m 2021-03-30 04:54:11,007	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1378)[0m 2021-03-30 04:54:11,123	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1373)[0m 2021-03-30 04:54:11,158	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1375)[0m 2021-03-30 04:54:11,236	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:11,356	WARNING worker.py:1083 -- WARNING: 13 PYTHON workers have been started on a node of the id: b6d03262534b93a55ff9296fbde3ce12350da6d3fb4a6f3bbbedd603 and address: 172.31.11.100. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+[2m[36m(pid=1041, ip=172.31.23.116)[0m 2021-03-30 04:54:11,361	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1042, ip=172.31.23.116)[0m 2021-03-30 04:54:11,362	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1041, ip=172.31.1.179)[0m 2021-03-30 04:54:11,415	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:11,437	WARNING worker.py:1083 -- WARNING: 12 PYTHON workers have been started on a node of the id: 19cfc5f1773b93328c73f374ce78ba4273dad31b914c77f946206e53 and address: 172.31.23.116. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+2021-03-30 04:54:11,459	WARNING worker.py:1083 -- WARNING: 12 PYTHON workers have been started on a node of the id: 6d65bf594a31897681866fa80ef66ec9dd0e423fb09a7b4e301138d8 and address: 172.31.1.179. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+2021-03-30 04:54:11,501	WARNING worker.py:1083 -- WARNING: 12 PYTHON workers have been started on a node of the id: 9b67de3a8a3d22e462f03ae15bf99f79d7660f4cdb303124474104e5 and address: 172.31.4.133. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+[2m[36m(pid=1039, ip=172.31.23.116)[0m 2021-03-30 04:54:11,487	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1049, ip=172.31.13.77)[0m 2021-03-30 04:54:11,498	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1041, ip=172.31.18.77)[0m 2021-03-30 04:54:11,527	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:11,563	WARNING worker.py:1083 -- WARNING: 12 PYTHON workers have been started on a node of the id: e0e3ee86a54b9a7706c0a79e9f716395608c78780dbd6f4ea0b4e80e and address: 172.31.13.77. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+2021-03-30 04:54:11,604	WARNING worker.py:1083 -- WARNING: 13 PYTHON workers have been started on a node of the id: e0a47827958f1d610caf31008e6ebf38b62fe969839dce48eca2a5b8 and address: 172.31.18.77. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+[2m[36m(pid=1040, ip=172.31.4.133)[0m 2021-03-30 04:54:11,607	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1040, ip=172.31.18.77)[0m 2021-03-30 04:54:11,746	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1039, ip=172.31.18.77)[0m 2021-03-30 04:54:11,746	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1042, ip=172.31.18.77)[0m 2021-03-30 04:54:11,751	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1042, ip=172.31.4.133)[0m 2021-03-30 04:54:11,770	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1039, ip=172.31.1.179)[0m 2021-03-30 04:54:11,746	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1046, ip=172.31.13.77)[0m 2021-03-30 04:54:11,746	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1048, ip=172.31.13.77)[0m 2021-03-30 04:54:11,787	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1042, ip=172.31.1.179)[0m 2021-03-30 04:54:11,802	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1040, ip=172.31.23.116)[0m 2021-03-30 04:54:11,841	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1039, ip=172.31.4.133)[0m 2021-03-30 04:54:11,834	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1040, ip=172.31.1.179)[0m 2021-03-30 04:54:11,882	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1047, ip=172.31.13.77)[0m 2021-03-30 04:54:11,858	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1041, ip=172.31.4.133)[0m 2021-03-30 04:54:11,969	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1040, ip=172.31.17.189)[0m 2021-03-30 04:54:12,655	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1377)[0m 2021-03-30 04:54:12,647	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1378)[0m 2021-03-30 04:54:12,658	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1041, ip=172.31.6.15)[0m [04:54:12] task [xgboost.ray]:140113336663632 got new rank 0
+[2m[36m(pid=1044, ip=172.31.6.15)[0m [04:54:12] task [xgboost.ray]:139651820400208 got new rank 1
+[2m[36m(pid=1045, ip=172.31.6.15)[0m [04:54:12] task [xgboost.ray]:140717575171472 got new rank 3
+[2m[36m(pid=1046, ip=172.31.6.15)[0m [04:54:12] task [xgboost.ray]:140657421491792 got new rank 2
+[2m[36m(pid=1041, ip=172.31.7.244)[0m [04:54:12] task [xgboost.ray]:139896225136208 got new rank 0
+[2m[36m(pid=1044, ip=172.31.7.244)[0m [04:54:12] task [xgboost.ray]:140099482134352 got new rank 1
+[2m[36m(pid=1045, ip=172.31.7.244)[0m [04:54:12] task [xgboost.ray]:140184257798416 got new rank 3
+[2m[36m(pid=1046, ip=172.31.7.244)[0m [04:54:12] task [xgboost.ray]:140302968421968 got new rank 2
+[2m[36m(pid=1037, ip=172.31.17.229)[0m [04:54:12] task [xgboost.ray]:140094949798096 got new rank 0
+[2m[36m(pid=1040, ip=172.31.17.229)[0m [04:54:12] task [xgboost.ray]:140229080288912 got new rank 2
+[2m[36m(pid=1041, ip=172.31.17.229)[0m [04:54:12] task [xgboost.ray]:140160607800912 got new rank 1
+[2m[36m(pid=1042, ip=172.31.17.229)[0m [04:54:12] task [xgboost.ray]:139973033102992 got new rank 3
+[2m[36m(pid=1375)[0m 2021-03-30 04:54:12,762	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1031, ip=172.31.30.16)[0m [04:54:12] task [xgboost.ray]:140052925869648 got new rank 0
+[2m[36m(pid=1035, ip=172.31.30.16)[0m [04:54:12] task [xgboost.ray]:140117289647696 got new rank 1
+[2m[36m(pid=1034, ip=172.31.30.16)[0m [04:54:12] task [xgboost.ray]:140260020457232 got new rank 3
+[2m[36m(pid=1036, ip=172.31.30.16)[0m [04:54:12] task [xgboost.ray]:140529309621840 got new rank 2
+[2m[36m(pid=1039, ip=172.31.16.51)[0m [04:54:12] task [xgboost.ray]:140162954085072 got new rank 0
+[2m[36m(pid=1043, ip=172.31.16.51)[0m [04:54:12] task [xgboost.ray]:140434850524752 got new rank 1
+[2m[36m(pid=1042, ip=172.31.16.51)[0m [04:54:12] task [xgboost.ray]:140096082751056 got new rank 2
+[2m[36m(pid=1044, ip=172.31.16.51)[0m [04:54:12] task [xgboost.ray]:140029176467536 got new rank 3
+[2m[36m(pid=1373)[0m 2021-03-30 04:54:12,782	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1041, ip=172.31.1.179)[0m 2021-03-30 04:54:12,928	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1041, ip=172.31.30.62)[0m [04:54:12] task [xgboost.ray]:140588231003728 got new rank 0
+[2m[36m(pid=1045, ip=172.31.30.62)[0m [04:54:12] task [xgboost.ray]:140084880973712 got new rank 1
+[2m[36m(pid=1046, ip=172.31.30.62)[0m [04:54:12] task [xgboost.ray]:139661025742288 got new rank 2
+[2m[36m(pid=1044, ip=172.31.30.62)[0m [04:54:12] task [xgboost.ray]:140120312946832 got new rank 3
+[2m[36m(pid=1034, ip=172.31.8.136)[0m [04:54:12] task [xgboost.ray]:140209592024656 got new rank 0
+[2m[36m(pid=1039, ip=172.31.8.136)[0m [04:54:12] task [xgboost.ray]:140391197957712 got new rank 1
+[2m[36m(pid=1038, ip=172.31.8.136)[0m [04:54:12] task [xgboost.ray]:140375594840144 got new rank 2
+[2m[36m(pid=1037, ip=172.31.8.136)[0m [04:54:12] task [xgboost.ray]:139904599669200 got new rank 3
+[2m[36m(pid=1041, ip=172.31.23.116)[0m 2021-03-30 04:54:12,975	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1042, ip=172.31.23.116)[0m 2021-03-30 04:54:12,985	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1040, ip=172.31.4.133)[0m 2021-03-30 04:54:13,021	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1040, ip=172.31.18.4)[0m [04:54:12] task [xgboost.ray]:139648726414800 got new rank 0
+[2m[36m(pid=1045, ip=172.31.18.4)[0m [04:54:12] task [xgboost.ray]:140523062951504 got new rank 1
+[2m[36m(pid=1043, ip=172.31.18.4)[0m [04:54:12] task [xgboost.ray]:140323598605712 got new rank 2
+[2m[36m(pid=1044, ip=172.31.18.4)[0m [04:54:12] task [xgboost.ray]:139886066400848 got new rank 3
+[2m[36m(pid=1040, ip=172.31.21.131)[0m [04:54:13] task [xgboost.ray]:139774229022864 got new rank 0
+[2m[36m(pid=1043, ip=172.31.21.131)[0m [04:54:13] task [xgboost.ray]:140513068936848 got new rank 2
+[2m[36m(pid=1044, ip=172.31.21.131)[0m [04:54:13] task [xgboost.ray]:140391264931472 got new rank 1
+[2m[36m(pid=1045, ip=172.31.21.131)[0m [04:54:13] task [xgboost.ray]:140530288760976 got new rank 3
+[2m[36m(pid=1049, ip=172.31.13.77)[0m 2021-03-30 04:54:13,116	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1038, ip=172.31.13.250)[0m [04:54:13] task [xgboost.ray]:140079888823888 got new rank 0
+[2m[36m(pid=1042, ip=172.31.13.250)[0m [04:54:13] task [xgboost.ray]:139960169255632 got new rank 3
+[2m[36m(pid=1041, ip=172.31.13.250)[0m [04:54:13] task [xgboost.ray]:140273598016080 got new rank 1
+[2m[36m(pid=1043, ip=172.31.13.250)[0m [04:54:13] task [xgboost.ray]:139817815915216 got new rank 2
+[2m[36m(pid=1042, ip=172.31.3.14)[0m [04:54:13] task [xgboost.ray]:139886450556496 got new rank 0
+[2m[36m(pid=1046, ip=172.31.3.14)[0m [04:54:13] task [xgboost.ray]:139831969742480 got new rank 1
+[2m[36m(pid=1045, ip=172.31.3.14)[0m [04:54:13] task [xgboost.ray]:140460234350992 got new rank 2
+[2m[36m(pid=1047, ip=172.31.3.14)[0m [04:54:13] task [xgboost.ray]:140473226190416 got new rank 3
+[2m[36m(pid=1040, ip=172.31.18.77)[0m 2021-03-30 04:54:13,160	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1039, ip=172.31.23.116)[0m 2021-03-30 04:54:13,204	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1039, ip=172.31.9.218)[0m [04:54:13] task [xgboost.ray]:139639891213904 got new rank 0
+[2m[36m(pid=1042, ip=172.31.9.218)[0m [04:54:13] task [xgboost.ray]:140199766658320 got new rank 2
+[2m[36m(pid=1043, ip=172.31.9.218)[0m [04:54:13] task [xgboost.ray]:139621149655376 got new rank 3
+[2m[36m(pid=1044, ip=172.31.9.218)[0m [04:54:13] task [xgboost.ray]:140563421856016 got new rank 1
+[2m[36m(pid=1041, ip=172.31.18.77)[0m 2021-03-30 04:54:13,245	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1048, ip=172.31.13.77)[0m 2021-03-30 04:54:13,208	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1047, ip=172.31.15.115)[0m [04:54:13] task [xgboost.ray]:140473494765200 got new rank 1
+[2m[36m(pid=1052, ip=172.31.15.115)[0m [04:54:13] task [xgboost.ray]:140038592596880 got new rank 0
+[2m[36m(pid=1050, ip=172.31.15.115)[0m [04:54:13] task [xgboost.ray]:140051719954832 got new rank 3
+[2m[36m(pid=1051, ip=172.31.15.115)[0m [04:54:13] task [xgboost.ray]:140636756996560 got new rank 2
+[2m[36m(pid=1039, ip=172.31.1.179)[0m 2021-03-30 04:54:13,261	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1038, ip=172.31.12.135)[0m [04:54:13] task [xgboost.ray]:140622631063376 got new rank 0
+[2m[36m(pid=1043, ip=172.31.12.135)[0m [04:54:13] task [xgboost.ray]:140264559240912 got new rank 1
+[2m[36m(pid=1041, ip=172.31.12.135)[0m [04:54:13] task [xgboost.ray]:139959432679312 got new rank 2
+[2m[36m(pid=1038, ip=172.31.29.0)[0m [04:54:13] task [xgboost.ray]:140058945296272 got new rank 1
+[2m[36m(pid=1042, ip=172.31.12.135)[0m [04:54:13] task [xgboost.ray]:139889776500368 got new rank 3
+[2m[36m(pid=1041, ip=172.31.29.0)[0m [04:54:13] task [xgboost.ray]:139827121544784 got new rank 0
+[2m[36m(pid=1042, ip=172.31.29.0)[0m [04:54:13] task [xgboost.ray]:140604762803600 got new rank 3
+[2m[36m(pid=1043, ip=172.31.29.0)[0m [04:54:13] task [xgboost.ray]:140065530554640 got new rank 2
+[2m[36m(pid=1041, ip=172.31.1.116)[0m [04:54:13] task [xgboost.ray]:140335573020624 got new rank 0
+[2m[36m(pid=1048, ip=172.31.26.187)[0m [04:54:13] task [xgboost.ray]:139817040990416 got new rank 0
+[2m[36m(pid=1046, ip=172.31.1.116)[0m [04:54:13] task [xgboost.ray]:139993622282448 got new rank 1
+[2m[36m(pid=1045, ip=172.31.1.116)[0m [04:54:13] task [xgboost.ray]:139932708261456 got new rank 2
+[2m[36m(pid=1044, ip=172.31.1.116)[0m [04:54:13] task [xgboost.ray]:140642631843408 got new rank 3
+[2m[36m(pid=1052, ip=172.31.26.187)[0m [04:54:13] task [xgboost.ray]:139715313639632 got new rank 1
+[2m[36m(pid=1051, ip=172.31.26.187)[0m [04:54:13] task [xgboost.ray]:139828714049168 got new rank 2
+[2m[36m(pid=1053, ip=172.31.26.187)[0m [04:54:13] task [xgboost.ray]:139737704239760 got new rank 3
+[2m[36m(pid=1046, ip=172.31.13.77)[0m 2021-03-30 04:54:13,261	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1039, ip=172.31.18.77)[0m 2021-03-30 04:54:13,261	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1042, ip=172.31.18.77)[0m 2021-03-30 04:54:13,264	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1041, ip=172.31.9.70)[0m [04:54:13] task [xgboost.ray]:139745085454800 got new rank 1
+[2m[36m(pid=1046, ip=172.31.9.70)[0m [04:54:13] task [xgboost.ray]:140548704005712 got new rank 0
+[2m[36m(pid=1044, ip=172.31.9.70)[0m [04:54:13] task [xgboost.ray]:139655116873296 got new rank 2
+[2m[36m(pid=1045, ip=172.31.9.70)[0m [04:54:13] task [xgboost.ray]:140046976111504 got new rank 3
+[2m[36m(pid=1039, ip=172.31.28.73)[0m [04:54:13] task [xgboost.ray]:139703865886288 got new rank 1
+[2m[36m(pid=1044, ip=172.31.28.73)[0m [04:54:13] task [xgboost.ray]:139768261381712 got new rank 0
+[2m[36m(pid=1042, ip=172.31.28.73)[0m [04:54:13] task [xgboost.ray]:139980599341520 got new rank 3
+[2m[36m(pid=1043, ip=172.31.28.73)[0m [04:54:13] task [xgboost.ray]:139774903340432 got new rank 2
+[2m[36m(pid=1042, ip=172.31.4.133)[0m 2021-03-30 04:54:13,294	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1037, ip=172.31.4.47)[0m [04:54:13] task [xgboost.ray]:140468020458960 got new rank 0
+[2m[36m(pid=1042, ip=172.31.4.47)[0m [04:54:13] task [xgboost.ray]:140537735777552 got new rank 1
+[2m[36m(pid=1041, ip=172.31.4.47)[0m [04:54:13] task [xgboost.ray]:140568189607504 got new rank 2
+[2m[36m(pid=1040, ip=172.31.4.47)[0m [04:54:13] task [xgboost.ray]:140432399043984 got new rank 3
+[2m[36m(pid=1040, ip=172.31.1.179)[0m 2021-03-30 04:54:13,295	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1041, ip=172.31.13.10)[0m [04:54:13] task [xgboost.ray]:140387746802000 got new rank 0
+[2m[36m(pid=1046, ip=172.31.13.10)[0m [04:54:13] task [xgboost.ray]:140401000943184 got new rank 1
+[2m[36m(pid=1045, ip=172.31.13.10)[0m [04:54:13] task [xgboost.ray]:140276594597456 got new rank 2
+[2m[36m(pid=1044, ip=172.31.13.10)[0m [04:54:13] task [xgboost.ray]:140704414658832 got new rank 3
+[2m[36m(pid=1040, ip=172.31.23.116)[0m 2021-03-30 04:54:13,356	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1031, ip=172.31.24.201)[0m [04:54:13] task [xgboost.ray]:139642794655376 got new rank 1
+[2m[36m(pid=1035, ip=172.31.24.201)[0m [04:54:13] task [xgboost.ray]:140545041253520 got new rank 0
+[2m[36m(pid=1034, ip=172.31.24.201)[0m [04:54:13] task [xgboost.ray]:140058836012688 got new rank 2
+[2m[36m(pid=1036, ip=172.31.24.201)[0m [04:54:13] task [xgboost.ray]:139662106672784 got new rank 3
+[2m[36m(pid=1039, ip=172.31.4.133)[0m 2021-03-30 04:54:13,349	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1047, ip=172.31.13.77)[0m 2021-03-30 04:54:13,373	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1039, ip=172.31.27.86)[0m [04:54:13] task [xgboost.ray]:140333306749456 got new rank 1
+[2m[36m(pid=1044, ip=172.31.27.86)[0m [04:54:13] task [xgboost.ray]:139727968099920 got new rank 0
+[2m[36m(pid=1042, ip=172.31.27.86)[0m [04:54:13] task [xgboost.ray]:139773454066832 got new rank 2
+[2m[36m(pid=1043, ip=172.31.27.86)[0m [04:54:13] task [xgboost.ray]:140069818189072 got new rank 3
+[2m[36m(pid=1041, ip=172.31.4.133)[0m 2021-03-30 04:54:13,482	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1029, ip=172.31.7.143)[0m [04:54:13] task [xgboost.ray]:139917082417104 got new rank 1
+[2m[36m(pid=1034, ip=172.31.7.143)[0m [04:54:13] task [xgboost.ray]:140263180885712 got new rank 0
+[2m[36m(pid=1033, ip=172.31.7.143)[0m [04:54:13] task [xgboost.ray]:140345606082128 got new rank 2
+[2m[36m(pid=1032, ip=172.31.7.143)[0m [04:54:13] task [xgboost.ray]:140118698741968 got new rank 3
+[2m[36m(pid=1042, ip=172.31.1.179)[0m 2021-03-30 04:54:13,719	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1046, ip=172.31.23.144)[0m [04:54:13] task [xgboost.ray]:139834138564560 got new rank 2
+[2m[36m(pid=1050, ip=172.31.23.144)[0m [04:54:13] task [xgboost.ray]:140231968513616 got new rank 0
+[2m[36m(pid=1049, ip=172.31.23.144)[0m [04:54:13] task [xgboost.ray]:140093004456016 got new rank 1
+[2m[36m(pid=1051, ip=172.31.23.144)[0m [04:54:13] task [xgboost.ray]:140608033719056 got new rank 3
+Result for train_wrapper_a2aed_00024:
+  date: 2021-03-30_04-54-14
+  done: false
+  experiment_id: 89ce6d3a471947a3bfc4c6f8b0e017da
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 1
+  node_ip: 172.31.17.189
+  pid: 1040
+  time_since_restore: 4.246049165725708
+  time_this_iter_s: 4.246049165725708
+  time_total_s: 4.246049165725708
+  timestamp: 1617105254
+  timesteps_since_restore: 0
+  train-error: 0.498037
+  train-logloss: 0.693572
+  training_iteration: 1
+  trial_id: a2aed_00024
+
+2021-03-30 04:54:14,934	INFO commands.py:299 -- Checking External environment settings
+2021-03-30 04:54:15,007	WARN commands.py:307 -- Failed to autodetect node resources: 'EC2' object has no attribute 'describe_instance_types'. You can see full stack trace with higher verbosity.
+2021-03-30 04:54:15,749	INFO command_runner.py:357 -- Fetched IP: 172.31.17.189
+2021-03-30 04:54:15,749	INFO log_timer.py:27 -- NodeUpdater: ins_3LaZaOk9JieK6uhKmQuI97: Got IP  [LogTimer=18ms]
+== Status ==
+Memory usage on this node: 2.3/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 125/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (7 PENDING, 25 RUNNING)
++---------------------------+----------+-------+-------------+-------------+-------------+
+| Trial name                | status   | loc   |         eta |   max_depth |   subsample |
+|---------------------------+----------+-------+-------------+-------------+-------------|
+| train_wrapper_a2aed_00000 | RUNNING  |       | 0.00454648  |           5 |    0.903957 |
+| train_wrapper_a2aed_00001 | RUNNING  |       | 0.00737698  |           1 |    0.876937 |
+| train_wrapper_a2aed_00002 | RUNNING  |       | 0.0319654   |           5 |    0.906936 |
+| train_wrapper_a2aed_00003 | RUNNING  |       | 0.000706749 |           8 |    0.600479 |
+| train_wrapper_a2aed_00004 | RUNNING  |       | 0.0441172   |           5 |    0.612182 |
+| train_wrapper_a2aed_00005 | RUNNING  |       | 0.000160406 |           5 |    0.813173 |
+| train_wrapper_a2aed_00006 | RUNNING  |       | 0.000397038 |           1 |    0.599266 |
+| train_wrapper_a2aed_00007 | RUNNING  |       | 0.00765867  |           2 |    0.95363  |
+| train_wrapper_a2aed_00008 | RUNNING  |       | 0.000969519 |           8 |    0.947184 |
+| train_wrapper_a2aed_00009 | RUNNING  |       | 0.0112884   |           2 |    0.606444 |
+| train_wrapper_a2aed_00010 | RUNNING  |       | 0.00726145  |           7 |    0.627432 |
+| train_wrapper_a2aed_00011 | RUNNING  |       | 0.000438104 |           8 |    0.742981 |
+| train_wrapper_a2aed_00012 | RUNNING  |       | 0.000198551 |           6 |    0.724026 |
+| train_wrapper_a2aed_00025 | PENDING  |       | 0.0301846   |           5 |    0.518175 |
+| train_wrapper_a2aed_00026 | PENDING  |       | 0.00191935  |           2 |    0.740473 |
+| train_wrapper_a2aed_00027 | PENDING  |       | 0.00115008  |           8 |    0.702185 |
+| train_wrapper_a2aed_00028 | PENDING  |       | 0.000174292 |           8 |    0.585644 |
+| train_wrapper_a2aed_00029 | PENDING  |       | 0.000253651 |           8 |    0.971535 |
+| train_wrapper_a2aed_00030 | PENDING  |       | 0.000413595 |           2 |    0.776102 |
+| train_wrapper_a2aed_00031 | PENDING  |       | 0.0449083   |           3 |    0.837282 |
++---------------------------+----------+-------+-------------+-------------+-------------+
+... 12 more trials not shown (12 RUNNING)
+
+
+Result for train_wrapper_a2aed_00020:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 238f674d3435467e97fec3f12b947d3f
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 1
+  node_ip: 172.31.18.77
+  pid: 1040
+  time_since_restore: 4.392072439193726
+  time_this_iter_s: 4.392072439193726
+  time_total_s: 4.392072439193726
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.496566
+  train-logloss: 0.693626
+  training_iteration: 1
+  trial_id: a2aed_00020
+
+2021-03-30 04:54:16,521	WARN commands.py:275 -- Loaded cached provider configuration
+2021-03-30 04:54:16,521	WARN commands.py:279 -- If you experience issues with the cloud provider, try re-running the command with --no-config-cache.
+2021-03-30 04:54:16,759	INFO command_runner.py:357 -- Fetched IP: 172.31.18.77
+2021-03-30 04:54:16,759	INFO log_timer.py:27 -- NodeUpdater: ins_28CvlGZMY4SQgKhxnVpIUi: Got IP  [LogTimer=17ms]
+Result for train_wrapper_a2aed_00019:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 25e3f1804afd4bffbfa95a807809e6dd
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 1
+  node_ip: 172.31.13.77
+  pid: 1047
+  time_since_restore: 4.589526891708374
+  time_this_iter_s: 4.589526891708374
+  time_total_s: 4.589526891708374
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.4976
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00019
+
+2021-03-30 04:54:17,808	INFO command_runner.py:357 -- Fetched IP: 172.31.13.77
+2021-03-30 04:54:17,808	INFO log_timer.py:27 -- NodeUpdater: ins_2KT2OzGZGuSpQSTO0WEz2h: Got IP  [LogTimer=19ms]
+Result for train_wrapper_a2aed_00013:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 26133057b76643a8915767a322d15e56
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1039
+  time_since_restore: 4.496143102645874
+  time_this_iter_s: 4.496143102645874
+  time_total_s: 4.496143102645874
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.498377
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00013
+
+2021-03-30 04:54:18,885	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:18,885	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=18ms]
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 1
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 5.048377513885498
+  time_this_iter_s: 5.048377513885498
+  time_total_s: 5.048377513885498
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.493116
+  train-logloss: 0.693573
+  training_iteration: 1
+  trial_id: a2aed_00003
+
+Result for train_wrapper_a2aed_00015:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 303887f6817e4410aa62e78f317592b7
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1042
+  time_since_restore: 4.413149833679199
+  time_this_iter_s: 4.413149833679199
+  time_total_s: 4.413149833679199
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.498108
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00015
+
+2021-03-30 04:54:19,984	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:19,984	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=24ms]
+Result for train_wrapper_a2aed_00010:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 0f17e5c5d1d94aa1abc7da6c29a3e150
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 1
+  node_ip: 172.31.4.133
+  pid: 1039
+  time_since_restore: 4.778377056121826
+  time_this_iter_s: 4.778377056121826
+  time_total_s: 4.778377056121826
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.492706
+  train-logloss: 0.693703
+  training_iteration: 1
+  trial_id: a2aed_00010
+
+2021-03-30 04:54:20,548	INFO command_runner.py:357 -- Fetched IP: 172.31.4.133
+2021-03-30 04:54:20,549	INFO log_timer.py:27 -- NodeUpdater: ins_4M2aTe0j6sdJE2SkkJKIXq: Got IP  [LogTimer=16ms]
+Result for train_wrapper_a2aed_00001:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 58cf8ec042034a2f9fc5f35768c8ee2d
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 1
+  node_ip: 172.31.11.100
+  pid: 1373
+  time_since_restore: 4.845046758651733
+  time_this_iter_s: 4.845046758651733
+  time_total_s: 4.845046758651733
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.500577
+  train-logloss: 0.693572
+  training_iteration: 1
+  trial_id: a2aed_00001
+
+Result for train_wrapper_a2aed_00014:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 05e37b704cb142f497377de0c6abd9bf
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1041
+  time_since_restore: 4.457193374633789
+  time_this_iter_s: 4.457193374633789
+  time_total_s: 4.457193374633789
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.495336
+  train-logloss: 0.693416
+  training_iteration: 1
+  trial_id: a2aed_00014
+
+2021-03-30 04:54:21,669	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:21,669	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=29ms]
+== Status ==
+Memory usage on this node: 2.4/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 125/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (7 PENDING, 25 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | RUNNING  |                    | 0.00454648  |           5 |    0.903957 |        |                  |                 |               |
+| train_wrapper_a2aed_00001 | RUNNING  | 172.31.11.100:1373 | 0.00737698  |           1 |    0.876937 |      1 |          4.84505 |        0.693572 |      0.500577 |
+| train_wrapper_a2aed_00002 | RUNNING  |                    | 0.0319654   |           5 |    0.906936 |        |                  |                 |               |
+| train_wrapper_a2aed_00003 | RUNNING  | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |      1 |          5.04838 |        0.693573 |      0.493116 |
+| train_wrapper_a2aed_00004 | RUNNING  |                    | 0.0441172   |           5 |    0.612182 |        |                  |                 |               |
+| train_wrapper_a2aed_00005 | RUNNING  |                    | 0.000160406 |           5 |    0.813173 |        |                  |                 |               |
+| train_wrapper_a2aed_00006 | RUNNING  |                    | 0.000397038 |           1 |    0.599266 |        |                  |                 |               |
+| train_wrapper_a2aed_00007 | RUNNING  |                    | 0.00765867  |           2 |    0.95363  |        |                  |                 |               |
+| train_wrapper_a2aed_00008 | RUNNING  |                    | 0.000969519 |           8 |    0.947184 |        |                  |                 |               |
+| train_wrapper_a2aed_00009 | RUNNING  |                    | 0.0112884   |           2 |    0.606444 |        |                  |                 |               |
+| train_wrapper_a2aed_00010 | RUNNING  | 172.31.4.133:1039  | 0.00726145  |           7 |    0.627432 |      1 |          4.77838 |        0.693703 |      0.492706 |
+| train_wrapper_a2aed_00011 | RUNNING  |                    | 0.000438104 |           8 |    0.742981 |        |                  |                 |               |
+| train_wrapper_a2aed_00012 | RUNNING  |                    | 0.000198551 |           6 |    0.724026 |        |                  |                 |               |
+| train_wrapper_a2aed_00025 | PENDING  |                    | 0.0301846   |           5 |    0.518175 |        |                  |                 |               |
+| train_wrapper_a2aed_00026 | PENDING  |                    | 0.00191935  |           2 |    0.740473 |        |                  |                 |               |
+| train_wrapper_a2aed_00027 | PENDING  |                    | 0.00115008  |           8 |    0.702185 |        |                  |                 |               |
+| train_wrapper_a2aed_00028 | PENDING  |                    | 0.000174292 |           8 |    0.585644 |        |                  |                 |               |
+| train_wrapper_a2aed_00029 | PENDING  |                    | 0.000253651 |           8 |    0.971535 |        |                  |                 |               |
+| train_wrapper_a2aed_00030 | PENDING  |                    | 0.000413595 |           2 |    0.776102 |        |                  |                 |               |
+| train_wrapper_a2aed_00031 | PENDING  |                    | 0.0449083   |           3 |    0.837282 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 RUNNING)
+
+
+Result for train_wrapper_a2aed_00000:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: de6405cc61cb480aa97c84cbef5ce876
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 1
+  node_ip: 172.31.11.100
+  pid: 1377
+  time_since_restore: 5.077520370483398
+  time_this_iter_s: 5.077520370483398
+  time_total_s: 5.077520370483398
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.494958
+  train-logloss: 0.69359
+  training_iteration: 1
+  trial_id: a2aed_00000
+
+Result for train_wrapper_a2aed_00022:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 3d831b2683a64ac8a9c56e5ba80a1568
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 1
+  node_ip: 172.31.18.77
+  pid: 1042
+  time_since_restore: 4.7276694774627686
+  time_this_iter_s: 4.7276694774627686
+  time_total_s: 4.7276694774627686
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.494561
+  train-logloss: 0.693576
+  training_iteration: 1
+  trial_id: a2aed_00022
+
+2021-03-30 04:54:22,285	INFO command_runner.py:357 -- Fetched IP: 172.31.18.77
+2021-03-30 04:54:22,286	INFO log_timer.py:27 -- NodeUpdater: ins_28CvlGZMY4SQgKhxnVpIUi: Got IP  [LogTimer=22ms]
+Result for train_wrapper_a2aed_00017:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: e72e8509c76a496583b1e4f1e67daa20
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 1
+  node_ip: 172.31.13.77
+  pid: 1049
+  time_since_restore: 4.684185266494751
+  time_this_iter_s: 4.684185266494751
+  time_total_s: 4.684185266494751
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.491036
+  train-logloss: 0.693571
+  training_iteration: 1
+  trial_id: a2aed_00017
+
+2021-03-30 04:54:22,890	INFO command_runner.py:357 -- Fetched IP: 172.31.13.77
+2021-03-30 04:54:22,890	INFO log_timer.py:27 -- NodeUpdater: ins_2KT2OzGZGuSpQSTO0WEz2h: Got IP  [LogTimer=24ms]
+Result for train_wrapper_a2aed_00007:
+  date: 2021-03-30_04-54-16
+  done: false
+  experiment_id: bf9f18bd8259428781cac1ac130f7f95
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 1
+  node_ip: 172.31.1.179
+  pid: 1042
+  time_since_restore: 5.561472177505493
+  time_this_iter_s: 5.561472177505493
+  time_total_s: 5.561472177505493
+  timestamp: 1617105256
+  timesteps_since_restore: 0
+  train-error: 0.498563
+  train-logloss: 0.693571
+  training_iteration: 1
+  trial_id: a2aed_00007
+
+2021-03-30 04:54:23,498	INFO command_runner.py:357 -- Fetched IP: 172.31.1.179
+2021-03-30 04:54:23,498	INFO log_timer.py:27 -- NodeUpdater: ins_36DZqFHmyOLn6ofz2LwgvK: Got IP  [LogTimer=16ms]
+Result for train_wrapper_a2aed_00020:
+  date: 2021-03-30_04-54-17
+  done: false
+  experiment_id: 238f674d3435467e97fec3f12b947d3f
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 2
+  node_ip: 172.31.18.77
+  pid: 1040
+  time_since_restore: 6.602571964263916
+  time_this_iter_s: 2.2104995250701904
+  time_total_s: 6.602571964263916
+  timestamp: 1617105257
+  timesteps_since_restore: 0
+  train-error: 0.49517
+  train-logloss: 0.693652
+  training_iteration: 2
+  trial_id: a2aed_00020
+
+Result for train_wrapper_a2aed_00019:
+  date: 2021-03-30_04-54-18
+  done: false
+  experiment_id: 25e3f1804afd4bffbfa95a807809e6dd
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 2
+  node_ip: 172.31.13.77
+  pid: 1047
+  time_since_restore: 7.559326171875
+  time_this_iter_s: 2.969799280166626
+  time_total_s: 7.559326171875
+  timestamp: 1617105258
+  timesteps_since_restore: 0
+  train-error: 0.496798
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00019
+
+Result for train_wrapper_a2aed_00023:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: b1a870960b8a4542a7ddcf09a4cd695c
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 1
+  node_ip: 172.31.18.77
+  pid: 1039
+  time_since_restore: 4.520873546600342
+  time_this_iter_s: 4.520873546600342
+  time_total_s: 4.520873546600342
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.495198
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00023
+
+2021-03-30 04:54:24,698	INFO command_runner.py:357 -- Fetched IP: 172.31.18.77
+2021-03-30 04:54:24,698	INFO log_timer.py:27 -- NodeUpdater: ins_28CvlGZMY4SQgKhxnVpIUi: Got IP  [LogTimer=21ms]
+Result for train_wrapper_a2aed_00008:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: c1a2397f5486457485ae0b115f5ce93e
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 1
+  node_ip: 172.31.4.133
+  pid: 1042
+  time_since_restore: 4.714734315872192
+  time_this_iter_s: 4.714734315872192
+  time_total_s: 4.714734315872192
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.492492
+  train-logloss: 0.693571
+  training_iteration: 1
+  trial_id: a2aed_00008
+
+2021-03-30 04:54:25,318	INFO command_runner.py:357 -- Fetched IP: 172.31.4.133
+2021-03-30 04:54:25,319	INFO log_timer.py:27 -- NodeUpdater: ins_4M2aTe0j6sdJE2SkkJKIXq: Got IP  [LogTimer=28ms]
+Result for train_wrapper_a2aed_00009:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: fdab5654aa374f0b909ed27f74f8b701
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 1
+  node_ip: 172.31.4.133
+  pid: 1040
+  time_since_restore: 4.321739673614502
+  time_this_iter_s: 4.321739673614502
+  time_total_s: 4.321739673614502
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.498023
+  train-logloss: 0.693573
+  training_iteration: 1
+  trial_id: a2aed_00009
+
+2021-03-30 04:54:25,834	INFO command_runner.py:357 -- Fetched IP: 172.31.4.133
+2021-03-30 04:54:25,834	INFO log_timer.py:27 -- NodeUpdater: ins_4M2aTe0j6sdJE2SkkJKIXq: Got IP  [LogTimer=22ms]
+Result for train_wrapper_a2aed_00005:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: ed38bd27640f428da6d32e497cde6e2d
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 1
+  node_ip: 172.31.1.179
+  pid: 1040
+  time_since_restore: 4.46590256690979
+  time_this_iter_s: 4.46590256690979
+  time_total_s: 4.46590256690979
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.495466
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00005
+
+2021-03-30 04:54:26,406	INFO command_runner.py:357 -- Fetched IP: 172.31.1.179
+2021-03-30 04:54:26,406	INFO log_timer.py:27 -- NodeUpdater: ins_36DZqFHmyOLn6ofz2LwgvK: Got IP  [LogTimer=20ms]
+[2m[36m(pid=1040, ip=172.31.4.133)[0m 2021-03-30 04:54:26,533	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 15.68 seconds (13.51 pure XGBoost training time).
+[2m[36m(pid=1040, ip=172.31.4.133)[0m TRAIN TIME TAKEN: 15.69 seconds
+[2m[36m(pid=1040, ip=172.31.4.133)[0m Final training error: 0.4923
+Result for train_wrapper_a2aed_00010:
+  date: 2021-03-30_04-54-21
+  done: false
+  experiment_id: 0f17e5c5d1d94aa1abc7da6c29a3e150
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 2
+  node_ip: 172.31.4.133
+  pid: 1039
+  time_since_restore: 10.336248874664307
+  time_this_iter_s: 5.5578718185424805
+  time_total_s: 10.336248874664307
+  timestamp: 1617105261
+  timesteps_since_restore: 0
+  train-error: 0.48965
+  train-logloss: 0.693697
+  training_iteration: 2
+  trial_id: a2aed_00010
+
+Result for train_wrapper_a2aed_00006:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 8ac73d74100441d7837f7d6896b82680
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 1
+  node_ip: 172.31.1.179
+  pid: 1039
+  time_since_restore: 4.478021860122681
+  time_this_iter_s: 4.478021860122681
+  time_total_s: 4.478021860122681
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.499055
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00006
+
+2021-03-30 04:54:27,071	INFO command_runner.py:357 -- Fetched IP: 172.31.1.179
+2021-03-30 04:54:27,071	INFO log_timer.py:27 -- NodeUpdater: ins_36DZqFHmyOLn6ofz2LwgvK: Got IP  [LogTimer=24ms]
+== Status ==
+Memory usage on this node: 2.4/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 125/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (7 PENDING, 25 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | RUNNING  | 172.31.11.100:1377 | 0.00454648  |           5 |    0.903957 |      1 |          5.07752 |        0.69359  |      0.494958 |
+| train_wrapper_a2aed_00001 | RUNNING  | 172.31.11.100:1373 | 0.00737698  |           1 |    0.876937 |      1 |          4.84505 |        0.693572 |      0.500577 |
+| train_wrapper_a2aed_00002 | RUNNING  |                    | 0.0319654   |           5 |    0.906936 |        |                  |                 |               |
+| train_wrapper_a2aed_00003 | RUNNING  | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |      1 |          5.04838 |        0.693573 |      0.493116 |
+| train_wrapper_a2aed_00004 | RUNNING  |                    | 0.0441172   |           5 |    0.612182 |        |                  |                 |               |
+| train_wrapper_a2aed_00005 | RUNNING  | 172.31.1.179:1040  | 0.000160406 |           5 |    0.813173 |      1 |          4.4659  |        0.69357  |      0.495466 |
+| train_wrapper_a2aed_00006 | RUNNING  | 172.31.1.179:1039  | 0.000397038 |           1 |    0.599266 |      1 |          4.47802 |        0.69357  |      0.499055 |
+| train_wrapper_a2aed_00007 | RUNNING  | 172.31.1.179:1042  | 0.00765867  |           2 |    0.95363  |      1 |          5.56147 |        0.693571 |      0.498563 |
+| train_wrapper_a2aed_00008 | RUNNING  | 172.31.4.133:1042  | 0.000969519 |           8 |    0.947184 |      1 |          4.71473 |        0.693571 |      0.492492 |
+| train_wrapper_a2aed_00009 | RUNNING  | 172.31.4.133:1040  | 0.0112884   |           2 |    0.606444 |      1 |          4.32174 |        0.693573 |      0.498023 |
+| train_wrapper_a2aed_00010 | RUNNING  | 172.31.4.133:1039  | 0.00726145  |           7 |    0.627432 |     32 |         12.3722  |        0.693234 |      0.454691 |
+| train_wrapper_a2aed_00011 | RUNNING  |                    | 0.000438104 |           8 |    0.742981 |        |                  |                 |               |
+| train_wrapper_a2aed_00012 | RUNNING  |                    | 0.000198551 |           6 |    0.724026 |        |                  |                 |               |
+| train_wrapper_a2aed_00025 | PENDING  |                    | 0.0301846   |           5 |    0.518175 |        |                  |                 |               |
+| train_wrapper_a2aed_00026 | PENDING  |                    | 0.00191935  |           2 |    0.740473 |        |                  |                 |               |
+| train_wrapper_a2aed_00027 | PENDING  |                    | 0.00115008  |           8 |    0.702185 |        |                  |                 |               |
+| train_wrapper_a2aed_00028 | PENDING  |                    | 0.000174292 |           8 |    0.585644 |        |                  |                 |               |
+| train_wrapper_a2aed_00029 | PENDING  |                    | 0.000253651 |           8 |    0.971535 |        |                  |                 |               |
+| train_wrapper_a2aed_00030 | PENDING  |                    | 0.000413595 |           2 |    0.776102 |        |                  |                 |               |
+| train_wrapper_a2aed_00031 | PENDING  |                    | 0.0449083   |           3 |    0.837282 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 RUNNING)
+
+
+Result for train_wrapper_a2aed_00009:
+  date: 2021-03-30_04-54-26
+  done: true
+  experiment_id: fdab5654aa374f0b909ed27f74f8b701
+  experiment_tag: 9_eta=0.011288,max_depth=2,subsample=0.60644
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 100
+  node_ip: 172.31.4.133
+  pid: 1040
+  time_since_restore: 15.660151720046997
+  time_this_iter_s: 0.002803325653076172
+  time_total_s: 15.660151720046997
+  timestamp: 1617105266
+  timesteps_since_restore: 0
+  train-error: 0.492272
+  train-logloss: 0.693388
+  training_iteration: 100
+  trial_id: a2aed_00009
+
+Result for train_wrapper_a2aed_00000:
+  date: 2021-03-30_04-54-21
+  done: false
+  experiment_id: de6405cc61cb480aa97c84cbef5ce876
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 2
+  node_ip: 172.31.11.100
+  pid: 1377
+  time_since_restore: 11.601356267929077
+  time_this_iter_s: 6.523835897445679
+  time_total_s: 11.601356267929077
+  timestamp: 1617105261
+  timesteps_since_restore: 0
+  train-error: 0.494145
+  train-logloss: 0.693604
+  training_iteration: 2
+  trial_id: a2aed_00000
+
+[2m[36m(pid=1039, ip=172.31.1.179)[0m 2021-03-30 04:54:27,764	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 16.75 seconds (14.50 pure XGBoost training time).
+[2m[36m(pid=1039, ip=172.31.1.179)[0m TRAIN TIME TAKEN: 16.76 seconds
+[2m[36m(pid=1039, ip=172.31.1.179)[0m Final training error: 0.4970
+Result for train_wrapper_a2aed_00013:
+  date: 2021-03-30_04-54-19
+  done: false
+  experiment_id: 26133057b76643a8915767a322d15e56
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 2
+  node_ip: 172.31.23.116
+  pid: 1039
+  time_since_restore: 8.73739743232727
+  time_this_iter_s: 4.2412543296813965
+  time_total_s: 8.73739743232727
+  timestamp: 1617105259
+  timesteps_since_restore: 0
+  train-error: 0.497227
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00013
+
+Result for train_wrapper_a2aed_00015:
+  date: 2021-03-30_04-54-20
+  done: false
+  experiment_id: 303887f6817e4410aa62e78f317592b7
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 2
+  node_ip: 172.31.23.116
+  pid: 1042
+  time_since_restore: 9.540211915969849
+  time_this_iter_s: 5.127062082290649
+  time_total_s: 9.540211915969849
+  timestamp: 1617105260
+  timesteps_since_restore: 0
+  train-error: 0.498037
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00015
+
+[2m[36m(pid=1039, ip=172.31.23.116)[0m 2021-03-30 04:54:28,295	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 17.36 seconds (15.09 pure XGBoost training time).
+[2m[36m(pid=1039, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 17.37 seconds
+[2m[36m(pid=1039, ip=172.31.23.116)[0m Final training error: 0.4916
+[2m[36m(pid=1042, ip=172.31.23.116)[0m 2021-03-30 04:54:28,405	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 17.60 seconds (15.42 pure XGBoost training time).
+[2m[36m(pid=1042, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 17.61 seconds
+[2m[36m(pid=1042, ip=172.31.23.116)[0m Final training error: 0.4976
+[2m[36m(pid=1043, ip=172.31.17.189)[0m 2021-03-30 04:54:28,461	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+Result for train_wrapper_a2aed_00006:
+  date: 2021-03-30_04-54-27
+  done: true
+  experiment_id: 8ac73d74100441d7837f7d6896b82680
+  experiment_tag: 6_eta=0.00039704,max_depth=1,subsample=0.59927
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1039
+  time_since_restore: 16.69089365005493
+  time_this_iter_s: 0.002442598342895508
+  time_total_s: 16.69089365005493
+  timestamp: 1617105267
+  timesteps_since_restore: 0
+  train-error: 0.496952
+  train-logloss: 0.693574
+  training_iteration: 100
+  trial_id: a2aed_00006
+
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-19
+  done: false
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 2
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 9.197754621505737
+  time_this_iter_s: 4.149377107620239
+  time_total_s: 9.197754621505737
+  timestamp: 1617105259
+  timesteps_since_restore: 0
+  train-error: 0.486416
+  train-logloss: 0.693575
+  training_iteration: 2
+  trial_id: a2aed_00003
+
+[2m[36m(pid=1042, ip=172.31.1.179)[0m 2021-03-30 04:54:28,535	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 17.66 seconds (14.81 pure XGBoost training time).
+[2m[36m(pid=1042, ip=172.31.1.179)[0m TRAIN TIME TAKEN: 17.67 seconds
+[2m[36m(pid=1042, ip=172.31.1.179)[0m Final training error: 0.4957
+Result for train_wrapper_a2aed_00015:
+  date: 2021-03-30_04-54-28
+  done: true
+  experiment_id: 303887f6817e4410aa62e78f317592b7
+  experiment_tag: 15_eta=0.00010314,max_depth=2,subsample=0.92517
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1042
+  time_since_restore: 17.59478783607483
+  time_this_iter_s: 0.002838611602783203
+  time_total_s: 17.59478783607483
+  timestamp: 1617105268
+  timesteps_since_restore: 0
+  train-error: 0.497553
+  train-logloss: 0.693575
+  training_iteration: 100
+  trial_id: a2aed_00015
+
+Result for train_wrapper_a2aed_00011:
+  date: 2021-03-30_04-54-16
+  done: false
+  experiment_id: f6030de7394348bab6f8c8fa9269ce7c
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 1
+  node_ip: 172.31.4.133
+  pid: 1041
+  time_since_restore: 5.023764371871948
+  time_this_iter_s: 5.023764371871948
+  time_total_s: 5.023764371871948
+  timestamp: 1617105256
+  timesteps_since_restore: 0
+  train-error: 0.490638
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00011
+
+2021-03-30 04:54:29,288	INFO command_runner.py:357 -- Fetched IP: 172.31.4.133
+2021-03-30 04:54:29,288	INFO log_timer.py:27 -- NodeUpdater: ins_4M2aTe0j6sdJE2SkkJKIXq: Got IP  [LogTimer=23ms]
+Result for train_wrapper_a2aed_00018:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: b50088e386c74f6d9d0aa0def62c11ef
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 1
+  node_ip: 172.31.13.77
+  pid: 1048
+  time_since_restore: 4.288877248764038
+  time_this_iter_s: 4.288877248764038
+  time_total_s: 4.288877248764038
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.497191
+  train-logloss: 0.693567
+  training_iteration: 1
+  trial_id: a2aed_00018
+
+[2m[36m(pid=1383, ip=172.31.4.133)[0m 2021-03-30 04:54:29,965	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1043, ip=172.31.17.189)[0m 2021-03-30 04:54:29,975	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1288, ip=172.31.21.131)[0m [04:54:29] task [xgboost.ray]:140141849019024 got new rank 0
+[2m[36m(pid=1292, ip=172.31.21.131)[0m [04:54:29] task [xgboost.ray]:140629709840016 got new rank 1
+[2m[36m(pid=1293, ip=172.31.21.131)[0m [04:54:29] task [xgboost.ray]:139870729613392 got new rank 2
+[2m[36m(pid=1291, ip=172.31.21.131)[0m [04:54:29] task [xgboost.ray]:139673355574864 got new rank 3
+2021-03-30 04:54:30,109	INFO command_runner.py:357 -- Fetched IP: 172.31.13.77
+2021-03-30 04:54:30,109	INFO log_timer.py:27 -- NodeUpdater: ins_2KT2OzGZGuSpQSTO0WEz2h: Got IP  [LogTimer=17ms]
+[2m[36m(pid=1389, ip=172.31.1.179)[0m 2021-03-30 04:54:30,345	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+Result for train_wrapper_a2aed_00024:
+  date: 2021-03-30_04-54-16
+  done: false
+  experiment_id: 89ce6d3a471947a3bfc4c6f8b0e017da
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 2
+  node_ip: 172.31.17.189
+  pid: 1040
+  time_since_restore: 6.0523436069488525
+  time_this_iter_s: 1.8062944412231445
+  time_total_s: 6.0523436069488525
+  timestamp: 1617105256
+  timesteps_since_restore: 0
+  train-error: 0.497523
+  train-logloss: 0.693582
+  training_iteration: 2
+  trial_id: a2aed_00024
+
+Result for train_wrapper_a2aed_00017:
+  date: 2021-03-30_04-54-23
+  done: false
+  experiment_id: e72e8509c76a496583b1e4f1e67daa20
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 2
+  node_ip: 172.31.13.77
+  pid: 1049
+  time_since_restore: 12.288509845733643
+  time_this_iter_s: 7.604324579238892
+  time_total_s: 12.288509845733643
+  timestamp: 1617105263
+  timesteps_since_restore: 0
+  train-error: 0.489364
+  train-logloss: 0.693572
+  training_iteration: 2
+  trial_id: a2aed_00017
+
+Result for train_wrapper_a2aed_00012:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 1bafbaf52aa04033a27df76018079f1f
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1040
+  time_since_restore: 4.466011047363281
+  time_this_iter_s: 4.466011047363281
+  time_total_s: 4.466011047363281
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.494758
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00012
+
+[2m[36m(pid=1048, ip=172.31.13.77)[0m 2021-03-30 04:54:30,767	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 19.72 seconds (17.56 pure XGBoost training time).
+[2m[36m(pid=1040, ip=172.31.17.189)[0m 2021-03-30 04:54:30,753	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 20.31 seconds (18.09 pure XGBoost training time).
+[2m[36m(pid=1048, ip=172.31.13.77)[0m TRAIN TIME TAKEN: 19.73 seconds
+[2m[36m(pid=1048, ip=172.31.13.77)[0m Final training error: 0.4902
+[2m[36m(pid=1040, ip=172.31.17.189)[0m TRAIN TIME TAKEN: 20.34 seconds
+[2m[36m(pid=1040, ip=172.31.17.189)[0m Final training error: 0.4924
+[2m[36m(pid=1039, ip=172.31.18.77)[0m 2021-03-30 04:54:30,808	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 19.79 seconds (17.54 pure XGBoost training time).
+[2m[36m(pid=1039, ip=172.31.18.77)[0m TRAIN TIME TAKEN: 19.80 seconds
+[2m[36m(pid=1039, ip=172.31.18.77)[0m Final training error: 0.4733
+2021-03-30 04:54:30,875	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:30,875	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=20ms]
+Result for train_wrapper_a2aed_00013:
+  date: 2021-03-30_04-54-28
+  done: true
+  experiment_id: 26133057b76643a8915767a322d15e56
+  experiment_tag: 13_eta=0.00011019,max_depth=3,subsample=0.63803
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1039
+  time_since_restore: 17.26644206047058
+  time_this_iter_s: 0.0022382736206054688
+  time_total_s: 17.26644206047058
+  timestamp: 1617105268
+  timesteps_since_restore: 0
+  train-error: 0.491597
+  train-logloss: 0.69357
+  training_iteration: 100
+  trial_id: a2aed_00013
+
+Result for train_wrapper_a2aed_00023:
+  date: 2021-03-30_04-54-28
+  done: false
+  experiment_id: b1a870960b8a4542a7ddcf09a4cd695c
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 78
+  node_ip: 172.31.18.77
+  pid: 1039
+  time_since_restore: 17.86344814300537
+  time_this_iter_s: 1.8306503295898438
+  time_total_s: 17.86344814300537
+  timestamp: 1617105268
+  timesteps_since_restore: 0
+  train-error: 0.473167
+  train-logloss: 0.693782
+  training_iteration: 78
+  trial_id: a2aed_00023
+
+Result for train_wrapper_a2aed_00023:
+  date: 2021-03-30_04-54-30
+  done: true
+  experiment_id: b1a870960b8a4542a7ddcf09a4cd695c
+  experiment_tag: 23_eta=0.0010888,max_depth=5,subsample=0.66929
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 100
+  node_ip: 172.31.18.77
+  pid: 1039
+  time_since_restore: 19.512651205062866
+  time_this_iter_s: 0.14861440658569336
+  time_total_s: 19.512651205062866
+  timestamp: 1617105270
+  timesteps_since_restore: 0
+  train-error: 0.473344
+  train-logloss: 0.693806
+  training_iteration: 100
+  trial_id: a2aed_00023
+
+Result for train_wrapper_a2aed_00024:
+  date: 2021-03-30_04-54-30
+  done: true
+  experiment_id: 89ce6d3a471947a3bfc4c6f8b0e017da
+  experiment_tag: 24_eta=0.0066094,max_depth=2,subsample=0.60637
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 100
+  node_ip: 172.31.17.189
+  pid: 1040
+  time_since_restore: 20.2319598197937
+  time_this_iter_s: 0.002848386764526367
+  time_total_s: 20.2319598197937
+  timestamp: 1617105270
+  timesteps_since_restore: 0
+  train-error: 0.492425
+  train-logloss: 0.693749
+  training_iteration: 100
+  trial_id: a2aed_00024
+
+Result for train_wrapper_a2aed_00001:
+  date: 2021-03-30_04-54-21
+  done: false
+  experiment_id: 58cf8ec042034a2f9fc5f35768c8ee2d
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 2
+  node_ip: 172.31.11.100
+  pid: 1373
+  time_since_restore: 10.79056167602539
+  time_this_iter_s: 5.945514917373657
+  time_total_s: 10.79056167602539
+  timestamp: 1617105261
+  timesteps_since_restore: 0
+  train-error: 0.499139
+  train-logloss: 0.693572
+  training_iteration: 2
+  trial_id: a2aed_00001
+
+Result for train_wrapper_a2aed_00016:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: c82c57f55e894eb789ad20ad74e91834
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 1
+  node_ip: 172.31.13.77
+  pid: 1046
+  time_since_restore: 4.5898847579956055
+  time_this_iter_s: 4.5898847579956055
+  time_total_s: 4.5898847579956055
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.498144
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00016
+
+[2m[36m(pid=1313, ip=172.31.23.144)[0m [04:54:31] task [xgboost.ray]:140600833687184 got new rank 0
+[2m[36m(pid=1318, ip=172.31.23.144)[0m [04:54:31] task [xgboost.ray]:140058987196560 got new rank 1
+[2m[36m(pid=1317, ip=172.31.23.144)[0m [04:54:31] task [xgboost.ray]:140265162105104 got new rank 2
+[2m[36m(pid=1316, ip=172.31.23.144)[0m [04:54:31] task [xgboost.ray]:140522764763600 got new rank 3
+[2m[36m(pid=1383, ip=172.31.4.133)[0m 2021-03-30 04:54:31,780	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1377)[0m 2021-03-30 04:54:31,838	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 21.45 seconds (19.19 pure XGBoost training time).
+[2m[36m(pid=1377)[0m TRAIN TIME TAKEN: 21.46 seconds
+[2m[36m(pid=1377)[0m Final training error: 0.4788
+[2m[36m(pid=1389, ip=172.31.1.179)[0m 2021-03-30 04:54:31,855	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1348, ip=172.31.4.47)[0m [04:54:31] task [xgboost.ray]:139724558328912 got new rank 0
+[2m[36m(pid=1353, ip=172.31.4.47)[0m [04:54:31] task [xgboost.ray]:139938693216720 got new rank 1
+[2m[36m(pid=1352, ip=172.31.4.47)[0m [04:54:31] task [xgboost.ray]:139652592131472 got new rank 2
+[2m[36m(pid=1351, ip=172.31.4.47)[0m [04:54:31] task [xgboost.ray]:139875851427792 got new rank 3
+[2m[36m(pid=1373)[0m 2021-03-30 04:54:31,921	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 21.36 seconds (19.13 pure XGBoost training time).
+[2m[36m(pid=1373)[0m TRAIN TIME TAKEN: 21.37 seconds
+[2m[36m(pid=1373)[0m Final training error: 0.4975
+2021-03-30 04:54:32,103	INFO command_runner.py:357 -- Fetched IP: 172.31.13.77
+2021-03-30 04:54:32,103	INFO log_timer.py:27 -- NodeUpdater: ins_2KT2OzGZGuSpQSTO0WEz2h: Got IP  [LogTimer=17ms]
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 125/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (1 PENDING, 25 RUNNING, 6 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | RUNNING    | 172.31.11.100:1377 | 0.00454648  |           5 |    0.903957 |     91 |         19.5175  |        0.693516 |      0.480217 |
+| train_wrapper_a2aed_00001 | RUNNING    | 172.31.11.100:1373 | 0.00737698  |           1 |    0.876937 |     77 |         12.785   |        0.694017 |      0.497645 |
+| train_wrapper_a2aed_00002 | RUNNING    |                    | 0.0319654   |           5 |    0.906936 |        |                  |                 |               |
+| train_wrapper_a2aed_00003 | RUNNING    | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |     20 |         11.4177  |        0.693625 |      0.451353 |
+| train_wrapper_a2aed_00004 | RUNNING    |                    | 0.0441172   |           5 |    0.612182 |        |                  |                 |               |
+| train_wrapper_a2aed_00005 | RUNNING    | 172.31.1.179:1040  | 0.000160406 |           5 |    0.813173 |      1 |          4.4659  |        0.69357  |      0.495466 |
+| train_wrapper_a2aed_00007 | RUNNING    | 172.31.1.179:1042  | 0.00765867  |           2 |    0.95363  |     82 |         15.4437  |        0.693854 |      0.496283 |
+| train_wrapper_a2aed_00008 | RUNNING    | 172.31.4.133:1042  | 0.000969519 |           8 |    0.947184 |     38 |         16.8264  |        0.693667 |      0.465962 |
+| train_wrapper_a2aed_00010 | RUNNING    | 172.31.4.133:1039  | 0.00726145  |           7 |    0.627432 |     32 |         12.3722  |        0.693234 |      0.454691 |
+| train_wrapper_a2aed_00011 | RUNNING    | 172.31.4.133:1041  | 0.000438104 |           8 |    0.742981 |      1 |          5.02376 |        0.69357  |      0.490638 |
+| train_wrapper_a2aed_00012 | RUNNING    | 172.31.23.116:1040 | 0.000198551 |           6 |    0.724026 |      1 |          4.46601 |        0.69357  |      0.494758 |
+| train_wrapper_a2aed_00014 | RUNNING    | 172.31.23.116:1041 | 0.0851576   |           6 |    0.608135 |      1 |          4.45719 |        0.693416 |      0.495336 |
+| train_wrapper_a2aed_00016 | RUNNING    | 172.31.13.77:1046  | 0.000221438 |           2 |    0.907066 |      1 |          4.58988 |        0.69357  |      0.498144 |
+| train_wrapper_a2aed_00031 | PENDING    |                    | 0.0449083   |           3 |    0.837282 |        |                  |                 |               |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |         16.6909  |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |         15.6602  |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |         17.2664  |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |         17.5948  |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00023 | TERMINATED |                    | 0.00108878  |           5 |    0.669294 |    100 |         19.5127  |        0.693806 |      0.473344 |
+| train_wrapper_a2aed_00024 | TERMINATED |                    | 0.00660938  |           2 |    0.606369 |    100 |         20.232   |        0.693749 |      0.492425 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 RUNNING)
+
+
+Result for train_wrapper_a2aed_00001:
+  date: 2021-03-30_04-54-31
+  done: true
+  experiment_id: 58cf8ec042034a2f9fc5f35768c8ee2d
+  experiment_tag: 1_eta=0.007377,max_depth=1,subsample=0.87694
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 100
+  node_ip: 172.31.11.100
+  pid: 1373
+  time_since_restore: 21.28825068473816
+  time_this_iter_s: 0.0024938583374023438
+  time_total_s: 21.28825068473816
+  timestamp: 1617105271
+  timesteps_since_restore: 0
+  train-error: 0.497544
+  train-logloss: 0.693887
+  training_iteration: 100
+  trial_id: a2aed_00001
+
+[2m[36m(pid=1046, ip=172.31.13.77)[0m 2021-03-30 04:54:32,778	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 21.83 seconds (19.51 pure XGBoost training time).
+[2m[36m(pid=1046, ip=172.31.13.77)[0m TRAIN TIME TAKEN: 21.84 seconds
+[2m[36m(pid=1046, ip=172.31.13.77)[0m Final training error: 0.4974
+[2m[36m(pid=1391, ip=172.31.18.77)[0m 2021-03-30 04:54:32,788	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+Result for train_wrapper_a2aed_00018:
+  date: 2021-03-30_04-54-30
+  done: true
+  experiment_id: b50088e386c74f6d9d0aa0def62c11ef
+  experiment_tag: 18_eta=0.007926,max_depth=3,subsample=0.83167
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 100
+  node_ip: 172.31.13.77
+  pid: 1048
+  time_since_restore: 19.61642050743103
+  time_this_iter_s: 0.0024836063385009766
+  time_total_s: 19.61642050743103
+  timestamp: 1617105270
+  timesteps_since_restore: 0
+  train-error: 0.490211
+  train-logloss: 0.693491
+  training_iteration: 100
+  trial_id: a2aed_00018
+
+Result for train_wrapper_a2aed_00010:
+  date: 2021-03-30_04-54-26
+  done: false
+  experiment_id: 0f17e5c5d1d94aa1abc7da6c29a3e150
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 33
+  node_ip: 172.31.4.133
+  pid: 1039
+  time_since_restore: 15.722653865814209
+  time_this_iter_s: 3.350428581237793
+  time_total_s: 15.722653865814209
+  timestamp: 1617105266
+  timesteps_since_restore: 0
+  train-error: 0.454467
+  train-logloss: 0.693216
+  training_iteration: 33
+  trial_id: a2aed_00010
+
+[2m[36m(pid=1382, ip=172.31.23.116)[0m 2021-03-30 04:54:33,108	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+Result for train_wrapper_a2aed_00014:
+  date: 2021-03-30_04-54-21
+  done: false
+  experiment_id: 05e37b704cb142f497377de0c6abd9bf
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 2
+  node_ip: 172.31.23.116
+  pid: 1041
+  time_since_restore: 11.13365125656128
+  time_this_iter_s: 6.67645788192749
+  time_total_s: 11.13365125656128
+  timestamp: 1617105261
+  timesteps_since_restore: 0
+  train-error: 0.491695
+  train-logloss: 0.693326
+  training_iteration: 2
+  trial_id: a2aed_00014
+
+[2m[36m(pid=1387, ip=172.31.23.116)[0m 2021-03-30 04:54:33,207	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+Result for train_wrapper_a2aed_00005:
+  date: 2021-03-30_04-54-26
+  done: false
+  experiment_id: ed38bd27640f428da6d32e497cde6e2d
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 2
+  node_ip: 172.31.1.179
+  pid: 1040
+  time_since_restore: 15.625035285949707
+  time_this_iter_s: 11.159132719039917
+  time_total_s: 15.625035285949707
+  timestamp: 1617105266
+  timesteps_since_restore: 0
+  train-error: 0.493848
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00005
+
+Result for train_wrapper_a2aed_00002:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 80d6ed6beb5e4569a9c9fcb292ef5ed7
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 1
+  node_ip: 172.31.11.100
+  pid: 1375
+  time_since_restore: 4.892443656921387
+  time_this_iter_s: 4.892443656921387
+  time_total_s: 4.892443656921387
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.494892
+  train-logloss: 0.693684
+  training_iteration: 1
+  trial_id: a2aed_00002
+
+Result for train_wrapper_a2aed_00026:
+  date: 2021-03-30_04-54-33
+  done: false
+  experiment_id: 6cae27af8be34ac983cff657b6eee505
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 1
+  node_ip: 172.31.4.133
+  pid: 1383
+  time_since_restore: 4.59722113609314
+  time_this_iter_s: 4.59722113609314
+  time_total_s: 4.59722113609314
+  timestamp: 1617105273
+  timesteps_since_restore: 0
+  train-error: 0.498053
+  train-logloss: 0.693569
+  training_iteration: 1
+  trial_id: a2aed_00026
+
+[2m[36m(pid=1040, ip=172.31.1.179)[0m 2021-03-30 04:54:34,365	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 23.32 seconds (21.07 pure XGBoost training time).
+[2m[36m(pid=1040, ip=172.31.1.179)[0m TRAIN TIME TAKEN: 23.33 seconds
+[2m[36m(pid=1040, ip=172.31.1.179)[0m Final training error: 0.4821
+[2m[36m(pid=1391, ip=172.31.18.77)[0m 2021-03-30 04:54:34,399	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1349, ip=172.31.6.15)[0m [04:54:34] task [xgboost.ray]:140612224029968 got new rank 0
+[2m[36m(pid=1352, ip=172.31.6.15)[0m [04:54:34] task [xgboost.ray]:139942909477008 got new rank 1
+[2m[36m(pid=1354, ip=172.31.6.15)[0m [04:54:34] task [xgboost.ray]:140134857117264 got new rank 2
+[2m[36m(pid=1353, ip=172.31.6.15)[0m [04:54:34] task [xgboost.ray]:140546008377680 got new rank 3
+2021-03-30 04:54:34,464	INFO command_runner.py:357 -- Fetched IP: 172.31.4.133
+2021-03-30 04:54:34,464	INFO log_timer.py:27 -- NodeUpdater: ins_4M2aTe0j6sdJE2SkkJKIXq: Got IP  [LogTimer=20ms]
+[2m[36m(pid=1883)[0m 2021-03-30 04:54:34,716	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1347, ip=172.31.18.4)[0m [04:54:34] task [xgboost.ray]:140618899312208 got new rank 0
+[2m[36m(pid=1350, ip=172.31.18.4)[0m [04:54:34] task [xgboost.ray]:140003750647120 got new rank 1
+[2m[36m(pid=1351, ip=172.31.18.4)[0m [04:54:34] task [xgboost.ray]:140479452876368 got new rank 2
+[2m[36m(pid=1352, ip=172.31.18.4)[0m [04:54:34] task [xgboost.ray]:140601413124240 got new rank 3
+[2m[36m(pid=1382, ip=172.31.23.116)[0m 2021-03-30 04:54:34,722	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-54-34
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 1
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 4.616400241851807
+  time_this_iter_s: 4.616400241851807
+  time_total_s: 4.616400241851807
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.491503
+  train-logloss: 0.693575
+  training_iteration: 1
+  trial_id: a2aed_00027
+
+[2m[36m(pid=1387, ip=172.31.23.116)[0m 2021-03-30 04:54:34,821	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1351, ip=172.31.7.244)[0m [04:54:34] task [xgboost.ray]:140101822985360 got new rank 0
+[2m[36m(pid=1356, ip=172.31.7.244)[0m [04:54:34] task [xgboost.ray]:139741576986128 got new rank 1
+[2m[36m(pid=1354, ip=172.31.7.244)[0m [04:54:34] task [xgboost.ray]:140317155201360 got new rank 2
+[2m[36m(pid=1355, ip=172.31.7.244)[0m [04:54:34] task [xgboost.ray]:140237561846928 got new rank 3
+[2m[36m(pid=1375)[0m 2021-03-30 04:54:34,907	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 24.34 seconds (22.14 pure XGBoost training time).
+[2m[36m(pid=1375)[0m TRAIN TIME TAKEN: 24.36 seconds
+[2m[36m(pid=1375)[0m Final training error: 0.4576
+[2m[36m(pid=1041, ip=172.31.23.116)[0m 2021-03-30 04:54:34,959	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 24.12 seconds (21.98 pure XGBoost training time).
+[2m[36m(pid=1041, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 24.12 seconds
+[2m[36m(pid=1041, ip=172.31.23.116)[0m Final training error: 0.4261
+2021-03-30 04:54:35,092	INFO command_runner.py:357 -- Fetched IP: 172.31.1.179
+2021-03-30 04:54:35,092	INFO log_timer.py:27 -- NodeUpdater: ins_36DZqFHmyOLn6ofz2LwgvK: Got IP  [LogTimer=21ms]
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-33
+  done: false
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 46
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 22.518316507339478
+  time_this_iter_s: 2.35245680809021
+  time_total_s: 22.518316507339478
+  timestamp: 1617105273
+  timesteps_since_restore: 0
+  train-error: 0.427456
+  train-logloss: 0.693697
+  training_iteration: 46
+  trial_id: a2aed_00003
+
+Result for train_wrapper_a2aed_00022:
+  date: 2021-03-30_04-54-22
+  done: false
+  experiment_id: 3d831b2683a64ac8a9c56e5ba80a1568
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 2
+  node_ip: 172.31.18.77
+  pid: 1042
+  time_since_restore: 11.622672319412231
+  time_this_iter_s: 6.895002841949463
+  time_total_s: 11.622672319412231
+  timestamp: 1617105262
+  timesteps_since_restore: 0
+  train-error: 0.491539
+  train-logloss: 0.69358
+  training_iteration: 2
+  trial_id: a2aed_00022
+
+[2m[36m(pid=1040, ip=172.31.23.116)[0m 2021-03-30 04:54:35,425	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 24.36 seconds (22.07 pure XGBoost training time).
+[2m[36m(pid=1040, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 24.37 seconds
+[2m[36m(pid=1040, ip=172.31.23.116)[0m Final training error: 0.4616
+Result for train_wrapper_a2aed_00021:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 90281e716e2843c1879d19b4a325e0be
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 1
+  node_ip: 172.31.18.77
+  pid: 1041
+  time_since_restore: 4.598834037780762
+  time_this_iter_s: 4.598834037780762
+  time_total_s: 4.598834037780762
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.496211
+  train-logloss: 0.69363
+  training_iteration: 1
+  trial_id: a2aed_00021
+
+2021-03-30 04:54:35,791	INFO command_runner.py:357 -- Fetched IP: 172.31.18.77
+2021-03-30 04:54:35,791	INFO log_timer.py:27 -- NodeUpdater: ins_28CvlGZMY4SQgKhxnVpIUi: Got IP  [LogTimer=18ms]
+[2m[36m(pid=1883)[0m 2021-03-30 04:54:36,328	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1302, ip=172.31.15.115)[0m [04:54:36] task [xgboost.ray]:139959166488784 got new rank 0
+[2m[36m(pid=1307, ip=172.31.15.115)[0m [04:54:36] task [xgboost.ray]:140120034829712 got new rank 1
+[2m[36m(pid=1306, ip=172.31.15.115)[0m [04:54:36] task [xgboost.ray]:140561527176848 got new rank 2
+[2m[36m(pid=1305, ip=172.31.15.115)[0m [04:54:36] task [xgboost.ray]:139999598354960 got new rank 3
+Result for train_wrapper_a2aed_00020:
+  date: 2021-03-30_04-54-24
+  done: false
+  experiment_id: 238f674d3435467e97fec3f12b947d3f
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 33
+  node_ip: 172.31.18.77
+  pid: 1040
+  time_since_restore: 13.400485754013062
+  time_this_iter_s: 4.785358428955078
+  time_total_s: 13.400485754013062
+  timestamp: 1617105264
+  timesteps_since_restore: 0
+  train-error: 0.483697
+  train-logloss: 0.693337
+  training_iteration: 33
+  trial_id: a2aed_00020
+
+Result for train_wrapper_a2aed_00025:
+  date: 2021-03-30_04-54-32
+  done: false
+  experiment_id: 2e68bcc88bd04b55b5e40f4457caf6b7
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 1
+  node_ip: 172.31.17.189
+  pid: 1043
+  time_since_restore: 4.16395115852356
+  time_this_iter_s: 4.16395115852356
+  time_total_s: 4.16395115852356
+  timestamp: 1617105272
+  timesteps_since_restore: 0
+  train-error: 0.496727
+  train-logloss: 0.693728
+  training_iteration: 1
+  trial_id: a2aed_00025
+
+[2m[36m(pid=1040, ip=172.31.18.77)[0m 2021-03-30 04:54:37,081	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 26.14 seconds (23.92 pure XGBoost training time).
+[2m[36m(pid=1040, ip=172.31.18.77)[0m TRAIN TIME TAKEN: 26.15 seconds
+[2m[36m(pid=1040, ip=172.31.18.77)[0m Final training error: 0.4747
+2021-03-30 04:54:37,201	INFO command_runner.py:357 -- Fetched IP: 172.31.17.189
+2021-03-30 04:54:37,201	INFO log_timer.py:27 -- NodeUpdater: ins_3LaZaOk9JieK6uhKmQuI97: Got IP  [LogTimer=19ms]
+[2m[36m(pid=1041, ip=172.31.18.77)[0m 2021-03-30 04:54:37,326	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 26.41 seconds (24.08 pure XGBoost training time).
+[2m[36m(pid=1041, ip=172.31.18.77)[0m TRAIN TIME TAKEN: 26.42 seconds
+[2m[36m(pid=1041, ip=172.31.18.77)[0m Final training error: 0.4617
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 120/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (24 RUNNING, 8 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | RUNNING    | 172.31.11.100:1377 | 0.00454648  |           5 |    0.903957 |     91 |         19.5175  |        0.693516 |      0.480217 |
+| train_wrapper_a2aed_00002 | RUNNING    | 172.31.11.100:1375 | 0.0319654   |           5 |    0.906936 |      1 |          4.89244 |        0.693684 |      0.494892 |
+| train_wrapper_a2aed_00003 | RUNNING    | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |     58 |         24.6738  |        0.693706 |      0.420358 |
+| train_wrapper_a2aed_00004 | RUNNING    |                    | 0.0441172   |           5 |    0.612182 |        |                  |                 |               |
+| train_wrapper_a2aed_00005 | RUNNING    | 172.31.1.179:1040  | 0.000160406 |           5 |    0.813173 |     77 |         17.7526  |        0.693575 |      0.482642 |
+| train_wrapper_a2aed_00007 | RUNNING    | 172.31.1.179:1042  | 0.00765867  |           2 |    0.95363  |     82 |         15.4437  |        0.693854 |      0.496283 |
+| train_wrapper_a2aed_00008 | RUNNING    | 172.31.4.133:1042  | 0.000969519 |           8 |    0.947184 |     38 |         16.8264  |        0.693667 |      0.465962 |
+| train_wrapper_a2aed_00010 | RUNNING    | 172.31.4.133:1039  | 0.00726145  |           7 |    0.627432 |     79 |         24.1901  |        0.692356 |      0.430711 |
+| train_wrapper_a2aed_00011 | RUNNING    | 172.31.4.133:1041  | 0.000438104 |           8 |    0.742981 |      1 |          5.02376 |        0.69357  |      0.490638 |
+| train_wrapper_a2aed_00012 | RUNNING    | 172.31.23.116:1040 | 0.000198551 |           6 |    0.724026 |     91 |         22.1375  |        0.69358  |      0.461898 |
+| train_wrapper_a2aed_00014 | RUNNING    | 172.31.23.116:1041 | 0.0851576   |           6 |    0.608135 |     47 |         13.269   |        0.689937 |      0.45005  |
+| train_wrapper_a2aed_00016 | RUNNING    | 172.31.13.77:1046  | 0.000221438 |           2 |    0.907066 |      1 |          4.58988 |        0.69357  |      0.498144 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |         21.2883  |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |         16.6909  |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |         15.6602  |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |         17.2664  |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |         17.5948  |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00018 | TERMINATED |                    | 0.007926    |           3 |    0.831667 |    100 |         19.6164  |        0.693491 |      0.490211 |
+| train_wrapper_a2aed_00023 | TERMINATED |                    | 0.00108878  |           5 |    0.669294 |    100 |         19.5127  |        0.693806 |      0.473344 |
+| train_wrapper_a2aed_00024 | TERMINATED |                    | 0.00660938  |           2 |    0.606369 |    100 |         20.232   |        0.693749 |      0.492425 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 RUNNING)
+
+
+Result for train_wrapper_a2aed_00000:
+  date: 2021-03-30_04-54-31
+  done: false
+  experiment_id: de6405cc61cb480aa97c84cbef5ce876
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 92
+  node_ip: 172.31.11.100
+  pid: 1377
+  time_since_restore: 21.170270681381226
+  time_this_iter_s: 1.6527988910675049
+  time_total_s: 21.170270681381226
+  timestamp: 1617105271
+  timesteps_since_restore: 0
+  train-error: 0.479947
+  train-logloss: 0.693509
+  training_iteration: 92
+  trial_id: a2aed_00000
+
+Result for train_wrapper_a2aed_00000:
+  date: 2021-03-30_04-54-31
+  done: true
+  experiment_id: de6405cc61cb480aa97c84cbef5ce876
+  experiment_tag: 0_eta=0.0045465,max_depth=5,subsample=0.90396
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 100
+  node_ip: 172.31.11.100
+  pid: 1377
+  time_since_restore: 21.20374369621277
+  time_this_iter_s: 0.0034132003784179688
+  time_total_s: 21.20374369621277
+  timestamp: 1617105271
+  timesteps_since_restore: 0
+  train-error: 0.478822
+  train-logloss: 0.693457
+  training_iteration: 100
+  trial_id: a2aed_00000
+
+Result for train_wrapper_a2aed_00014:
+  date: 2021-03-30_04-54-34
+  done: true
+  experiment_id: 05e37b704cb142f497377de0c6abd9bf
+  experiment_tag: 14_eta=0.085158,max_depth=6,subsample=0.60814
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1041
+  time_since_restore: 23.559579133987427
+  time_this_iter_s: 0.20032763481140137
+  time_total_s: 23.559579133987427
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.42607
+  train-logloss: 0.686464
+  training_iteration: 100
+  trial_id: a2aed_00014
+
+Result for train_wrapper_a2aed_00005:
+  date: 2021-03-30_04-54-34
+  done: true
+  experiment_id: ed38bd27640f428da6d32e497cde6e2d
+  experiment_tag: 5_eta=0.00016041,max_depth=5,subsample=0.81317
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1040
+  time_since_restore: 23.110603094100952
+  time_this_iter_s: 0.0023272037506103516
+  time_total_s: 23.110603094100952
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.482069
+  train-logloss: 0.693581
+  training_iteration: 100
+  trial_id: a2aed_00005
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-54-37
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 4.887620687484741
+  time_this_iter_s: 4.887620687484741
+  time_total_s: 4.887620687484741
+  timestamp: 1617105277
+  timesteps_since_restore: 0
+  train-error: 0.489825
+  train-logloss: 0.693569
+  training_iteration: 1
+  trial_id: a2aed_00028
+
+2021-03-30 04:54:38,495	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:38,496	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=17ms]
+Result for train_wrapper_a2aed_00011:
+  date: 2021-03-30_04-54-29
+  done: false
+  experiment_id: f6030de7394348bab6f8c8fa9269ce7c
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 2
+  node_ip: 172.31.4.133
+  pid: 1041
+  time_since_restore: 18.555930137634277
+  time_this_iter_s: 13.532165765762329
+  time_total_s: 18.555930137634277
+  timestamp: 1617105269
+  timesteps_since_restore: 0
+  train-error: 0.485316
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00011
+
+Result for train_wrapper_a2aed_00010:
+  date: 2021-03-30_04-54-35
+  done: false
+  experiment_id: 0f17e5c5d1d94aa1abc7da6c29a3e150
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 80
+  node_ip: 172.31.4.133
+  pid: 1039
+  time_since_restore: 24.535409450531006
+  time_this_iter_s: 0.3452622890472412
+  time_total_s: 24.535409450531006
+  timestamp: 1617105275
+  timesteps_since_restore: 0
+  train-error: 0.430694
+  train-logloss: 0.692344
+  training_iteration: 80
+  trial_id: a2aed_00010
+
+Result for train_wrapper_a2aed_00007:
+  date: 2021-03-30_04-54-27
+  done: false
+  experiment_id: bf9f18bd8259428781cac1ac130f7f95
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 83
+  node_ip: 172.31.1.179
+  pid: 1042
+  time_since_restore: 16.910944938659668
+  time_this_iter_s: 1.4672269821166992
+  time_total_s: 16.910944938659668
+  timestamp: 1617105267
+  timesteps_since_restore: 0
+  train-error: 0.49628
+  train-logloss: 0.693857
+  training_iteration: 83
+  trial_id: a2aed_00007
+
+Result for train_wrapper_a2aed_00007:
+  date: 2021-03-30_04-54-28
+  done: true
+  experiment_id: bf9f18bd8259428781cac1ac130f7f95
+  experiment_tag: 7_eta=0.0076587,max_depth=2,subsample=0.95363
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1042
+  time_since_restore: 17.547168731689453
+  time_this_iter_s: 0.12341427803039551
+  time_total_s: 17.547168731689453
+  timestamp: 1617105268
+  timesteps_since_restore: 0
+  train-error: 0.495702
+  train-logloss: 0.693812
+  training_iteration: 100
+  trial_id: a2aed_00007
+
+Result for train_wrapper_a2aed_00004:
+  date: 2021-03-30_04-54-15
+  done: false
+  experiment_id: 440aeeadbcea4148b5e48fc545c5eb36
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 1
+  node_ip: 172.31.1.179
+  pid: 1041
+  time_since_restore: 4.427648067474365
+  time_this_iter_s: 4.427648067474365
+  time_total_s: 4.427648067474365
+  timestamp: 1617105255
+  timesteps_since_restore: 0
+  train-error: 0.495616
+  train-logloss: 0.693763
+  training_iteration: 1
+  trial_id: a2aed_00004
+
+2021-03-30 04:54:39,215	INFO command_runner.py:357 -- Fetched IP: 172.31.1.179
+2021-03-30 04:54:39,215	INFO log_timer.py:27 -- NodeUpdater: ins_36DZqFHmyOLn6ofz2LwgvK: Got IP  [LogTimer=17ms]
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-54-37
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 1
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 4.765657186508179
+  time_this_iter_s: 4.765657186508179
+  time_total_s: 4.765657186508179
+  timestamp: 1617105277
+  timesteps_since_restore: 0
+  train-error: 0.490466
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00029
+
+2021-03-30 04:54:39,738	INFO command_runner.py:357 -- Fetched IP: 172.31.23.116
+2021-03-30 04:54:39,738	INFO log_timer.py:27 -- NodeUpdater: ins_366bo24ZhIGGldQwHdMRxZ: Got IP  [LogTimer=18ms]
+[2m[36m(pid=1041, ip=172.31.1.179)[0m 2021-03-30 04:54:39,920	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 29.13 seconds (26.99 pure XGBoost training time).
+[2m[36m(pid=1041, ip=172.31.1.179)[0m TRAIN TIME TAKEN: 29.14 seconds
+[2m[36m(pid=1041, ip=172.31.1.179)[0m Final training error: 0.4541
+Result for train_wrapper_a2aed_00002:
+  date: 2021-03-30_04-54-34
+  done: false
+  experiment_id: 80d6ed6beb5e4569a9c9fcb292ef5ed7
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 2
+  node_ip: 172.31.11.100
+  pid: 1375
+  time_since_restore: 23.540648221969604
+  time_this_iter_s: 18.648204565048218
+  time_total_s: 23.540648221969604
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.493895
+  train-logloss: 0.693625
+  training_iteration: 2
+  trial_id: a2aed_00002
+
+Result for train_wrapper_a2aed_00002:
+  date: 2021-03-30_04-54-34
+  done: true
+  experiment_id: 80d6ed6beb5e4569a9c9fcb292ef5ed7
+  experiment_tag: 2_eta=0.031965,max_depth=5,subsample=0.90694
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 100
+  node_ip: 172.31.11.100
+  pid: 1375
+  time_since_restore: 24.040482759475708
+  time_this_iter_s: 0.003139972686767578
+  time_total_s: 24.040482759475708
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.457614
+  train-logloss: 0.691764
+  training_iteration: 100
+  trial_id: a2aed_00002
+
+Result for train_wrapper_a2aed_00019:
+  date: 2021-03-30_04-54-24
+  done: false
+  experiment_id: 25e3f1804afd4bffbfa95a807809e6dd
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 40
+  node_ip: 172.31.13.77
+  pid: 1047
+  time_since_restore: 13.371240377426147
+  time_this_iter_s: 3.7955493927001953
+  time_total_s: 13.371240377426147
+  timestamp: 1617105264
+  timesteps_since_restore: 0
+  train-error: 0.486428
+  train-logloss: 0.693569
+  training_iteration: 40
+  trial_id: a2aed_00019
+
+Result for train_wrapper_a2aed_00020:
+  date: 2021-03-30_04-54-36
+  done: true
+  experiment_id: 238f674d3435467e97fec3f12b947d3f
+  experiment_tag: 20_eta=0.020085,max_depth=4,subsample=0.75631
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 100
+  node_ip: 172.31.18.77
+  pid: 1040
+  time_since_restore: 25.973169565200806
+  time_this_iter_s: 0.0029120445251464844
+  time_total_s: 25.973169565200806
+  timestamp: 1617105276
+  timesteps_since_restore: 0
+  train-error: 0.474705
+  train-logloss: 0.692691
+  training_iteration: 100
+  trial_id: a2aed_00020
+
+[2m[36m(pid=1047, ip=172.31.13.77)[0m 2021-03-30 04:54:40,649	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 29.58 seconds (27.27 pure XGBoost training time).
+[2m[36m(pid=1047, ip=172.31.13.77)[0m TRAIN TIME TAKEN: 29.59 seconds
+[2m[36m(pid=1047, ip=172.31.13.77)[0m Final training error: 0.4845
+Result for train_wrapper_a2aed_00012:
+  date: 2021-03-30_04-54-33
+  done: false
+  experiment_id: 1bafbaf52aa04033a27df76018079f1f
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 92
+  node_ip: 172.31.23.116
+  pid: 1040
+  time_since_restore: 22.770363807678223
+  time_this_iter_s: 0.6328344345092773
+  time_total_s: 22.770363807678223
+  timestamp: 1617105273
+  timesteps_since_restore: 0
+  train-error: 0.461622
+  train-logloss: 0.693581
+  training_iteration: 92
+  trial_id: a2aed_00012
+
+Result for train_wrapper_a2aed_00012:
+  date: 2021-03-30_04-54-34
+  done: true
+  experiment_id: 1bafbaf52aa04033a27df76018079f1f
+  experiment_tag: 12_eta=0.00019855,max_depth=6,subsample=0.72403
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1040
+  time_since_restore: 23.85056972503662
+  time_this_iter_s: 0.22131657600402832
+  time_total_s: 23.85056972503662
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.461609
+  train-logloss: 0.693584
+  training_iteration: 100
+  trial_id: a2aed_00012
+
+Result for train_wrapper_a2aed_00008:
+  date: 2021-03-30_04-54-29
+  done: false
+  experiment_id: c1a2397f5486457485ae0b115f5ce93e
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 39
+  node_ip: 172.31.4.133
+  pid: 1042
+  time_since_restore: 18.716763734817505
+  time_this_iter_s: 1.8903398513793945
+  time_total_s: 18.716763734817505
+  timestamp: 1617105269
+  timesteps_since_restore: 0
+  train-error: 0.46568
+  train-logloss: 0.693667
+  training_iteration: 39
+  trial_id: a2aed_00008
+
+Result for train_wrapper_a2aed_00026:
+  date: 2021-03-30_04-54-34
+  done: false
+  experiment_id: 6cae27af8be34ac983cff657b6eee505
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 2
+  node_ip: 172.31.4.133
+  pid: 1383
+  time_since_restore: 5.423837423324585
+  time_this_iter_s: 0.8266162872314453
+  time_total_s: 5.423837423324585
+  timestamp: 1617105274
+  timesteps_since_restore: 0
+  train-error: 0.497461
+  train-logloss: 0.693569
+  training_iteration: 2
+  trial_id: a2aed_00026
+
+Result for train_wrapper_a2aed_00022:
+  date: 2021-03-30_04-54-35
+  done: false
+  experiment_id: 3d831b2683a64ac8a9c56e5ba80a1568
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 38
+  node_ip: 172.31.18.77
+  pid: 1042
+  time_since_restore: 24.533842086791992
+  time_this_iter_s: 10.846440315246582
+  time_total_s: 24.533842086791992
+  timestamp: 1617105275
+  timesteps_since_restore: 0
+  train-error: 0.450975
+  train-logloss: 0.693756
+  training_iteration: 38
+  trial_id: a2aed_00022
+
+Result for train_wrapper_a2aed_00030:
+  date: 2021-03-30_04-54-36
+  done: false
+  experiment_id: cd0626c963714a64a2685caa22da9b52
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 1
+  node_ip: 172.31.18.77
+  pid: 1391
+  time_since_restore: 4.300063371658325
+  time_this_iter_s: 4.300063371658325
+  time_total_s: 4.300063371658325
+  timestamp: 1617105276
+  timesteps_since_restore: 0
+  train-error: 0.498381
+  train-logloss: 0.69357
+  training_iteration: 1
+  trial_id: a2aed_00030
+
+2021-03-30 04:54:41,368	INFO command_runner.py:357 -- Fetched IP: 172.31.18.77
+2021-03-30 04:54:41,368	INFO log_timer.py:27 -- NodeUpdater: ins_28CvlGZMY4SQgKhxnVpIUi: Got IP  [LogTimer=74ms]
+[2m[36m(pid=1042, ip=172.31.18.77)[0m 2021-03-30 04:54:41,559	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 30.62 seconds (28.29 pure XGBoost training time).
+[2m[36m(pid=1042, ip=172.31.18.77)[0m TRAIN TIME TAKEN: 30.64 seconds
+[2m[36m(pid=1042, ip=172.31.18.77)[0m Final training error: 0.4318
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-38
+  done: false
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 66
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 28.258562803268433
+  time_this_iter_s: 1.2118561267852783
+  time_total_s: 28.258562803268433
+  timestamp: 1617105278
+  timesteps_since_restore: 0
+  train-error: 0.416406
+  train-logloss: 0.693708
+  training_iteration: 66
+  trial_id: a2aed_00003
+
+[2m[36m(pid=1039, ip=172.31.4.133)[0m 2021-03-30 04:54:41,692	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 30.68 seconds (28.34 pure XGBoost training time).
+[2m[36m(pid=1039, ip=172.31.4.133)[0m TRAIN TIME TAKEN: 30.69 seconds
+[2m[36m(pid=1039, ip=172.31.4.133)[0m Final training error: 0.4233
+Result for train_wrapper_a2aed_00022:
+  date: 2021-03-30_04-54-40
+  done: true
+  experiment_id: 3d831b2683a64ac8a9c56e5ba80a1568
+  experiment_tag: 22_eta=0.0013979,max_depth=7,subsample=0.64627
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 100
+  node_ip: 172.31.18.77
+  pid: 1042
+  time_since_restore: 30.05848979949951
+  time_this_iter_s: 0.0021996498107910156
+  time_total_s: 30.05848979949951
+  timestamp: 1617105280
+  timesteps_since_restore: 0
+  train-error: 0.431802
+  train-logloss: 0.693641
+  training_iteration: 100
+  trial_id: a2aed_00022
+
+Result for train_wrapper_a2aed_00021:
+  date: 2021-03-30_04-54-36
+  done: false
+  experiment_id: 90281e716e2843c1879d19b4a325e0be
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 2
+  node_ip: 172.31.18.77
+  pid: 1041
+  time_since_restore: 25.793840646743774
+  time_this_iter_s: 21.195006608963013
+  time_total_s: 25.793840646743774
+  timestamp: 1617105276
+  timesteps_since_restore: 0
+  train-error: 0.493556
+  train-logloss: 0.693701
+  training_iteration: 2
+  trial_id: a2aed_00021
+
+Result for train_wrapper_a2aed_00021:
+  date: 2021-03-30_04-54-37
+  done: true
+  experiment_id: 90281e716e2843c1879d19b4a325e0be
+  experiment_tag: 21_eta=0.012494,max_depth=5,subsample=0.58182
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 100
+  node_ip: 172.31.18.77
+  pid: 1041
+  time_since_restore: 26.175238847732544
+  time_this_iter_s: 0.0028502941131591797
+  time_total_s: 26.175238847732544
+  timestamp: 1617105277
+  timesteps_since_restore: 0
+  train-error: 0.461673
+  train-logloss: 0.692564
+  training_iteration: 100
+  trial_id: a2aed_00021
+
+Result for train_wrapper_a2aed_00025:
+  date: 2021-03-30_04-54-40
+  done: false
+  experiment_id: 2e68bcc88bd04b55b5e40f4457caf6b7
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 54
+  node_ip: 172.31.17.189
+  pid: 1043
+  time_since_restore: 12.762641191482544
+  time_this_iter_s: 0.653010368347168
+  time_total_s: 12.762641191482544
+  timestamp: 1617105280
+  timesteps_since_restore: 0
+  train-error: 0.467084
+  train-logloss: 0.69239
+  training_iteration: 54
+  trial_id: a2aed_00025
+
+Result for train_wrapper_a2aed_00031:
+  date: 2021-03-30_04-54-38
+  done: false
+  experiment_id: 8af3d79e98a642e9a28e61545c347c6e
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 1
+  node_ip: 172.31.11.100
+  pid: 1883
+  time_since_restore: 4.49893045425415
+  time_this_iter_s: 4.49893045425415
+  time_total_s: 4.49893045425415
+  timestamp: 1617105278
+  timesteps_since_restore: 0
+  train-error: 0.496809
+  train-logloss: 0.693863
+  training_iteration: 1
+  trial_id: a2aed_00031
+
+Result for train_wrapper_a2aed_00019:
+  date: 2021-03-30_04-54-40
+  done: true
+  experiment_id: 25e3f1804afd4bffbfa95a807809e6dd
+  experiment_tag: 19_eta=0.00017271,max_depth=4,subsample=0.65518
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 100
+  node_ip: 172.31.13.77
+  pid: 1047
+  time_since_restore: 29.477818727493286
+  time_this_iter_s: 0.002168893814086914
+  time_total_s: 29.477818727493286
+  timestamp: 1617105280
+  timesteps_since_restore: 0
+  train-error: 0.484486
+  train-logloss: 0.693574
+  training_iteration: 100
+  trial_id: a2aed_00019
+
+Result for train_wrapper_a2aed_00017:
+  date: 2021-03-30_04-54-30
+  done: false
+  experiment_id: e72e8509c76a496583b1e4f1e67daa20
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 42
+  node_ip: 172.31.13.77
+  pid: 1049
+  time_since_restore: 19.72301197052002
+  time_this_iter_s: 5.416954755783081
+  time_total_s: 19.72301197052002
+  timestamp: 1617105270
+  timesteps_since_restore: 0
+  train-error: 0.472727
+  train-logloss: 0.693658
+  training_iteration: 42
+  trial_id: a2aed_00017
+
+Result for train_wrapper_a2aed_00010:
+  date: 2021-03-30_04-54-40
+  done: true
+  experiment_id: 0f17e5c5d1d94aa1abc7da6c29a3e150
+  experiment_tag: 10_eta=0.0072614,max_depth=7,subsample=0.62743
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 100
+  node_ip: 172.31.4.133
+  pid: 1039
+  time_since_restore: 29.641535758972168
+  time_this_iter_s: 0.25337910652160645
+  time_total_s: 29.641535758972168
+  timestamp: 1617105280
+  timesteps_since_restore: 0
+  train-error: 0.423289
+  train-logloss: 0.692081
+  training_iteration: 100
+  trial_id: a2aed_00010
+
+Result for train_wrapper_a2aed_00016:
+  date: 2021-03-30_04-54-32
+  done: false
+  experiment_id: c82c57f55e894eb789ad20ad74e91834
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 2
+  node_ip: 172.31.13.77
+  pid: 1046
+  time_since_restore: 21.452517986297607
+  time_this_iter_s: 16.862633228302002
+  time_total_s: 21.452517986297607
+  timestamp: 1617105272
+  timesteps_since_restore: 0
+  train-error: 0.497797
+  train-logloss: 0.69357
+  training_iteration: 2
+  trial_id: a2aed_00016
+
+Result for train_wrapper_a2aed_00016:
+  date: 2021-03-30_04-54-32
+  done: true
+  experiment_id: c82c57f55e894eb789ad20ad74e91834
+  experiment_tag: 16_eta=0.00022144,max_depth=2,subsample=0.90707
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 100
+  node_ip: 172.31.13.77
+  pid: 1046
+  time_since_restore: 21.76657772064209
+  time_this_iter_s: 0.0023856163024902344
+  time_total_s: 21.76657772064209
+  timestamp: 1617105272
+  timesteps_since_restore: 0
+  train-error: 0.497367
+  train-logloss: 0.693576
+  training_iteration: 100
+  trial_id: a2aed_00016
+
+[2m[36m(pid=1378)[0m 2021-03-30 04:54:42,673	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-54-35
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 2
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 5.566070556640625
+  time_this_iter_s: 0.9496703147888184
+  time_total_s: 5.566070556640625
+  timestamp: 1617105275
+  timesteps_since_restore: 0
+  train-error: 0.487084
+  train-logloss: 0.693583
+  training_iteration: 2
+  trial_id: a2aed_00027
+
+== Status ==
+Memory usage on this node: 2.0/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 60/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (12 RUNNING, 20 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00003 | RUNNING    | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |     75 |         30.6054  |        0.693706 |      0.411973 |
+| train_wrapper_a2aed_00004 | RUNNING    | 172.31.1.179:1041  | 0.0441172   |           5 |    0.612182 |      1 |          4.42765 |        0.693763 |      0.495616 |
+| train_wrapper_a2aed_00008 | RUNNING    | 172.31.4.133:1042  | 0.000969519 |           8 |    0.947184 |     80 |         31.0137  |        0.693663 |      0.45837  |
+| train_wrapper_a2aed_00011 | RUNNING    | 172.31.4.133:1041  | 0.000438104 |           8 |    0.742981 |     78 |         31.205   |        0.69364  |      0.420788 |
+| train_wrapper_a2aed_00017 | RUNNING    | 172.31.13.77:1049  | 0.000761954 |           7 |    0.927148 |     71 |         21.8027  |        0.693713 |      0.47083  |
+| train_wrapper_a2aed_00025 | RUNNING    | 172.31.17.189:1043 | 0.0301846   |           5 |    0.518175 |     65 |         13.906   |        0.692243 |      0.465113 |
+| train_wrapper_a2aed_00026 | RUNNING    | 172.31.4.133:1383  | 0.00191935  |           2 |    0.740473 |     70 |         12.4526  |        0.693724 |      0.495472 |
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     10 |          7.64353 |        0.69362  |      0.46595  |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     11 |          8.40098 |        0.693567 |      0.462119 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     13 |          8.62518 |        0.693571 |      0.476009 |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |         21.2037  |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |         21.2883  |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |         24.0405  |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |         23.1106  |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |         16.6909  |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |         17.5472  |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |         15.6602  |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |         29.6415  |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |         23.8506  |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |         17.2664  |        0.69357  |      0.491597 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (2 RUNNING, 10 TERMINATED)
+
+
+[2m[36m(pid=1049, ip=172.31.13.77)[0m 2021-03-30 04:54:42,973	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 32.09 seconds (29.85 pure XGBoost training time).
+[2m[36m(pid=1049, ip=172.31.13.77)[0m TRAIN TIME TAKEN: 32.10 seconds
+[2m[36m(pid=1049, ip=172.31.13.77)[0m Final training error: 0.4687
+Result for train_wrapper_a2aed_00004:
+  date: 2021-03-30_04-54-39
+  done: true
+  experiment_id: 440aeeadbcea4148b5e48fc545c5eb36
+  experiment_tag: 4_eta=0.044117,max_depth=5,subsample=0.61218
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1041
+  time_since_restore: 28.965836763381958
+  time_this_iter_s: 0.0021877288818359375
+  time_total_s: 28.965836763381958
+  timestamp: 1617105279
+  timesteps_since_restore: 0
+  train-error: 0.454127
+  train-logloss: 0.691213
+  training_iteration: 100
+  trial_id: a2aed_00004
+
+[2m[36m(pid=1042, ip=172.31.4.133)[0m 2021-03-30 04:54:43,302	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+Result for train_wrapper_a2aed_00017:
+  date: 2021-03-30_04-54-42
+  done: true
+  experiment_id: e72e8509c76a496583b1e4f1e67daa20
+  experiment_tag: 17_eta=0.00076195,max_depth=7,subsample=0.92715
+  hostname: ip-172-31-13-77
+  iterations_since_restore: 100
+  node_ip: 172.31.13.77
+  pid: 1049
+  time_since_restore: 31.58061909675598
+  time_this_iter_s: 0.002405405044555664
+  time_total_s: 31.58061909675598
+  timestamp: 1617105282
+  timesteps_since_restore: 0
+  train-error: 0.468748
+  train-logloss: 0.693725
+  training_iteration: 100
+  trial_id: a2aed_00017
+
+[2m[36m(pid=1041, ip=172.31.4.133)[0m 2021-03-30 04:54:43,585	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+Result for train_wrapper_a2aed_00011:
+  date: 2021-03-30_04-54-44
+  done: false
+  experiment_id: f6030de7394348bab6f8c8fa9269ce7c
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 83
+  node_ip: 172.31.4.133
+  pid: 1041
+  time_since_restore: 33.091058015823364
+  time_this_iter_s: 0.3923497200012207
+  time_total_s: 33.091058015823364
+  timestamp: 1617105284
+  timesteps_since_restore: 0
+  train-error: 0.418881
+  train-logloss: 0.693646
+  training_iteration: 83
+  trial_id: a2aed_00011
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-54-43
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 18
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 10.731588363647461
+  time_this_iter_s: 0.3822453022003174
+  time_total_s: 10.731588363647461
+  timestamp: 1617105283
+  timesteps_since_restore: 0
+  train-error: 0.453139
+  train-logloss: 0.693567
+  training_iteration: 18
+  trial_id: a2aed_00028
+
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-54-44
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 23
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 11.95737361907959
+  time_this_iter_s: 0.2991189956665039
+  time_total_s: 11.95737361907959
+  timestamp: 1617105284
+  timesteps_since_restore: 0
+  train-error: 0.474734
+  train-logloss: 0.693575
+  training_iteration: 23
+  trial_id: a2aed_00029
+
+[2m[36m(pid=1383, ip=172.31.4.133)[0m 2021-03-30 04:54:45,596	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 16.20 seconds (13.81 pure XGBoost training time).
+Result for train_wrapper_a2aed_00026:
+  date: 2021-03-30_04-54-45
+  done: true
+  experiment_id: 6cae27af8be34ac983cff657b6eee505
+  experiment_tag: 26_eta=0.0019194,max_depth=2,subsample=0.74047
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 100
+  node_ip: 172.31.4.133
+  pid: 1383
+  time_since_restore: 16.018473625183105
+  time_this_iter_s: 0.11216330528259277
+  time_total_s: 16.018473625183105
+  timestamp: 1617105285
+  timesteps_since_restore: 0
+  train-error: 0.495058
+  train-logloss: 0.693895
+  training_iteration: 100
+  trial_id: a2aed_00026
+
+[2m[36m(pid=1383, ip=172.31.4.133)[0m TRAIN TIME TAKEN: 16.23 seconds
+[2m[36m(pid=1383, ip=172.31.4.133)[0m Final training error: 0.4951
+Result for train_wrapper_a2aed_00008:
+  date: 2021-03-30_04-54-45
+  done: false
+  experiment_id: c1a2397f5486457485ae0b115f5ce93e
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 91
+  node_ip: 172.31.4.133
+  pid: 1042
+  time_since_restore: 34.97252058982849
+  time_this_iter_s: 0.2947053909301758
+  time_total_s: 34.97252058982849
+  timestamp: 1617105285
+  timesteps_since_restore: 0
+  train-error: 0.457287
+  train-logloss: 0.693642
+  training_iteration: 91
+  trial_id: a2aed_00008
+
+Result for train_wrapper_a2aed_00030:
+  date: 2021-03-30_04-54-46
+  done: false
+  experiment_id: cd0626c963714a64a2685caa22da9b52
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 88
+  node_ip: 172.31.18.77
+  pid: 1391
+  time_since_restore: 13.81059980392456
+  time_this_iter_s: 0.0800008773803711
+  time_total_s: 13.81059980392456
+  timestamp: 1617105286
+  timesteps_since_restore: 0
+  train-error: 0.495977
+  train-logloss: 0.693581
+  training_iteration: 88
+  trial_id: a2aed_00030
+
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-46
+  done: false
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 91
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 36.31998109817505
+  time_this_iter_s: 0.40073347091674805
+  time_total_s: 36.31998109817505
+  timestamp: 1617105286
+  timesteps_since_restore: 0
+  train-error: 0.405233
+  train-logloss: 0.693698
+  training_iteration: 91
+  trial_id: a2aed_00003
+
+Result for train_wrapper_a2aed_00031:
+  date: 2021-03-30_04-54-47
+  done: false
+  experiment_id: 8af3d79e98a642e9a28e61545c347c6e
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 70
+  node_ip: 172.31.11.100
+  pid: 1883
+  time_since_restore: 13.1187744140625
+  time_this_iter_s: 0.13208532333374023
+  time_total_s: 13.1187744140625
+  timestamp: 1617105287
+  timesteps_since_restore: 0
+  train-error: 0.483827
+  train-logloss: 0.692817
+  training_iteration: 70
+  trial_id: a2aed_00031
+
+Result for train_wrapper_a2aed_00025:
+  date: 2021-03-30_04-54-47
+  done: false
+  experiment_id: 2e68bcc88bd04b55b5e40f4457caf6b7
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 100
+  node_ip: 172.31.17.189
+  pid: 1043
+  time_since_restore: 19.269594192504883
+  time_this_iter_s: 0.16841912269592285
+  time_total_s: 19.269594192504883
+  timestamp: 1617105287
+  timesteps_since_restore: 0
+  train-error: 0.457563
+  train-logloss: 0.691768
+  training_iteration: 100
+  trial_id: a2aed_00025
+
+Result for train_wrapper_a2aed_00025:
+  date: 2021-03-30_04-54-47
+  done: true
+  experiment_id: 2e68bcc88bd04b55b5e40f4457caf6b7
+  experiment_tag: 25_eta=0.030185,max_depth=5,subsample=0.51818
+  hostname: ip-172-31-17-189
+  iterations_since_restore: 100
+  node_ip: 172.31.17.189
+  pid: 1043
+  time_since_restore: 19.269594192504883
+  time_this_iter_s: 0.16841912269592285
+  time_total_s: 19.269594192504883
+  timestamp: 1617105287
+  timesteps_since_restore: 0
+  train-error: 0.457563
+  train-logloss: 0.691768
+  training_iteration: 100
+  trial_id: a2aed_00025
+
+[2m[36m(pid=1043, ip=172.31.17.189)[0m 2021-03-30 04:54:47,443	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 19.56 seconds (17.47 pure XGBoost training time).
+[2m[36m(pid=1043, ip=172.31.17.189)[0m TRAIN TIME TAKEN: 19.57 seconds
+[2m[36m(pid=1043, ip=172.31.17.189)[0m Final training error: 0.4576
+Result for train_wrapper_a2aed_00030:
+  date: 2021-03-30_04-54-47
+  done: true
+  experiment_id: cd0626c963714a64a2685caa22da9b52
+  experiment_tag: 30_eta=0.00041359,max_depth=2,subsample=0.7761
+  hostname: ip-172-31-18-77
+  iterations_since_restore: 100
+  node_ip: 172.31.18.77
+  pid: 1391
+  time_since_restore: 15.130046129226685
+  time_this_iter_s: 0.1078329086303711
+  time_total_s: 15.130046129226685
+  timestamp: 1617105287
+  timesteps_since_restore: 0
+  train-error: 0.495834
+  train-logloss: 0.693588
+  training_iteration: 100
+  trial_id: a2aed_00030
+
+[2m[36m(pid=1391, ip=172.31.18.77)[0m 2021-03-30 04:54:47,479	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 15.22 seconds (13.08 pure XGBoost training time).
+[2m[36m(pid=1391, ip=172.31.18.77)[0m TRAIN TIME TAKEN: 15.24 seconds
+[2m[36m(pid=1391, ip=172.31.18.77)[0m Final training error: 0.4958
+== Status ==
+Memory usage on this node: 2.0/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 35/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (7 RUNNING, 25 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00003 | RUNNING    | 172.31.11.100:1378 | 0.000706749 |           8 |    0.600479 |     94 |          37.2962 |        0.693695 |      0.404984 |
+| train_wrapper_a2aed_00008 | RUNNING    | 172.31.4.133:1042  | 0.000969519 |           8 |    0.947184 |     96 |          36.6524 |        0.693633 |      0.456384 |
+| train_wrapper_a2aed_00011 | RUNNING    | 172.31.4.133:1041  | 0.000438104 |           8 |    0.742981 |     93 |          36.7989 |        0.693654 |      0.416072 |
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     40 |          17.9777 |        0.693698 |      0.434206 |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     31 |          15.4395 |        0.693567 |      0.436972 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     34 |          15.449  |        0.693578 |      0.472761 |
+| train_wrapper_a2aed_00031 | RUNNING    | 172.31.11.100:1883 | 0.0449083   |           3 |    0.837282 |     78 |          14.0691 |        0.692786 |      0.48338  |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00004 | TERMINATED |                    | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |                    | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-54-48
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 41
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 18.390133142471313
+  time_this_iter_s: 0.41243982315063477
+  time_total_s: 18.390133142471313
+  timestamp: 1617105288
+  timesteps_since_restore: 0
+  train-error: 0.433062
+  train-logloss: 0.693698
+  training_iteration: 41
+  trial_id: a2aed_00027
+
+Result for train_wrapper_a2aed_00011:
+  date: 2021-03-30_04-54-49
+  done: false
+  experiment_id: f6030de7394348bab6f8c8fa9269ce7c
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 97
+  node_ip: 172.31.4.133
+  pid: 1041
+  time_since_restore: 38.143237829208374
+  time_this_iter_s: 0.3256051540374756
+  time_total_s: 38.143237829208374
+  timestamp: 1617105289
+  timesteps_since_restore: 0
+  train-error: 0.416294
+  train-logloss: 0.693657
+  training_iteration: 97
+  trial_id: a2aed_00011
+
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-54-49
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 39
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 17.000251293182373
+  time_this_iter_s: 0.25879597663879395
+  time_total_s: 17.000251293182373
+  timestamp: 1617105289
+  timesteps_since_restore: 0
+  train-error: 0.472311
+  train-logloss: 0.693581
+  training_iteration: 39
+  trial_id: a2aed_00029
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-54-49
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 36
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 17.269429683685303
+  time_this_iter_s: 0.4519984722137451
+  time_total_s: 17.269429683685303
+  timestamp: 1617105289
+  timesteps_since_restore: 0
+  train-error: 0.43192
+  train-logloss: 0.693567
+  training_iteration: 36
+  trial_id: a2aed_00028
+
+[2m[36m(pid=1042, ip=172.31.4.133)[0m 2021-03-30 04:54:50,267	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 39.25 seconds (36.97 pure XGBoost training time).
+Result for train_wrapper_a2aed_00008:
+  date: 2021-03-30_04-54-49
+  done: true
+  experiment_id: c1a2397f5486457485ae0b115f5ce93e
+  experiment_tag: 8_eta=0.00096952,max_depth=8,subsample=0.94718
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 100
+  node_ip: 172.31.4.133
+  pid: 1042
+  time_since_restore: 38.04827332496643
+  time_this_iter_s: 0.32074713706970215
+  time_total_s: 38.04827332496643
+  timestamp: 1617105289
+  timesteps_since_restore: 0
+  train-error: 0.45527
+  train-logloss: 0.693624
+  training_iteration: 100
+  trial_id: a2aed_00008
+
+[2m[36m(pid=1042, ip=172.31.4.133)[0m TRAIN TIME TAKEN: 39.25 seconds
+[2m[36m(pid=1042, ip=172.31.4.133)[0m Final training error: 0.4553
+[2m[36m(pid=1883)[0m 2021-03-30 04:54:50,976	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 17.00 seconds (14.64 pure XGBoost training time).
+Result for train_wrapper_a2aed_00031:
+  date: 2021-03-30_04-54-50
+  done: true
+  experiment_id: 8af3d79e98a642e9a28e61545c347c6e
+  experiment_tag: 31_eta=0.044908,max_depth=3,subsample=0.83728
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 100
+  node_ip: 172.31.11.100
+  pid: 1883
+  time_since_restore: 16.774070501327515
+  time_this_iter_s: 0.13431668281555176
+  time_total_s: 16.774070501327515
+  timestamp: 1617105290
+  timesteps_since_restore: 0
+  train-error: 0.480814
+  train-logloss: 0.692696
+  training_iteration: 100
+  trial_id: a2aed_00031
+
+[2m[36m(pid=1883)[0m TRAIN TIME TAKEN: 17.01 seconds
+[2m[36m(pid=1883)[0m Final training error: 0.4808
+Result for train_wrapper_a2aed_00003:
+  date: 2021-03-30_04-54-49
+  done: true
+  experiment_id: f3deeac1f4ba4e38af17ce657e00bd01
+  experiment_tag: 3_eta=0.00070675,max_depth=8,subsample=0.60048
+  hostname: ip-172-31-11-100
+  iterations_since_restore: 100
+  node_ip: 172.31.11.100
+  pid: 1378
+  time_since_restore: 39.44591283798218
+  time_this_iter_s: 0.33433985710144043
+  time_total_s: 39.44591283798218
+  timestamp: 1617105289
+  timesteps_since_restore: 0
+  train-error: 0.403366
+  train-logloss: 0.693688
+  training_iteration: 100
+  trial_id: a2aed_00003
+
+[2m[36m(pid=1378)[0m 2021-03-30 04:54:51,355	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 40.84 seconds (38.69 pure XGBoost training time).
+[2m[36m(pid=1378)[0m TRAIN TIME TAKEN: 40.86 seconds
+[2m[36m(pid=1378)[0m Final training error: 0.4034
+Result for train_wrapper_a2aed_00011:
+  date: 2021-03-30_04-54-50
+  done: true
+  experiment_id: f6030de7394348bab6f8c8fa9269ce7c
+  experiment_tag: 11_eta=0.0004381,max_depth=8,subsample=0.74298
+  hostname: ip-172-31-4-133
+  iterations_since_restore: 100
+  node_ip: 172.31.4.133
+  pid: 1041
+  time_since_restore: 39.191930055618286
+  time_this_iter_s: 0.35892343521118164
+  time_total_s: 39.191930055618286
+  timestamp: 1617105290
+  timesteps_since_restore: 0
+  train-error: 0.415767
+  train-logloss: 0.693659
+  training_iteration: 100
+  trial_id: a2aed_00011
+
+[2m[36m(pid=1041, ip=172.31.4.133)[0m 2021-03-30 04:54:51,448	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 40.38 seconds (37.96 pure XGBoost training time).
+[2m[36m(pid=1041, ip=172.31.4.133)[0m TRAIN TIME TAKEN: 40.38 seconds
+[2m[36m(pid=1041, ip=172.31.4.133)[0m Final training error: 0.4158
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 15/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (3 RUNNING, 29 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     55 |          23.3147 |        0.69369  |      0.425333 |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     45 |          20.534  |        0.693569 |      0.425708 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     49 |          20.2856 |        0.693586 |      0.471233 |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |                    | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |                    | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |                    | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |                    | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |                    | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |                    | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-54-53
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 56
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 23.679853439331055
+  time_this_iter_s: 0.365114688873291
+  time_total_s: 23.679853439331055
+  timestamp: 1617105293
+  timesteps_since_restore: 0
+  train-error: 0.425119
+  train-logloss: 0.693688
+  training_iteration: 56
+  trial_id: a2aed_00027
+
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-54-54
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 55
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 22.289140462875366
+  time_this_iter_s: 0.32511186599731445
+  time_total_s: 22.289140462875366
+  timestamp: 1617105294
+  timesteps_since_restore: 0
+  train-error: 0.471072
+  train-logloss: 0.693591
+  training_iteration: 55
+  trial_id: a2aed_00029
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-54-54
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 51
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 22.555421352386475
+  time_this_iter_s: 0.3540785312652588
+  time_total_s: 22.555421352386475
+  timestamp: 1617105294
+  timesteps_since_restore: 0
+  train-error: 0.422188
+  train-logloss: 0.69357
+  training_iteration: 51
+  trial_id: a2aed_00028
+
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 15/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (3 RUNNING, 29 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     69 |          28.176  |        0.693662 |      0.4172   |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     60 |          25.8292 |        0.693572 |      0.416792 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     65 |          25.5412 |        0.6936   |      0.470195 |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |                    | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |                    | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |                    | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |                    | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |                    | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |                    | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-54-58
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 71
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 28.972222566604614
+  time_this_iter_s: 0.4260141849517822
+  time_total_s: 28.972222566604614
+  timestamp: 1617105298
+  timesteps_since_restore: 0
+  train-error: 0.416222
+  train-logloss: 0.693654
+  training_iteration: 71
+  trial_id: a2aed_00027
+
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-55-00
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 71
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 27.517561435699463
+  time_this_iter_s: 0.4194669723510742
+  time_total_s: 27.517561435699463
+  timestamp: 1617105300
+  timesteps_since_restore: 0
+  train-error: 0.469969
+  train-logloss: 0.693605
+  training_iteration: 71
+  trial_id: a2aed_00029
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-55-00
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 66
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 27.795483589172363
+  time_this_iter_s: 0.42288804054260254
+  time_total_s: 27.795483589172363
+  timestamp: 1617105300
+  timesteps_since_restore: 0
+  train-error: 0.413895
+  train-logloss: 0.693574
+  training_iteration: 66
+  trial_id: a2aed_00028
+
+[2m[36m(pid=1389, ip=172.31.1.179)[0m 2021-03-30 04:55:01,862	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 15/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (3 RUNNING, 29 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     84 |          33.6504 |        0.69361  |      0.41103  |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     74 |          30.6397 |        0.693576 |      0.409934 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     81 |          30.6211 |        0.693615 |      0.470166 |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |                    | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |                    | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |                    | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |                    | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |                    | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |                    | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-55-03
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 85
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 34.057029485702515
+  time_this_iter_s: 0.40665626525878906
+  time_total_s: 34.057029485702515
+  timestamp: 1617105303
+  timesteps_since_restore: 0
+  train-error: 0.40997
+  train-logloss: 0.693605
+  training_iteration: 85
+  trial_id: a2aed_00027
+
+[2m[36m(pid=1382, ip=172.31.23.116)[0m 2021-03-30 04:55:04,735	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+[2m[36m(pid=1387, ip=172.31.23.116)[0m 2021-03-30 04:55:04,832	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-55-05
+  done: false
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 87
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 32.64045977592468
+  time_this_iter_s: 0.4219169616699219
+  time_total_s: 32.64045977592468
+  timestamp: 1617105305
+  timesteps_since_restore: 0
+  train-error: 0.470138
+  train-logloss: 0.693623
+  training_iteration: 87
+  trial_id: a2aed_00029
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-55-05
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 80
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 32.90833783149719
+  time_this_iter_s: 0.3851280212402344
+  time_total_s: 32.90833783149719
+  timestamp: 1617105305
+  timesteps_since_restore: 0
+  train-error: 0.407948
+  train-logloss: 0.693579
+  training_iteration: 80
+  trial_id: a2aed_00028
+
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 15/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (3 RUNNING, 29 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00027 | RUNNING    | 172.31.1.179:1389  | 0.00115008  |           8 |    0.702185 |     98 |          38.6481 |        0.693561 |      0.408269 |
+| train_wrapper_a2aed_00028 | RUNNING    | 172.31.23.116:1382 | 0.000174292 |           8 |    0.585644 |     88 |          35.9231 |        0.693583 |      0.404902 |
+| train_wrapper_a2aed_00029 | RUNNING    | 172.31.23.116:1387 | 0.000253651 |           8 |    0.971535 |     97 |          36.0053 |        0.693635 |      0.469606 |
+| train_wrapper_a2aed_00000 | TERMINATED |                    | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |                    | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |                    | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |                    | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |                    | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |                    | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |                    | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |                    | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |                    | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |                    | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |                    | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |                    | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |                    | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |                    | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |                    | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |                    | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |                    | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-55-09
+  done: false
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 39.35532236099243
+  time_this_iter_s: 0.38890576362609863
+  time_total_s: 39.35532236099243
+  timestamp: 1617105309
+  timesteps_since_restore: 0
+  train-error: 0.407273
+  train-logloss: 0.693553
+  training_iteration: 100
+  trial_id: a2aed_00027
+
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-55-10
+  done: false
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 94
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 38.01587176322937
+  time_this_iter_s: 0.2867417335510254
+  time_total_s: 38.01587176322937
+  timestamp: 1617105310
+  timesteps_since_restore: 0
+  train-error: 0.40395
+  train-logloss: 0.693585
+  training_iteration: 94
+  trial_id: a2aed_00028
+
+[2m[36m(pid=1389, ip=172.31.1.179)[0m 2021-03-30 04:55:10,451	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 40.67 seconds (38.59 pure XGBoost training time).
+[2m[36m(pid=1389, ip=172.31.1.179)[0m TRAIN TIME TAKEN: 40.68 seconds
+[2m[36m(pid=1389, ip=172.31.1.179)[0m Final training error: 0.4073
+Result for train_wrapper_a2aed_00027:
+  date: 2021-03-30_04-55-09
+  done: true
+  experiment_id: 3706353086864b82a640e1b09bf38e65
+  experiment_tag: 27_eta=0.0011501,max_depth=8,subsample=0.70219
+  hostname: ip-172-31-1-179
+  iterations_since_restore: 100
+  node_ip: 172.31.1.179
+  pid: 1389
+  time_since_restore: 39.35532236099243
+  time_this_iter_s: 0.38890576362609863
+  time_total_s: 39.35532236099243
+  timestamp: 1617105309
+  timesteps_since_restore: 0
+  train-error: 0.407273
+  train-logloss: 0.693553
+  training_iteration: 100
+  trial_id: a2aed_00027
+
+Result for train_wrapper_a2aed_00029:
+  date: 2021-03-30_04-55-09
+  done: true
+  experiment_id: 402849b95b5f40a6bbeb1a3d12b6b089
+  experiment_tag: 29_eta=0.00025365,max_depth=8,subsample=0.97153
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1387
+  time_since_restore: 36.91815233230591
+  time_this_iter_s: 0.31653571128845215
+  time_total_s: 36.91815233230591
+  timestamp: 1617105309
+  timesteps_since_restore: 0
+  train-error: 0.469759
+  train-logloss: 0.693638
+  training_iteration: 100
+  trial_id: a2aed_00029
+
+[2m[36m(pid=1387, ip=172.31.23.116)[0m 2021-03-30 04:55:10,606	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 38.07 seconds (35.78 pure XGBoost training time).
+[2m[36m(pid=1387, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 38.08 seconds
+[2m[36m(pid=1387, ip=172.31.23.116)[0m Final training error: 0.4698
+[2m[36m(pid=1382, ip=172.31.23.116)[0m 2021-03-30 04:55:13,970	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=640,000 in 41.52 seconds (39.24 pure XGBoost training time).
+[2m[36m(pid=1382, ip=172.31.23.116)[0m TRAIN TIME TAKEN: 41.53 seconds
+Result for train_wrapper_a2aed_00028:
+  date: 2021-03-30_04-55-12
+  done: true
+  experiment_id: 02991cede8c54139bb0d3be72e554289
+  experiment_tag: 28_eta=0.00017429,max_depth=8,subsample=0.58564
+  hostname: ip-172-31-23-116
+  iterations_since_restore: 100
+  node_ip: 172.31.23.116
+  pid: 1382
+  time_since_restore: 40.158217906951904
+  time_this_iter_s: 0.3395993709564209
+  time_total_s: 40.158217906951904
+  timestamp: 1617105312
+  timesteps_since_restore: 0
+  train-error: 0.402095
+  train-logloss: 0.693587
+  training_iteration: 100
+  trial_id: a2aed_00028
+
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (32 TERMINATED)
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc   |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | TERMINATED |       | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |       | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |       | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |       | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |       | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |       | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |       | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |       | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |       | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |       | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |       | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |       | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |       | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |       | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |       | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |       | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |       | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
+| train_wrapper_a2aed_00017 | TERMINATED |       | 0.000761954 |           7 |    0.927148 |    100 |          31.5806 |        0.693725 |      0.468748 |
+| train_wrapper_a2aed_00018 | TERMINATED |       | 0.007926    |           3 |    0.831667 |    100 |          19.6164 |        0.693491 |      0.490211 |
+| train_wrapper_a2aed_00019 | TERMINATED |       | 0.000172714 |           4 |    0.655181 |    100 |          29.4778 |        0.693574 |      0.484486 |
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+... 12 more trials not shown (12 TERMINATED)
+
+
+== Status ==
+Memory usage on this node: 1.6/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/128 CPUs, 0/0 GPUs, 0.0/327.61 GiB heap, 0.0/141.03 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-54-08
+Number of trials: 32/32 (32 TERMINATED)
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc   |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_a2aed_00000 | TERMINATED |       | 0.00454648  |           5 |    0.903957 |    100 |          21.2037 |        0.693457 |      0.478822 |
+| train_wrapper_a2aed_00001 | TERMINATED |       | 0.00737698  |           1 |    0.876937 |    100 |          21.2883 |        0.693887 |      0.497544 |
+| train_wrapper_a2aed_00002 | TERMINATED |       | 0.0319654   |           5 |    0.906936 |    100 |          24.0405 |        0.691764 |      0.457614 |
+| train_wrapper_a2aed_00003 | TERMINATED |       | 0.000706749 |           8 |    0.600479 |    100 |          39.4459 |        0.693688 |      0.403366 |
+| train_wrapper_a2aed_00004 | TERMINATED |       | 0.0441172   |           5 |    0.612182 |    100 |          28.9658 |        0.691213 |      0.454127 |
+| train_wrapper_a2aed_00005 | TERMINATED |       | 0.000160406 |           5 |    0.813173 |    100 |          23.1106 |        0.693581 |      0.482069 |
+| train_wrapper_a2aed_00006 | TERMINATED |       | 0.000397038 |           1 |    0.599266 |    100 |          16.6909 |        0.693574 |      0.496952 |
+| train_wrapper_a2aed_00007 | TERMINATED |       | 0.00765867  |           2 |    0.95363  |    100 |          17.5472 |        0.693812 |      0.495702 |
+| train_wrapper_a2aed_00008 | TERMINATED |       | 0.000969519 |           8 |    0.947184 |    100 |          38.0483 |        0.693624 |      0.45527  |
+| train_wrapper_a2aed_00009 | TERMINATED |       | 0.0112884   |           2 |    0.606444 |    100 |          15.6602 |        0.693388 |      0.492272 |
+| train_wrapper_a2aed_00010 | TERMINATED |       | 0.00726145  |           7 |    0.627432 |    100 |          29.6415 |        0.692081 |      0.423289 |
+| train_wrapper_a2aed_00011 | TERMINATED |       | 0.000438104 |           8 |    0.742981 |    100 |          39.1919 |        0.693659 |      0.415767 |
+| train_wrapper_a2aed_00012 | TERMINATED |       | 0.000198551 |           6 |    0.724026 |    100 |          23.8506 |        0.693584 |      0.461609 |
+| train_wrapper_a2aed_00013 | TERMINATED |       | 0.000110195 |           3 |    0.638028 |    100 |          17.2664 |        0.69357  |      0.491597 |
+| train_wrapper_a2aed_00014 | TERMINATED |       | 0.0851576   |           6 |    0.608135 |    100 |          23.5596 |        0.686464 |      0.42607  |
+| train_wrapper_a2aed_00015 | TERMINATED |       | 0.000103142 |           2 |    0.925168 |    100 |          17.5948 |        0.693575 |      0.497553 |
+| train_wrapper_a2aed_00016 | TERMINATED |       | 0.000221438 |           2 |    0.907066 |    100 |          21.7666 |        0.693576 |      0.497367 |
+| train_wrapper_a2aed_00017 | TERMINATED |       | 0.000761954 |           7 |    0.927148 |    100 |          31.5806 |        0.693725 |      0.468748 |
+| train_wrapper_a2aed_00018 | TERMINATED |       | 0.007926    |           3 |    0.831667 |    100 |          19.6164 |        0.693491 |      0.490211 |
+| train_wrapper_a2aed_00019 | TERMINATED |       | 0.000172714 |           4 |    0.655181 |    100 |          29.4778 |        0.693574 |      0.484486 |
+| train_wrapper_a2aed_00020 | TERMINATED |       | 0.020085    |           4 |    0.756309 |    100 |          25.9732 |        0.692691 |      0.474705 |
+| train_wrapper_a2aed_00021 | TERMINATED |       | 0.0124939   |           5 |    0.581822 |    100 |          26.1752 |        0.692564 |      0.461673 |
+| train_wrapper_a2aed_00022 | TERMINATED |       | 0.00139794  |           7 |    0.646274 |    100 |          30.0585 |        0.693641 |      0.431802 |
+| train_wrapper_a2aed_00023 | TERMINATED |       | 0.00108878  |           5 |    0.669294 |    100 |          19.5127 |        0.693806 |      0.473344 |
+| train_wrapper_a2aed_00024 | TERMINATED |       | 0.00660938  |           2 |    0.606369 |    100 |          20.232  |        0.693749 |      0.492425 |
+| train_wrapper_a2aed_00025 | TERMINATED |       | 0.0301846   |           5 |    0.518175 |    100 |          19.2696 |        0.691768 |      0.457563 |
+| train_wrapper_a2aed_00026 | TERMINATED |       | 0.00191935  |           2 |    0.740473 |    100 |          16.0185 |        0.693895 |      0.495058 |
+| train_wrapper_a2aed_00027 | TERMINATED |       | 0.00115008  |           8 |    0.702185 |    100 |          39.3553 |        0.693553 |      0.407273 |
+| train_wrapper_a2aed_00028 | TERMINATED |       | 0.000174292 |           8 |    0.585644 |    100 |          40.1582 |        0.693587 |      0.402095 |
+| train_wrapper_a2aed_00029 | TERMINATED |       | 0.000253651 |           8 |    0.971535 |    100 |          36.9182 |        0.693638 |      0.469759 |
+| train_wrapper_a2aed_00030 | TERMINATED |       | 0.000413595 |           2 |    0.776102 |    100 |          15.13   |        0.693588 |      0.495834 |
+| train_wrapper_a2aed_00031 | TERMINATED |       | 0.0449083   |           3 |    0.837282 |    100 |          16.7741 |        0.692696 |      0.480814 |
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+[2m[36m(pid=1382, ip=172.31.23.116)[0m Final training error: 0.4021
+2021-03-30 04:55:14,152	INFO tune.py:549 -- Total run time: 65.46 seconds (65.09 seconds for the tuning loop).
+PASSED.
+[0m
+Script done on 2021-03-30 04:55:15-07:00 [COMMAND_EXIT_CODE="0"]

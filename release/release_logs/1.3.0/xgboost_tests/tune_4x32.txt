@@ -1,0 +1,856 @@
+Script started on 2021-03-30 04:50:43-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:44,052	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.10.129:6379
+Waiting for more nodes to come up: 0/32 (0 seconds passed)
+Waiting for more nodes to come up: 1/32 (10 seconds passed)
+Waiting for more nodes to come up: 1/32 (20 seconds passed)
+Waiting for more nodes to come up: 1/32 (30 seconds passed)
+Waiting for more nodes to come up: 1/32 (40 seconds passed)
+Waiting for more nodes to come up: 1/32 (50 seconds passed)
+Waiting for more nodes to come up: 1/32 (60 seconds passed)
+Waiting for more nodes to come up: 1/32 (70 seconds passed)
+Waiting for more nodes to come up: 1/32 (80 seconds passed)
+Waiting for more nodes to come up: 1/32 (90 seconds passed)
+Waiting for more nodes to come up: 1/32 (100 seconds passed)
+Waiting for more nodes to come up: 1/32 (110 seconds passed)
+Waiting for more nodes to come up: 3/32 (120 seconds passed)
+Waiting for more nodes to come up: 5/32 (130 seconds passed)
+Waiting for more nodes to come up: 5/32 (140 seconds passed)
+Waiting for more nodes to come up: 5/32 (150 seconds passed)
+Waiting for more nodes to come up: 17/32 (160 seconds passed)
+Waiting for more nodes to come up: 28/32 (170 seconds passed)
+Cluster is up: 32/32 nodes online after 175 seconds
+2021-03-30 04:53:40,498	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.10.129:6379
+2021-03-30 04:53:40,541	WARNING function_runner.py:545 -- Function checkpointing is disabled. This may result in unexpected behavior when using checkpointing features or certain schedulers. To enable, set the train function arguments to be `func(config, checkpoint_dir=None)`.
+2021-03-30 04:53:40,807	WARNING trial.py:347 -- Passing `extra_*` resource requirements to `resources_per_trial` is deprecated. Please use a `PlacementGroupFactory` object to define your resource requirements instead.
+== Status ==
+Memory usage on this node: 1.4/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 33/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (3 PENDING, 1 RUNNING)
++---------------------------+----------+-------+-------------+-------------+-------------+
+| Trial name                | status   | loc   |         eta |   max_depth |   subsample |
+|---------------------------+----------+-------+-------------+-------------+-------------|
+| train_wrapper_91e6f_00000 | RUNNING  |       | 0.0532593   |           5 |    0.537896 |
+| train_wrapper_91e6f_00001 | PENDING  |       | 0.000829978 |           8 |    0.629387 |
+| train_wrapper_91e6f_00002 | PENDING  |       | 0.00282058  |           4 |    0.760537 |
+| train_wrapper_91e6f_00003 | PENDING  |       | 0.00183585  |           2 |    0.650034 |
++---------------------------+----------+-------+-------------+-------------+-------------+
+
+
+2021-03-30 04:53:42,874	WARNING worker.py:1083 -- WARNING: 12 PYTHON workers have been started on a node of the id: c14ddc20dff522f9f758ec907c9a67781b7e7e78c51efd9249f39599 and address: 172.31.10.129. This could be a result of using a large number of actors, or it could be a consequence of using nested tasks (see https://github.com/ray-project/ray/issues/3644) for some a discussion of workarounds.
+[2m[36m(pid=1361)[0m 2021-03-30 04:53:42,959	INFO main.py:791 -- [RayXGBoost] Created 32 new actors (32 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1358)[0m 2021-03-30 04:53:43,014	INFO main.py:791 -- [RayXGBoost] Created 32 new actors (32 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1362)[0m 2021-03-30 04:53:43,075	INFO main.py:791 -- [RayXGBoost] Created 32 new actors (32 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1358)[0m 2021-03-30 04:53:44,705	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1032, ip=172.31.1.47)[0m [04:53:44] task [xgboost.ray]:139968099307088 got new rank 8
+[2m[36m(pid=1034, ip=172.31.1.47)[0m [04:53:44] task [xgboost.ray]:139961596804048 got new rank 9
+[2m[36m(pid=1033, ip=172.31.1.47)[0m [04:53:44] task [xgboost.ray]:139721839574608 got new rank 10
+[2m[36m(pid=1035, ip=172.31.1.47)[0m [04:53:44] task [xgboost.ray]:139695807929744 got new rank 11
+[2m[36m(pid=1035, ip=172.31.1.105)[0m [04:53:44] task [xgboost.ray]:140669715738192 got new rank 3
+[2m[36m(pid=1034, ip=172.31.1.105)[0m [04:53:44] task [xgboost.ray]:140359135055952 got new rank 1
+[2m[36m(pid=1036, ip=172.31.1.105)[0m [04:53:44] task [xgboost.ray]:140102744128912 got new rank 2
+[2m[36m(pid=1033, ip=172.31.1.105)[0m [04:53:44] task [xgboost.ray]:139866284445904 got new rank 0
+[2m[36m(pid=1033, ip=172.31.1.191)[0m [04:53:44] task [xgboost.ray]:139777477334096 got new rank 5
+[2m[36m(pid=1036, ip=172.31.1.191)[0m [04:53:44] task [xgboost.ray]:139745454960208 got new rank 7
+[2m[36m(pid=1034, ip=172.31.1.191)[0m [04:53:44] task [xgboost.ray]:139858439982672 got new rank 4
+[2m[36m(pid=1035, ip=172.31.1.191)[0m [04:53:44] task [xgboost.ray]:140205722371920 got new rank 6
+[2m[36m(pid=1044, ip=172.31.3.112)[0m [04:53:44] task [xgboost.ray]:139779357995216 got new rank 25
+[2m[36m(pid=1042, ip=172.31.3.112)[0m [04:53:44] task [xgboost.ray]:139812223752016 got new rank 26
+[2m[36m(pid=1041, ip=172.31.3.112)[0m [04:53:44] task [xgboost.ray]:139786522922576 got new rank 27
+[2m[36m(pid=1043, ip=172.31.3.112)[0m [04:53:44] task [xgboost.ray]:140604198940240 got new rank 24
+[2m[36m(pid=1033, ip=172.31.7.122)[0m [04:53:44] task [xgboost.ray]:139708557049232 got new rank 31
+[2m[36m(pid=1038, ip=172.31.7.122)[0m [04:53:44] task [xgboost.ray]:140552825723024 got new rank 30
+[2m[36m(pid=1036, ip=172.31.7.122)[0m [04:53:44] task [xgboost.ray]:140032192336016 got new rank 28
+[2m[36m(pid=1037, ip=172.31.7.122)[0m [04:53:44] task [xgboost.ray]:139990970101328 got new rank 29
+[2m[36m(pid=1041, ip=172.31.15.130)[0m [04:53:44] task [xgboost.ray]:140561245709584 got new rank 18
+[2m[36m(pid=1039, ip=172.31.15.130)[0m [04:53:44] task [xgboost.ray]:140106236366480 got new rank 16
+[2m[36m(pid=1042, ip=172.31.15.130)[0m [04:53:44] task [xgboost.ray]:140594346544784 got new rank 17
+[2m[36m(pid=1040, ip=172.31.15.130)[0m [04:53:44] task [xgboost.ray]:140500318838864 got new rank 19
+[2m[36m(pid=1035, ip=172.31.19.106)[0m [04:53:44] task [xgboost.ray]:140237216788112 got new rank 21
+[2m[36m(pid=1033, ip=172.31.19.106)[0m [04:53:44] task [xgboost.ray]:140481717972624 got new rank 20
+[2m[36m(pid=1035, ip=172.31.13.229)[0m [04:53:44] task [xgboost.ray]:140478665727632 got new rank 13
+[2m[36m(pid=1036, ip=172.31.19.106)[0m [04:53:44] task [xgboost.ray]:139823574954192 got new rank 22
+[2m[36m(pid=1034, ip=172.31.19.106)[0m [04:53:44] task [xgboost.ray]:139746727530128 got new rank 23
+[2m[36m(pid=1034, ip=172.31.13.229)[0m [04:53:44] task [xgboost.ray]:139630829588560 got new rank 12
+[2m[36m(pid=1037, ip=172.31.13.229)[0m [04:53:44] task [xgboost.ray]:140672561479888 got new rank 15
+[2m[36m(pid=1036, ip=172.31.13.229)[0m [04:53:44] task [xgboost.ray]:140437702562000 got new rank 14
+[2m[36m(pid=1362)[0m 2021-03-30 04:53:44,929	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1039, ip=172.31.27.221)[0m [04:53:44] task [xgboost.ray]:140409734266512 got new rank 21
+[2m[36m(pid=1036, ip=172.31.27.221)[0m [04:53:44] task [xgboost.ray]:140651748769424 got new rank 22
+[2m[36m(pid=1038, ip=172.31.27.221)[0m [04:53:44] task [xgboost.ray]:140055402491536 got new rank 20
+[2m[36m(pid=1037, ip=172.31.27.221)[0m [04:53:44] task [xgboost.ray]:140212041170576 got new rank 23
+[2m[36m(pid=1038, ip=172.31.23.153)[0m [04:53:44] task [xgboost.ray]:140453481883664 got new rank 10
+[2m[36m(pid=1040, ip=172.31.23.153)[0m [04:53:44] task [xgboost.ray]:139868160478864 got new rank 8
+[2m[36m(pid=1039, ip=172.31.23.153)[0m [04:53:44] task [xgboost.ray]:140184162148496 got new rank 11
+[2m[36m(pid=1031, ip=172.31.17.234)[0m [04:53:44] task [xgboost.ray]:140540708935120 got new rank 5
+[2m[36m(pid=1041, ip=172.31.23.153)[0m [04:53:44] task [xgboost.ray]:140451770904208 got new rank 9
+[2m[36m(pid=1029, ip=172.31.17.234)[0m [04:53:44] task [xgboost.ray]:140578487242384 got new rank 4
+[2m[36m(pid=1030, ip=172.31.17.234)[0m [04:53:44] task [xgboost.ray]:139895816183440 got new rank 6
+[2m[36m(pid=1032, ip=172.31.17.234)[0m [04:53:44] task [xgboost.ray]:139805738577552 got new rank 7
+[2m[36m(pid=1031, ip=172.31.11.89)[0m [04:53:44] task [xgboost.ray]:140068738301776 got new rank 3
+[2m[36m(pid=1036, ip=172.31.11.89)[0m [04:53:44] task [xgboost.ray]:140023038668944 got new rank 2
+[2m[36m(pid=1035, ip=172.31.11.89)[0m [04:53:44] task [xgboost.ray]:139904619901008 got new rank 1
+[2m[36m(pid=1034, ip=172.31.11.89)[0m [04:53:44] task [xgboost.ray]:139693594635024 got new rank 0
+[2m[36m(pid=1037, ip=172.31.25.95)[0m [04:53:44] task [xgboost.ray]:140183469739984 got new rank 18
+[2m[36m(pid=1036, ip=172.31.25.95)[0m [04:53:44] task [xgboost.ray]:140019621997968 got new rank 17
+[2m[36m(pid=1042, ip=172.31.25.95)[0m [04:53:44] task [xgboost.ray]:140205435853840 got new rank 16
+[2m[36m(pid=1043, ip=172.31.25.95)[0m [04:53:44] task [xgboost.ray]:140689599479376 got new rank 19
+[2m[36m(pid=1045, ip=172.31.25.13)[0m [04:53:44] task [xgboost.ray]:140181941765200 got new rank 15
+[2m[36m(pid=1048, ip=172.31.25.13)[0m [04:53:44] task [xgboost.ray]:140029931667728 got new rank 12
+[2m[36m(pid=1046, ip=172.31.25.13)[0m [04:53:44] task [xgboost.ray]:139946506293392 got new rank 14
+[2m[36m(pid=1047, ip=172.31.25.13)[0m [04:53:44] task [xgboost.ray]:139821765571856 got new rank 13
+[2m[36m(pid=1032, ip=172.31.5.165)[0m [04:53:44] task [xgboost.ray]:139648140033616 got new rank 25
+[2m[36m(pid=1036, ip=172.31.5.165)[0m [04:53:44] task [xgboost.ray]:139884464195536 got new rank 27
+[2m[36m(pid=1037, ip=172.31.5.165)[0m [04:53:44] task [xgboost.ray]:139745702666768 got new rank 26
+[2m[36m(pid=1035, ip=172.31.5.165)[0m [04:53:44] task [xgboost.ray]:140404476071504 got new rank 24
+[2m[36m(pid=1034, ip=172.31.9.151)[0m [04:53:44] task [xgboost.ray]:140498600951184 got new rank 28
+[2m[36m(pid=1035, ip=172.31.9.151)[0m [04:53:44] task [xgboost.ray]:139941949452368 got new rank 29
+[2m[36m(pid=1036, ip=172.31.9.151)[0m [04:53:45] task [xgboost.ray]:140625682686224 got new rank 31
+[2m[36m(pid=1037, ip=172.31.9.151)[0m [04:53:45] task [xgboost.ray]:140512287219088 got new rank 30
+[2m[36m(pid=1361)[0m 2021-03-30 04:53:45,174	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1042, ip=172.31.16.152)[0m [04:53:45] task [xgboost.ray]:139960089764752 got new rank 12
+[2m[36m(pid=1041, ip=172.31.16.152)[0m [04:53:45] task [xgboost.ray]:140419437403792 got new rank 14
+[2m[36m(pid=1043, ip=172.31.16.152)[0m [04:53:45] task [xgboost.ray]:140333029085456 got new rank 15
+[2m[36m(pid=1044, ip=172.31.16.152)[0m [04:53:45] task [xgboost.ray]:140399426385744 got new rank 13
+[2m[36m(pid=1035, ip=172.31.14.7)[0m [04:53:45] task [xgboost.ray]:139755572670736 got new rank 8
+[2m[36m(pid=1036, ip=172.31.14.7)[0m [04:53:45] task [xgboost.ray]:140045312986704 got new rank 9
+[2m[36m(pid=1038, ip=172.31.14.7)[0m [04:53:45] task [xgboost.ray]:139743330423120 got new rank 10
+[2m[36m(pid=1037, ip=172.31.14.7)[0m [04:53:45] task [xgboost.ray]:140391534596304 got new rank 11
+[2m[36m(pid=1035, ip=172.31.26.101)[0m [04:53:45] task [xgboost.ray]:140579386128144 got new rank 16
+[2m[36m(pid=1039, ip=172.31.26.101)[0m [04:53:45] task [xgboost.ray]:140472603045968 got new rank 17
+[2m[36m(pid=1040, ip=172.31.26.101)[0m [04:53:45] task [xgboost.ray]:139743145076880 got new rank 18
+[2m[36m(pid=1038, ip=172.31.26.101)[0m [04:53:45] task [xgboost.ray]:140600576499920 got new rank 19
+[2m[36m(pid=1034, ip=172.31.28.65)[0m [04:53:45] task [xgboost.ray]:140010618871376 got new rank 20
+[2m[36m(pid=1036, ip=172.31.28.65)[0m [04:53:45] task [xgboost.ray]:140292069009360 got new rank 22
+[2m[36m(pid=1037, ip=172.31.28.65)[0m [04:53:45] task [xgboost.ray]:140431901390864 got new rank 21
+[2m[36m(pid=1035, ip=172.31.28.65)[0m [04:53:45] task [xgboost.ray]:140458263668304 got new rank 23
+[2m[36m(pid=1030, ip=172.31.14.255)[0m [04:53:45] task [xgboost.ray]:140295637597840 got new rank 6
+[2m[36m(pid=1031, ip=172.31.14.255)[0m [04:53:45] task [xgboost.ray]:140616184537232 got new rank 4
+[2m[36m(pid=1033, ip=172.31.14.255)[0m [04:53:45] task [xgboost.ray]:140375717101200 got new rank 7
+[2m[36m(pid=1032, ip=172.31.14.255)[0m [04:53:45] task [xgboost.ray]:140625571151952 got new rank 5
+[2m[36m(pid=1035, ip=172.31.4.43)[0m [04:53:45] task [xgboost.ray]:140105646614352 got new rank 24
+[2m[36m(pid=1033, ip=172.31.4.43)[0m [04:53:45] task [xgboost.ray]:140672118627920 got new rank 25
+[2m[36m(pid=1036, ip=172.31.4.43)[0m [04:53:45] task [xgboost.ray]:139644092666064 got new rank 26
+[2m[36m(pid=1034, ip=172.31.4.43)[0m [04:53:45] task [xgboost.ray]:140616847720592 got new rank 27
+[2m[36m(pid=1036, ip=172.31.0.90)[0m [04:53:45] task [xgboost.ray]:139730580344464 got new rank 3
+[2m[36m(pid=1038, ip=172.31.0.90)[0m [04:53:45] task [xgboost.ray]:139976455807184 got new rank 0
+[2m[36m(pid=1035, ip=172.31.0.90)[0m [04:53:45] task [xgboost.ray]:140075130490448 got new rank 2
+[2m[36m(pid=1037, ip=172.31.0.90)[0m [04:53:45] task [xgboost.ray]:140284425908368 got new rank 1
+[2m[36m(pid=1039, ip=172.31.5.183)[0m [04:53:45] task [xgboost.ray]:139682450845264 got new rank 29
+[2m[36m(pid=1038, ip=172.31.5.183)[0m [04:53:45] task [xgboost.ray]:139882733478032 got new rank 28
+[2m[36m(pid=1040, ip=172.31.5.183)[0m [04:53:45] task [xgboost.ray]:139709603851856 got new rank 30
+[2m[36m(pid=1041, ip=172.31.5.183)[0m [04:53:45] task [xgboost.ray]:140569005223504 got new rank 31
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-53-46
+  done: false
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 1
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 4.156233072280884
+  time_this_iter_s: 4.156233072280884
+  time_total_s: 4.156233072280884
+  timestamp: 1617105226
+  timesteps_since_restore: 0
+  train-error: 0.498377
+  train-logloss: 0.693256
+  training_iteration: 1
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.0/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 99/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 PENDING, 3 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | RUNNING  | 172.31.10.129:1358 | 0.0532593   |           5 |    0.537896 |      1 |          4.15623 |        0.693256 |      0.498377 |
+| train_wrapper_91e6f_00001 | RUNNING  |                    | 0.000829978 |           8 |    0.629387 |        |                  |                 |               |
+| train_wrapper_91e6f_00002 | RUNNING  |                    | 0.00282058  |           4 |    0.760537 |        |                  |                 |               |
+| train_wrapper_91e6f_00003 | PENDING  |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00002:
+  date: 2021-03-30_04-53-46
+  done: false
+  experiment_id: bed0d3e8f96845029c97a384e3966197
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 1
+  node_ip: 172.31.10.129
+  pid: 1362
+  time_since_restore: 4.45540452003479
+  time_this_iter_s: 4.45540452003479
+  time_total_s: 4.45540452003479
+  timestamp: 1617105226
+  timesteps_since_restore: 0
+  train-error: 0.497845
+  train-logloss: 0.693319
+  training_iteration: 1
+  trial_id: 91e6f_00002
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-53-47
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 1
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 5.190462827682495
+  time_this_iter_s: 5.190462827682495
+  time_total_s: 5.190462827682495
+  timestamp: 1617105227
+  timesteps_since_restore: 0
+  train-error: 0.491923
+  train-logloss: 0.6933179999999999
+  training_iteration: 1
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-53-51
+  done: false
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 23
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 9.19376516342163
+  time_this_iter_s: 0.20112204551696777
+  time_total_s: 9.19376516342163
+  timestamp: 1617105231
+  timesteps_since_restore: 0
+  train-error: 0.481642
+  train-logloss: 0.692744
+  training_iteration: 23
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 99/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 PENDING, 3 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | RUNNING  | 172.31.10.129:1358 | 0.0532593   |           5 |    0.537896 |     23 |          9.19377 |        0.692744 |      0.481642 |
+| train_wrapper_91e6f_00001 | RUNNING  | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |      8 |          8.70434 |        0.693293 |      0.473913 |
+| train_wrapper_91e6f_00002 | RUNNING  | 172.31.10.129:1362 | 0.00282058  |           4 |    0.760537 |     25 |          9.09193 |        0.693251 |      0.489676 |
+| train_wrapper_91e6f_00003 | PENDING  |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00002:
+  date: 2021-03-30_04-53-51
+  done: false
+  experiment_id: bed0d3e8f96845029c97a384e3966197
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 27
+  node_ip: 172.31.10.129
+  pid: 1362
+  time_since_restore: 9.478763341903687
+  time_this_iter_s: 0.20317649841308594
+  time_total_s: 9.478763341903687
+  timestamp: 1617105231
+  timesteps_since_restore: 0
+  train-error: 0.489557
+  train-logloss: 0.693247
+  training_iteration: 27
+  trial_id: 91e6f_00002
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-53-52
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 11
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 10.300766944885254
+  time_this_iter_s: 0.4902045726776123
+  time_total_s: 10.300766944885254
+  timestamp: 1617105232
+  timesteps_since_restore: 0
+  train-error: 0.4688800000000001
+  train-logloss: 0.693283
+  training_iteration: 11
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-53-56
+  done: false
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 45
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 14.204262733459473
+  time_this_iter_s: 0.2346477508544922
+  time_total_s: 14.204262733459473
+  timestamp: 1617105236
+  timesteps_since_restore: 0
+  train-error: 0.473681
+  train-logloss: 0.692373
+  training_iteration: 45
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 99/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 PENDING, 3 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | RUNNING  | 172.31.10.129:1358 | 0.0532593   |           5 |    0.537896 |     45 |          14.2043 |        0.692373 |      0.473681 |
+| train_wrapper_91e6f_00001 | RUNNING  | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     18 |          14.0568 |        0.693261 |      0.458255 |
+| train_wrapper_91e6f_00002 | RUNNING  | 172.31.10.129:1362 | 0.00282058  |           4 |    0.760537 |     50 |          14.1589 |        0.693208 |      0.487609 |
+| train_wrapper_91e6f_00003 | PENDING  |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00002:
+  date: 2021-03-30_04-53-56
+  done: false
+  experiment_id: bed0d3e8f96845029c97a384e3966197
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 52
+  node_ip: 172.31.10.129
+  pid: 1362
+  time_since_restore: 14.571991682052612
+  time_this_iter_s: 0.1865851879119873
+  time_total_s: 14.571991682052612
+  timestamp: 1617105236
+  timesteps_since_restore: 0
+  train-error: 0.4876
+  train-logloss: 0.6932019999999999
+  training_iteration: 52
+  trial_id: 91e6f_00002
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-53-57
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 21
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 15.609397649765015
+  time_this_iter_s: 0.5174832344055176
+  time_total_s: 15.609397649765015
+  timestamp: 1617105237
+  timesteps_since_restore: 0
+  train-error: 0.45325899999999997
+  train-logloss: 0.693252
+  training_iteration: 21
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-54-01
+  done: false
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 67
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 19.26806354522705
+  time_this_iter_s: 0.2576456069946289
+  time_total_s: 19.26806354522705
+  timestamp: 1617105241
+  timesteps_since_restore: 0
+  train-error: 0.46753
+  train-logloss: 0.69201
+  training_iteration: 67
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 99/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 PENDING, 3 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | RUNNING  | 172.31.10.129:1358 | 0.0532593   |           5 |    0.537896 |     67 |          19.2681 |        0.69201  |      0.46753  |
+| train_wrapper_91e6f_00001 | RUNNING  | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     28 |          19.2085 |        0.693233 |      0.446525 |
+| train_wrapper_91e6f_00002 | RUNNING  | 172.31.10.129:1362 | 0.00282058  |           4 |    0.760537 |     74 |          19.2345 |        0.693162 |      0.487184 |
+| train_wrapper_91e6f_00003 | PENDING  |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00002:
+  date: 2021-03-30_04-54-01
+  done: false
+  experiment_id: bed0d3e8f96845029c97a384e3966197
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 76
+  node_ip: 172.31.10.129
+  pid: 1362
+  time_since_restore: 19.63059115409851
+  time_this_iter_s: 0.17268753051757812
+  time_total_s: 19.63059115409851
+  timestamp: 1617105241
+  timesteps_since_restore: 0
+  train-error: 0.4872409999999999
+  train-logloss: 0.6931589999999999
+  training_iteration: 76
+  trial_id: 91e6f_00002
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-02
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 31
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 20.822953462600708
+  time_this_iter_s: 0.5246970653533936
+  time_total_s: 20.822953462600708
+  timestamp: 1617105242
+  timesteps_since_restore: 0
+  train-error: 0.443463
+  train-logloss: 0.6932240000000001
+  training_iteration: 31
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-54-06
+  done: false
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 89
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 24.34477663040161
+  time_this_iter_s: 0.2266085147857666
+  time_total_s: 24.34477663040161
+  timestamp: 1617105246
+  timesteps_since_restore: 0
+  train-error: 0.462357
+  train-logloss: 0.691659
+  training_iteration: 89
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.1/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 99/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 PENDING, 3 RUNNING)
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status   | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | RUNNING  | 172.31.10.129:1358 | 0.0532593   |           5 |    0.537896 |     89 |          24.3448 |        0.691659 |      0.462357 |
+| train_wrapper_91e6f_00001 | RUNNING  | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     38 |          24.2645 |        0.693205 |      0.438609 |
+| train_wrapper_91e6f_00002 | RUNNING  | 172.31.10.129:1362 | 0.00282058  |           4 |    0.760537 |     99 |          24.2945 |        0.693131 |      0.486605 |
+| train_wrapper_91e6f_00003 | PENDING  |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
++---------------------------+----------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00002:
+  date: 2021-03-30_04-54-06
+  done: true
+  experiment_id: bed0d3e8f96845029c97a384e3966197
+  experiment_tag: 2_eta=0.0028206,max_depth=4,subsample=0.76054
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 100
+  node_ip: 172.31.10.129
+  pid: 1362
+  time_since_restore: 24.475666761398315
+  time_this_iter_s: 0.18113923072814941
+  time_total_s: 24.475666761398315
+  timestamp: 1617105246
+  timesteps_since_restore: 0
+  train-error: 0.486437
+  train-logloss: 0.69313
+  training_iteration: 100
+  trial_id: 91e6f_00002
+  [2m[36m(pid=1362)[0m 2021-03-30 04:54:08,211	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=1,280,000 in 26.12 seconds (23.28 pure XGBoost training time).
+
+[2m[36m(pid=1362)[0m TRAIN TIME TAKEN: 26.16 seconds
+[2m[36m(pid=1362)[0m Final training error: 0.4864
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-08
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 42
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 26.328036785125732
+  time_this_iter_s: 0.5638575553894043
+  time_total_s: 26.328036785125732
+  timestamp: 1617105248
+  timesteps_since_restore: 0
+  train-error: 0.435771
+  train-logloss: 0.693194
+  training_iteration: 42
+  trial_id: 91e6f_00001
+
+[2m[36m(pid=1643)[0m 2021-03-30 04:54:10,331	INFO main.py:791 -- [RayXGBoost] Created 32 new actors (32 total actors). Waiting until actors are ready for training.
+[2m[36m(pid=1358)[0m 2021-03-30 04:54:11,467	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=1,280,000 in 29.32 seconds (26.76 pure XGBoost training time).
+Result for train_wrapper_91e6f_00000:
+  date: 2021-03-30_04-54-09
+  done: true
+  experiment_id: 251c32f49c254a17925227640ab1e6b9
+  experiment_tag: 0_eta=0.053259,max_depth=5,subsample=0.5379
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 100
+  node_ip: 172.31.10.129
+  pid: 1358
+  time_since_restore: 26.8961284160614
+  time_this_iter_s: 0.24423575401306152
+  time_total_s: 26.8961284160614
+  timestamp: 1617105249
+  timesteps_since_restore: 0
+  train-error: 0.45962800000000004
+  train-logloss: 0.691479
+  training_iteration: 100
+  trial_id: 91e6f_00000
+
+== Status ==
+Memory usage on this node: 2.0/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 66/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (2 RUNNING, 2 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     47 |          28.9177 |        0.69318  |      0.433097 |
+| train_wrapper_91e6f_00003 | RUNNING    |                    | 0.00183585  |           2 |    0.650034 |        |                  |                 |               |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+[2m[36m(pid=1358)[0m TRAIN TIME TAKEN: 29.35 seconds
+[2m[36m(pid=1358)[0m Final training error: 0.4596
+[2m[36m(pid=1643)[0m 2021-03-30 04:54:12,234	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1040, ip=172.31.18.13)[0m [04:54:12] task [xgboost.ray]:140225523859024 got new rank 2
+[2m[36m(pid=1041, ip=172.31.18.13)[0m [04:54:12] task [xgboost.ray]:140562986430032 got new rank 0
+[2m[36m(pid=1038, ip=172.31.18.13)[0m [04:54:12] task [xgboost.ray]:139724319869840 got new rank 1
+[2m[36m(pid=1039, ip=172.31.18.13)[0m [04:54:12] task [xgboost.ray]:139917062705360 got new rank 3
+[2m[36m(pid=1039, ip=172.31.25.226)[0m [04:54:12] task [xgboost.ray]:140167954718352 got new rank 4
+[2m[36m(pid=1042, ip=172.31.25.226)[0m [04:54:12] task [xgboost.ray]:140191854528208 got new rank 7
+[2m[36m(pid=1041, ip=172.31.25.226)[0m [04:54:12] task [xgboost.ray]:139615028865808 got new rank 6
+[2m[36m(pid=1040, ip=172.31.25.226)[0m [04:54:12] task [xgboost.ray]:140319343718032 got new rank 5
+[2m[36m(pid=1041, ip=172.31.30.67)[0m [04:54:12] task [xgboost.ray]:140132205084816 got new rank 13
+[2m[36m(pid=1040, ip=172.31.30.67)[0m [04:54:12] task [xgboost.ray]:139752211549776 got new rank 12
+[2m[36m(pid=1043, ip=172.31.30.67)[0m [04:54:12] task [xgboost.ray]:140684600644944 got new rank 14
+[2m[36m(pid=1042, ip=172.31.30.67)[0m [04:54:12] task [xgboost.ray]:139875435086480 got new rank 15
+[2m[36m(pid=1036, ip=172.31.9.248)[0m [04:54:12] task [xgboost.ray]:140290124574288 got new rank 29
+[2m[36m(pid=1039, ip=172.31.9.248)[0m [04:54:12] task [xgboost.ray]:139726050382032 got new rank 31
+[2m[36m(pid=1037, ip=172.31.9.248)[0m [04:54:12] task [xgboost.ray]:140289150591056 got new rank 30
+[2m[36m(pid=1038, ip=172.31.9.248)[0m [04:54:12] task [xgboost.ray]:140194650197584 got new rank 28
+[2m[36m(pid=1038, ip=172.31.31.231)[0m [04:54:12] task [xgboost.ray]:139741238394960 got new rank 16
+[2m[36m(pid=1040, ip=172.31.31.231)[0m [04:54:12] task [xgboost.ray]:139960902975760 got new rank 19
+[2m[36m(pid=1039, ip=172.31.31.231)[0m [04:54:12] task [xgboost.ray]:140476818025040 got new rank 18
+[2m[36m(pid=1041, ip=172.31.31.231)[0m [04:54:12] task [xgboost.ray]:139892650270352 got new rank 17
+[2m[36m(pid=1287, ip=172.31.27.221)[0m [04:54:12] task [xgboost.ray]:140053615656592 got new rank 11
+[2m[36m(pid=1285, ip=172.31.27.221)[0m [04:54:12] task [xgboost.ray]:140712623414928 got new rank 8
+[2m[36m(pid=1288, ip=172.31.27.221)[0m [04:54:12] task [xgboost.ray]:140002618683024 got new rank 9
+[2m[36m(pid=1286, ip=172.31.27.221)[0m [04:54:12] task [xgboost.ray]:140200709443664 got new rank 10
+[2m[36m(pid=1041, ip=172.31.6.38)[0m [04:54:12] task [xgboost.ray]:139932216962640 got new rank 21
+[2m[36m(pid=1040, ip=172.31.6.38)[0m [04:54:12] task [xgboost.ray]:140422082510416 got new rank 20
+[2m[36m(pid=1042, ip=172.31.6.38)[0m [04:54:12] task [xgboost.ray]:140577723219536 got new rank 23
+[2m[36m(pid=1039, ip=172.31.6.38)[0m [04:54:12] task [xgboost.ray]:140341357842000 got new rank 22
+[2m[36m(pid=1272, ip=172.31.9.151)[0m [04:54:12] task [xgboost.ray]:139979387741584 got new rank 24
+[2m[36m(pid=1276, ip=172.31.9.151)[0m [04:54:12] task [xgboost.ray]:140358450486672 got new rank 26
+[2m[36m(pid=1275, ip=172.31.9.151)[0m [04:54:12] task [xgboost.ray]:140154425810512 got new rank 25
+[2m[36m(pid=1277, ip=172.31.9.151)[0m [04:54:12] task [xgboost.ray]:140670449473168 got new rank 27
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-13
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 52
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 31.37173628807068
+  time_this_iter_s: 0.55513596534729
+  time_total_s: 31.37173628807068
+  timestamp: 1617105253
+  timesteps_since_restore: 0
+  train-error: 0.431854
+  train-logloss: 0.693168
+  training_iteration: 52
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00003:
+  date: 2021-03-30_04-54-13
+  done: false
+  experiment_id: 8b3f63c91c594eb5937e409f476e29d8
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 1
+  node_ip: 172.31.10.129
+  pid: 1643
+  time_since_restore: 3.957334041595459
+  time_this_iter_s: 3.957334041595459
+  time_total_s: 3.957334041595459
+  timestamp: 1617105253
+  timesteps_since_restore: 0
+  train-error: 0.49938399999999994
+  train-logloss: 0.693322
+  training_iteration: 1
+  trial_id: 91e6f_00003
+
+[2m[36m(pid=1361)[0m 2021-03-30 04:54:15,227	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+== Status ==
+Memory usage on this node: 1.9/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 66/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (2 RUNNING, 2 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     58 |          34.4076 |        0.693152 |      0.428874 |
+| train_wrapper_91e6f_00003 | RUNNING    | 172.31.10.129:1643 | 0.00183585  |           2 |    0.650034 |     30 |           6.7333 |        0.693296 |      0.494687 |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-18
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 62
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 36.44684553146362
+  time_this_iter_s: 0.5202682018280029
+  time_total_s: 36.44684553146362
+  timestamp: 1617105258
+  timesteps_since_restore: 0
+  train-error: 0.427502
+  train-logloss: 0.693141
+  training_iteration: 62
+  trial_id: 91e6f_00001
+
+Result for train_wrapper_91e6f_00003:
+  date: 2021-03-30_04-54-18
+  done: false
+  experiment_id: 8b3f63c91c594eb5937e409f476e29d8
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 53
+  node_ip: 172.31.10.129
+  pid: 1643
+  time_since_restore: 8.96245789527893
+  time_this_iter_s: 0.09130978584289551
+  time_total_s: 8.96245789527893
+  timestamp: 1617105258
+  timesteps_since_restore: 0
+  train-error: 0.49386
+  train-logloss: 0.6932779999999998
+  training_iteration: 53
+  trial_id: 91e6f_00003
+
+== Status ==
+Memory usage on this node: 2.0/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 66/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (2 RUNNING, 2 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     68 |          39.3832 |        0.693127 |      0.426102 |
+| train_wrapper_91e6f_00003 | RUNNING    | 172.31.10.129:1643 | 0.00183585  |           2 |    0.650034 |     83 |          11.8528 |        0.693255 |      0.49412  |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-23
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 72
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 41.47904562950134
+  time_this_iter_s: 0.5586638450622559
+  time_total_s: 41.47904562950134
+  timestamp: 1617105263
+  timesteps_since_restore: 0
+  train-error: 0.425295
+  train-logloss: 0.693116
+  training_iteration: 72
+  trial_id: 91e6f_00001
+
+[2m[36m(pid=1643)[0m 2021-03-30 04:54:23,972	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=1,280,000 in 14.27 seconds (11.73 pure XGBoost training time).
+Result for train_wrapper_91e6f_00003:
+  date: 2021-03-30_04-54-23
+  done: true
+  experiment_id: 8b3f63c91c594eb5937e409f476e29d8
+  experiment_tag: 3_eta=0.0018359,max_depth=2,subsample=0.65003
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 100
+  node_ip: 172.31.10.129
+  pid: 1643
+  time_since_restore: 13.526279926300049
+  time_this_iter_s: 0.09139871597290039
+  time_total_s: 13.526279926300049
+  timestamp: 1617105263
+  timesteps_since_restore: 0
+  train-error: 0.493364
+  train-logloss: 0.693251
+  training_iteration: 100
+  trial_id: 91e6f_00003
+
+[2m[36m(pid=1643)[0m TRAIN TIME TAKEN: 14.32 seconds
+[2m[36m(pid=1643)[0m Final training error: 0.4934
+== Status ==
+Memory usage on this node: 1.7/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 33/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 RUNNING, 3 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     78 |          44.5635 |        0.693101 |      0.423496 |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
+| train_wrapper_91e6f_00003 | TERMINATED |                    | 0.00183585  |           2 |    0.650034 |    100 |          13.5263 |        0.693251 |      0.493364 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-28
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 82
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 46.67601752281189
+  time_this_iter_s: 0.5741522312164307
+  time_total_s: 46.67601752281189
+  timestamp: 1617105268
+  timesteps_since_restore: 0
+  train-error: 0.4230090000000001
+  train-logloss: 0.693091
+  training_iteration: 82
+  trial_id: 91e6f_00001
+
+== Status ==
+Memory usage on this node: 1.7/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 33/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 RUNNING, 3 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     88 |          49.699  |        0.693076 |      0.421016 |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
+| train_wrapper_91e6f_00003 | TERMINATED |                    | 0.00183585  |           2 |    0.650034 |    100 |          13.5263 |        0.693251 |      0.493364 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-33
+  done: false
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 92
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 51.761932611465454
+  time_this_iter_s: 0.5288455486297607
+  time_total_s: 51.761932611465454
+  timestamp: 1617105273
+  timesteps_since_restore: 0
+  train-error: 0.420157
+  train-logloss: 0.693066
+  training_iteration: 92
+  trial_id: 91e6f_00001
+
+== Status ==
+Memory usage on this node: 1.7/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 33/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (1 RUNNING, 3 TERMINATED)
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc                |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00001 | RUNNING    | 172.31.10.129:1361 | 0.000829978 |           8 |    0.629387 |     98 |          54.9793 |        0.69305  |      0.418075 |
+| train_wrapper_91e6f_00000 | TERMINATED |                    | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00002 | TERMINATED |                    | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
+| train_wrapper_91e6f_00003 | TERMINATED |                    | 0.00183585  |           2 |    0.650034 |    100 |          13.5263 |        0.693251 |      0.493364 |
++---------------------------+------------+--------------------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+[2m[36m(pid=1361)[0m 2021-03-30 04:54:47,028	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=1,280,000 in 64.90 seconds (61.85 pure XGBoost training time).
+Result for train_wrapper_91e6f_00001:
+  date: 2021-03-30_04-54-38
+  done: true
+  experiment_id: 6a3254230ba44df0a36f607d053b249a
+  experiment_tag: 1_eta=0.00082998,max_depth=8,subsample=0.62939
+  hostname: ip-172-31-10-129
+  iterations_since_restore: 100
+  node_ip: 172.31.10.129
+  pid: 1361
+  time_since_restore: 56.078139781951904
+  time_this_iter_s: 0.5551228523254395
+  time_total_s: 56.078139781951904
+  timestamp: 1617105278
+  timesteps_since_restore: 0
+  train-error: 0.41670799999999997
+  train-logloss: 0.6930449999999999
+  training_iteration: 100
+  trial_id: 91e6f_00001
+
+== Status ==
+Memory usage on this node: 1.8/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (4 TERMINATED)
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc   |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | TERMINATED |       | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00001 | TERMINATED |       | 0.000829978 |           8 |    0.629387 |    100 |          56.0781 |        0.693045 |      0.416708 |
+| train_wrapper_91e6f_00002 | TERMINATED |       | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
+| train_wrapper_91e6f_00003 | TERMINATED |       | 0.00183585  |           2 |    0.650034 |    100 |          13.5263 |        0.693251 |      0.493364 |
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+== Status ==
+Memory usage on this node: 1.8/15.2 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 0/128 CPUs, 0/0 GPUs, 0.0/327.92 GiB heap, 0.0/141.16 GiB objects
+Result logdir: /home/ray/ray_results/train_wrapper_2021-03-30_04-53-40
+Number of trials: 4/4 (4 TERMINATED)
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+| Trial name                | status     | loc   |         eta |   max_depth |   subsample |   iter |   total time (s) |   train-logloss |   train-error |
+|---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------|
+| train_wrapper_91e6f_00000 | TERMINATED |       | 0.0532593   |           5 |    0.537896 |    100 |          26.8961 |        0.691479 |      0.459628 |
+| train_wrapper_91e6f_00001 | TERMINATED |       | 0.000829978 |           8 |    0.629387 |    100 |          56.0781 |        0.693045 |      0.416708 |
+| train_wrapper_91e6f_00002 | TERMINATED |       | 0.00282058  |           4 |    0.760537 |    100 |          24.4757 |        0.69313  |      0.486437 |
+| train_wrapper_91e6f_00003 | TERMINATED |       | 0.00183585  |           2 |    0.650034 |    100 |          13.5263 |        0.693251 |      0.493364 |
++---------------------------+------------+-------+-------------+-------------+-------------+--------+------------------+-----------------+---------------+
+
+
+[2m[36m(pid=1361)[0m TRAIN TIME TAKEN: 64.93 seconds
+[2m[36m(pid=1361)[0m Final training error: 0.4167
+2021-03-30 04:54:47,185	INFO tune.py:549 -- Total run time: 66.66 seconds (66.27 seconds for the tuning loop).
+PASSED.
+[0m
+Script done on 2021-03-30 04:54:48-07:00 [COMMAND_EXIT_CODE="0"]
