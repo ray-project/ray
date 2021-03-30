@@ -45,12 +45,13 @@ class AllReduceStrategy(BaseTrainer):
         # For now, we do not have many of them though.
         dist_params = dict(
             group_name="default",
-            num_cpus_per_worker=self.num_cpus_per_worker,
-            num_gpus_per_worker=self.num_gpus_per_worker,
         )
+        # (3) other arguments that used to init the DataParallelGrup
         group_init_args = {
             "params": params,
-            "dist_params": dist_params
+            "dist_params": dist_params,
+            "num_cpus_per_worker": self.num_cpus_per_worker,
+            "num_gpus_per_worker": self.num_gpus_per_worker,
         }
 
         self.data_parallel_group = DataParallelGroup(**group_init_args)
@@ -110,11 +111,14 @@ class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
     def __init__(self,
                  params,
-                 dist_params):
+                 dist_params,
+                 num_cpus_per_worker,
+                 num_gpus_per_worker):
         self._params = params
         self._dist_params = dist_params
-        self._num_cpus_per_replica = self._dist_params[]
-        self._num_gpus_per_replica = num_gpus_per_replica
+        self._num_cpus_per_worker = num_cpus_per_worker
+        self._num_gpus_per_worker = num_gpus_per_worker
+
         self._distributed_replicas = None
 
     def _setup_collective_group(self, world_size):
@@ -131,8 +135,8 @@ class DataParallelGroup:
         assert num_replicas > 1
 
         # make an actor
-        RemoteReplica = ray.remote(num_cpus=self._num_cpus_per_replica,
-                                   num_gpus=self._num_gpus_per_replica)(Replica)
+        RemoteReplica = ray.remote(num_cpus=self._num_cpus_per_worker,
+                                   num_gpus=self._num_gpus_per_worker)(Replica)
 
         self._distributed_replicas = [
             RemoteReplica.remote(**self._params)
