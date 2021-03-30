@@ -26,7 +26,7 @@ class TrainingOperator:
         """Instantiated by users."""
         raise NotImplementedError()
 
-    def train_batch(self, batch):
+    def train_step(self, batch):
         model = self._model
         optimizer = self._optimizer
         loss = self._loss

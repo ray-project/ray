@@ -1,5 +1,9 @@
+import logging
+
 import ray
 import ray.util.collective as col
+
+logger = logging.getLogger(__name__)
 
 class BaseTrainer:
     def __init__(self, 
