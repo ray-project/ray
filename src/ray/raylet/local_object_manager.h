@@ -44,6 +44,7 @@ class LocalObjectManager {
       rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
+      int64_t max_fused_object_size,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : self_node_id_(node_id),
@@ -59,7 +60,8 @@ class LocalObjectManager {
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
-        is_external_storage_type_fs_(is_external_storage_type_fs) {}
+        is_external_storage_type_fs_(is_external_storage_type_fs),
+        max_fused_object_size_(max_fused_object_size) {}
 
   /// Pin objects.
   ///
@@ -282,6 +284,9 @@ class LocalObjectManager {
   /// If it is not (meaning it is distributed backend), it always restores objects
   /// directly from the external storage.
   bool is_external_storage_type_fs_;
+
+  /// Maximum number of objects that can be fused into a single file.
+  int64_t max_fused_object_size_;
 
   ///
   /// Stats

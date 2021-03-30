@@ -198,22 +198,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(self_node_id_,
-                            RayConfig::instance().free_objects_batch_size(),
-                            RayConfig::instance().free_objects_period_milliseconds(),
-                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
-                            /* automatic_object_deletion_enabled */
-                            config.automatic_object_deletion_enabled,
-                            /*max_io_workers*/ config.max_io_workers,
-                            /*min_spilling_size*/ config.min_spilling_size,
-                            /*is_external_storage_type_fs*/
-                            RayConfig::instance().is_external_storage_type_fs(),
-                            /*on_objects_freed*/
-                            [this](const std::vector<ObjectID> &object_ids) {
-                              object_manager_.FreeObjects(object_ids,
-                                                          /*local_only=*/false);
-                            },
-                            is_plasma_object_spillable),
+      local_object_manager_(
+          self_node_id_, RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
+          /* automatic_object_deletion_enabled */
+          config.automatic_object_deletion_enabled,
+          /*max_io_workers*/ config.max_io_workers,
+          /*min_spilling_size*/ config.min_spilling_size,
+          /*is_external_storage_type_fs*/
+          RayConfig::instance().is_external_storage_type_fs(),
+          /*max_fused_object_size*/ RayConfig::instance().max_fused_object_size(),
+          /*on_objects_freed*/
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids,
+                                        /*local_only=*/false);
+          },
+          is_plasma_object_spillable),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
