@@ -229,6 +229,13 @@ RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
+// The interval at which the gcs server will pull a new resource.
+RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
+// The number of concurrent polls to polls to GCS.
+RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
+// Feature flag to turn on resource report polling. Polling and raylet pushing are
+// mutually exlusive.
+RAY_CONFIG(bool, pull_based_resource_reporting, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

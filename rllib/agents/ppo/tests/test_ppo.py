@@ -341,8 +341,9 @@ class TestPPO(unittest.TestCase):
                                policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
+            train_batch.set_get_interceptor(None)
             expected_rho = np.exp(expected_logp.detach().cpu().numpy() -
-                                  train_batch.get(SampleBatch.ACTION_LOGP))
+                                  train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
             # Entropy-loss component.
@@ -365,19 +366,19 @@ class TestPPO(unittest.TestCase):
 
         # Policy loss component.
         pg_loss = np.minimum(
-            train_batch.get(Postprocessing.ADVANTAGES) * expected_rho,
-            train_batch.get(Postprocessing.ADVANTAGES) * np.clip(
+            train_batch[Postprocessing.ADVANTAGES] * expected_rho,
+            train_batch[Postprocessing.ADVANTAGES] * np.clip(
                 expected_rho, 1 - policy.config["clip_param"],
                 1 + policy.config["clip_param"]))
 
         # Value function loss component.
         vf_loss1 = np.power(
-            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
-        vf_clipped = train_batch.get(SampleBatch.VF_PREDS) + np.clip(
-            vf_outs - train_batch.get(SampleBatch.VF_PREDS),
+            vf_outs - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = train_batch[SampleBatch.VF_PREDS] + np.clip(
+            vf_outs - train_batch[SampleBatch.VF_PREDS],
             -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
         vf_loss2 = np.power(
-            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
+            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = np.maximum(vf_loss1, vf_loss2)
 
         # Overall loss.
