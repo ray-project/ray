@@ -69,14 +69,22 @@ class LongPollClient:
         self.object_snapshots: Dict[KeyType, Any] = dict()
 
         self._current_ref = None
+        self._callbacks_processed_count = 0
         self._poll_next()
 
-    def update_key_listeners(
-            self,
-            key_listeners: Dict[KeyType, UpdateStateCallable],
-    ):
-        self.key_lisners = key_listeners
-        self._reset()
+    def _on_callback_completed(self, trigger_at: int):
+        """Called after a single callback is completed.
+
+        When the total number of callback completed equals to trigger_at,
+        _poll_next() will be called. This is designed to make sure we only
+        _poll_next() after all the state callbacks completed. This is a
+        way to serialize the callback invocations between object versions.
+        """
+        self._callbacks_processed_count += 1
+
+        if self._callbacks_processed_count == trigger_at:
+            self._callbacks_processed_count = 0
+            self._poll_next()
 
     def _poll_next(self):
         """Poll the update. The callback is expected to scheduler another
@@ -106,20 +114,21 @@ class LongPollClient:
             self._poll_next()
             return
 
-        # Before we process the updates and calling callbacks, kick off
-        # another poll so we can pipeline the polling and processing.
-        self._poll_next()
-        logger.debug("LongPollClient received updates for keys: "
+        logger.debug(f"LongPollClient {self} received updates for keys: "
                      f"{list(updates.keys())}.")
         for key, update in updates.items():
             self.object_snapshots[key] = update.object_snapshot
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
-            if self.event_loop is None:
+
+            def chained():
                 callback(update.object_snapshot)
+                self._on_callback_completed(trigger_at=len(updates))
+
+            if self.event_loop is None:
+                chained()
             else:
-                self.event_loop.call_soon_threadsafe(
-                    lambda: callback(update.object_snapshot))
+                self.event_loop.call_soon_threadsafe(chained)
 
 
 class LongPollHost:

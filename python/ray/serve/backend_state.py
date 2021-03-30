@@ -826,12 +826,15 @@ class BackendState:
                 replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
+                # This replica should be taken off handle's replica set.
                 transitioned_backend_tags.add(backend_tag)
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STARTING]):
                 if replica.check_started():
+                    # This replica should be now be added to handle's replica
+                    # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
                 else:

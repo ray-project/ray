@@ -5,10 +5,11 @@ import os
 import time
 from abc import ABC
 from dataclasses import dataclass
-from functools import wraps
+from functools import lru_cache, wraps
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     Type, Union)
 from warnings import warn
+from weakref import WeakValueDictionary
 
 from ray.actor import ActorHandle
 from ray.serve.common import GoalId
@@ -91,6 +92,9 @@ class Client:
         self._detached = detached
         self._shutdown = False
         self._http_config = ray.get(controller.get_http_config.remote())
+
+        # Each handle has the overhead of long poll client, therefore cached.
+        self.handle_cache = WeakValueDictionary()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -531,6 +535,10 @@ class Client:
         Returns:
             RayServeHandle
         """
+        cache_key = (endpoint_name, missing_ok, sync)
+        if cache_key in self.handle_cache:
+            return self.handle_cache[cache_key]
+
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and endpoint_name not in all_endpoints:
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
@@ -569,6 +577,8 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods)
+
+        self.handle_cache[cache_key] = handle
         return handle
 
 

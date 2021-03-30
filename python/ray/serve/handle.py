@@ -76,6 +76,7 @@ class RayServeHandle:
             handle_options: Optional[HandleOptions] = None,
             *,
             known_python_methods: List[str] = [],
+            _router: Optional[EndpointRouter] = None,
     ):
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
@@ -93,7 +94,7 @@ class RayServeHandle:
             "endpoint": self.endpoint_name
         })
 
-        self.router: EndpointRouter = self._make_router()
+        self.router: EndpointRouter = _router or self._make_router()
 
     def _make_router(self) -> EndpointRouter:
         return EndpointRouter(
@@ -127,8 +128,11 @@ class RayServeHandle:
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
 
-        return self.__class__(self.controller_handle, self.endpoint_name,
-                              new_options)
+        return self.__class__(
+            self.controller_handle,
+            self.endpoint_name,
+            new_options,
+            _router=self.router)
 
     def _remote(self, endpoint_name, handle_options, request_data,
                 kwargs) -> Coroutine:

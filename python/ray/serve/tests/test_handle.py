@@ -1,5 +1,8 @@
-import requests
+import gc
+
 import pytest
+import requests
+
 import ray
 from ray import serve
 
@@ -163,6 +166,17 @@ def test_handle_option_chaining(serve_instance):
     assert ray.get(handle1.remote()) == "method_a"
     assert ray.get(handle2.remote()) == "__call__"
     assert ray.get(handle3.remote()) == "method_b"
+
+
+def test_repeated_get_handle_cached(serve_instance):
+    def f(_):
+        return ""
+
+    serve.create_backend("m", f)
+    serve.create_endpoint("m", backend="m")
+
+    handle_sets = {serve.get_handle("m") for _ in range(100)}
+    assert len(handle_sets) == 1
 
 
 if __name__ == "__main__":
