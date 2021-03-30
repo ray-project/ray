@@ -9,6 +9,7 @@ class BaseTrainer:
     def __init__(self, 
                  *, 
                  training_operator_cls, 
+                 operator_config,
                  world_size=1,
                  num_cpus_per_worker=1,
                  num_gpus_per_worker=1):
@@ -16,6 +17,7 @@ class BaseTrainer:
         self.world_size = world_size
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
+        self._operator_config = operator_config
 
         if not ray.is_initialized() and self.max_replicas > 1:
             logger.info("Automatically initializing single-node Ray. To use "

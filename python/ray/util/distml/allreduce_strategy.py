@@ -10,11 +10,15 @@ class AllReduceStrategy(BaseTrainer):
         self._fusion = fusion
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
 
-
     def _init_strategy(self):
         """Do initialization for the distributed strategy."""
         pass
 
+    def train(self, *, max_retries=1, info=None):
+        # train one epoch
+        rets = [replica.train.remote()
+                for _, replica in enumerate(self.data_parallel_group.replicas)]
+        ray.get(rets)
 
     def train_batch(self, batches):
         # First, let each worker proceed with a train_step
@@ -30,13 +34,12 @@ class AllReduceStrategy(BaseTrainer):
            set workers or worker group
            set worker info, record rank, backend, use_num_gpus?
         """
-
         # TODO (Hao): infer the per-replica batch size here...
 
         # so here we get two set of params that will be passed around:
         # (1) Those for setting up training logic in training_operator, including:
         # batchsize, use_tqdm, user defined operator_config.
-        operator_config = self.config.copy()
+        operator_config = self._operator_config.copy()
         params = dict(
             training_operator_cls = self.training_operator_cls,
             operator_config = operator_config
@@ -67,9 +70,9 @@ class Replica:
     and Ray cluster/collective-group setup.
     """
     def __init__(self,
-                 training_operator_cls):
+                 training_operator_cls, operator_config):
         self.training_operator_cls = training_operator_cls
-
+        self.operator_config = operator_config
         # collective-related information
         self.group_size = None
         self.rank = None
@@ -77,7 +80,7 @@ class Replica:
 
     def setup_operator(self):
         # figure out the signature of training_operator_cls later.
-        self.training_operator = self.training_operator_cls()
+        self.training_operator = self.training_operator_cls(self.operator_config)
 
     def setup_collective_group(self, rank, world_size, backend):
         self.rank = rank
@@ -86,19 +89,32 @@ class Replica:
                                   backend=backend, group_name=self.group_name)
         return
 
-    def train_batch(self, batch):
-        updates = self.derive_update(batch)
-        # TODO: make the signature correct
-        col.allreduce(updates)
-        self.apply_update(updates)
+    def train(self):
+        for batch in self.training_operator.yield_train_loader():
+            self.train_batch(batch)
 
-    def derive_update(self, batch):
+    def train_batch(self, batch):
+        updates = self.derive_updates(batch)
+        # TODO: make the signature correct
+        # updates is a list.
+
+        ## maybe need a transform for updates to make a list.
+        # update_transform = lambda x: x 
+        for g in self.updates_transform(updates):
+            col.allreduce(updates)
+        self.apply_updates(updates)
+        print("yeah!!!")
+
+    def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
         # TODO (Hao): change it to derive_update and apply_update.
-        self.training_operator.derive_update(batch)
+        self.training_operator.derive_updates(batch)
 
-    def apply_update(self, updates):
+    def apply_updates(self, updates):
         self.training_operator.apply_updates(updates)
+
+    def updates_transform(self, updates):
+        return self.training_operator.updates_transform(updates)
 
     def shutdown(self):
         # destroy the collective group resources on this process

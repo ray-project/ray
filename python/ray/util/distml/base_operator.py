@@ -6,8 +6,8 @@ class TrainingOperator:
     The specific training logic bundled with frameworks (JAX, PyTorch) should be implemented
     in the subclasses of this class.
     """
-    def __init__(self):
-        self.setup()
+    def __init__(self, operator_config):
+        self.setup(**operator_config)
 
     def register(self,
                  *,
@@ -22,7 +22,7 @@ class TrainingOperator:
         self._optimizers = optimizers
         self._loss = loss
 
-    def setup(self):
+    def setup(self, *args, **kwargs):
         """Instantiated by users."""
         raise NotImplementedError()
 
