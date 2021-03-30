@@ -24,7 +24,7 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 160
+                      VolumeSize: 202
 
             TagSpecifications:
                 - ResourceType: "instance"
