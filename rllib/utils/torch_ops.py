@@ -178,7 +178,7 @@ def one_hot(x, space):
 
 
 def reduce_mean_ignore_inf(x, axis):
-    """Same as torch.mean() but ignores -inf values."""
+    """Same as torch.mean() but ignores -inf and < FLOAT_MIN values."""
     mask_inf = torch.ne(x, float("-inf"))
     mask_small = torch.ge(x, FLOAT_MIN)
     mask = torch.logical_or(mask_inf, mask_small)
