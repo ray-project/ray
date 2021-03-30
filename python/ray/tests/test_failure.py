@@ -1032,6 +1032,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 5,
         "object_store_memory": 10**8,
+        "automatic_object_spilling_enabled": False
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
