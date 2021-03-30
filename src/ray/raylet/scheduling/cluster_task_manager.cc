@@ -238,8 +238,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           return;
         }
 
-        num_pinned_task_arguments_ += args.size();
-        RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second)
+        for (size_t i = 0; i < deps.size(); i++) {
+          auto it = pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0)).first;
+          it->second.second++;
+        }
+        RAY_CHECK(executing_task_args_.emplace(spec.TaskId(), deps).second)
             << spec.TaskId();
 
         auto reply = std::get<1>(*work_it);
@@ -332,10 +335,18 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  auto it = pinned_task_arguments_.find(task->GetTaskSpecification().TaskId());
-  RAY_CHECK(it != pinned_task_arguments_.end());
-  num_pinned_task_arguments_ -= it->second.size();
-  pinned_task_arguments_.erase(it);
+  auto it = executing_task_args_.find(task->GetTaskSpecification().TaskId());
+  RAY_CHECK(it != executing_task_args_.end());
+  for (auto &arg : it->second) {
+    auto arg_it = pinned_task_arguments_.find(arg);
+    RAY_CHECK(arg_it != pinned_task_arguments_.end());
+    RAY_CHECK(arg_it->second.second > 0);
+    arg_it->second.second--;
+    if (arg_it->second.second == 0) {
+      pinned_task_arguments_.erase(arg_it);
+    }
+  }
+  executing_task_args_.erase(it);
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
@@ -676,8 +687,8 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
   buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
-  buffer << "Number of executing tasks: " << pinned_task_arguments_.size() << "\n";
-  buffer << "Number of pinned task arguments: " << num_pinned_task_arguments_ << "\n";
+  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
+  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";

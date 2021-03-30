@@ -273,8 +273,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not
   /// evicted before the task(s) start running.
-  std::unordered_map<TaskID, std::vector<std::unique_ptr<RayObject>>>
-      pinned_task_arguments_;
+  std::unordered_map<TaskID, std::vector<ObjectID>>
+      executing_task_args_;
+
+  std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>> pinned_task_arguments_;
 
   /// The total number of arguments pinned for running tasks.
   /// Used for debug purposes.

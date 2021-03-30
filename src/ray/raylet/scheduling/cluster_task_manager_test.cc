@@ -190,18 +190,18 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
     ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
+    ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.num_pinned_task_arguments_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
   }
 
-  void AssertPinnedTaskArgumentsEquals(const TaskID &task_id, size_t num_args_expected) {
-    ASSERT_EQ(task_manager_.pinned_task_arguments_[task_id].size(), num_args_expected);
-    size_t num_args = 0;
-    for (auto &args : task_manager_.pinned_task_arguments_) {
-      num_args += args.second.size();
+  void AssertPinnedTaskArgumentsPresent(const Task &task) {
+    const auto &expected_deps = task.GetTaskSpecification().GetDependencyIds();
+    ASSERT_EQ(task_manager_.executing_task_args_[task.GetTaskSpecification().TaskId()], expected_deps);
+    for (auto &arg : expected_deps) {
+      ASSERT_TRUE(task_manager_.pinned_task_arguments_.count(arg));
     }
-    ASSERT_EQ(task_manager_.num_pinned_task_arguments_, num_args);
   }
 
   NodeID id_;
@@ -326,7 +326,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   task_manager_.QueueAndScheduleTask(task2, &reply, callback);
   ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
-  AssertPinnedTaskArgumentsEquals(task2.GetTaskSpecification().TaskId(), 1);
+  AssertPinnedTaskArgumentsPresent(task2);
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
@@ -339,7 +339,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   task_manager_.TasksUnblocked(unblocked);
   ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
-  AssertPinnedTaskArgumentsEquals(task2.GetTaskSpecification().TaskId(), 1);
+  AssertPinnedTaskArgumentsPresent(task2);
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
@@ -354,7 +354,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
 
   // Task2 is now done so task can run.
-  AssertPinnedTaskArgumentsEquals(task.GetTaskSpecification().TaskId(), 2);
+  AssertPinnedTaskArgumentsPresent(task);
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
