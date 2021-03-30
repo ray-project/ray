@@ -136,38 +136,39 @@ class ClusterTaskManagerTest : public ::testing::Test {
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
-        task_manager_(
-            id_, scheduler_, dependency_manager_,
-            /* is_owner_alive= */
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return is_owner_alive_;
-            },
-            /* get_node_info= */
-            [this](const NodeID &node_id) {
-              node_info_calls_++;
-              return node_info_[node_id];
-            },
-            /* announce_infeasible_task= */
-            [this](const Task &task) { announce_infeasible_task_calls_++; }, pool_,
-            leased_workers_,
-            /* pin_task_arguments= */
-            [this](const std::vector<ObjectID> &object_ids,
-                   std::vector<std::unique_ptr<RayObject>> *results) {
-              for (auto &obj_id : object_ids) {
-                if (missing_objects_.count(obj_id) == 0) {
-                  std::string meta = "metadata";
-                  auto metadata = const_cast<uint8_t *>(
-                      reinterpret_cast<const uint8_t *>(meta.data()));
-                  auto meta_buffer =
-                      std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-                  results->emplace_back(new RayObject(nullptr, meta_buffer, {}));
-                } else {
-                  results->emplace_back(nullptr);
-                }
-              }
-              return true;
-            },
-            /*max_pinned_task_arguments_bytes=*/1000) {}
+        task_manager_(id_, scheduler_, dependency_manager_,
+                      /* is_owner_alive= */
+                      [this](const WorkerID &worker_id, const NodeID &node_id) {
+                        return is_owner_alive_;
+                      },
+                      /* get_node_info= */
+                      [this](const NodeID &node_id) {
+                        node_info_calls_++;
+                        return node_info_[node_id];
+                      },
+                      /* announce_infeasible_task= */
+                      [this](const Task &task) { announce_infeasible_task_calls_++; },
+                      pool_, leased_workers_,
+                      /* pin_task_arguments= */
+                      [this](const std::vector<ObjectID> &object_ids,
+                             std::vector<std::unique_ptr<RayObject>> *results) {
+                        for (auto &obj_id : object_ids) {
+                          if (missing_objects_.count(obj_id) == 0) {
+                            results->emplace_back(MakeDummyArg());
+                          } else {
+                            results->emplace_back(nullptr);
+                          }
+                        }
+                        return true;
+                      },
+                      /*max_pinned_task_arguments_bytes=*/1000) {}
+
+  RayObject *MakeDummyArg() {
+    std::vector<uint8_t> data;
+    data.resize(default_arg_size_);
+    auto buffer = std::make_shared<LocalMemoryBuffer>(data.data(), data.size());
+    return new RayObject(buffer, nullptr, {});
+  }
 
   void SetUp() {}
 
@@ -212,6 +213,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
+  int default_arg_size_ = 10;
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
@@ -1100,6 +1102,71 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   leased_workers_.clear();
   ASSERT_TRUE(task_manager_.CancelTask(tasks[0].GetTaskSpecification().TaskId()));
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
+  /*
+    Total memory required by executing tasks' args stays under the specified
+    threshold. A single task whose total arguments is greater than the
+    threshold will not starve.
+  */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
+                                      std::function<void()>) {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
+
+  /* This task can run. */
+  default_arg_size_ = 600;
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  AssertPinnedTaskArgumentsPresent(task);
+
+  /* This task cannot run because it would put us over the memory threshold. */
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  /* First task finishes, freeing memory for the second task */
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  leased_workers_.clear();
+
+  task_manager_.ScheduleAndDispatchTasks();
+  AssertPinnedTaskArgumentsPresent(task2);
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  leased_workers_.clear();
+
+  /* This task would put us over the memory threshold, but we should run it
+   * anyway to prevent starvation. */
+  default_arg_size_ = 2000;
+  task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  AssertPinnedTaskArgumentsPresent(task);
+
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   AssertNoLeaks();
 }
 

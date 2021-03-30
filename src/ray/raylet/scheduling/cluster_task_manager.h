@@ -304,10 +304,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void RemoveFromBacklogTracker(const Task &task);
 
   // Helper function to pin a task's args immediately before dispatch. This
-  // returns false if there is not enough memory available to dispatch the
-  // task, due to other executing tasks' arguments.
-  bool PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
-                                    std::vector<std::unique_ptr<RayObject>> args);
+  // returns false if there are missing args (due to eviction) or if there is
+  // not enough memory available to dispatch the task, due to other executing
+  // tasks' arguments.
+  bool PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec, bool *args_missing);
 
   // Helper functions to pin and release an executing task's args.
   void PinTaskArgs(const TaskSpecification &spec,
