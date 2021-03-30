@@ -16,6 +16,7 @@ ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),

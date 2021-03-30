@@ -103,26 +103,38 @@ class Categorical(TFActionDistribution):
 class MultiCategorical(TFActionDistribution):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
 
-    def __init__(self, inputs: List[TensorType], model: ModelV2,
-                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]]):
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
+                 action_space=None):
         # skip TFActionDistribution init
         ActionDistribution.__init__(self, inputs, model)
         self.cats = [
             Categorical(input_, model)
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
+        self.action_space = action_space
         self.sample_op = self._build_sample_op()
         self.sampled_action_logp_op = self.logp(self.sample_op)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        return tf.stack(
+        sample_ = tf.stack(
             [cat.deterministic_sample() for cat in self.cats], axis=1)
+        if isinstance(self.action_space, gym.spaces.Box):
+            return tf.cast(
+                tf.reshape(sample_, [-1] + list(self.action_space.shape)),
+                self.action_space.dtype)
+        return sample_
 
     @override(ActionDistribution)
     def logp(self, actions: TensorType) -> TensorType:
         # If tensor is provided, unstack it into list.
         if isinstance(actions, tf.Tensor):
+            if isinstance(self.action_space, gym.spaces.Box):
+                actions = tf.reshape(
+                    actions, [-1, int(np.product(self.action_space.shape))])
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
         logps = tf.stack(
             [cat.logp(act) for cat, act in zip(self.cats, actions)])
@@ -148,14 +160,29 @@ class MultiCategorical(TFActionDistribution):
 
     @override(TFActionDistribution)
     def _build_sample_op(self) -> TensorType:
-        return tf.stack([cat.sample() for cat in self.cats], axis=1)
+        sample_op = tf.stack([cat.sample() for cat in self.cats], axis=1)
+        if isinstance(self.action_space, gym.spaces.Box):
+            return tf.cast(
+                tf.reshape(sample_op, [-1] + list(self.action_space.shape)),
+                dtype=self.action_space.dtype)
+        return sample_op
 
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(
             action_space: gym.Space,
             model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.sum(action_space.nvec)
+        # Int Box.
+        if isinstance(action_space, gym.spaces.Box):
+            assert action_space.dtype.name.startswith("int")
+            low_ = np.min(action_space.low)
+            high_ = np.max(action_space.high)
+            assert np.all(action_space.low == low_)
+            assert np.all(action_space.high == high_)
+            np.product(action_space.shape) * (high_ - low_ + 1)
+        # MultiDiscrete space.
+        else:
+            return np.sum(action_space.nvec)
 
 
 class GumbelSoftmax(TFActionDistribution):

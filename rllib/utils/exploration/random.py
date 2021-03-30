@@ -88,11 +88,18 @@ class Random(Exploration):
                 elif isinstance(component, Box):
                     if component.bounded_above.all() and \
                             component.bounded_below.all():
-                        return tf.random.uniform(
-                            shape=(batch_size, ) + component.shape,
-                            minval=component.low,
-                            maxval=component.high,
-                            dtype=component.dtype)
+                        if component.dtype.name.startswith("int"):
+                            return tf.random.uniform(
+                                shape=(batch_size, ) + component.shape,
+                                minval=component.low.flat[0],
+                                maxval=component.high.flat[0],
+                                dtype=component.dtype)
+                        else:
+                            return tf.random.uniform(
+                                shape=(batch_size, ) + component.shape,
+                                minval=component.low,
+                                maxval=component.high,
+                                dtype=component.dtype)
                     else:
                         return tf.random.normal(
                             shape=(batch_size, ) + component.shape,

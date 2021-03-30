@@ -227,20 +227,33 @@ class ModelCatalog:
             dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, Box):
-            if len(action_space.shape) > 1:
-                raise UnsupportedSpaceException(
-                    "Action space has multiple dimensions "
-                    "{}. ".format(action_space.shape) +
-                    "Consider reshaping this into a single dimension, "
-                    "using a custom action distribution, "
-                    "using a Tuple action space, or the multi-agent API.")
-            # TODO(sven): Check for bounds and return SquashedNormal, etc..
-            if dist_type is None:
-                dist_cls = TorchDiagGaussian if framework == "torch" \
-                    else DiagGaussian
-            elif dist_type == "deterministic":
-                dist_cls = TorchDeterministic if framework == "torch" \
-                    else Deterministic
+            if action_space.dtype.name.startswith("int"):
+                low_ = np.min(action_space.low)
+                high_ = np.max(action_space.high)
+                assert np.all(action_space.low == low_)
+                assert np.all(action_space.high == high_)
+                dist_cls = TorchMultiCategorical if framework == "torch" \
+                    else MultiCategorical
+                num_cats = int(np.product(action_space.shape))
+                return partial(
+                    dist_cls,
+                    input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
+                    action_space=action_space), num_cats * (high_ - low_ + 1)
+            else:
+                if len(action_space.shape) > 1:
+                    raise UnsupportedSpaceException(
+                        "Action space has multiple dimensions "
+                        "{}. ".format(action_space.shape) +
+                        "Consider reshaping this into a single dimension, "
+                        "using a custom action distribution, "
+                        "using a Tuple action space, or the multi-agent API.")
+                # TODO(sven): Check for bounds and return SquashedNormal, etc..
+                if dist_type is None:
+                    dist_cls = TorchDiagGaussian if framework == "torch" \
+                        else DiagGaussian
+                elif dist_type == "deterministic":
+                    dist_cls = TorchDeterministic if framework == "torch" \
+                        else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
             dist_cls = TorchCategorical if framework == "torch" else \
