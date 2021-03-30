@@ -16,6 +16,10 @@ DEFAULT_CONFIG = with_common_config({
     # Use importance sampling estimators for reward
     "input_evaluation": ["is", "wis"],
 
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
+
     # Scaling of advantages in exponential terms.
     # When beta is 0.0, MARWIL is reduced to imitation learning.
     "beta": 1.0,
