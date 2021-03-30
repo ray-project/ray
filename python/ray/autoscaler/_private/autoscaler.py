@@ -287,8 +287,6 @@ class StandardAutoscaler:
                         aggregate=operator.add)
                 self.provider.terminate_nodes(active_nodes_to_terminate)
 
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         # Update nodes with out-of-date files.
