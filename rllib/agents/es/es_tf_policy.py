@@ -153,7 +153,8 @@ class ESTFPolicy(Policy):
         return action[0], state_outs, extra_fetches
 
     def _add_noise(self, single_action, single_action_space):
-        if isinstance(single_action_space, gym.spaces.Box):
+        if isinstance(single_action_space, gym.spaces.Box) and \
+                single_action_space.dtype.name.startswith("float"):
             single_action += np.random.randn(*single_action.shape) * \
                 self.action_noise_std
         return single_action
