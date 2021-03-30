@@ -217,7 +217,8 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
       // If there is no existing get request, then add the `RayObject` to map.
       EmplaceObjectAndUpdateStats(object_id, object_entry);
     } else {
-      // It is equivalent to that object is added and immidiately deleted from the store.
+      // It is equivalent to the object being added and immediately deleted from the
+      // store.
       OnDelete(object_entry);
     }
   }
