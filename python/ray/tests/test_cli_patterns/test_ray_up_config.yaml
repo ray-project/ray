@@ -3,9 +3,20 @@ auth:
 cluster_name: test-cli
 file_mounts:
     ~/tests: .
-head_node:
-    ImageId: latest_dlami
-    InstanceType: t1.micro
+available_node_types:
+    head_node:
+        resources: {}
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+    worker_nodes:
+        resources: {}
+        max_workers: 2
+        min_workers: 1
+        node_config:
+            ImageId: latest_dlami
+            InstanceType: t1.micro
+head_node_type: head_node
 head_setup_commands:
     - echo head
 head_start_ray_commands:
@@ -14,8 +25,6 @@ head_start_ray_commands:
 idle_timeout_minutes: 5
 initialization_commands:
     - echo init
-max_workers: 2
-min_workers: 1
 provider:
     availability_zone: us-west-2a
     key_pair:
@@ -26,9 +35,6 @@ setup_commands:
     - echo a
     - echo b
     - echo ${echo hi}
-worker_nodes:
-    ImageId: latest_dlami
-    InstanceType: t1.micro
 worker_setup_commands:
     - echo worker
 worker_start_ray_commands:
