@@ -147,6 +147,8 @@ class CoreWorkerMemoryStore {
   /// Called when an object is erased from the store.
   void OnErase(std::shared_ptr<RayObject> obj);
 
+  void EmplaceObject(const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
 
@@ -180,6 +182,16 @@ class CoreWorkerMemoryStore {
 
   /// Function called to report unhandled exceptions.
   std::function<void(const RayObject &)> unhandled_exception_handler_;
+
+  ///
+  /// Below information is stats.
+  ///
+  /// Number of objects in the plasma store for this memory store.
+  int32_t num_in_plasma_ = 0;
+  /// Number of objects that don't exist in the plasma store.
+  int32_t num_local_objects_ = 0;
+  /// Number of object store memory used by this memory store. (It doesn't include plasma store memory usage).
+  int64_t used_object_store_memory_ = 0;
 };
 
 }  // namespace ray

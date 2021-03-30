@@ -215,7 +215,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
-      objects_.emplace(object_id, object_entry);
+      EmplaceObject(object_id, object_entry);
     } else {
       OnErase(object_entry);
     }
@@ -477,6 +477,27 @@ void CoreWorkerMemoryStore::OnErase(std::shared_ptr<RayObject> obj) {
       && !obj->WasAccessed() && unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
   }
+
+  if (obj->IsInPlasmaError()) {
+    num_in_plasma_ -= 1;
+  } else {
+    num_local_objects_ -= 1;
+    used_object_store_memory_ -= obj->GetSize();
+  }
+  RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 && used_object_store_memory_ >= 0);
+}
+
+inline void CoreWorkerMemoryStore::EmplaceObject(const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry) {
+  auto inserted = objects_.emplace(object_id, object_entry).second;
+  if (inserted) {
+    if (object_entry->IsInPlasmaError()) {
+      num_in_plasma_ += 1;
+    } else {
+      num_local_objects_ += 1
+      used_object_store_memory_ += object_entry->GetSize();
+    }
+  }
+  RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 && used_object_store_memory_ >= 0);
 }
 
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
