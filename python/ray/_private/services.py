@@ -1526,6 +1526,8 @@ def start_raylet(redis_address,
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
+        f"--object_store_memory={object_store_memory}",
+        f"--plasma_directory={plasma_directory}",
     ]
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
@@ -1534,14 +1536,8 @@ def start_raylet(redis_address,
             resource_spec.num_cpus))
     command.append("--agent_command={}".format(
         subprocess.list2cmdline(agent_command)))
-    if config.get("plasma_store_as_thread"):
-        # command related to the plasma store
-        command += [
-            f"--object_store_memory={object_store_memory}",
-            f"--plasma_directory={plasma_directory}",
-        ]
-        if huge_pages:
-            command.append("--huge_pages")
+    if huge_pages:
+        command.append("--huge_pages")
     if socket_to_use:
         socket_to_use.close()
     process_info = start_ray_process(

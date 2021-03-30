@@ -158,11 +158,6 @@ class PlasmaStore {
   /// \param client The client making this request.
   void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
 
-  /// Subscribe a file descriptor to updates about new sealed objects.
-  ///
-  /// \param client The client making this request.
-  void SubscribeToUpdates(const std::shared_ptr<Client> &client);
-
   /// Connect a new client to the PlasmaStore.
   ///
   /// \param error The error code from the acceptor.
@@ -172,9 +167,6 @@ class PlasmaStore {
   ///
   /// \param client The client that is disconnected.
   void DisconnectClient(const std::shared_ptr<Client> &client);
-
-  void SendNotifications(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectInfoT> &object_info);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
@@ -286,8 +278,6 @@ class PlasmaStore {
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests_;
-  /// The registered client for receiving notifications.
-  std::unordered_set<std::shared_ptr<Client>> notification_clients_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 
