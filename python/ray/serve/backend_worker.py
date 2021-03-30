@@ -4,7 +4,7 @@ import traceback
 import inspect
 from collections.abc import Iterable
 from itertools import groupby
-from typing import Union, List, Any, Callable, Type
+from typing import Union, List, Any, Callable, Type, Optional
 import time
 
 import starlette.responses
@@ -26,6 +26,7 @@ from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
+from ray.serve.http_util import make_startup_shutdown_hooks
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -41,8 +42,9 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
-        def __init__(self, backend_tag, replica_tag, init_args,
-                     backend_config: BackendConfig, controller_name: str):
+        async def __init__(self, backend_tag, replica_tag, init_args,
+                           backend_config: BackendConfig,
+                           controller_name: str):
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
             else:
@@ -75,10 +77,22 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
                 controller_name,
                 servable_object=_callable)
 
+            self.shutdown_hook: Optional[Callable] = None
+            if backend_config.internal_metadata.is_asgi_app:
+                app = _callable._serve_asgi_app
+                startup_hook, self.shutdown_hook = make_startup_shutdown_hooks(
+                    app)
+                await startup_hook()
+
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
+
+        def __del__(self):
+            if hasattr(self, "shutdown_hook") and self.shutdown_hook:
+                asyncio.get_event_loop().run_until_complete(
+                    self.shutdown_hook())
 
         @ray.method(num_returns=2)
         async def handle_request(

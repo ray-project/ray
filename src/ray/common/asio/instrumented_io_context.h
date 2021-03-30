@@ -73,7 +73,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string &name = "UNKNOWN")
+  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics

@@ -7,7 +7,17 @@ import ray
 
 from dask.base import quote
 from dask.core import get as get_sync
-from dask.compatibility import apply, is_dataclass, dataclass_fields
+from dask.compatibility import apply
+
+try:
+    from dataclasses import is_dataclass, fields as dataclass_fields
+except ImportError:
+    # Python < 3.7
+    def is_dataclass(x):
+        return False
+
+    def dataclass_fields(x):
+        return []
 
 
 def unpack_object_refs(*args):

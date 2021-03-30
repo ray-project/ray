@@ -26,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
-        x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, x)
+        dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
+        if x.seq_lens is not None:
+            dict_["seq_lens"] = x.seq_lens
+        return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
     # Special handling of "Repeated" values.
@@ -39,7 +41,8 @@ def _convert_to_tf(x, dtype=None):
     if x is not None:
         d = dtype
         x = tf.nest.map_structure(
-            lambda f: tf.convert_to_tensor(f, d) if f is not None else None, x)
+            lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
+            else tf.convert_to_tensor(f, d) if f is not None else None, x)
     return x
 
 
