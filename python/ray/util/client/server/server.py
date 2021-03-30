@@ -555,13 +555,13 @@ def init_and_serve(connection_str, *args, **kwargs):
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
 
-    def ray_connect_handler():
+    def ray_connect_handler(job_config=None):
         # Ray client will disconnect from ray when
         # num_clients == 0.
         if ray.is_initialized():
             return info
         else:
-            return ray.init(*args, **kwargs)
+            return ray.init(job_config=job_config, *args, **kwargs)
 
     server_handle = serve(
         connection_str, ray_connect_handler=ray_connect_handler)
