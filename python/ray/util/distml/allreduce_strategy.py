@@ -96,14 +96,12 @@ class Replica:
     def train_batch(self, batch):
         updates = self.derive_updates(batch)
         # TODO: make the signature correct
-        # updates is a list.
-
-        ## maybe need a transform for updates to make a list.
-        # update_transform = lambda x: x 
+        
+        # HUI: maybe need a transform for updates to make a list.
+        # for jax, gradient need to call `tree_flatten` and get list.
         for g in self.updates_transform(updates):
-            col.allreduce(updates)
+            col.allreduce(g)
         self.apply_updates(updates)
-        print("yeah!!!")
 
     def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
