@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/synchronization/mutex.h"
+
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 #include "gtest/gtest.h"
@@ -56,6 +58,68 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   provider->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
   provider->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
+}
+
+TEST(TestMemoryStore, TestMemoryStoreStats) {
+  /// Simple validation for test memory store stats.
+  std::shared_ptr<CoreWorkerMemoryStore> provider =
+      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr,
+                                              nullptr);
+
+  // Iterate through the memory store and compare the values that are obtained by
+  // GetMemoryStoreStatisticalData.
+  auto fill_expected_memory_stats = [&](MemoryStoreStats &expected_item) {
+    {
+      absl::MutexLock lock(&provider->mu_);
+      for (const auto &it : provider->objects_) {
+        if (it.second->IsInPlasmaError()) {
+          expected_item.num_in_plasma += 1;
+        } else {
+          expected_item.num_local_objects += 1;
+          expected_item.used_object_store_memory += it.second->GetSize();
+        }
+      }
+    }
+  };
+
+  RayObject obj1(rpc::ErrorType::OBJECT_IN_PLASMA);
+  RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  RayObject obj3(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  auto id1 = ObjectID::FromRandom();
+  auto id2 = ObjectID::FromRandom();
+  auto id3 = ObjectID::FromRandom();
+
+  RAY_CHECK(provider->Put(obj1, id1));
+  RAY_CHECK(provider->Put(obj2, id2));
+  RAY_CHECK(provider->Put(obj3, id3));
+  provider->Delete({id3});
+
+  MemoryStoreStats expected_item;
+  fill_expected_memory_stats(expected_item);
+  MemoryStoreStats item = provider->GetMemoryStoreStatisticalData();
+  ASSERT_EQ(item.num_in_plasma, expected_item.num_in_plasma);
+  ASSERT_EQ(item.num_local_objects, expected_item.num_local_objects);
+  ASSERT_EQ(item.used_object_store_memory, expected_item.used_object_store_memory);
+
+  // Delete all other objects and see if stats are recorded correctly.
+  provider->Delete({id1, id2});
+
+  MemoryStoreStats expected_item2;
+  fill_expected_memory_stats(expected_item2);
+  item = provider->GetMemoryStoreStatisticalData();
+  ASSERT_EQ(item.num_in_plasma, expected_item2.num_in_plasma);
+  ASSERT_EQ(item.num_local_objects, expected_item2.num_local_objects);
+  ASSERT_EQ(item.used_object_store_memory, expected_item2.used_object_store_memory);
+
+  RAY_CHECK(provider->Put(obj1, id1));
+  RAY_CHECK(provider->Put(obj2, id2));
+  RAY_CHECK(provider->Put(obj3, id3));
+  MemoryStoreStats expected_item3;
+  fill_expected_memory_stats(expected_item3);
+  item = provider->GetMemoryStoreStatisticalData();
+  ASSERT_EQ(item.num_in_plasma, expected_item3.num_in_plasma);
+  ASSERT_EQ(item.num_local_objects, expected_item3.num_local_objects);
+  ASSERT_EQ(item.used_object_store_memory, expected_item3.used_object_store_memory);
 }
 
 }  // namespace ray

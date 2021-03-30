@@ -1,5 +1,7 @@
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -136,6 +138,8 @@ class CoreWorkerMemoryStore {
   uint64_t UsedMemory();
 
  private:
+  FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
+
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
   /// resources. is an exception.
@@ -144,10 +148,15 @@ class CoreWorkerMemoryStore {
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 
-  /// Called when an object is erased from the store.
-  void OnErase(std::shared_ptr<RayObject> obj);
+  /// Called when an object is deleted from the store.
+  void OnDelete(std::shared_ptr<RayObject> obj);
 
-  void EmplaceObject(const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Emplace the given object entry to the in-memory-store.
+  void EmplaceObject(const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Erase the object of the object id from the in memory store.
+  void EraseObject(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
@@ -187,11 +196,12 @@ class CoreWorkerMemoryStore {
   /// Below information is stats.
   ///
   /// Number of objects in the plasma store for this memory store.
-  int32_t num_in_plasma_ = 0;
+  int32_t num_in_plasma_ GUARDED_BY(mu_) = 0;
   /// Number of objects that don't exist in the plasma store.
-  int32_t num_local_objects_ = 0;
-  /// Number of object store memory used by this memory store. (It doesn't include plasma store memory usage).
-  int64_t used_object_store_memory_ = 0;
+  int32_t num_local_objects_ GUARDED_BY(mu_) = 0;
+  /// Number of object store memory used by this memory store. (It doesn't include plasma
+  /// store memory usage).
+  int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace ray
