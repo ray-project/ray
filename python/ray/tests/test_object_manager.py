@@ -375,6 +375,39 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     del allocated
 
 
+@pytest.mark.timeout(30)
+def test_max_pinned_args_memory(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=200 * 1024 * 1024,
+        _system_config={
+            "max_task_args_memory_fraction": 0.7,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=3, object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(arg):
+        time.sleep(1)
+        return np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+
+    # Each task arg takes about 30% of the remote node's memory. We should
+    # execute at most 2 at a time to make sure we have room for at least 1 task
+    # output.
+    x = np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+    ray.get([f.remote(ray.put(x)) for _ in range(3)])
+
+    @ray.remote
+    def large_arg(arg):
+        return
+
+    # Executing a task whose args are greater than the memory threshold is
+    # okay.
+    ref = np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+    ray.get(large_arg.remote(ref))
+
+
 if __name__ == "__main__":
     import pytest
     import sys

@@ -23,7 +23,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
-        pin_task_arguments)
+        pin_task_arguments,
+    size_t max_pinned_task_arguments_bytes)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -35,7 +36,8 @@ ClusterTaskManager::ClusterTaskManager(
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
-      pin_task_arguments_(pin_task_arguments) {}
+      pin_task_arguments_(pin_task_arguments),
+      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -238,12 +240,19 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           return;
         }
 
-        for (size_t i = 0; i < deps.size(); i++) {
-          auto it = pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0)).first;
-          it->second.second++;
+        bool success = PinTaskArgsIfMemoryAvailable(spec, std::move(args));
+        if (!success) {
+          RAY_LOG(INFO) << "Dispatching task " << spec.TaskId()
+                        << " would put this node over the max memory allowed for "
+                           "arguments of executing tasks ("
+                        << max_pinned_task_arguments_bytes_
+                        << "). Waiting to dispatch task until other tasks complete";
+          RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
+              << "Cannot dispatch task " << spec.TaskId()
+              << " until another task finishes and releases its arguments, but no other "
+                 "task is running";
+          return;
         }
-        RAY_CHECK(executing_task_args_.emplace(spec.TaskId(), deps).second)
-            << spec.TaskId();
 
         auto reply = std::get<1>(*work_it);
         auto callback = std::get<2>(*work_it);
@@ -335,7 +344,51 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  auto it = executing_task_args_.find(task->GetTaskSpecification().TaskId());
+  ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
+  if (worker->GetAllocatedInstances() != nullptr) {
+    ReleaseWorkerResources(worker);
+  }
+}
+
+bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(
+    const TaskSpecification &spec, std::vector<std::unique_ptr<RayObject>> args) {
+  size_t task_arg_bytes = 0;
+  for (auto &arg : args) {
+    task_arg_bytes += arg->GetSize();
+  }
+  PinTaskArgs(spec, std::move(args));
+  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
+  if (task_arg_bytes > max_pinned_task_arguments_bytes_) {
+    RAY_LOG(WARNING)
+        << "Dispatched task " << spec.TaskId() << " has arguments of size "
+        << task_arg_bytes
+        << ", but the max memory allowed for arguments of executing tasks is only "
+        << max_pinned_task_arguments_bytes_;
+  } else if (pinned_task_arguments_bytes_ > max_pinned_task_arguments_bytes_) {
+    ReleaseTaskArgs(spec.TaskId());
+    return false;
+  }
+
+  return true;
+}
+
+void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
+                                     std::vector<std::unique_ptr<RayObject>> args) {
+  const auto &deps = spec.GetDependencyIds();
+  for (size_t i = 0; i < deps.size(); i++) {
+    auto inserted =
+        pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+    auto it = inserted.first;
+    if (inserted.second) {
+      pinned_task_arguments_bytes_ += it->second.first->GetSize();
+    }
+    it->second.second++;
+  }
+  RAY_CHECK(executing_task_args_.emplace(spec.TaskId(), deps).second) << spec.TaskId();
+}
+
+void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
+  auto it = executing_task_args_.find(task_id);
   RAY_CHECK(it != executing_task_args_.end());
   for (auto &arg : it->second) {
     auto arg_it = pinned_task_arguments_.find(arg);
@@ -343,13 +396,11 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
     RAY_CHECK(arg_it->second.second > 0);
     arg_it->second.second--;
     if (arg_it->second.second == 0) {
+      pinned_task_arguments_bytes_ -= arg_it->second.first->GetSize();
       pinned_task_arguments_.erase(arg_it);
     }
   }
   executing_task_args_.erase(it);
-  if (worker->GetAllocatedInstances() != nullptr) {
-    ReleaseWorkerResources(worker);
-  }
 }
 
 void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {

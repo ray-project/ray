@@ -249,6 +249,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto announce_infeasible_task = [this](const Task &task) {
     PublishInfeasibleTaskError(task);
   };
+  RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
+            RayConfig::instance().max_task_args_memory_fraction() <= 1)
+      << "max_task_args_memory_fraction must be a nonzero fraction.";
+  int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
+                                 RayConfig::instance().max_task_args_memory_fraction();
+  RAY_CHECK(max_task_args_memory > 0);
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -257,7 +263,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
-      }));
+      },
+      max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 

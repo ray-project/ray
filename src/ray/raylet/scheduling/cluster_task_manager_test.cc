@@ -166,7 +166,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
                 }
               }
               return true;
-            }) {}
+            },
+            /*max_pinned_task_arguments_bytes=*/1000) {}
 
   void SetUp() {}
 
@@ -192,13 +193,13 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
-    ASSERT_EQ(task_manager_.num_pinned_task_arguments_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
   }
 
   void AssertPinnedTaskArgumentsPresent(const Task &task) {
     const auto &expected_deps = task.GetTaskSpecification().GetDependencyIds();
-    ASSERT_EQ(task_manager_.executing_task_args_[task.GetTaskSpecification().TaskId()], expected_deps);
+    ASSERT_EQ(task_manager_.executing_task_args_[task.GetTaskSpecification().TaskId()],
+              expected_deps);
     for (auto &arg : expected_deps) {
       ASSERT_TRUE(task_manager_.pinned_task_arguments_.count(arg));
     }

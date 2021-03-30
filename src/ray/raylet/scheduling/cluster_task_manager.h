@@ -64,7 +64,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
-          pin_task_arguments);
+          pin_task_arguments,
+      size_t max_pinned_task_arguments_bytes);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
@@ -273,14 +274,17 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not
   /// evicted before the task(s) start running.
-  std::unordered_map<TaskID, std::vector<ObjectID>>
-      executing_task_args_;
+  std::unordered_map<TaskID, std::vector<ObjectID>> executing_task_args_;
 
-  std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>> pinned_task_arguments_;
+  std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>>
+      pinned_task_arguments_;
 
   /// The total number of arguments pinned for running tasks.
   /// Used for debug purposes.
-  size_t num_pinned_task_arguments_ = 0;
+  size_t pinned_task_arguments_bytes_ = 0;
+
+  /// The maximum amount of bytes that can be used by executing task arguments.
+  size_t max_pinned_task_arguments_bytes_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
@@ -298,6 +302,17 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
+
+  // Helper function to pin a task's args immediately before dispatch. This
+  // returns false if there is not enough memory available to dispatch the
+  // task, due to other executing tasks' arguments.
+  bool PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
+                                    std::vector<std::unique_ptr<RayObject>> args);
+
+  // Helper functions to pin and release an executing task's args.
+  void PinTaskArgs(const TaskSpecification &spec,
+                   std::vector<std::unique_ptr<RayObject>> args);
+  void ReleaseTaskArgs(const TaskID &task_id);
 
   friend class ClusterTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
