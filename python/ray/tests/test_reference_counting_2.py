@@ -427,6 +427,7 @@ def test_object_unpin(ray_start_cluster):
 
     # The second node is dead, and actor 2 is dead.
     cluster.remove_node(nodes[1], allow_graceful=False)
+    cluster.wait_for_nodes()
     wait_for_condition(lambda: check_memory(10))
 
     # The first actor is dead, so object should be GC'ed.
