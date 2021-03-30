@@ -274,19 +274,28 @@ class StandardAutoscaler:
                     self.load_metrics.mark_active(
                         self.provider.internal_ip(node_id))
                 else:
-                    logger.error(f"StandardAutoscaler: {node_id}: Terminating "
-                                 "failed to setup/initialize node.")
+                    nodes_to_terminate.append(node_id)
+                    self.num_failed_updates[node_id] += 1
+                del self.updaters[node_id]
+            if nodes_to_terminate:
+                # Some nodes in nodes_to_terminate may have been terminated
+                # during an update. Only terminate currently active nodes.
+                active_nodes = self.workers()
+                active_nodes_to_terminate = [
+                    node for node in nodes_to_terminate if node in active_nodes
+                ]
+                for node_id in active_nodes_to_terminate:
+                    logger.error(f"StandardAutoscaler: {node_id}: Terminating."
+                                 " Failed to setup/initialize node.")
                     self.event_summarizer.add(
                         "Removing {} nodes of type " +
                         self._get_node_type(node_id) + " (launch failed).",
                         quantity=1,
                         aggregate=operator.add)
-                    nodes_to_terminate.append(node_id)
-                    self.num_failed_updates[node_id] += 1
-                del self.updaters[node_id]
-            if nodes_to_terminate:
-                self.provider.terminate_nodes(nodes_to_terminate)
+                self.provider.terminate_nodes(active_nodes_to_terminate)
 
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -605,10 +614,13 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def _get_node_type(self, node_id: str) -> str:
-        node_tags = self.provider.node_tags(node_id)
-        if TAG_RAY_USER_NODE_TYPE in node_tags:
-            return node_tags[TAG_RAY_USER_NODE_TYPE]
-        else:
+        try:
+            node_tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in node_tags:
+                return node_tags[TAG_RAY_USER_NODE_TYPE]
+            else:
+                return "unknown"
+        except Exception:
             return "unknown"
 
     def _get_node_type_specific_fields(self, node_id: str,
