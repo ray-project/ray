@@ -14,7 +14,6 @@ py_test_module_list(
     "test_async.py",
     "test_actor.py",
     "test_actor_advanced.py",
-    "test_actor_failures.py",
     "test_actor_resources.py",
     "test_advanced.py",
     "test_advanced_2.py",
@@ -47,7 +46,16 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_memory_scheduling.py",
+    "test_actor_failures.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
@@ -73,6 +81,16 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_k_to_z"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_memory_scheduling.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -128,12 +146,21 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_failure.py",
     "test_stress_failure.py",
   ],
   size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_failure.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
   deps = ["//:ray_lib"],
 )
 
