@@ -59,9 +59,8 @@ def test_load_balancing(ray_start_cluster):
 def test_hybrid_policy(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def get_node():
-        # Making this sleep shorter will make the test flakey due to warm pool
-        # startup time.
-        time.sleep(3)
+        # Sleep to avoid lease reuse.
+        time.sleep(1)
         return ray.worker.global_worker.current_node_id
 
     cluster = ray_start_cluster
@@ -71,6 +70,14 @@ def test_hybrid_policy(ray_start_cluster):
         cluster.add_node(num_cpus=num_cpus)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
+
+    # Warm the worker pool in order to isolate the test to only test the
+    # scheduling policy.
+    node_resources = [resource for resource in ray.cluster_resources() if
+                      "node:" in resource]
+    for node_ip in node_resources:
+        print("Warming worker pool on ", node_ip)
+        ray.get(get_node.remote())
 
     # Below the hybrid threshold we pack on the local node first.
     nodes = ray.get([get_node.remote() for _ in range(5)])
