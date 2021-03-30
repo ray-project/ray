@@ -818,6 +818,11 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
   initialized to a unique name at the start of the first run.
+* **TUNE_PLACEMENT_GROUP_RECON_INTERVAL**: How often to reconcile placement groups. Reconcilation is
+  used to make sure that the number of requested placement groups and pending/running trials are in sync.
+  In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
+  placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
+  running a large number of short trials. Defaults to every ``5`` (seconds).
 * **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
   groups to be placed before continuing the tuning loop. Setting this to a float
   will block for that many seconds. This is mostly used for testing purposes. Defaults

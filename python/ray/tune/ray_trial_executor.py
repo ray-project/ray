@@ -180,6 +180,10 @@ class RayTrialExecutor(TrialExecutor):
         if self._wait_for_pg < 0:
             self._wait_for_pg = None
 
+        self.last_pg_recon = 0
+        self.pg_recon_interval = float(
+            os.environ.get("TUNE_PLACEMENT_GROUP_RECON_INTERVAL", "5"))
+
         self._buffer_length = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
         self._buffer_min_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
@@ -893,7 +897,13 @@ class RayTrialExecutor(TrialExecutor):
     def on_step_end(self, trial_runner):
         self._just_staged_trials.clear()
 
-        self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
+        if time.time() > self.last_pg_recon + self.pg_recon_interval:
+            # Only do this every now and then - usually the placement groups
+            # should not get out of sync, and calling this often is inefficient
+            self._pg_manager.reconcile_placement_groups(
+                trial_runner.get_trials())
+            self.last_pg_recon = time.time()
+
         self._pg_manager.cleanup()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
