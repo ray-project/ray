@@ -27,8 +27,18 @@ from ray.util.inspect import is_function_or_method
 import ray.worker
 
 _nameable = Union[str, Callable[..., Any]]
-is_tracing_enabled = os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]
-print(f"is_tracing_enabled in tracing.py: {is_tracing_enabled}")
+_global_is_tracing_enabled = None
+
+
+def is_tracing_enabled() -> bool:
+    global _global_is_tracing_enabled
+    if _global_is_tracing_enabled is None:
+        # print("entered if statement")
+        _global_is_tracing_enabled = os.getenv(
+            "RAY_TRACING_ENABLED", "False"
+        ).lower() in ["true", "1"]
+        print(f"is_tracing_enabled {_global_is_tracing_enabled}")
+    return _global_is_tracing_enabled
 
 
 class DictPropagator:
@@ -174,7 +184,7 @@ def _tracing_task_invocation(method):
         **_kwargs: Any,  # from Ray
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled:
+        if not is_tracing_enabled():
             return method(self, args, kwargs, *_args, **_kwargs)
         assert "_ray_trace_ctx" not in kwargs
         tracer = trace.get_tracer(__name__)
@@ -200,7 +210,7 @@ def _inject_tracing_into_function(function):
         *args: Any, _ray_trace_ctx: Optional[Dict[str, Any]] = None, **kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled:
+        if not is_tracing_enabled():
             return function(*args, **kwargs)
 
         tracer = trace.get_tracer(__name__)
@@ -233,7 +243,7 @@ def _tracing_actor_class_invocation(method):
         **_kwargs: Any,  # from Ray
     ):
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled:
+        if not is_tracing_enabled():
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = self.__ray_metadata__.class_name
@@ -270,7 +280,7 @@ def _tracing_actor_method_invocation(method):
         **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not is_tracing_enabled:
+        if not is_tracing_enabled():
             return method(self, args, kwargs, *_args, **_kwargs)
 
         class_name = (
@@ -376,7 +386,7 @@ def _inject_tracing_into_class(_cls):
         return _resume_span
 
     # If tracing feature flag is not on, perform a no-op
-    if not is_tracing_enabled:
+    if not is_tracing_enabled():
         return _cls
 
     methods = inspect.getmembers(_cls, is_function_or_method)
