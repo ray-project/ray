@@ -1,0 +1,63 @@
+Script started on 2021-03-30 04:51:01-0700
+2021-03-30 04:51:01,364	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.10.199:6379
+Waiting for more nodes to come up: 0/5 (0 seconds passed)
+Waiting for more nodes to come up: 1/5 (10 seconds passed)
+Waiting for more nodes to come up: 1/5 (20 seconds passed)
+Waiting for more nodes to come up: 1/5 (30 seconds passed)
+Waiting for more nodes to come up: 1/5 (40 seconds passed)
+Waiting for more nodes to come up: 1/5 (50 seconds passed)
+Waiting for more nodes to come up: 1/5 (60 seconds passed)
+Waiting for more nodes to come up: 1/5 (70 seconds passed)
+Waiting for more nodes to come up: 1/5 (80 seconds passed)
+Waiting for more nodes to come up: 1/5 (90 seconds passed)
+Waiting for more nodes to come up: 1/5 (100 seconds passed)
+Waiting for more nodes to come up: 1/5 (110 seconds passed)
+Waiting for more nodes to come up: 1/5 (120 seconds passed)
+Waiting for more nodes to come up: 1/5 (130 seconds passed)
+Waiting for more nodes to come up: 1/5 (140 seconds passed)
+Waiting for more nodes to come up: 1/5 (150 seconds passed)
+Waiting for more nodes to come up: 1/5 (160 seconds passed)
+Waiting for more nodes to come up: 1/5 (170 seconds passed)
+Waiting for more nodes to come up: 1/5 (180 seconds passed)
+Waiting for more nodes to come up: 1/5 (190 seconds passed)
+Waiting for more nodes to come up: 1/5 (200 seconds passed)
+Waiting for more nodes to come up: 1/5 (210 seconds passed)
+Waiting for more nodes to come up: 1/5 (220 seconds passed)
+Cluster is up: 5/5 nodes online after 230 seconds
+2021-03-30 04:54:52,736	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.10.199:6379
+2021-03-30 04:54:53,608	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:55,119	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1086, ip=172.31.1.128)[0m [04:54:55] task [xgboost.ray]:140102565003088 got new rank 0
+[2m[36m(pid=1088, ip=172.31.3.41)[0m [04:54:55] task [xgboost.ray]:139900287663952 got new rank 3
+[2m[36m(pid=1090, ip=172.31.13.26)[0m [04:54:55] task [xgboost.ray]:140588646360464 got new rank 1
+[2m[36m(pid=1091, ip=172.31.26.223)[0m [04:54:55] task [xgboost.ray]:139703380967312 got new rank 2
+[04:55:05] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:05] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:05] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:05] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:05] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:05] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:05] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:05] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:05] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:05] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+[04:55:06] WARNING: ../src/gbm/gbtree.cc:350: Loading from a raw memory buffer on CPU only machine.  Changing tree_method to hist.
+[04:55:06] WARNING: ../src/learner.cc:222: No visible GPU is found, setting `gpu_id` to -1
+2021-03-30 04:55:06,189	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=250,000 in 13.42 seconds (11.07 pure XGBoost training time).
+TRAIN TIME TAKEN: 13.43 seconds
+Final training error: 0.3309
+PASSED.
+
+Script done on 2021-03-30 04:55:06-0700

@@ -1,0 +1,67 @@
+Script started on 2021-03-30 04:50:42-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:42,550	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.30.60:6379
+Waiting for more nodes to come up: 0/32 (0 seconds passed)
+Waiting for more nodes to come up: 1/32 (10 seconds passed)
+Waiting for more nodes to come up: 1/32 (20 seconds passed)
+Waiting for more nodes to come up: 1/32 (30 seconds passed)
+Waiting for more nodes to come up: 1/32 (40 seconds passed)
+Waiting for more nodes to come up: 1/32 (50 seconds passed)
+Waiting for more nodes to come up: 1/32 (60 seconds passed)
+Waiting for more nodes to come up: 1/32 (70 seconds passed)
+Waiting for more nodes to come up: 1/32 (80 seconds passed)
+Waiting for more nodes to come up: 1/32 (90 seconds passed)
+Waiting for more nodes to come up: 1/32 (100 seconds passed)
+Waiting for more nodes to come up: 1/32 (110 seconds passed)
+Waiting for more nodes to come up: 1/32 (120 seconds passed)
+Waiting for more nodes to come up: 4/32 (130 seconds passed)
+Waiting for more nodes to come up: 8/32 (140 seconds passed)
+Waiting for more nodes to come up: 8/32 (150 seconds passed)
+Waiting for more nodes to come up: 8/32 (160 seconds passed)
+Waiting for more nodes to come up: 12/32 (170 seconds passed)
+Waiting for more nodes to come up: 27/32 (180 seconds passed)
+Waiting for more nodes to come up: 27/32 (190 seconds passed)
+Waiting for more nodes to come up: 27/32 (200 seconds passed)
+Waiting for more nodes to come up: 28/32 (210 seconds passed)
+Cluster is up: 32/32 nodes online after 220 seconds
+2021-03-30 04:54:24,027	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.30.60:6379
+2021-03-30 04:54:24,717	INFO main.py:791 -- [RayXGBoost] Created 32 new actors (32 total actors). Waiting until actors are ready for training.
+2021-03-30 04:54:26,701	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1051, ip=172.31.1.247)[0m [04:54:26] task [xgboost.ray]:139992285075728 got new rank 0
+[2m[36m(pid=1041, ip=172.31.1.3)[0m [04:54:26] task [xgboost.ray]:139938547970320 got new rank 1
+[2m[36m(pid=1040, ip=172.31.12.234)[0m [04:54:26] task [xgboost.ray]:140510796959376 got new rank 4
+[2m[36m(pid=1040, ip=172.31.10.117)[0m [04:54:26] task [xgboost.ray]:140385543192208 got new rank 2
+[2m[36m(pid=1041, ip=172.31.12.253)[0m [04:54:26] task [xgboost.ray]:140536084778576 got new rank 5
+[2m[36m(pid=1038, ip=172.31.14.102)[0m [04:54:26] task [xgboost.ray]:140520653208464 got new rank 7
+[2m[36m(pid=1039, ip=172.31.20.128)[0m [04:54:26] task [xgboost.ray]:139811583283408 got new rank 12
+[2m[36m(pid=1050, ip=172.31.12.29)[0m [04:54:26] task [xgboost.ray]:139709962837584 got new rank 6
+[2m[36m(pid=1041, ip=172.31.17.115)[0m [04:54:26] task [xgboost.ray]:140003354586768 got new rank 10
+[2m[36m(pid=1048, ip=172.31.18.182)[0m [04:54:26] task [xgboost.ray]:139856401284752 got new rank 11
+[2m[36m(pid=1378)[0m [04:54:26] task [xgboost.ray]:140428960022736 got new rank 24
+[2m[36m(pid=1040, ip=172.31.14.3)[0m [04:54:26] task [xgboost.ray]:140191434885264 got new rank 8
+[2m[36m(pid=1031, ip=172.31.28.181)[0m [04:54:26] task [xgboost.ray]:139777985382352 got new rank 20
+[2m[36m(pid=1039, ip=172.31.26.115)[0m [04:54:26] task [xgboost.ray]:140692601116816 got new rank 19
+[2m[36m(pid=1039, ip=172.31.20.33)[0m [04:54:26] task [xgboost.ray]:140221866135184 got new rank 14
+[2m[36m(pid=1041, ip=172.31.7.9)[0m [04:54:26] task [xgboost.ray]:140180285062736 got new rank 28
+[2m[36m(pid=1032, ip=172.31.20.181)[0m [04:54:26] task [xgboost.ray]:139833304542864 got new rank 13
+[2m[36m(pid=1052, ip=172.31.7.158)[0m [04:54:26] task [xgboost.ray]:140408217370000 got new rank 26
+[2m[36m(pid=1040, ip=172.31.25.104)[0m [04:54:26] task [xgboost.ray]:139823688873808 got new rank 17
+[2m[36m(pid=1051, ip=172.31.20.53)[0m [04:54:26] task [xgboost.ray]:139699898490448 got new rank 15
+[2m[36m(pid=1044, ip=172.31.11.199)[0m [04:54:26] task [xgboost.ray]:140664364695440 got new rank 3
+[2m[36m(pid=1050, ip=172.31.23.69)[0m [04:54:26] task [xgboost.ray]:139967198076496 got new rank 16
+[2m[36m(pid=1040, ip=172.31.14.63)[0m [04:54:26] task [xgboost.ray]:139925313175184 got new rank 9
+[2m[36m(pid=1049, ip=172.31.30.148)[0m [04:54:26] task [xgboost.ray]:140309459984528 got new rank 22
+[2m[36m(pid=1038, ip=172.31.7.171)[0m [04:54:26] task [xgboost.ray]:140387120394512 got new rank 27
+[2m[36m(pid=1040, ip=172.31.25.139)[0m [04:54:26] task [xgboost.ray]:140708478500496 got new rank 18
+[2m[36m(pid=1041, ip=172.31.9.245)[0m [04:54:26] task [xgboost.ray]:140559770467920 got new rank 31
+[2m[36m(pid=1033, ip=172.31.29.125)[0m [04:54:26] task [xgboost.ray]:140524683841168 got new rank 21
+[2m[36m(pid=1042, ip=172.31.8.75)[0m [04:54:26] task [xgboost.ray]:140351846146192 got new rank 29
+[2m[36m(pid=1037, ip=172.31.30.161)[0m [04:54:26] task [xgboost.ray]:140558572469904 got new rank 23
+[2m[36m(pid=1031, ip=172.31.7.109)[0m [04:54:26] task [xgboost.ray]:140499931301072 got new rank 25
+[2m[36m(pid=1044, ip=172.31.9.107)[0m [04:54:26] task [xgboost.ray]:140359523544464 got new rank 30
+2021-03-30 04:54:56,731	INFO main.py:900 -- Training in progress (30 seconds since last restart).
+2021-03-30 04:55:00,677	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=1,280,000 in 36.62 seconds (33.97 pure XGBoost training time).
+TRAIN TIME TAKEN: 36.65 seconds
+Final training error: 0.4129
+PASSED.
+
+Script done on 2021-03-30 04:55:01-07:00 [COMMAND_EXIT_CODE="0"]

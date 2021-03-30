@@ -1,0 +1,32 @@
+Script started on 2021-03-30 04:50:41-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
+2021-03-30 04:50:42,217	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.2.211:6379
+Waiting for more nodes to come up: 0/4 (0 seconds passed)
+Waiting for more nodes to come up: 1/4 (10 seconds passed)
+Waiting for more nodes to come up: 1/4 (20 seconds passed)
+Waiting for more nodes to come up: 1/4 (30 seconds passed)
+Waiting for more nodes to come up: 1/4 (40 seconds passed)
+Waiting for more nodes to come up: 1/4 (50 seconds passed)
+Waiting for more nodes to come up: 1/4 (60 seconds passed)
+Waiting for more nodes to come up: 1/4 (70 seconds passed)
+Waiting for more nodes to come up: 1/4 (80 seconds passed)
+Waiting for more nodes to come up: 1/4 (90 seconds passed)
+Waiting for more nodes to come up: 1/4 (100 seconds passed)
+Waiting for more nodes to come up: 1/4 (110 seconds passed)
+Waiting for more nodes to come up: 1/4 (120 seconds passed)
+Waiting for more nodes to come up: 2/4 (130 seconds passed)
+Waiting for more nodes to come up: 2/4 (140 seconds passed)
+Waiting for more nodes to come up: 2/4 (150 seconds passed)
+Cluster is up: 4/4 nodes online after 160 seconds
+2021-03-30 04:53:23,618	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.2.211:6379
+2021-03-30 04:53:24,231	INFO main.py:791 -- [RayXGBoost] Created 4 new actors (4 total actors). Waiting until actors are ready for training.
+2021-03-30 04:53:25,142	INFO main.py:834 -- [RayXGBoost] Starting XGBoost training.
+[2m[36m(pid=1030, ip=172.31.19.121)[0m [04:53:25] task [xgboost.ray]:140165389815376 got new rank 1
+[2m[36m(pid=1038, ip=172.31.13.9)[0m [04:53:25] task [xgboost.ray]:140161049534032 got new rank 0
+[2m[36m(pid=1032, ip=172.31.30.230)[0m [04:53:25] task [xgboost.ray]:139902843371088 got new rank 3
+[2m[36m(pid=1360)[0m [04:53:25] task [xgboost.ray]:140211642741712 got new rank 2
+2021-03-30 04:53:43,816	INFO main.py:1269 -- [RayXGBoost] Finished XGBoost training on training data with total N=250,000 in 20.17 seconds (18.67 pure XGBoost training time).
+TRAIN TIME TAKEN: 20.18 seconds
+Final training error: 0.3293
+PASSED.
+
+Script done on 2021-03-30 04:53:44-07:00 [COMMAND_EXIT_CODE="0"]
