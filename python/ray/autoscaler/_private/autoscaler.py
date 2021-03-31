@@ -259,7 +259,6 @@ class StandardAutoscaler:
             if not updater.is_alive():
                 completed.append(node_id)
         if completed:
-            nodes_to_terminate: List[NodeID] = []
             for node_id in completed:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
@@ -277,7 +276,7 @@ class StandardAutoscaler:
                 # during an update (for being idle after missing a heartbeat). 
                 # Only terminate currently non terminated nodes.
                 non_terminated_nodes = self.workers()
-                nodes_to_terminate = []
+                nodes_to_terminate: List[NodeID] = []
                 for node_id in failed_nodes:
                     if node_id in non_terminated_nodes:
                         nodes_to_terminate.append(node_id)
