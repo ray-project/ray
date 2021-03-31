@@ -175,13 +175,21 @@ py_test(
 
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
-  name = "test_tracing",
+  name = "test_tracing_task",
   size = "small",
-  srcs = SRCS + ["test_tracing.py"],
+  srcs = SRCS + ["test_tracing_task.py"],
   tags = ["exclusive"],
   deps = ["//:ray_lib"]
 )
 
+# TODO: use py_test(env = ...) in the build file with bazel 4.0
+py_test(
+  name = "test_tracing_actor",
+  size = "small",
+  srcs = SRCS + ["test_tracing_actor.py"],
+  tags = ["exclusive"],
+  deps = ["//:ray_lib"]
+)
 
 py_test_module_list(
   files = [
