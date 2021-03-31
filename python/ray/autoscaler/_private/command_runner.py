@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import Dict
+from typing import Dict, List
 import click
 import hashlib
 import json
@@ -831,13 +831,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                     home_directory = env_var.split("HOME=")[1]
                     break
 
+            user_docker_run_options = self.docker_config.get(
+                "run_options", []) + self.docker_config.get(
+                    f"{'head' if as_head else 'worker'}_run_options", [])
             start_command = docker_start_cmds(
                 self.ssh_command_runner.ssh_user, specific_image,
                 cleaned_bind_mounts, self.container_name,
-                self.docker_config.get(
-                    "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options", []) +
-                self._configure_runtime() + self._auto_configure_shm(),
+                self._configure_runtime(
+                    self._auto_configure_shm(user_docker_run_options)),
                 self.ssh_command_runner.cluster_name, home_directory,
                 self.docker_cmd)
             self.run(start_command, run_env="host")
@@ -887,9 +888,9 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.initialized = True
         return docker_run_executed
 
-    def _configure_runtime(self):
+    def _configure_runtime(self, run_options: List[str]) -> List[str]:
         if self.docker_config.get("disable_automatic_runtime_detection"):
-            return []
+            return run_options
 
         runtime_output = self.ssh_command_runner.run(
             f"{self.docker_cmd} " + "info -f '{{.Runtimes}}' ",
@@ -897,18 +898,23 @@ class DockerCommandRunner(CommandRunnerInterface):
         if "nvidia-container-runtime" in runtime_output:
             try:
                 self.ssh_command_runner.run("nvidia-smi", with_output=False)
-                return ["--runtime=nvidia"]
+                return run_options + ["--runtime=nvidia"]
             except Exception as e:
                 logger.warning(
                     "Nvidia Container Runtime is present, but no GPUs found.")
                 logger.debug(f"nvidia-smi error: {e}")
-                return []
+                return run_options
 
-        return []
+        return run_options
 
-    def _auto_configure_shm(self):
+    def _auto_configure_shm(self, run_options: List[str]) -> List[str]:
         if self.docker_config.get("disable_shm_size_detection"):
-            return []
+            return run_options
+        for run_opt in run_options:
+            if "--shm-size" in run_opt:
+                logger.info("Bypassing automatic SHM-Detection because of "
+                            f"`run_option`: {run_opt}")
+                return run_options
         try:
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
@@ -921,11 +927,11 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_size = min((available_memory_bytes *
                             DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1),
                            DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-            return [f"--shm-size='{shm_size}b'"]
+            return run_options + [f"--shm-size='{shm_size}b'"]
         except Exception as e:
             logger.warning(
                 f"Received error while trying to auto-compute SHM size {e}")
-            return []
+            return run_options
 
     def _get_docker_host_mount_location(self, cluster_name: str) -> str:
         """Return the docker host mount directory location."""
