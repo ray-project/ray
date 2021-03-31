@@ -1,15 +1,8 @@
 from contextlib import contextmanager
 from functools import wraps
 import inspect
+import logging
 import os
-
-from opentelemetry import context, trace
-from opentelemetry.context.context import Context
-from opentelemetry.util import types
-from opentelemetry.util.types import Attributes
-from opentelemetry import propagators
-from opentelemetry.trace.propagation.textmap import DictGetter
-
 from typing import (
     Any,
     cast,
@@ -26,6 +19,21 @@ from ray.runtime_context import get_runtime_context
 from ray.util.inspect import is_function_or_method
 import ray.worker
 
+logger = logging.getLogger(__name__)
+
+try:
+    from opentelemetry import context, trace
+    from opentelemetry.context.context import Context
+    from opentelemetry.util import types
+    from opentelemetry.util.types import Attributes
+    from opentelemetry import propagators
+    from opentelemetry.trace.propagation.textmap import DictGetter
+except ImportError:
+    if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
+        logger.warning(
+            "Install opentelemetry with 'pip install opentelemetry-api' and 'pip install opentelemetry-sdk' to enable tracing."
+        )
+
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = None
 
@@ -33,11 +41,9 @@ _global_is_tracing_enabled = None
 def is_tracing_enabled() -> bool:
     global _global_is_tracing_enabled
     if _global_is_tracing_enabled is None:
-        # print("entered if statement")
         _global_is_tracing_enabled = os.getenv(
             "RAY_TRACING_ENABLED", "False"
         ).lower() in ["true", "1"]
-        print(f"is_tracing_enabled {_global_is_tracing_enabled}")
     return _global_is_tracing_enabled
 
 
