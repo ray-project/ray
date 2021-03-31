@@ -155,6 +155,7 @@ test_python() {
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_failure
+      -python/ray/tests:test_failure_2
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
