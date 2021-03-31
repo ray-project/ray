@@ -255,6 +255,7 @@ class StandardAutoscaler:
 
         # Process any completed updates
         completed = []
+        failed_nodes = []
         for node_id, updater in self.updaters.items():
             if not updater.is_alive():
                 completed.append(node_id)
@@ -273,7 +274,7 @@ class StandardAutoscaler:
 
             if failed_nodes:
                 # Some nodes in failed_nodes may have been terminated
-                # during an update (for being idle after missing a heartbeat). 
+                # during an update (for being idle after missing a heartbeat).
                 # Only terminate currently non terminated nodes.
                 non_terminated_nodes = self.workers()
                 nodes_to_terminate: List[NodeID] = []

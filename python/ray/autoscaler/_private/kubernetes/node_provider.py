@@ -152,7 +152,14 @@ class KubernetesNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         logger.info(log_prefix + "calling delete_namespaced_pod")
-        core_api().delete_namespaced_pod(node_id, self.namespace)
+        try:
+            core_api().delete_namespaced_pod(node_id, self.namespace)
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(log_prefix + f"Tried to delete pod {node_id},"
+                               " but the pod was not found (404).")
+            else:
+                raise
         try:
             core_api().delete_namespaced_service(node_id, self.namespace)
         except ApiException:
