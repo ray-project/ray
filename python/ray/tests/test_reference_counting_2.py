@@ -347,7 +347,9 @@ def test_object_unpin(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
     head_node = cluster.add_node(
-        num_cpus=0, object_store_memory=100 * 1024 * 1024)
+        num_cpus=0,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={"num_heartbeats_timeout": 5})
     ray.init(address=cluster.address)
 
     # Add worker nodes.
@@ -398,6 +400,13 @@ def test_object_unpin(ray_start_cluster):
                  "MiB" in memory_summary(
                      address=head_node.address, stats_only=True)))
 
+    def wait_until_node_dead(node):
+        for n in ray.nodes():
+            if (n["ObjectStoreSocketName"] == node.address_info[
+                    "object_store_address"]):
+                return not n["Alive"]
+        return False
+
     wait_for_condition(lambda: check_memory(11))
 
     # Pop one mb array and see if it works.
@@ -427,6 +436,7 @@ def test_object_unpin(ray_start_cluster):
 
     # The second node is dead, and actor 2 is dead.
     cluster.remove_node(nodes[1], allow_graceful=False)
+    wait_for_condition(lambda: wait_until_node_dead(nodes[1]))
     wait_for_condition(lambda: check_memory(10))
 
     # The first actor is dead, so object should be GC'ed.
