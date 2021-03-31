@@ -224,13 +224,16 @@ class ServeController:
                                     config_options: BackendConfig) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
-            backend_info = self.backend_state.get_backend(backend_tag)
-            if backend_info is None:
+            existing_info = self.backend_state.get_backend(backend_tag)
+            if existing_info is None:
                 raise ValueError(f"Backend {backend_tag} is not registered.")
 
-            new_backend_config = backend_info.backend_config.copy(
-                update=config_options.dict(exclude_unset=True))
-            backend_info.backend_config = new_backend_config
+            backend_info = BackendInfo(
+                worker_class=existing_info.worker_class,
+                version=existing_info.version,
+                backend_config=existing_info.backend_config.copy(
+                    update=config_options.dict(exclude_unset=True)),
+                replica_config=existing_info.replica_config)
             return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
