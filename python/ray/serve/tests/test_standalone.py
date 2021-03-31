@@ -138,9 +138,9 @@ def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     serve.start(
         dedicated_cpu=controller_cpu,
         http_options=HTTPOptions(num_cpus=num_proxy_cpus))
+    available_cpus = num_cluster_cpus - num_cpus_used
     wait_for_condition(
-        lambda: ray.available_resources().get("CPU") == num_cluster_cpus - num_cpus_used
-    )
+        lambda: (ray.available_resources().get("CPU") == available_cpus))
     serve.shutdown()
     ray.shutdown()
 
