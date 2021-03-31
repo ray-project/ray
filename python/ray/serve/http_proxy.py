@@ -8,7 +8,7 @@ import starlette.routing
 
 import ray
 from ray import serve
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve.common import EndpointTag
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
@@ -16,6 +16,8 @@ from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
+
+MAX_ACTOR_FAILURE_RETRIES = 8
 
 
 class ServeStarletteEndpoint:
@@ -46,15 +48,29 @@ class ServeStarletteEndpoint:
         if self.handle is None:
             self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
-        object_ref = await self.handle.options(
-            method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
-                                    DEFAULT.VALUE),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
-            http_method=scope["method"].upper(),
-            http_headers=headers).remote(
-                build_starlette_request(scope, http_body_bytes))
+        retries = 0
+        backoff_time_s = 0.1
+        while retries < MAX_ACTOR_FAILURE_RETRIES:
+            object_ref = await self.handle.options(
+                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                        DEFAULT.VALUE),
+                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
+                                      DEFAULT.VALUE),
+                http_method=scope["method"].upper(),
+                http_headers=headers).remote(
+                    build_starlette_request(scope, http_body_bytes))
 
-        result = await object_ref
+            try:
+                result = await object_ref
+                break
+            except RayActorError:
+                logger.warning(
+                    "Request failed due to actor failure. There are "
+                    f"{MAX_ACTOR_FAILURE_RETRIES - retries} retries "
+                    "remaining.")
+                await asyncio.sleep(backoff_time_s)
+                backoff_time_s *= 2
+                retries += 1
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
