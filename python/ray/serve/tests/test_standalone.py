@@ -328,7 +328,7 @@ def test_http_head_only(ray_cluster):
         r["CPU"]
         for r in ray.state.state._available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {2, 4}
+    assert cpu_per_nodes == {4, 4}
 
 
 if __name__ == "__main__":
