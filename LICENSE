@@ -272,7 +272,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------
-Code in python/ray/prometheus_exporter.py is adapted from https://github.com/census-instrumentation/opencensus-python/blob/master/contrib/opencensus-ext-prometheus/opencensus/ext/prometheus/stats_exporter/__init__.py
+Code in python/ray/_private/prometheus_exporter.py is adapted from https://github.com/census-instrumentation/opencensus-python/blob/master/contrib/opencensus-ext-prometheus/opencensus/ext/prometheus/stats_exporter/__init__.py
 
 # Copyright 2018, OpenCensus Authors
 #

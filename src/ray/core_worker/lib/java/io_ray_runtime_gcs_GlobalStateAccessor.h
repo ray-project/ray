@@ -78,15 +78,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(JNIEnv *, 
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
- * Method:    nativeGetInternalConfig
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(JNIEnv *, jobject,
-                                                                    jlong);
-
-/*
- * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllActorInfo
  * Signature: (J)Ljava/util/List;
  */
@@ -112,6 +103,15 @@ JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(JNIEnv *, jobject,
                                                                         jlong,
                                                                         jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_gcs_GlobalStateAccessor
+ * Method:    nativeGetPlacementGroupInfoByName
+ * Signature: (JLjava/lang/String;Z)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(
+    JNIEnv *, jobject, jlong, jstring, jboolean);
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor

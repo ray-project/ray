@@ -20,6 +20,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
@@ -127,6 +128,9 @@ class ObjectDirectoryInterface {
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -142,7 +146,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  ObjectDirectory(boost::asio::io_service &io_service,
+  ObjectDirectory(instrumented_io_context &io_service,
                   std::shared_ptr<gcs::GcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
@@ -170,6 +174,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
+
+  void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;
 
@@ -199,7 +205,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   };
 
   /// Reference to the event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   /// Reference to the gcs client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Info about subscribers to object locations.

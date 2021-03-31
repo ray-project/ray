@@ -90,7 +90,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
-    # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
@@ -115,10 +114,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_position_wise_mlp_dim": 32,
     # The initial bias values for the 2 GRU gates within a transformer unit.
     "attention_init_gru_gate_bias": 2.0,
-    # TODO: Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
-    # "attention_use_n_prev_actions": 0,
+    # Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
+    "attention_use_n_prev_actions": 0,
     # Whether to feed r_{t-n:t-1} to GTrXL.
-    # "attention_use_n_prev_rewards": 0,
+    "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
     # Which framestacking size to use for Atari envs.
@@ -328,7 +327,8 @@ class ModelCatalog:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(action_space)
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space, framework="tf")
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 

@@ -1,7 +1,6 @@
 package io.ray.runtime.runner;
 
 import com.google.common.base.Joiner;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.ray.runtime.config.RayConfig;
@@ -32,7 +31,6 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
-    command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
     command.addAll(rayConfig.headArgs);
     String output;
     try {
@@ -71,7 +69,7 @@ public class RunManager {
         String.format(
             "import ray;"
                 + " print(ray._private.services.get_address_info_from_redis("
-                + "'%s', '%s', redis_password='%s'))",
+                + "'%s', '%s', redis_password='%s', log_warning=False))",
             rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 

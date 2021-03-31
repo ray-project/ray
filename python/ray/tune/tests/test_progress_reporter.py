@@ -75,12 +75,12 @@ tune.run_experiments({
     },
 }, verbose=3, progress_reporter=reporter)"""
 
-EXPECTED_END_TO_END_START = """Number of trials: 1/30 (1 RUNNING)
-+---------------+----------+-------+-----+
-| Trial name    | status   | loc   |   a |
-|---------------+----------+-------+-----|
-| f_xxxxx_00000 | RUNNING  |       |   0 |
-+---------------+----------+-------+-----+"""
+EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
++---------------+----------+-------+-----+-----+
+| Trial name    | status   | loc   |   a |   b |
+|---------------+----------+-------+-----+-----|
+| f_xxxxx_00000 | RUNNING  |       |   0 |     |
+| f_xxxxx_00001 | PENDING  |       |   1 |     |"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------+-----+-----+-----+--------+
@@ -160,7 +160,7 @@ EXPECTED_BEST_1 = "Current best trial: 00001 with metric_1=0.5 and " \
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and " \
                   "parameters={'a': 4}"
 
-VERBOSE_EXP_OUT_1 = "Number of trials: 1/3 (1 RUNNING)"
+VERBOSE_EXP_OUT_1 = "Number of trials: 3/3 (2 PENDING, 1 RUNNING)"
 VERBOSE_EXP_OUT_2 = "Number of trials: 3/3 (3 TERMINATED)"
 
 VERBOSE_TRIAL_NORM = "Trial train_xxxxx_00000 reported acc=5 with " + \
@@ -174,14 +174,12 @@ Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
 VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
 | Trial name        | status   | loc   | do       |
 |-------------------+----------+-------+----------|
-| train_xxxxx_00000 | RUNNING  |       | complete |
-+-------------------+----------+-------+----------+"""
+| train_xxxxx_00000 | RUNNING  |       | complete |"""
 
 VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-
 
 def train(config):
     if config["do"] == "complete":
@@ -208,6 +206,12 @@ tune.run(
 
 
 class ProgressReporterTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
     def mock_trial(self, status, i):
         mock = MagicMock()
         mock.status = status

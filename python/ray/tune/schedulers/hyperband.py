@@ -76,6 +76,8 @@ class HyperBandScheduler(FIFOScheduler):
             mentioned in the original HyperBand paper.
         reduction_factor (float): Same as `eta`. Determines how sharp
             the difference is between bracket space-time allocation ratios.
+        stop_last_trials (bool): Whether to terminate the trials after
+            reaching max_t. Defaults to True.
     """
 
     def __init__(self,
@@ -84,7 +86,8 @@ class HyperBandScheduler(FIFOScheduler):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_t: int = 81,
-                 reduction_factor: float = 3):
+                 reduction_factor: float = 3,
+                 stop_last_trials: bool = True):
         assert max_t > 0, "Max (time_attr) not valid!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
@@ -122,6 +125,7 @@ class HyperBandScheduler(FIFOScheduler):
         elif self._mode == "min":
             self._metric_op = -1.
         self._time_attr = time_attr
+        self._stop_last_trials = stop_last_trials
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
@@ -181,14 +185,22 @@ class HyperBandScheduler(FIFOScheduler):
                     cur_bracket = None
                 else:
                     retry = False
-                    cur_bracket = Bracket(self._time_attr, self._get_n0(s),
-                                          self._get_r0(s), self._max_t_attr,
-                                          self._eta, s)
+                    cur_bracket = self._create_bracket(s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
+
+    def _create_bracket(self, s):
+        return Bracket(
+            time_attr=self._time_attr,
+            max_trials=self._get_n0(s),
+            init_t_attr=self._get_r0(s),
+            max_t_attr=self._max_t_attr,
+            eta=self._eta,
+            s=s,
+            stop_last_trials=self._stop_last_trials)
 
     def _cur_band_filled(self) -> bool:
         """Checks if the current band is filled.
@@ -216,11 +228,8 @@ class HyperBandScheduler(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
         action = self._process_bracket(trial_runner, bracket)
-        logger.info("{action} for {trial} on {metric}={metric_val}".format(
-            action=action,
-            trial=trial,
-            metric=self._time_attr,
-            metric_val=result.get(self._time_attr)))
+        logger.debug(f"{action} for {trial} on "
+                     f"{self._time_attr}={result.get(self._time_attr)}")
         return action
 
     def _process_bracket(self, trial_runner: "trial_runner.TrialRunner",
@@ -303,7 +312,7 @@ class HyperBandScheduler(FIFOScheduler):
                     scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources(trial.resources)):
+                            and trial_runner.has_resources_for_trial(trial)):
                         return trial
         return None
 
@@ -352,8 +361,14 @@ class Bracket:
     Also keeps track of progress to ensure good scheduling.
     """
 
-    def __init__(self, time_attr: str, max_trials: int, init_t_attr: int,
-                 max_t_attr: int, eta: float, s: int):
+    def __init__(self,
+                 time_attr: str,
+                 max_trials: int,
+                 init_t_attr: int,
+                 max_t_attr: int,
+                 eta: float,
+                 s: int,
+                 stop_last_trials: bool = True):
         self._live_trials = {}  # maps trial -> current result
         self._all_trials = []
         self._time_attr = time_attr  # attribute to
@@ -368,6 +383,7 @@ class Bracket:
 
         self._total_work = self._calculate_total_work(self._n0, self._r0, s)
         self._completed_progress = 0
+        self.stop_last_trials = stop_last_trials
 
     def add_trial(self, trial: Trial):
         """Add trial to bracket assuming bracket is not filled.
@@ -387,6 +403,8 @@ class Bracket:
             for result in self._live_trials.values())
 
     def finished(self) -> bool:
+        if not self.stop_last_trials:
+            return False
         return self._halves == 0 and self.cur_iter_done()
 
     def current_trials(self) -> List[Trial]:
@@ -394,10 +412,11 @@ class Bracket:
 
     def continue_trial(self, trial: Trial) -> bool:
         result = self._live_trials[trial]
-        if self._get_result_time(result) < self._cumul_r:
+        if not self.stop_last_trials and self._halves == 0:
             return True
-        else:
-            return False
+        elif self._get_result_time(result) < self._cumul_r:
+            return True
+        return False
 
     def filled(self) -> bool:
         """Checks if bracket is filled.
@@ -409,6 +428,8 @@ class Bracket:
 
     def successive_halving(self, metric: str, metric_op: float
                            ) -> Tuple[List[Trial], List[Trial]]:
+        if self._halves == 0 and not self.stop_last_trials:
+            return self._live_trials, []
         assert self._halves > 0
         self._halves -= 1
         self._n /= self._eta
@@ -436,8 +457,8 @@ class Bracket:
         observed_time = self._get_result_time(result)
         last_observed = self._get_result_time(self._live_trials[trial])
 
-        delta = last_observed - observed_time
-        if delta >= 0:
+        delta = observed_time - last_observed
+        if delta <= 0:
             logger.info("Restoring from a previous point in time. "
                         "Previous={}; Now={}".format(last_observed,
                                                      observed_time))
@@ -470,7 +491,7 @@ class Bracket:
         are dropped."""
         if self.finished():
             return 1.0
-        return self._completed_progress / self._total_work
+        return min(self._completed_progress / self._total_work, 1.0)
 
     def _get_result_time(self, result: Dict) -> float:
         if result is None:

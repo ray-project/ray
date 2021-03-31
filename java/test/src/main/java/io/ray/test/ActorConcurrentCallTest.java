@@ -1,10 +1,8 @@
 package io.ray.test;
 
-import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -33,7 +31,6 @@ public class ActorConcurrentCallTest extends BaseTest {
     ObjectRef<String> obj2 = actor.task(ConcurrentActor::countDown).remote();
     ObjectRef<String> obj3 = actor.task(ConcurrentActor::countDown).remote();
 
-    List<Integer> expectedResult = ImmutableList.of(1, 2, 3);
     Assert.assertEquals(obj1.get(), "ok");
     Assert.assertEquals(obj2.get(), "ok");
     Assert.assertEquals(obj3.get(), "ok");

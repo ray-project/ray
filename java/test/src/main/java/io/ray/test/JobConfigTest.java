@@ -3,7 +3,6 @@ package io.ray.test;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -17,15 +16,6 @@ public class JobConfigTest extends BaseTest {
     System.setProperty("ray.job.jvm-options.1", "-DY=998");
     System.setProperty("ray.job.worker-env.foo1", "bar1");
     System.setProperty("ray.job.worker-env.foo2", "bar2");
-  }
-
-  @AfterClass
-  public void tearDownJobConfig() {
-    System.clearProperty("ray.job.num-java-workers-per-process");
-    System.clearProperty("ray.job.jvm-options.0");
-    System.clearProperty("ray.job.jvm-options.1");
-    System.clearProperty("ray.job.worker-env.foo1");
-    System.clearProperty("ray.job.worker-env.foo2");
   }
 
   public static String getJvmOptions(String propertyName) {

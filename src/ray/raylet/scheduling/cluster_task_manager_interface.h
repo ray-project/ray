@@ -61,7 +61,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -112,21 +112,6 @@ class ClusterTaskManagerInterface {
   virtual bool AnyPendingTasks(Task *exemplar, bool *any_pending,
                                int *num_pending_actor_creation,
                                int *num_pending_tasks) const = 0;
-
-  /// Handle the resource usage updated event of the specified node.
-  ///
-  /// \param node_id ID of the node which resources are updated.
-  /// \param resource_data The node resources.
-  virtual void OnNodeResourceUsageUpdated(const NodeID &node_id,
-                                          const rpc::ResourcesData &resource_data) = 0;
-
-  /// Handle the object missing event.
-  ///
-  /// \param object_id ID of the missing object.
-  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
-  /// object.
-  virtual void OnObjectMissing(const ObjectID &object_id,
-                               const std::vector<TaskID> &waiting_task_ids) = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
   ///

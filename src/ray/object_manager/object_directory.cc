@@ -13,10 +13,11 @@
 // limitations under the License.
 
 #include "ray/object_manager/object_directory.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
+ObjectDirectory::ObjectDirectory(instrumented_io_context &io_service,
                                  std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
@@ -285,6 +286,10 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         });
   }
   return status;
+}
+
+void ObjectDirectory::RecordMetrics(uint64_t duration_ms) {
+  stats::ObjectDirectoryLocationSubscriptions().Record(listeners_.size());
 }
 
 std::string ObjectDirectory::DebugString() const {

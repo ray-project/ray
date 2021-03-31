@@ -19,6 +19,7 @@
 #include <boost/asio.hpp>
 
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
@@ -40,6 +41,8 @@ class ClientCall {
   virtual ray::Status GetStatus() = 0;
   /// Set return status.
   virtual void SetReturnStatus() = 0;
+  /// Get human-readable name for this RPC.
+  virtual std::string GetName() = 0;
 
   virtual ~ClientCall() = default;
 };
@@ -62,7 +65,8 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
+  explicit ClientCallImpl(const ClientCallback<Reply> &callback, std::string call_name)
+      : callback_(callback), call_name_(std::move(call_name)) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -85,12 +89,17 @@ class ClientCallImpl : public ClientCall {
     }
   }
 
+  std::string GetName() override { return call_name_; }
+
  private:
   /// The reply message.
   Reply reply_;
 
   /// The callback function to handle the reply.
   ClientCallback<Reply> callback_;
+
+  /// The human-readable name of the RPC.
+  std::string call_name_;
 
   /// The response reader.
   std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
@@ -164,7 +173,7 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
+  explicit ClientCallManager(instrumented_io_context &main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
@@ -203,8 +212,9 @@ class ClientCallManager {
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
-      const Request &request, const ClientCallback<Reply> &callback) {
-    auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
+      const Request &request, const ClientCallback<Reply> &callback,
+      std::string call_name) {
+    auto call = std::make_shared<ClientCallImpl<Reply>>(callback, std::move(call_name));
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -250,11 +260,13 @@ class ClientCallManager {
         tag->GetCall()->SetReturnStatus();
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
-          main_service_.post([tag]() {
-            tag->GetCall()->OnReplyReceived();
-            // The call is finished, and we can delete this tag now.
-            delete tag;
-          });
+          main_service_.post(
+              [tag]() {
+                tag->GetCall()->OnReplyReceived();
+                // The call is finished, and we can delete this tag now.
+                delete tag;
+              },
+              tag->GetCall()->GetName());
         } else {
           delete tag;
         }
@@ -263,7 +275,7 @@ class ClientCallManager {
   }
 
   /// The main event loop, to which the callback functions will be posted.
-  boost::asio::io_service &main_service_;
+  instrumented_io_context &main_service_;
 
   /// The number of polling threads.
   int num_threads_;

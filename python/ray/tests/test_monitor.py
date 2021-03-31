@@ -1,5 +1,5 @@
 import ray
-from ray.monitor import parse_resource_demands
+from ray._private.monitor import parse_resource_demands
 
 
 def test_parse_resource_demands():

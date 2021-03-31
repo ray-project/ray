@@ -43,12 +43,13 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/asio_util.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/util/asio_util.h"
 #include "ray/util/util.h"
 
 namespace fb = plasma::flatbuf;
@@ -68,7 +69,7 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(boost::asio::io_service &io_context, const std::shared_ptr<Client> &client,
+  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker);
   /// The client that called get.
   std::shared_ptr<Client> client;
@@ -101,7 +102,7 @@ struct GetRequest {
   boost::asio::steady_timer timer_;
 };
 
-GetRequest::GetRequest(boost::asio::io_service &io_context,
+GetRequest::GetRequest(instrumented_io_context &io_context,
                        const std::shared_ptr<Client> &client,
                        const std::vector<ObjectID> &object_ids, bool is_from_worker)
     : client(client),
@@ -114,7 +115,7 @@ GetRequest::GetRequest(boost::asio::io_service &io_context,
   num_objects_to_wait_for = unique_ids.size();
 }
 
-PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory,
+PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          bool hugepages_enabled, const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
@@ -166,6 +167,8 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id, ObjectTableEnt
   }
   // Increase reference count.
   entry->ref_count++;
+  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client"
+                 << ", num bytes in use is now " << num_bytes_in_use_;
 
   // Add object id to the list of object ids that this client is using.
   client->object_ids.insert(object_id);
@@ -291,7 +294,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::OutOfMemory;
   }
 
-  auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
+  auto ptr = std::make_unique<ObjectTableEntry>();
   entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
   entry->data_size = data_size;
   entry->metadata_size = metadata_size;
@@ -325,6 +328,8 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   eviction_policy_.ObjectCreated(object_id, client.get(), true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
+  num_objects_unsealed_++;
+  num_bytes_unsealed_ += data_size + metadata_size;
   return PlasmaError::OK;
 }
 
@@ -538,12 +543,14 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     client->object_ids.erase(it);
     // Decrease reference count.
     entry->ref_count--;
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
 
     // If no more clients are using this object, notify the eviction policy
     // that the object is no longer being used.
     if (entry->ref_count == 0) {
       num_bytes_in_use_ -= entry->data_size + entry->metadata_size;
-      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id;
+      RAY_LOG(DEBUG) << "Releasing object no longer in use " << object_id
+                     << ", num bytes in use is now " << num_bytes_in_use_;
       if (deletion_cache_.count(object_id) == 0) {
         // Tell the eviction policy that this object is no longer being used.
         eviction_policy_.EndObjectAccess(object_id);
@@ -568,9 +575,15 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   if (object->device_num == 0) {
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
+  if (object->state == ObjectState::PLASMA_CREATED) {
+    num_bytes_unsealed_ -= object->data_size + object->metadata_size;
+    num_objects_unsealed_--;
+  }
   if (object->ref_count > 0) {
     // A client was using this object.
     num_bytes_in_use_ -= object->data_size + object->metadata_size;
+    RAY_LOG(DEBUG) << "Erasing object " << object_id << " with nonzero ref count"
+                   << object_id << ", num bytes in use is now " << num_bytes_in_use_;
   }
   store_info_.objects.erase(object_id);
 }
@@ -614,6 +627,9 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     object_info.owner_worker_id = entry->owner_worker_id.Binary();
     object_info.metadata_size = entry->metadata_size;
     infos.push_back(object_info);
+
+    num_objects_unsealed_--;
+    num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
   }
 
   PushNotifications(infos);
@@ -753,53 +769,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
     RemoveFromClientObjectIds(entry.first, entry.second, client);
   }
 
-  if (notification_clients_.find(client) != notification_clients_.end()) {
-    // Remove notification for this client from global map.
-    notification_clients_.erase(client);
-  }
-
   create_request_queue_.RemoveDisconnectedClientRequests(client);
-}
-
-/// Send notifications about sealed objects to the subscribers. This is called
-/// in SealObject. If the socket's send buffer is full, the notification will
-/// be buffered, and this will be called again when the send buffer has room.
-///
-/// \param client The client to push notifications to.
-/// \param object_info The notifications.
-void PlasmaStore::SendNotifications(const std::shared_ptr<Client> &client,
-                                    const std::vector<ObjectInfoT> &object_info) {
-  namespace protocol = ray::object_manager::protocol;
-  flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<protocol::ObjectInfo>> info;
-  for (size_t i = 0; i < object_info.size(); ++i) {
-    info.push_back(protocol::CreateObjectInfo(fbb, &object_info[i]));
-  }
-  auto info_array = fbb.CreateVector(info);
-  auto message = protocol::CreatePlasmaNotification(fbb, info_array);
-  fbb.Finish(message);
-
-  // In C++14, we can use unique_ptr instead.
-  auto size = new int64_t;
-  *size = fbb.GetSize();
-  auto data = new uint8_t[fbb.GetSize()];
-  std::memcpy(data, fbb.GetBufferPointer(), fbb.GetSize());
-
-  std::vector<boost::asio::const_buffer> buffers{
-      boost::asio::const_buffer(size, sizeof(*size)),
-      boost::asio::const_buffer(data, fbb.GetSize()),
-  };
-  client->WriteBufferAsync(buffers, [this, client, size, data](const Status &s) {
-    if (!s.ok()) {
-      RAY_LOG(WARNING) << "Failed to send notification to client on fd " << client;
-      if (s.IsIOError()) {
-        client->Close();
-        notification_clients_.erase(client);
-      }
-    }
-    delete size;
-    delete[] data;
-  });
 }
 
 void PlasmaStore::PushNotification(ObjectInfoT *object_info) {
@@ -816,33 +786,6 @@ void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT> &object_info)
       }
     }
   }
-
-  for (const auto &client : notification_clients_) {
-    SendNotifications(client, object_info);
-  }
-}
-
-// Subscribe to notifications about sealed objects.
-void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
-  // Add this fd to global map, which is needed for this client to receive notifications.
-  notification_clients_.insert(client);
-
-  std::vector<ObjectInfoT> infos;
-  // Push notifications to the new subscriber about existing sealed objects.
-  for (const auto &entry : store_info_.objects) {
-    if (entry.second->state == ObjectState::PLASMA_SEALED) {
-      ObjectInfoT info;
-      info.object_id = entry.first.Binary();
-      info.data_size = entry.second->data_size;
-      info.metadata_size = entry.second->metadata_size;
-      info.owner_raylet_id = entry.second->owner_raylet_id.Binary();
-      info.owner_ip_address = entry.second->owner_ip_address;
-      info.owner_port = entry.second->owner_port;
-      info.owner_worker_id = entry.second->owner_worker_id.Binary();
-      infos.push_back(info);
-    }
-  }
-  SendNotifications(client, infos);
 }
 
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
@@ -949,9 +892,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     eviction_policy_.RefreshObjects(object_ids);
     RAY_RETURN_NOT_OK(SendRefreshLRUReply(client));
   } break;
-  case fb::MessageType::PlasmaSubscribeRequest:
-    SubscribeToUpdates(client);
-    break;
   case fb::MessageType::PlasmaConnectRequest: {
     RAY_RETURN_NOT_OK(SendConnectReply(client, PlasmaAllocator::GetFootprintLimit()));
   } break;

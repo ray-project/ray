@@ -25,7 +25,10 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     # If you have 4 CPUs on your machine, this will run 4 concurrent trials at a time.
     tune.run(trainable, num_samples=10)
 
-You can override this parallelism with ``resources_per_trial``:
+You can override this parallelism with ``resources_per_trial``. Here you can
+specify your resource requests using either a dictionary or a
+:class:`PlacementGroupFactory <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+object. In any case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
 
@@ -39,12 +42,20 @@ You can override this parallelism with ``resources_per_trial``:
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 0.5})
 
 
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial. A trial will not be scheduled unless at least that amount of resources is available, preventing the cluster from being overloaded.
+Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
+Even if the trial cannot be scheduled right now, Ray Tune will still try to start
+the respective placement group. If not enough resources are available, this will trigger
+:ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
+
+If your trainable function starts more remote workers, you will need to pass placement groups
+factory objects to request these resources. See the
+:class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`
+for further information.
 
 Using GPUs
 ~~~~~~~~~~
 
-To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial={})``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
+To leverage GPUs, you must set ``gpu`` in ``tune.run(resources_per_trial)``. This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 .. code-block:: python
 
@@ -95,7 +106,7 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
 
     # Connect to an existing distributed Ray cluster
     ray.init(address=<ray_address>)
-    tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
+    tune.run(trainable, num_samples=100, resources_per_trial=tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}]))
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
 
@@ -262,12 +273,18 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
     )
 
 
+.. _tune-distributed-checkpointing:
+
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
+
+If you are running Ray Tune on Kubernetes, you should usually use a
+:func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
+Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -593,9 +610,48 @@ with docker containers, you will need to pass a
 
 Using Tune with Kubernetes
 --------------------------
-Tune automatically syncs files and checkpoints between different remote
-nodes as needed.
-To make this work in your Kubernetes cluster, you will need to pass a
+Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
+This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
+especially when running many trials in parallel.
+
+Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
+is necessary. There are two main options.
+
+First, you can use a :func:`DurableTrainable <ray.tune.durable>` to store your
+logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        tune.durable(train_fn),
+        # ...,
+        sync_config=tune.SyncConfig(
+            sync_to_driver=False,
+            upload_dir="s3://your-s3-bucket/durable-trial/"
+        )
+    )
+
+Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        train_fn,
+        # ...,
+        local_dir="/path/to/shared/storage",
+        sync_config=tune.SyncConfig(
+            # Do not sync to driver because we are on shared storage
+            sync_to_driver=False
+        )
+    )
+
+
+Lastly, if you still want to use ssh for trial synchronization, but are not running
+on the Ray cluster launcher, you might need to pass a
 ``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
@@ -608,6 +664,9 @@ You have to specify your Kubernetes namespace explicitly:
 
     tune.run(train, sync_config=sync_config)
 
+
+Please note that we strongly encourage you to use one of the other two options instead, as they will
+result in less overhead and don't require pods to SSH into each other.
 
 
 .. _tune-log_to_file:
@@ -748,7 +807,21 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``1000``.
+  to ``auto``, which will be updated to ``1000`` for random/grid search and ``1`` for any other search algorithms.
+* **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
+  instead of the legacy resource requests. Setting this to 1 enables legacy placement.
+* **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
+  with the ``_tune__`` prefix in their name before starting a run. This is used to make sure
+  that scheduled placement groups are removed when multiple calls to ``tune.run()`` are
+  done in the same script. You might want to disable this if you run multiple Tune runs in
+  parallel from different scripts. Set to 1 to disable.
+* **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
+  e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
+  initialized to a unique name at the start of the first run.
+* **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
+  groups to be placed before continuing the tuning loop. Setting this to a float
+  will block for that many seconds. This is mostly used for testing purposes. Defaults
+  to -1, which disables blocking.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

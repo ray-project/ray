@@ -343,7 +343,7 @@ def postprocess_trajectory(
 
     # TODO: (sven) remove this del once we have trajectory view API fully in
     #  place.
-    del sample_batch.data["new_obs"]  # not used, so save some bandwidth
+    del sample_batch["new_obs"]  # not used, so save some bandwidth
 
     return sample_batch
 
@@ -420,7 +420,7 @@ AsyncPPOTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_values,
+    extra_action_out_fn=add_values,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,
     mixins=[

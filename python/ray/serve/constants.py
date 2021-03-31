@@ -1,5 +1,3 @@
-from enum import auto, Enum
-
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -40,12 +38,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
 
-
-class LongPollKey(Enum):
-    def __repr__(self):
-        return f"{self.__class__.__name__}.{self.name}"
-
-    REPLICA_HANDLES = auto()
-    TRAFFIC_POLICIES = auto()
-    BACKEND_CONFIGS = auto()
-    ROUTE_TABLE = auto()
+#: Internally reserved version tag that cannot be used by applications.
+# TODO(edoakes): this should be removed when we remove the old codepath.
+RESERVED_VERSION_TAG = "__serve_version__"

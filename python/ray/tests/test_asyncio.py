@@ -6,7 +6,8 @@ import threading
 import pytest
 
 import ray
-from ray.test_utils import SignalActor, wait_for_condition
+from ray.test_utils import SignalActor, kill_actor_and_wait_for_failure, \
+    wait_for_condition
 
 
 def test_asyncio_actor(ray_start_regular_shared):
@@ -154,7 +155,7 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     with pytest.raises(ray.exceptions.RayTaskError):
         await actor.throw_error.remote().as_future()
 
-    ray.kill(actor)
+    kill_actor_and_wait_for_failure(actor)
     with pytest.raises(ray.exceptions.RayActorError):
         await actor.echo.remote(1)
 
@@ -253,6 +254,32 @@ def test_async_function_errored(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ray.get(ref)
+
+
+async def test_async_obj_unhandled_errors(ray_start_regular_shared):
+    @ray.remote
+    def f():
+        raise ValueError()
+
+    num_exceptions = 0
+
+    def interceptor(e):
+        nonlocal num_exceptions
+        num_exceptions += 1
+
+    # Test we report unhandled exceptions.
+    ray.worker._unhandled_error_handler = interceptor
+    x1 = f.remote()
+    del x1
+    wait_for_condition(lambda: num_exceptions == 1)
+
+    # Test we don't report handled exceptions.
+    x1 = f.remote()
+    with pytest.raises(ray.exceptions.RayError):
+        await x1
+    del x1
+    await asyncio.sleep(1)
+    assert num_exceptions == 1, num_exceptions
 
 
 if __name__ == "__main__":

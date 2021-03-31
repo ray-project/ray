@@ -247,6 +247,10 @@ class ClientAPI:
         """Hook for internal_kv._internal_kv_initialized."""
         return self.is_initialized()
 
+    def _internal_kv_exists(self, key: bytes) -> bool:
+        """Hook for internal_kv._internal_kv_exists."""
+        return self.worker.internal_kv_exists(as_bytes(key))
+
     def _internal_kv_get(self, key: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_get."""
         return self.worker.internal_kv_get(as_bytes(key))

@@ -1,6 +1,6 @@
 import logging
 import aiohttp.web
-import ray.utils
+import ray._private.utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.actor_utils as actor_utils
 from ray.new_dashboard.utils import rest_response
@@ -53,7 +53,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
 
             await stub.KillActor(
                 core_worker_pb2.KillActorRequest(
-                    intended_actor_id=ray.utils.hex_to_binary(actor_id)))
+                    intended_actor_id=ray._private.utils.hex_to_binary(
+                        actor_id)))
 
         except aiogrpc.AioRpcError:
             # This always throws an exception because the worker

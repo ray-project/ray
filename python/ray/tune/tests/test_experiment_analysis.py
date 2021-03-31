@@ -108,14 +108,15 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_1/", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001/",
+                                     "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
@@ -123,7 +124,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
@@ -131,7 +132,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 

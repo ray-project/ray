@@ -521,6 +521,43 @@ def test_wait_makes_object_local(ray_start_cluster):
     assert ray.worker.global_worker.core_worker.object_exists(x_id)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_future_resolution_skip_plasma(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Disable worker caching so worker leases are not reused; set object
+    # inlining size threshold and enable storing of small objects in in-memory
+    # object store so the borrowed ref is inlined.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 100 * 1024,
+            "put_small_object_in_memory_store": True,
+        },
+    )
+    cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin_head": 1})
+    def f(x):
+        return x + 1
+
+    @ray.remote(resources={"pin_worker": 1})
+    def g(x):
+        borrowed_ref = x[0]
+        f_ref = f.remote(borrowed_ref)
+        # borrowed_ref should be inlined on future resolution and shouldn't be
+        # in Plasma.
+        assert ray.worker.global_worker.core_worker.object_exists(
+            borrowed_ref, memory_store_only=True)
+        return ray.get(f_ref) * 2
+
+    one = ray.put(1)
+    g_ref = g.remote([one])
+    assert ray.get(g_ref) == 4
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

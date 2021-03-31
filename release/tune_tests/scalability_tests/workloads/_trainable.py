@@ -88,6 +88,7 @@ def timed_tune_run(name: str,
                    checkpoint_size_b: int = 0,
                    **tune_kwargs):
     durable = "sync_config" in tune_kwargs and \
+              tune_kwargs["sync_config"].upload_dir and \
               tune_kwargs["sync_config"].upload_dir.startswith("s3://")
 
     sleep_time = 1. / results_per_second

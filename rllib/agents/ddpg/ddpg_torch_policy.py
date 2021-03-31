@@ -189,7 +189,7 @@ def make_ddpg_optimizers(policy, config):
     return policy._actor_optimizer, policy._critic_optimizer
 
 
-def apply_gradients_fn(policy):
+def apply_gradients_fn(policy, gradients):
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     if policy.global_step % policy.config["policy_delay"] == 0:
@@ -223,14 +223,15 @@ class ComputeTDErrorMixin:
     def __init__(self, loss_fn):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: obs_t,
-                SampleBatch.ACTIONS: act_t,
-                SampleBatch.REWARDS: rew_t,
-                SampleBatch.NEXT_OBS: obs_tp1,
-                SampleBatch.DONES: done_mask,
-                PRIO_WEIGHTS: importance_weights,
-            })
+            input_dict = self._lazy_tensor_dict(
+                SampleBatch({
+                    SampleBatch.CUR_OBS: obs_t,
+                    SampleBatch.ACTIONS: act_t,
+                    SampleBatch.REWARDS: rew_t,
+                    SampleBatch.NEXT_OBS: obs_tp1,
+                    SampleBatch.DONES: done_mask,
+                    PRIO_WEIGHTS: importance_weights,
+                }))
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
             loss_fn(self, self.model, None, input_dict)

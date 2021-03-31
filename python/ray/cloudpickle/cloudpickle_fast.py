@@ -6,7 +6,7 @@ previous Python implementation of the Pickler class. Because this functionality
 is only available for Python versions 3.8+, a lot of backward-compatibility
 code is also removed.
 
-Note that the C Pickler sublassing API is CPython-specific. Therefore, some
+Note that the C Pickler subclassing API is CPython-specific. Therefore, some
 guards present in cloudpickle.py that were written to handle PyPy specificities
 are not present in cloudpickle_fast.py
 """
@@ -180,7 +180,7 @@ def _class_getstate(obj):
     clsdict.pop('__weakref__', None)
 
     if issubclass(type(obj), abc.ABCMeta):
-        # If obj is an instance of an ABCMeta subclass, dont pickle the
+        # If obj is an instance of an ABCMeta subclass, don't pickle the
         # cache/negative caches populated during isinstance/issubclass
         # checks, but pickle the list of registered subclasses of obj.
         clsdict.pop('_abc_cache', None)
@@ -192,20 +192,12 @@ def _class_getstate(obj):
 
         registry = clsdict.pop('_abc_registry', None)
         if registry is None:
-            if hasattr(abc, '_get_dump'):
-                # in Python3.7+, the abc caches and registered subclasses of a
-                # class are bundled into the single _abc_impl attribute
-                clsdict.pop('_abc_impl', None)
-                (registry, _, _, _) = abc._get_dump(obj)
-
-                clsdict["_abc_impl"] = [subclass_weakref()
-                                        for subclass_weakref in registry]
-            else:
-                # FIXME(suquark): The upstream cloudpickle cannot work in Ray
-                # because sometimes both '_abc_registry' and '_get_dump' does
-                # not exist. Some strange typing objects may cause this issue.
-                # Here the workaround just set "_abc_impl" to None.
-                clsdict["_abc_impl"] = None
+            # in Python3.7+, the abc caches and registered subclasses of a
+            # class are bundled into the single _abc_impl attribute
+            clsdict.pop('_abc_impl', None)
+            (registry, _, _, _) = abc._get_dump(obj)
+            clsdict["_abc_impl"] = [subclass_weakref()
+                                    for subclass_weakref in registry]
         else:
             # In the above if clause, registry is a set of weakrefs -- in
             # this case, registry is a WeakSet
@@ -437,7 +429,7 @@ def _dict_items_reduce(obj):
 
 
 def _function_setstate(obj, state):
-    """Update the state of a dynaamic function.
+    """Update the state of a dynamic function.
 
     As __closure__ and __globals__ are readonly attributes of a function, we
     cannot rely on the native setstate routine of pickle.load_build, that calls
@@ -604,7 +596,7 @@ class CloudPickler(Pickler):
         # `dispatch` attribute.  Earlier versions of the protocol 5 CloudPickler
         # used `CloudPickler.dispatch` as a class-level attribute storing all
         # reducers implemented by cloudpickle, but the attribute name was not a
-        # great choice given the meaning of `Cloudpickler.dispatch` when
+        # great choice given the meaning of `CloudPickler.dispatch` when
         # `CloudPickler` extends the pure-python pickler.
         dispatch = dispatch_table
 
@@ -662,15 +654,10 @@ class CloudPickler(Pickler):
               https://github.com/cloudpipe/cloudpickle/issues/248
             """
             if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
-                try:
-                    return (
-                        _create_parametrized_type_hint,
-                        parametrized_type_hint_getinitargs(obj)
-                    )
-                except Exception:
-                    # TODO(suquark): Cloudpickle would misclassify pydantic classes into type hints.
-                    # We temporarily ignores the exceptions here.
-                    pass
+                return (
+                    _create_parametrized_type_hint,
+                    parametrized_type_hint_getinitargs(obj)
+                )
             t = type(obj)
             try:
                 is_anyclass = issubclass(t, type)
@@ -683,7 +670,7 @@ class CloudPickler(Pickler):
                 return self._function_reduce(obj)
             else:
                 # fallback to save_global, including the Pickler's
-                # distpatch_table
+                # dispatch_table
                 return NotImplemented
 
     else:

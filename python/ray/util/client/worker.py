@@ -17,11 +17,13 @@ from typing import TYPE_CHECKING
 
 import grpc
 
+from ray.job_config import JobConfig
 import ray.cloudpickle as cloudpickle
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.exceptions import GetTimeoutError
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server
@@ -43,6 +45,11 @@ logger = logging.getLogger(__name__)
 
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
+
+# The max amount of time an operation can run blocking in the server. This
+# allows for Ctrl-C of the client to work without explicitly cancelling server
+# operations.
+MAX_BLOCKING_OPERATION_TIME_S = 2
 
 
 def backoff(timeout: int) -> int:
@@ -139,6 +146,7 @@ class Worker:
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
+
         self.closed = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
@@ -149,7 +157,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -171,7 +179,29 @@ class Worker:
                             "list of IDs or just an ID: %s" % type(vals))
         if timeout is None:
             timeout = 0
-        out = [self._get(x, timeout) for x in to_get]
+            deadline = None
+        else:
+            deadline = time.monotonic() + timeout
+        out = []
+        for obj_ref in to_get:
+            res = None
+            # Implement non-blocking get with a short-polling loop. This allows
+            # cancellation of gets via Ctrl-C, since we never block for long.
+            while True:
+                try:
+                    if deadline:
+                        op_timeout = min(
+                            MAX_BLOCKING_OPERATION_TIME_S,
+                            max(deadline - time.monotonic(), 0.001))
+                    else:
+                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+                    res = self._get(obj_ref, op_timeout)
+                    break
+                except GetTimeoutError:
+                    if deadline and time.monotonic() > deadline:
+                        raise
+                    logger.debug("Internal retry for get {}".format(obj_ref))
+            out.append(res)
         if single:
             out = out[0]
         return out
@@ -181,14 +211,13 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
             except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
-            logger.error(err)
             raise err
         return loads_from_server(data.data)
 
@@ -221,6 +250,7 @@ class Worker:
         resp = self.data_client.PutObject(req)
         return ClientObjectRef(resp.id)
 
+    # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
     def wait(self,
              object_refs: List[ClientObjectRef],
              *,
@@ -271,7 +301,8 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -365,6 +396,11 @@ class Worker:
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
 
+    def internal_kv_exists(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
@@ -393,6 +429,7 @@ class Worker:
         an actual response.
         """
         if self.server is not None:
+            logger.debug("Pinging server.")
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
             return result is not None
@@ -400,6 +437,30 @@ class Worker:
 
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _server_init(self, job_config: JobConfig):
+        """Initialize the server"""
+        try:
+            if job_config is None:
+                init_req = ray_client_pb2.InitRequest()
+                self.data_client.Init(init_req)
+                return
+
+            import ray._private.runtime_env as runtime_env
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                if runtime_env.PKG_DIR is None:
+                    runtime_env.PKG_DIR = tmp_dir
+                # Generate the uri for runtime env
+                runtime_env.rewrite_working_dir_uri(job_config)
+                init_req = ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(job_config))
+                self.data_client.Init(init_req)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

@@ -45,9 +45,7 @@ class LocalObjectManager {
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
-      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::function<void(const ObjectID &, const std::string &, const NodeID &)>
-          restore_object_from_remote_node)
+      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : self_node_id_(node_id),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
@@ -61,7 +59,6 @@ class LocalObjectManager {
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
-        restore_object_from_remote_node_(restore_object_from_remote_node),
         is_external_storage_type_fs_(is_external_storage_type_fs) {}
 
   /// Pin objects.
@@ -103,18 +100,14 @@ class LocalObjectManager {
   ///
   /// \param object_id The ID of the object to restore.
   /// \param object_url The URL where the object is spilled.
-  /// \param node_id Node id that we try restoring the object. If Nil is provided, the
-  /// object is restored directly from the external storage. If a node id is provided, it
-  /// sends a RPC request to a corresponding node if the given node_id is not equivalent
-  /// to a self node id.
   /// \param callback A callback to call when the restoration is done.
   /// Status will contain the error during restoration, if any.
   void AsyncRestoreSpilledObject(const ObjectID &object_id, const std::string &object_url,
-                                 const NodeID &node_id,
                                  std::function<void(const ray::Status &)> callback);
 
-  /// Try to clear any objects that have been freed.
-  void FlushFreeObjectsIfNeeded(int64_t now_ms);
+  /// Clear any freed objects. This will trigger the callback for freed
+  /// objects.
+  void FlushFreeObjects();
 
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
@@ -143,6 +136,9 @@ class LocalObjectManager {
   /// Record object spilling stats to metrics.
   void RecordObjectSpillingStats() const;
 
+  /// Return the spilled object URL or the empty string.
+  std::string GetSpilledObjectURL(const ObjectID &object_id);
+
   std::string DebugString() const;
 
  private:
@@ -166,10 +162,6 @@ class LocalObjectManager {
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
-
-  /// Clear any freed objects. This will trigger the callback for freed
-  /// objects.
-  void FlushFreeObjects();
 
   // A callback for unpinning spilled objects. This should be invoked after the object
   // has been spilled and after the object directory has been sent the spilled URL.

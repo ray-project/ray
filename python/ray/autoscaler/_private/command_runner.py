@@ -1,6 +1,6 @@
 from getpass import getuser
 from shlex import quote
-from typing import Dict
+from typing import Dict, List
 import click
 import hashlib
 import json
@@ -13,9 +13,10 @@ import warnings
 
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.constants import \
-                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
+                                     AUTOSCALER_NODE_SSH_INTERVAL_S, \
+                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES, \
                                      DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, \
-                                     NODE_START_WAIT_S
+                                     AUTOSCALER_NODE_START_WAIT_S
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -356,7 +357,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             cli_logger.labeled_value("Fetched IP", ip)
             return ip
 
-        interval = 10
+        interval = AUTOSCALER_NODE_SSH_INTERVAL_S
         with cli_logger.group("Waiting for IP"):
             while time.time() < deadline and \
                     not self.provider.is_terminated(self.node_id):
@@ -376,7 +377,7 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         # We assume that this never changes.
         #   I think that's reasonable.
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = time.time() + AUTOSCALER_NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
             ip = self._wait_for_ip(deadline)
 
@@ -830,13 +831,14 @@ class DockerCommandRunner(CommandRunnerInterface):
                     home_directory = env_var.split("HOME=")[1]
                     break
 
+            user_docker_run_options = self.docker_config.get(
+                "run_options", []) + self.docker_config.get(
+                    f"{'head' if as_head else 'worker'}_run_options", [])
             start_command = docker_start_cmds(
                 self.ssh_command_runner.ssh_user, specific_image,
                 cleaned_bind_mounts, self.container_name,
-                self.docker_config.get(
-                    "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options", []) +
-                self._configure_runtime() + self._auto_configure_shm(),
+                self._configure_runtime(
+                    self._auto_configure_shm(user_docker_run_options)),
                 self.ssh_command_runner.cluster_name, home_directory,
                 self.docker_cmd)
             self.run(start_command, run_env="host")
@@ -858,12 +860,37 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 self.ssh_command_runner.cluster_name), mount),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
+                try:
+                    # Check if the current user has read permission.
+                    # If they do not, try to change ownership!
+                    self.run(f"cat {mount} >/dev/null 2>&1 || "
+                             f"sudo chown $(id -u):$(id -g) {mount}")
+                except Exception:
+                    lsl_string = self.run(
+                        f"ls -l {mount}",
+                        with_output=True).decode("utf-8").strip()
+                    # The string is of format <Permission> <Links>
+                    # <Owner> <Group> <Size> <Date> <Name>
+                    permissions = lsl_string.split(" ")[0]
+                    owner = lsl_string.split(" ")[2]
+                    group = lsl_string.split(" ")[3]
+                    current_user = self.run(
+                        "whoami", with_output=True).decode("utf-8").strip()
+                    cli_logger.warning(
+                        f"File ({mount}) is owned by user:{owner} and group:"
+                        f"{group} with permissions ({permissions}). The "
+                        f"current user ({current_user}) does not have "
+                        "permission to read these files, and Ray may not be "
+                        "able to autoscale. This can be resolved by "
+                        "installing `sudo` in your container, or adding a "
+                        f"command like 'chown {current_user} {mount}' to "
+                        "your `setup_commands`.")
         self.initialized = True
         return docker_run_executed
 
-    def _configure_runtime(self):
+    def _configure_runtime(self, run_options: List[str]) -> List[str]:
         if self.docker_config.get("disable_automatic_runtime_detection"):
-            return []
+            return run_options
 
         runtime_output = self.ssh_command_runner.run(
             f"{self.docker_cmd} " + "info -f '{{.Runtimes}}' ",
@@ -871,18 +898,23 @@ class DockerCommandRunner(CommandRunnerInterface):
         if "nvidia-container-runtime" in runtime_output:
             try:
                 self.ssh_command_runner.run("nvidia-smi", with_output=False)
-                return ["--runtime=nvidia"]
+                return run_options + ["--runtime=nvidia"]
             except Exception as e:
                 logger.warning(
                     "Nvidia Container Runtime is present, but no GPUs found.")
                 logger.debug(f"nvidia-smi error: {e}")
-                return []
+                return run_options
 
-        return []
+        return run_options
 
-    def _auto_configure_shm(self):
+    def _auto_configure_shm(self, run_options: List[str]) -> List[str]:
         if self.docker_config.get("disable_shm_size_detection"):
-            return []
+            return run_options
+        for run_opt in run_options:
+            if "--shm-size" in run_opt:
+                logger.info("Bypassing automatic SHM-Detection because of "
+                            f"`run_option`: {run_opt}")
+                return run_options
         try:
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
@@ -895,11 +927,11 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_size = min((available_memory_bytes *
                             DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1),
                            DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
-            return [f"--shm-size='{shm_size}b'"]
+            return run_options + [f"--shm-size='{shm_size}b'"]
         except Exception as e:
             logger.warning(
                 f"Received error while trying to auto-compute SHM size {e}")
-            return []
+            return run_options
 
     def _get_docker_host_mount_location(self, cluster_name: str) -> str:
         """Return the docker host mount directory location."""

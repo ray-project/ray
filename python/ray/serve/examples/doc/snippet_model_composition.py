@@ -4,7 +4,7 @@ import ray
 from ray import serve
 
 ray.init(num_cpus=8)
-client = serve.start()
+serve.start()
 
 # Our pipeline will be structured as follows:
 # - Input comes in, the composed model sends it to model_one
@@ -27,9 +27,8 @@ def model_two(request):
 
 class ComposedModel:
     def __init__(self):
-        client = serve.connect()
-        self.model_one = client.get_handle("model_one")
-        self.model_two = client.get_handle("model_two")
+        self.model_one = serve.get_handle("model_one")
+        self.model_two = serve.get_handle("model_two")
 
     # This method can be called concurrently!
     async def __call__(self, starlette_request):
@@ -45,17 +44,17 @@ class ComposedModel:
         return result
 
 
-client.create_backend("model_one", model_one)
-client.create_endpoint("model_one", backend="model_one")
+serve.create_backend("model_one", model_one)
+serve.create_endpoint("model_one", backend="model_one")
 
-client.create_backend("model_two", model_two)
-client.create_endpoint("model_two", backend="model_two")
+serve.create_backend("model_two", model_two)
+serve.create_endpoint("model_two", backend="model_two")
 
 # max_concurrent_queries is optional. By default, if you pass in an async
 # function, Ray Serve sets the limit to a high number.
-client.create_backend(
+serve.create_backend(
     "composed_backend", ComposedModel, config={"max_concurrent_queries": 10})
-client.create_endpoint(
+serve.create_endpoint(
     "composed", backend="composed_backend", route="/composed")
 
 for _ in range(5):

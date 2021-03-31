@@ -20,6 +20,7 @@ from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
     EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import unflattened_lookup
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,10 @@ class Analysis:
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            return [(c.value, c.result[metric]) for c in checkpoints]
+            # Support metrics given as paths, e.g.
+            # "info/learner/default_policy/policy_loss".
+            return [(c.value, unflattened_lookup(metric, c.result))
+                    for c in checkpoints]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 

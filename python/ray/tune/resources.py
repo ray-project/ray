@@ -176,16 +176,6 @@ class Resources(
         return resources_to_json(self)
 
 
-class PlacementGroupFactory:
-    """Wrapper class to identify placement group factory methods."""
-
-    def __init__(self, factory):
-        self._factory = factory
-
-    def __call__(self, *args, **kwargs):
-        return self._factory(*args, **kwargs)
-
-
 def json_to_resources(data: Optional[str]):
     if data is None or data == "null":
         return None

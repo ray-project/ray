@@ -9,7 +9,7 @@ import time
 import traceback
 import warnings
 
-from ray.services import get_node_ip_address
+from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
@@ -22,7 +22,6 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -215,9 +214,18 @@ class TrialRunner:
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
 
-        # Setting this to 0 still allows adding one new (pending) trial,
-        # but it will prevent us from trying to fill the trial list
-        self._max_pending_trials = 0  # Can be updated in `self.add_trial()`
+        # Set the number of maximum pending trials
+        max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
+        if max_pending_trials == "auto":
+            # Auto detect
+            if isinstance(self._search_alg, BasicVariantGenerator):
+                self._max_pending_trials = 1000
+            else:
+                self._max_pending_trials = 1
+        else:
+            # Manual override
+            self._max_pending_trials = int(max_pending_trials)
+        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
 
         self._metric = metric
 
@@ -252,6 +260,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
+        self._updated_queue = False
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
@@ -296,6 +305,8 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
+        self._callbacks.setup()
+
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
@@ -313,6 +324,10 @@ class TrialRunner:
     @property
     def resumed(self):
         return self._resumed
+
+    @property
+    def search_alg(self):
+        return self._search_alg
 
     @property
     def scheduler_alg(self):
@@ -452,6 +467,8 @@ class TrialRunner:
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self._updated_queue = False
+
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
@@ -463,13 +480,15 @@ class TrialRunner:
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
 
-        # Create pending trials
-        num_pending_trials = len(
-            [t for t in self._trials if t.status == Trial.PENDING])
-        while num_pending_trials < self._max_pending_trials:
-            if not self._update_trial_queue(blocking=False):
-                break
-            num_pending_trials += 1
+        # Create pending trials. If the queue was updated before, only
+        # continue updating if this was successful (next_trial is not None)
+        if not self._updated_queue or (self._updated_queue and next_trial):
+            num_pending_trials = len(
+                [t for t in self._trials if t.status == Trial.PENDING])
+            while num_pending_trials < self._max_pending_trials:
+                if not self._update_trial_queue(blocking=False):
+                    break
+                num_pending_trials += 1
 
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._trials)
@@ -489,7 +508,10 @@ class TrialRunner:
         if next_trial is not None:
             if _start_trial(next_trial):
                 may_handle_events = False
-            else:
+            elif next_trial.status != Trial.ERROR:
+                # Only try to start another trial if previous trial startup
+                # did not error (e.g. it just didn't start because its
+                # placement group is not ready, yet).
                 next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):
@@ -543,9 +565,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        if trial.uses_placement_groups:
-            self._max_pending_trials = TUNE_MAX_PENDING_TRIALS_PG
-
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -561,9 +580,13 @@ class TrialRunner:
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics),
+            trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
+
+    def has_resources_for_trial(self, trial: "Trial"):
+        """Returns whether this runner has at least the specified resources."""
+        return self.trial_executor.has_resources_for_trial(trial)
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -653,10 +676,11 @@ class TrialRunner:
 
             # `self._queued_trial_decisions` now contains a final decision
             # based on all results
-            final_decision = self._queued_trial_decisions.pop(
-                trial.trial_id, None)
-            if final_decision:
-                self._execute_action(trial, final_decision)
+            if trial not in self._cached_trial_decisions:
+                final_decision = self._queued_trial_decisions.pop(
+                    trial.trial_id, None)
+                if final_decision:
+                    self._execute_action(trial, final_decision)
 
     def _process_trial(self, trial):
         """Processes a trial result.
@@ -720,10 +744,11 @@ class TrialRunner:
             result = trial.last_result
             result.update(done=True)
 
-        self._validate_result_metrics(result)
         self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
         flat_result = flatten_dict(result)
+        self._validate_result_metrics(flat_result)
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -976,15 +1001,22 @@ class TrialRunner:
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
             trial, error=error_msg is not None, error_msg=error_msg)
-        if self.trial_executor.has_resources(trial.resources):
+
+        if self.trial_executor.has_resources_for_trial(trial):
+            requeue_trial = False
             logger.info(
                 "Trial %s: Attempting to restore "
                 "trial state from last checkpoint.", trial)
-            self.trial_executor.start_trial(trial)
-            if trial.status == Trial.ERROR:
+            started = self.trial_executor.start_trial(trial)
+            if not started:
+                requeue_trial = True
+            elif trial.status == Trial.ERROR:
                 logger.exception(
                     "Trial %s: Error restoring trial from checkpoint, abort.",
                     trial)
+                if started:
+                    # Clean up again if an actor was launched
+                    self.trial_executor.stop_trial(trial, error=True)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self._callbacks.on_trial_error(
@@ -994,6 +1026,9 @@ class TrialRunner:
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
+            requeue_trial = True
+
+        if requeue_trial:
             logger.debug("Trial %s: Notifying Scheduler and requeueing.",
                          trial)
             self._requeue_trial(trial)
@@ -1034,6 +1069,8 @@ class TrialRunner:
         Returns:
             Boolean indicating if a new trial was created or not.
         """
+        self._updated_queue = True
+
         trial = self._search_alg.next_trial()
         if blocking and not trial:
             start = time.time()
@@ -1104,7 +1141,6 @@ class TrialRunner:
                     trials=self._trials,
                     trial=trial)
                 error = True
-
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
     def cleanup_trials(self):

@@ -40,7 +40,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   "}' --stop='{\"training_iteration\": 1}'" +
                   " --env={}".format(env))
 
-        checkpoint_path = os.popen("ls {}/default/*/checkpoint_1/"
+        checkpoint_path = os.popen("ls {}/default/*/checkpoint_000001/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
         if not os.path.exists(checkpoint_path):
             sys.exit(1)
@@ -74,7 +74,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
-            tmp_dir = ray.utils.tempfile.gettempdir() + tmp_dir[4:]
+            tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             if not os.path.exists(tmp_dir):
                 sys.exit(1)
 
@@ -88,7 +88,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                       rllib_dir, tmp_dir, algo) +
                   "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
-                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 190.0}\"" +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 150.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
@@ -127,7 +127,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 190.0
+        assert mean_reward >= 150.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -138,7 +138,7 @@ def learn_test_multi_agent_plus_rollout(algo):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
-            tmp_dir = ray.utils.tempfile.gettempdir() + tmp_dir[4:]
+            tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             if not os.path.exists(tmp_dir):
                 sys.exit(1)
 
@@ -170,7 +170,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 180.0}
+        stop = {"episode_reward_mean": 150.0}
         tune.run(
             algo,
             config=config,
@@ -220,31 +220,37 @@ def learn_test_multi_agent_plus_rollout(algo):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 190.0
+        assert mean_reward >= 150.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-class TestRolloutSimple(unittest.TestCase):
+class TestRolloutSimple1(unittest.TestCase):
     def test_a3c(self):
         rollout_test("A3C")
 
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
+
+class TestRolloutSimple2(unittest.TestCase):
     def test_dqn(self):
         rollout_test("DQN")
 
     def test_es(self):
         rollout_test("ES")
 
+
+class TestRolloutSimple3(unittest.TestCase):
     def test_impala(self):
         rollout_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
         rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
+
+class TestRolloutSimple4(unittest.TestCase):
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
 

@@ -24,6 +24,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
@@ -53,7 +54,7 @@ struct GetRequest;
 class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(boost::asio::io_service &main_service, std::string directory,
+  PlasmaStore(instrumented_io_context &main_service, std::string directory,
               bool hugepages_enabled, const std::string &socket_name,
               uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback);
@@ -157,11 +158,6 @@ class PlasmaStore {
   /// \param client The client making this request.
   void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client);
 
-  /// Subscribe a file descriptor to updates about new sealed objects.
-  ///
-  /// \param client The client making this request.
-  void SubscribeToUpdates(const std::shared_ptr<Client> &client);
-
   /// Connect a new client to the PlasmaStore.
   ///
   /// \param error The error code from the acceptor.
@@ -171,9 +167,6 @@ class PlasmaStore {
   ///
   /// \param client The client that is disconnected.
   void DisconnectClient(const std::shared_ptr<Client> &client);
-
-  void SendNotifications(const std::shared_ptr<Client> &client,
-                         const std::vector<ObjectInfoT> &object_info);
 
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
@@ -210,8 +203,18 @@ class PlasmaStore {
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
+  /// Get the available memory for new objects to be created. This includes
+  /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    int64_t num_bytes_in_use = static_cast<int64_t>(num_bytes_in_use_);
+    RAY_CHECK((num_bytes_unsealed_ > 0 && num_objects_unsealed_ > 0) ||
+              (num_bytes_unsealed_ == 0 && num_objects_unsealed_ == 0))
+        << "Tracking for available memory in the plasma store has gone out of sync. "
+           "Please file a GitHub issue.";
+    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    // We do not count unsealed objects as in use because these may have been
+    // created by the object manager.
+    int64_t num_bytes_in_use =
+        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
     size_t available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
     callback(available);
@@ -259,7 +262,7 @@ class PlasmaStore {
   void DoAccept();
 
   // A reference to the asio io context.
-  boost::asio::io_service &io_context_;
+  instrumented_io_context &io_context_;
   /// The name of the socket this object store listens on.
   std::string socket_name_;
   /// An acceptor for new clients.
@@ -275,8 +278,6 @@ class PlasmaStore {
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests_;
-  /// The registered client for receiving notifications.
-  std::unordered_set<std::shared_ptr<Client>> notification_clients_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 
@@ -314,7 +315,17 @@ class PlasmaStore {
   /// mutex if it is not absolutely necessary.
   std::recursive_mutex mutex_;
 
+  /// Total number of bytes allocated to objects that are in use by any client.
+  /// This includes objects that are being created and objects that a client
+  /// called get on.
   size_t num_bytes_in_use_ = 0;
+
+  /// Total number of bytes allocated to objects that are created but not yet
+  /// sealed.
+  size_t num_bytes_unsealed_ = 0;
+
+  /// Number of objects that are created but not sealed.
+  size_t num_objects_unsealed_ = 0;
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;

@@ -1,4 +1,5 @@
 import pytest
+from ray.util.client import RayAPIStub
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
@@ -183,7 +184,56 @@ def test_simple_multiple_references(ray_start_regular):
         del ref2
 
 
+def test_named_actor_refcount(ray_start_regular):
+    with ray_start_client_server_pair() as (ray, server):
+
+        @ray.remote
+        class ActorTest:
+            def __init__(self):
+                self._counter = 0
+
+            def bump(self):
+                self._counter += 1
+
+            def check(self):
+                return self._counter
+
+        ActorTest.options(name="actor", lifetime="detached").remote()
+
+        def connect_api():
+            api = RayAPIStub()
+            api.connect("localhost:50051")
+            api.get_actor("actor")
+            return api
+
+        def check_owners(size):
+            return size == sum(
+                len(x) for x in server.task_servicer.actor_owners.values())
+
+        apis = [connect_api() for i in range(3)]
+        assert check_owners(3)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        assert check_owners(2)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        assert check_owners(1)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        # no more owners should be seen
+        assert check_owners(0)
+        # actor refs shouldn't be removed
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+
 if __name__ == "__main__":
     import sys
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

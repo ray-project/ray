@@ -38,6 +38,10 @@ def create_mock_components():
 class TrialRunnerTest2(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
 
     def tearDown(self):
         ray.shutdown()
@@ -129,6 +133,9 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(len(scheduler.errored_trials), 0)
 
     def testFailureRecoveryNodeRemoval(self):
+        # Node removal simulation only works with resource requests
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
         ray.init(num_cpus=1, num_gpus=1)
         searchalg, scheduler = create_mock_components()
 
@@ -266,9 +273,7 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
-
         self.assertEqual(trials[1].status, Trial.PENDING)
-
         runner.step()  # Start trial, dispatch restore
         self.assertEqual(trials[1].status, Trial.RUNNING)
 

@@ -79,6 +79,7 @@ def ray_dask_get(dsk, keys, **kwargs):
                 pools[thread][num_workers] = pool
 
     ray_callbacks = kwargs.pop("ray_callbacks", None)
+    persist = kwargs.pop("ray_persist", False)
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
@@ -116,7 +117,10 @@ def ray_dask_get(dsk, keys, **kwargs):
         # Ray tasks are done. Otherwise, no intermediate objects will be
         # cleaned up until all Ray tasks are done.
         del dsk
-        result = ray_get_unpack(object_refs)
+        if persist:
+            result = object_refs
+        else:
+            result = ray_get_unpack(object_refs)
         if ray_finish_cbs is not None:
             for cb in ray_finish_cbs:
                 cb(result)
@@ -409,6 +413,7 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
     """
 
     ray_callbacks = kwargs.pop("ray_callbacks", None)
+    persist = kwargs.pop("ray_persist", False)
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
@@ -444,7 +449,10 @@ def ray_dask_get_sync(dsk, keys, **kwargs):
         # Ray tasks are done. Otherwise, no intermediate objects will be
         # cleaned up until all Ray tasks are done.
         del dsk
-        result = ray_get_unpack(object_refs)
+        if persist:
+            result = object_refs
+        else:
+            result = ray_get_unpack(object_refs)
         if ray_finish_cbs is not None:
             for cb in ray_finish_cbs:
                 cb(result)

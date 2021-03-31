@@ -5,7 +5,6 @@ It also checks that it is usable with a separate scheduler.
 import time
 
 from ray import tune
-from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.hebo import HEBOSearch
 
@@ -74,13 +73,16 @@ if __name__ == "__main__":
     ]
     known_rewards = [-189, -1144]
 
+    # maximum number of concurrent trials
+    max_concurrent = 8
+
     algo = HEBOSearch(
         # space = space, # If you want to set the space
         points_to_evaluate=previously_run_params,
         evaluated_rewards=known_rewards,
         random_state_seed=123,  # for reproducibility
+        max_concurrent=max_concurrent,
     )
-    algo = ConcurrencyLimiter(algo, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()
 

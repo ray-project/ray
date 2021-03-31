@@ -7,10 +7,7 @@ from ray import serve
 # Connect to the running Ray cluster.
 ray.init(address="auto")
 
-# Connect to the running Ray Serve instance.
-client = serve.connect()
-
-my_handle = client.get_handle("my_endpoint")  # Returns a ServeHandle object.
+my_handle = serve.get_handle("my_endpoint")  # Returns a ServeHandle object.
 
 
 # Define our AIOHTTP request handler.

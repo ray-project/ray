@@ -1,6 +1,8 @@
+import copy
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
 from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as \
@@ -15,6 +17,14 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
@@ -34,6 +44,28 @@ class TestSimpleQ(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+
+    def test_simple_q_fake_multi_gpu_learning(self):
+        """Test whether SimpleQTrainer learns CartPole w/ fake GPUs."""
+        config = copy.deepcopy(dqn.SIMPLE_Q_DEFAULT_CONFIG)
+
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        config["framework"] = "tf"
+
+        trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+        num_iterations = 200
+        learnt = False
+        for i in range(num_iterations):
+            results = trainer.train()
+            print("reward={}".format(results["episode_reward_mean"]))
+            if results["episode_reward_mean"] > 75.0:
+                learnt = True
+                break
+        assert learnt, "SimpleQ multi-GPU (with fake-GPUs) did not " \
+                       "learn CartPole!"
+        trainer.stop()
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""

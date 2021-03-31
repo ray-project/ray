@@ -192,7 +192,7 @@ void ServerConnection::WriteMessageAsync(
   async_writes_ += 1;
   bytes_written_ += length;
 
-  auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
+  auto write_buffer = std::make_unique<AsyncWriteBuffer>();
   write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;

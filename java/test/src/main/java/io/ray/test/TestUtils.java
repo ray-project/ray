@@ -42,20 +42,19 @@ public class TestUtils {
    * @return True if the condition is met within the timeout, false otherwise.
    */
   public static boolean waitForCondition(Supplier<Boolean> condition, int timeoutMs) {
-    int waitTime = 0;
+    long endTime = System.currentTimeMillis() + timeoutMs;
     while (true) {
       if (condition.get()) {
         return true;
       }
 
+      if (System.currentTimeMillis() >= endTime) {
+        break;
+      }
       try {
         java.util.concurrent.TimeUnit.MILLISECONDS.sleep(WAIT_INTERVAL_MS);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
-      }
-      waitTime += WAIT_INTERVAL_MS;
-      if (waitTime > timeoutMs) {
-        break;
       }
     }
     return false;

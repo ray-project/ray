@@ -7,7 +7,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
-    ApplyGradients, TrainOneStep
+    ApplyGradients, TrainTFMultiGPU, TrainOneStep
 from ray.rllib.utils import merge_dicts
 
 A2C_DEFAULT_CONFIG = merge_dicts(
@@ -47,11 +47,23 @@ def execution_plan(workers, config):
             .for_each(ApplyGradients(workers)))
     else:
         # In normal mode, we execute one SGD step per each train batch.
+        if config["simple_optimizer"]:
+            train_step_op = TrainOneStep(workers)
+        else:
+            train_step_op = TrainTFMultiGPU(
+                workers=workers,
+                sgd_minibatch_size=config["train_batch_size"],
+                num_sgd_iter=1,
+                num_gpus=config["num_gpus"],
+                shuffle_sequences=True,
+                _fake_gpus=config["_fake_gpus"],
+                framework=config.get("framework"))
+
         train_op = rollouts.combine(
             ConcatBatches(
                 min_batch_size=config["train_batch_size"],
                 count_steps_by=config["multiagent"][
-                    "count_steps_by"])).for_each(TrainOneStep(workers))
+                    "count_steps_by"])).for_each(train_step_op)
 
     return StandardMetricsReporting(train_op, workers, config)
 

@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg.td3 as td3
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
@@ -10,6 +11,14 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestTD3(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_td3_compilation(self):
         """Test whether a TD3Trainer can be built with both frameworks."""
         config = td3.TD3_DEFAULT_CONFIG.copy()

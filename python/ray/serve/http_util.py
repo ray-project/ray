@@ -1,6 +1,10 @@
+import asyncio
 import json
+from typing import Callable, Tuple
 
 import starlette.requests
+
+from ray.serve.exceptions import RayServeException
 
 
 def build_starlette_request(scope, serialized_body: bytes):
@@ -12,7 +16,19 @@ def build_starlette_request(scope, serialized_body: bytes):
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
+    received = False
+
     async def mock_receive():
+        nonlocal received
+
+        # If the request has already been received, starlette will keep polling
+        # for HTTP disconnect. We will pause forever. The coroutine should be
+        # cancelled by starlette after the response has been sent.
+        if received:
+            block_forever = asyncio.Event()
+            await block_forever.wait()
+
+        received = True
         return {
             "body": serialized_body,
             "type": "http.request",
@@ -84,3 +100,44 @@ class Response:
             "headers": self.raw_headers,
         })
         await send({"type": "http.response.body", "body": self.body})
+
+
+def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
+    """Given ASGI app, return two async callables (on_startup, on_shutdown)
+
+    Detail spec at
+    https://asgi.readthedocs.io/en/latest/specs/lifespan.html
+    """
+    scope = {"type": "lifespan"}
+
+    class LifespanHandler:
+        def __init__(self, lifespan_type):
+            assert lifespan_type in {"startup", "shutdown"}
+            self.lifespan_type = lifespan_type
+
+        async def receive(self):
+            return {"type": f"lifespan.{self.lifespan_type}"}
+
+        async def send(self, msg):
+            # We are not doing a strict equality check here because sometimes
+            # starlette will output shutdown.complete on startup lifecycle
+            # event!
+            # https://github.com/encode/starlette/blob/5ee04ef9b1bc11dc14d299e6c855c9a3f7d5ff16/starlette/routing.py#L557 # noqa
+            if msg["type"].endswith(".complete"):
+                return
+            elif msg["type"].endswith(".failed"):
+                raise RayServeException(
+                    f"Failed to run {self.lifespan_type} events for asgi app. "
+                    f"Error: {msg.get('message', '')}")
+            else:
+                raise ValueError(f"Unknown ASGI type {msg}")
+
+    async def startup():
+        handler = LifespanHandler("startup")
+        await app(scope, handler.receive, handler.send)
+
+    async def shutdown():
+        handler = LifespanHandler("shutdown")
+        await app(scope, handler.receive, handler.send)
+
+    return startup, shutdown

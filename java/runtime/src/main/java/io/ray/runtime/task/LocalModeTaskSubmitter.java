@@ -13,8 +13,8 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.actor.LocalModeActorHandle;
 import io.ray.runtime.context.LocalModeWorkerContext;
@@ -250,14 +250,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+  public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     PlacementGroupImpl placementGroup =
         new PlacementGroupImpl.Builder()
             .setId(PlacementGroupId.fromRandom())
-            .setName(name)
-            .setBundles(bundles)
-            .setStrategy(strategy)
+            .setName(creationOptions.name)
+            .setBundles(creationOptions.bundles)
+            .setStrategy(creationOptions.strategy)
             .build();
     placementGroups.put(placementGroup.getId(), placementGroup);
     return placementGroup;

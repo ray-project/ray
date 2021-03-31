@@ -1,8 +1,8 @@
-import axios from "axios";
 import { Actor } from "../type/actor";
+import { get } from "./requestHandlers";
 
 export const getActors = () => {
-  return axios.get<{
+  return get<{
     result: boolean;
     message: string;
     data: {
