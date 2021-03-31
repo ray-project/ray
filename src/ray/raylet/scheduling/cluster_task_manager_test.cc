@@ -77,7 +77,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 }
 
 Task CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                int num_args = 0) {
+                int num_args = 0, std::vector<ObjectID> args = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -88,9 +88,15 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
                                  required_resources, {},
                                  std::make_pair(PlacementGroupID::Nil(), -1), true, "");
 
-  for (int i = 0; i < num_args; i++) {
-    ObjectID put_id = ObjectID::FromIndex(RandomTaskId(), /*index=*/i + 1);
-    spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+  if (!args.empty()) {
+    for (auto &arg : args) {
+      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address()));
+    }
+  } else {
+    for (int i = 0; i < num_args; i++) {
+      ObjectID put_id = ObjectID::FromIndex(RandomTaskId(), /*index=*/i + 1);
+      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+    }
   }
 
   rpc::TaskExecutionSpec execution_spec_message;
@@ -149,7 +155,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                       /* announce_infeasible_task= */
                       [this](const Task &task) { announce_infeasible_task_calls_++; },
                       pool_, leased_workers_,
-                      /* pin_task_arguments= */
+                      /* get_task_arguments= */
                       [this](const std::vector<ObjectID> &object_ids,
                              std::vector<std::unique_ptr<RayObject>> *results) {
                         for (auto &obj_id : object_ids) {
@@ -1109,8 +1115,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
 TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
   /*
     Total memory required by executing tasks' args stays under the specified
-    threshold. A single task whose total arguments is greater than the
-    threshold will not starve.
+    threshold.
   */
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -1127,7 +1132,7 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
     (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
   };
 
-  /* This task can run. */
+  // This task can run.
   default_arg_size_ = 600;
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
@@ -1136,7 +1141,7 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
   ASSERT_EQ(pool_.workers.size(), 1);
   AssertPinnedTaskArgumentsPresent(task);
 
-  /* This task cannot run because it would put us over the memory threshold. */
+  // This task cannot run because it would put us over the memory threshold.
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
   task_manager_.QueueAndScheduleTask(task2, &reply, callback);
   ASSERT_EQ(num_callbacks, 1);
@@ -1156,17 +1161,74 @@ TEST_F(ClusterTaskManagerTest, PinnedArgsMemoryTest) {
 
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   leased_workers_.clear();
+  AssertNoLeaks();
+}
 
-  /* This task would put us over the memory threshold, but we should run it
-   * anyway to prevent starvation. */
+TEST_F(ClusterTaskManagerTest, PinnedArgsSameMemoryTest) {
+  /*
+   * Two tasks that depend on the same object can run concurrently.
+   */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
+                                      std::function<void()>) {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
+
+  // This task can run.
+  default_arg_size_ = 600;
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  AssertPinnedTaskArgumentsPresent(task);
+
+  // This task can run because it depends on the same object as the first task.
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1,
+                          task.GetTaskSpecification().GetDependencyIds());
+  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  Task finished_task;
+  for (auto &worker : leased_workers_) {
+    task_manager_.TaskFinished(worker.second, &finished_task);
+  }
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, LargeArgsNoStarvationTest) {
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr](Status, std::function<void()>,
+                                      std::function<void()>) {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
+
   default_arg_size_ = 2000;
-  task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  ASSERT_EQ(num_callbacks, 3);
+  ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   AssertPinnedTaskArgumentsPresent(task);
 
+  Task finished_task;
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   AssertNoLeaks();
 }

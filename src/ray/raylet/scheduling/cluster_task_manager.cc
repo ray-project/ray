@@ -23,7 +23,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
-        pin_task_arguments,
+        get_task_arguments,
     size_t max_pinned_task_arguments_bytes)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -36,7 +36,7 @@ ClusterTaskManager::ClusterTaskManager(
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
-      pin_task_arguments_(pin_task_arguments),
+      get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
@@ -336,7 +336,7 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
   if (!deps.empty()) {
     // This gets refs to the arguments stored in plasma. The refs should be
     // deleted once we no longer need to pin the arguments.
-    if (!pin_task_arguments_(deps, &args)) {
+    if (!get_task_arguments_(deps, &args)) {
       *args_missing = true;
       return false;
     }
@@ -385,6 +385,7 @@ void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
         pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
     auto it = inserted.first;
     if (inserted.second) {
+      // This is the first task that needed this argument.
       pinned_task_arguments_bytes_ += it->second.first->GetSize();
     }
     it->second.second++;
@@ -401,6 +402,7 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
     RAY_CHECK(arg_it->second.second > 0);
     arg_it->second.second--;
     if (arg_it->second.second == 0) {
+      // This is the last task that needed this argument.
       pinned_task_arguments_bytes_ -= arg_it->second.first->GetSize();
       pinned_task_arguments_.erase(arg_it);
     }

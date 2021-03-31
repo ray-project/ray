@@ -64,7 +64,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
-          pin_task_arguments,
+          get_task_arguments,
       size_t max_pinned_task_arguments_bytes);
 
   /// (Step 1) Queue tasks and schedule.
@@ -269,13 +269,17 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// the task is running.
   std::function<bool(const std::vector<ObjectID> &object_ids,
                      std::vector<std::unique_ptr<RayObject>> *results)>
-      pin_task_arguments_;
+      get_task_arguments_;
 
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not
   /// evicted before the task(s) start running.
   std::unordered_map<TaskID, std::vector<ObjectID>> executing_task_args_;
 
+  /// All arguments of running tasks, which are also pinned in the object
+  /// store. The value is a pair: (the pointer to the object store that should
+  /// be deleted once the object is no longer needed, number of tasks that
+  /// depend on the object).
   std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>>
       pinned_task_arguments_;
 
