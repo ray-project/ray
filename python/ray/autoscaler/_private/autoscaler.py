@@ -214,7 +214,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
+            self.terminate_workers(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
             nodes = self.workers()
@@ -234,7 +234,7 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
+            self.terminate_workers(nodes_to_terminate)
             for node in nodes_to_terminate:
                 self.node_tracker.untrack(node)
             nodes = self.workers()
@@ -285,7 +285,7 @@ class StandardAutoscaler:
                         self._get_node_type(node_id) + " (launch failed).",
                         quantity=1,
                         aggregate=operator.add)
-                self.provider.terminate_nodes(active_nodes_to_terminate)
+                self.terminate_workers(active_nodes_to_terminate)
 
             nodes = self.workers()
 
@@ -315,6 +315,25 @@ class StandardAutoscaler:
 
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def terminate_workers(self, node_ids: List[str]) -> None:
+        """
+        Terminate workers with the supplied ids.
+
+        Does some exeception handling to avoid failure in case the autoscaler
+        tries to terminate the same node multiple times.
+        """
+        try:
+            self.provider.terminate_nodes(node_ids)
+        except Exception:
+            logger.warning("Failed to terminate nodes. Trying again.")
+            active_nodes = self.workers()
+            for node_id in node_ids:
+                if node_id in active_nodes:
+                    self.provider.terminate_node(node_id)
+                else:
+                    logger.warning("Node {} has already been terminated."
+                                   .format(node_id))
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -741,7 +760,7 @@ class StandardAutoscaler:
         logger.error("StandardAutoscaler: kill_workers triggered")
         nodes = self.workers()
         if nodes:
-            self.provider.terminate_nodes(nodes)
+            self.terminate_workers(nodes)
             for node in nodes:
                 self.node_tracker.untrack(node)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
