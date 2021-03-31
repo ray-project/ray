@@ -264,9 +264,6 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, plasma_store_as_thread, false)
-
 /// Whether to release worker CPUs during plasma fetches.
 /// See https://github.com/ray-project/ray/issues/12912 for further discussion.
 RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)

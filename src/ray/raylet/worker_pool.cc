@@ -141,7 +141,7 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    std::vector<std::string> dynamic_options,
+    const std::vector<std::string> &dynamic_options,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -182,15 +182,11 @@ Process WorkerPool::StartWorkerProcess(
     }
   }
 
+  std::vector<std::string> options;
+
+  // Append Ray-defined per-job options here
   if (language == Language::JAVA) {
     if (job_config) {
-      // Note that we push the item to the front of the vector to make
-      // sure this is the freshest option than others.
-      if (!job_config->jvm_options().empty()) {
-        dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
-                               job_config->jvm_options().end());
-      }
-
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
         auto path = job_config->code_search_path(i);
@@ -201,23 +197,34 @@ Process WorkerPool::StartWorkerProcess(
       }
       if (!code_search_path_str.empty()) {
         code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
-        dynamic_options.push_back(code_search_path_str);
+        options.push_back(code_search_path_str);
       }
     }
-
-    dynamic_options.push_back("-Dray.job.num-java-workers-per-process=" +
-                              std::to_string(workers_to_start));
   }
+
+  // Append user-defined per-job options here
+  if (language == Language::JAVA) {
+    if (!job_config->jvm_options().empty()) {
+      options.insert(options.end(), job_config->jvm_options().begin(),
+                     job_config->jvm_options().end());
+    }
+  }
+
+  // Append Ray-defined per-process options here
+  if (language == Language::JAVA) {
+    options.push_back("-Dray.job.num-java-workers-per-process=" +
+                      std::to_string(workers_to_start));
+  }
+
+  // Append user-defined per-process options here
+  options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
 
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   for (auto const &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
-      for (const auto &dynamic_option : dynamic_options) {
-        auto options = ParseCommandLine(dynamic_option);
-        worker_command_args.insert(worker_command_args.end(), options.begin(),
-                                   options.end());
-      }
+      worker_command_args.insert(worker_command_args.end(), options.begin(),
+                                 options.end());
       continue;
     }
     RAY_CHECK(node_manager_port_ != 0)
