@@ -1162,7 +1162,7 @@ def make_deployment_cls(
         _ray_actor_options = ray_actor_options
 
         @classmethod
-        def deploy(cls, *init_args):
+        def deploy(cls, *init_args, _blocking=True):
             """Deploy this deployment.
 
             Args:
@@ -1184,6 +1184,7 @@ def make_deployment_cls(
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
                 version=version,
+                _blocking=_blocking,
                 _internal=True)
 
         @classmethod
