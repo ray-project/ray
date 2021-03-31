@@ -147,6 +147,7 @@ class TestExport(unittest.TestCase):
         failures = []
         export_test("SAC", failures, "tf")
         assert not failures, failures
+        print("All export tests passed!")
 
 
 if __name__ == "__main__":

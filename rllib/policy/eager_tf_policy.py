@@ -41,7 +41,8 @@ def _convert_to_tf(x, dtype=None):
     if x is not None:
         d = dtype
         x = tf.nest.map_structure(
-            lambda f: tf.convert_to_tensor(f, d) if f is not None else None, x)
+            lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
+            else tf.convert_to_tensor(f, d) if f is not None else None, x)
     return x
 
 
@@ -611,7 +612,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = {"_state": super().get_state()}
-            state["_optimizer_variables"] = self._optimizer.variables()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             return state
 
         @override(Policy)

@@ -25,10 +25,10 @@ def setup_worker(name,
 
     @ray.remote
     class WorkerActor:
-        def __init__(self):
-            self.worker = create_backend_replica(backend_def)(
-                name, name + ":tag", init_args, backend_config,
-                controller_name)
+        async def __init__(self):
+            self.worker = object.__new__(create_backend_replica(backend_def))
+            await self.worker.__init__(name, name + ":tag", init_args,
+                                       backend_config, controller_name)
 
         def ready(self):
             pass

@@ -92,7 +92,7 @@ The shard key can either be specified via the X-SERVE-SHARD-KEY HTTP header or :
   # Specifying the shard key via an HTTP header.
   requests.get("127.0.0.1:8000/api", headers={"X-SERVE-SHARD-KEY": session_id})
 
-  # Specifying the shard key in a call made via serve handle.
+  # Specifying the shard key in a call made via ServeHandle.
   handle = serve.get_handle("api_endpoint")
   handler.options(shard_key=session_id).remote(args)
 

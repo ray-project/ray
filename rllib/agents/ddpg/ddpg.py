@@ -173,7 +173,7 @@ def validate_config(config):
     if config["simple_optimizer"] != DEPRECATED_VALUE or \
             config["simple_optimizer"] is False:
         logger.warning("`simple_optimizer` must be True (or unset) for DDPG!")
-    config["simple_optimizer"] = True
+        config["simple_optimizer"] = True
 
 
 def get_policy_class(config):

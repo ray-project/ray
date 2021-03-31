@@ -72,7 +72,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   rpc::ReportResourceUsageRequest report_request;
   (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
   (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request);
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
 
   gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
                                                    send_reply_callback);
