@@ -166,7 +166,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
           work_it = dispatch_queue.erase(work_it);
         } else {
-          // The task's args cannot be pinned due to lack of memory.
+          // The task's args cannot be pinned due to lack of memory. We should
+          // retry dispatching the task once another task finishes and releases
+          // its arguments.
           RAY_LOG(INFO) << "Dispatching task " << task_id
                         << " would put this node over the max memory allowed for "
                            "arguments of executing tasks ("
