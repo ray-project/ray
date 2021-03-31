@@ -274,17 +274,22 @@ class StandardAutoscaler:
                 # Some nodes in nodes_to_terminate may have been terminated
                 # during an update. Only terminate currently active nodes.
                 active_nodes = self.workers()
-                active_nodes_to_terminate = [
-                    node for node in nodes_to_terminate if node in active_nodes
-                ]
-                for node_id in active_nodes_to_terminate:
-                    logger.error(f"StandardAutoscaler: {node_id}: Terminating."
-                                 " Failed to setup/initialize node.")
-                    self.event_summarizer.add(
-                        "Removing {} nodes of type " +
-                        self._get_node_type(node_id) + " (launch failed).",
-                        quantity=1,
-                        aggregate=operator.add)
+                active_nodes_to_terminate = []
+                for node_id in nodes_to_terminate:
+                    if node_id in active_nodes:
+                        active_nodes_to_terminate.append(node_id)
+                        logger.error(f"StandardAutoscaler: {node_id}:"
+                                     " Terminating. Failed to setup/initialize"
+                                     " node.")
+                        self.event_summarizer.add(
+                            "Removing {} nodes of type " +
+                            self._get_node_type(node_id) + " (launch failed).",
+                            quantity=1,
+                            aggregate=operator.add)
+                    else:
+                        logger.error(f"StandardAutoscaler: {node_id}: "
+                                     " Failed to setup/initialize node."
+                                     " Node already terminated.")
                 self.terminate_workers(active_nodes_to_terminate)
 
             nodes = self.workers()
@@ -318,22 +323,24 @@ class StandardAutoscaler:
 
     def terminate_workers(self, node_ids: List[str]) -> None:
         """
-        Terminate workers with the supplied ids.
+        Terminate workers with the supplied node_ids.
 
-        Does some exeception handling to avoid failure in case the autoscaler
+        Does some exception handling to avoid failure in case the autoscaler
         tries to terminate the same node multiple times.
         """
         try:
             self.provider.terminate_nodes(node_ids)
         except Exception:
-            logger.warning("Failed to terminate nodes. Trying again.")
+            logger.error("Failed to terminate nodes. Trying again.")
             active_nodes = self.workers()
             for node_id in node_ids:
                 if node_id in active_nodes:
+                    logger.error(f"StandardAutoscaler: {node_id}: "
+                                 " Trying again to terminate.")
                     self.provider.terminate_node(node_id)
                 else:
-                    logger.warning("Node {} has already been terminated."
-                                   .format(node_id))
+                    logger.error(f"StandardAutoscaler: {node_id}: "
+                                 " Node already terminated.")
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
