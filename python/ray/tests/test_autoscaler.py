@@ -442,7 +442,6 @@ class AutoscalingTest(unittest.TestCase):
         except ValidationError:
             self.fail("Default config did not pass validation test!")
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNode(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         head_run_option = "--kernel-memory=10g"
@@ -512,7 +511,6 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
         return config
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodePodman(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["docker"]["use_podman"] = True
@@ -559,7 +557,6 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "podman inspect")
         runner.assert_has_call("1.2.3.4", "podman exec")
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodeFromStopped(self):
         config = self.testGetOrCreateHeadNode()
         self.provider.cache_stopped = True
@@ -654,7 +651,6 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testDockerFileMountsAdded(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {"source": "/dev/null"}
@@ -703,7 +699,6 @@ class AutoscalingTest(unittest.TestCase):
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testDockerFileMountsRemoved(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {}
@@ -753,7 +748,6 @@ class AutoscalingTest(unittest.TestCase):
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testRsyncCommandWithDocker(self):
         assert SMALL_CLUSTER["docker"]["container_name"]
         config_path = self.write_config(SMALL_CLUSTER)
@@ -807,7 +801,6 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.4", pattern="docker cp")
         runner.assert_has_call("172.0.0.4", pattern="rsync")
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testRsyncCommandWithoutDocker(self):
         cluster_cfg = SMALL_CLUSTER.copy()
         cluster_cfg["docker"] = {}
@@ -1992,7 +1985,6 @@ class AutoscalingTest(unittest.TestCase):
             runner.assert_has_call("172.0.0.{}".format(i), "setup_cmd")
             runner.assert_has_call("172.0.0.{}".format(i), "start_ray_worker")
 
-    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testContinuousFileMounts(self):
         file_mount_dir = tempfile.mkdtemp()
 
