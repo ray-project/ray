@@ -6,6 +6,7 @@ from functools import wraps
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+os.environ.update({"RAY_CLIENT_MODE": "0"})
 
 _client_hook_enabled = True
 
