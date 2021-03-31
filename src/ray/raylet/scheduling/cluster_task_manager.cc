@@ -689,7 +689,7 @@ std::string ClusterTaskManager::DebugStr() const {
 }
 
 void ClusterTaskManager::RecordMetrics() {
-  stats::NumQueuedTasks.Record(metric_tasks_queued_);
+  stats::NumReceivedTasks.Record(metric_tasks_queued_);
   stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
   stats::NumSpilledTasks.Record(metric_tasks_spilled_);
 

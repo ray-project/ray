@@ -59,7 +59,7 @@ class Trainable:
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
 
-        Subclasses should prefer defining ``build()`` instead of overriding
+        Subclasses should prefer defining ``setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:

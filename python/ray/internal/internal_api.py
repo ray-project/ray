@@ -20,8 +20,10 @@ def memory_summary(address=None,
                    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
+                   units="B",
                    line_wrap=True,
-                   stats_only=False):
+                   stats_only=False,
+                   num_entries=None):
     from ray.new_dashboard.memory_utils import memory_summary
     if not address:
         address = services.get_ray_address_to_use_or_die()
@@ -29,8 +31,8 @@ def memory_summary(address=None,
     state._initialize_global_state(address, redis_password)
     if stats_only:
         return get_store_stats(state)
-    return (memory_summary(state, group_by, sort_by, line_wrap) +
-            get_store_stats(state))
+    return (memory_summary(state, group_by, sort_by, line_wrap, units,
+                           num_entries) + get_store_stats(state))
 
 
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):

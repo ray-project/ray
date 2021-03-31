@@ -24,6 +24,9 @@
 ///
 /// You can follow these examples to define your metrics.
 
+/// NOTE: When adding a new metric, add the metric name to the _METRICS list in
+/// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
+
 ///
 /// Common
 ///
@@ -64,6 +67,41 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
+static Gauge ObjectDirectoryLocationSubscriptions(
+    "object_directory_subscriptions",
+    "Number of object location subscriptions. If this is high, the raylet is attempting "
+    "to pull a lot of objects.",
+    "subscriptions");
+
+static Gauge ObjectDirectoryLocationUpdates(
+    "object_directory_updates",
+    "Number of object location updates per second., If this is high, the raylet is "
+    "attempting to pull a lot of objects and/or the locations for objects are frequently "
+    "changing (e.g. due to many object copies or evictions).",
+    "updates");
+
+static Gauge ObjectDirectoryLocationLookups(
+    "object_directory_lookups",
+    "Number of object location lookups per second. If this is high, the raylet is "
+    "waiting on a lot of objects.",
+    "lookups");
+
+static Gauge ObjectDirectoryAddedLocations(
+    "object_directory_added_locations",
+    "Number of object locations added per second., If this is high, a lot of objects "
+    "have been added on this node.",
+    "additions");
+
+static Gauge ObjectDirectoryRemovedLocations(
+    "object_directory_removed_locations",
+    "Number of object locations removed per second. If this is high, a lot of objects "
+    "have been removed from this node.",
+    "removals");
+
+static Gauge NumInfeasibleTasks(
+    "num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+
 static Histogram HeartbeatReportMs(
     "heartbeat_report_ms",
     "Heartbeat report time in raylet. If this value is high, that means there's a high "
@@ -79,11 +117,7 @@ static Count NumWorkersStarted(
     "_internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");
 
-static Gauge NumInfeasibleTasks(
-    "num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
-static Count NumQueuedTasks(
+static Count NumReceivedTasks(
     "_internal_num_queued_tasks",
     "The cumulative number of lease requeusts that this raylet has received.", "tasks");
 

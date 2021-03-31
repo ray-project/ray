@@ -1225,7 +1225,10 @@ def connect(node,
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
-    if mode == SCRIPT_MODE:
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environmen will be prepared
+    # at the server side.
+    if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
@@ -1235,14 +1238,18 @@ def connect(node,
             worker.core_worker.get_job_config().runtime_env.uris
         runtime_env.ensure_runtime_env_setup(job_config)
 
+    # Notify raylet that the core worker is ready.
+    worker.core_worker.notify_raylet()
+
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
             f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
-    worker.import_thread = import_thread.ImportThread(worker, mode,
-                                                      worker.threads_stopped)
-    worker.import_thread.start()
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+        worker.import_thread = import_thread.ImportThread(
+            worker, mode, worker.threads_stopped)
+        worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would

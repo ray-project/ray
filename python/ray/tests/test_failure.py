@@ -18,7 +18,7 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
@@ -1235,16 +1235,6 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_node_failure(node_to_kill, use_actors)
     else:
         test_process_failure(use_actors)
-
-    ray.state.state._check_connected()
-    keys = [
-        key for r in ray.state.state.redis_clients
-        for key in r.keys("WORKER_FAILURE*")
-    ]
-    if node_failure:
-        assert len(keys) <= 1, len(keys)
-    else:
-        assert len(keys) <= 2, len(keys)
 
 
 @pytest.mark.parametrize(

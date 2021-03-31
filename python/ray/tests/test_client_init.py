@@ -50,12 +50,12 @@ def init_and_serve():
 
 @pytest.fixture
 def init_and_serve_lazy():
-    cluster = ray._private.cluster_utils.Cluster()
+    cluster = ray.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)
     address = cluster.address
 
-    def connect():
-        ray.init(address=address)
+    def connect(job_config=None):
+        ray.init(address=address, job_config=job_config)
 
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle

@@ -187,6 +187,10 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
         shutil.copy(f, gallery_dir)
 
+    # Copy inc files from source dir to gallery dir.
+    for f in glob.glob(os.path.join(source_dir, '*.inc')):
+        shutil.copy(f, gallery_dir)
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 

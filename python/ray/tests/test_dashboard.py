@@ -17,6 +17,7 @@ def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
     ray.init(address="auto")
     assert str(ray_constants.DEFAULT_DASHBOARD_PORT) in ray.get_dashboard_url()
 
+    error_raised = False
     try:
         subprocess.check_output(
             [
@@ -25,10 +26,14 @@ def test_ray_start_default_port_conflict(call_ray_stop_only, shutdown_only):
                 "--head",
                 "--port",
                 "9999",  # use a different gcs port
+                "--include-dashboard=True"
             ],
             stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
-        assert b"already in use" in e.stderr
+        assert b"already occupied" in e.stderr
+        error_raised = True
+
+    assert error_raised, "ray start should cause a conflict error"
 
 
 def test_port_auto_increment(shutdown_only):
@@ -62,7 +67,7 @@ ray.shutdown()
         """)
 
 
-def test_port_conflict(shutdown_only):
+def test_port_conflict(call_ray_stop_only, shutdown_only):
     sock = socket.socket()
     if hasattr(socket, "SO_REUSEPORT"):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
@@ -71,18 +76,15 @@ def test_port_conflict(shutdown_only):
     try:
         subprocess.check_output(
             [
-                "ray",
-                "start",
-                "--head",
-                "--dashboard-port",
-                "9999",
+                "ray", "start", "--head", "--port", "9989", "--dashboard-port",
+                "9999", "--include-dashboard=True"
             ],
             stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
-        assert b"already in use" in e.stderr
+        assert b"already occupied" in e.stderr
 
-    with pytest.raises(ValueError, match="already in use"):
-        ray.init(dashboard_port=9999)
+    with pytest.raises(ValueError, match="already occupied"):
+        ray.init(dashboard_port=9999, include_dashboard=True)
 
     sock.close()
 
