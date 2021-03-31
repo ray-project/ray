@@ -115,8 +115,8 @@ TEST(RayApiTest, CallWithObjectRef) {
 
 TEST(RayApiTest, OverloadTest) {
   auto rt0 = Ray::Task(RayFunc(OverloadFunc)).Remote();
-  auto rt1 = Ray::Task(RayFunc(OverloadFunc, int), rt0).Remote();
-  auto rt2 = Ray::Task(RayFunc(OverloadFunc, int, int), rt1, 3).Remote();
+  auto rt1 = Ray::Task(RayFunc(OverloadFunc, int)).Remote(rt0);
+  auto rt2 = Ray::Task(RayFunc(OverloadFunc, int, int)).Remote(rt1, 3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
