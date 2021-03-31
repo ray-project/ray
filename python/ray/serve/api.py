@@ -679,10 +679,10 @@ def start(detached: bool = False,
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - dedicated_cpu(bool): Whether to set `num_cpus=1` for each
-              internal HTTP proxy actor.  Defaults to False (`num_cpus=0`).
-        dedicated_cpu (bool): Whether to set `num_cpus=1` for the internal
-          Serve controller actor.  Defaults to False (`num_cpus=0`).
+            - num_cpus (int): The number of CPU cores to reserve for each
+              internal Serve HTTP proxy actor.  Defaults to 0.
+        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+          Serve controller actor.  Defaults to False.
     """
     if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
             or (len(http_middlewares) != 0)):

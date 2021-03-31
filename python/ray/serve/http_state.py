@@ -69,7 +69,7 @@ class HTTPState:
                                 name, node_id, self._config.host,
                                 self._config.port))
                 proxy = HTTPProxyActor.options(
-                    num_cpus=(1 if self._config.dedicated_cpu else 0),
+                    num_cpus=self._config.num_cpus,
                     name=name,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,

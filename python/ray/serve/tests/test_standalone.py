@@ -123,18 +123,26 @@ def test_connect(detached, ray_shutdown):
 
 
 @pytest.mark.parametrize("controller_cpu", [True, False])
-@pytest.mark.parametrize("proxy_cpu", [True, False])
-def test_dedicated_cpu(controller_cpu, proxy_cpu, ray_cluster):
+@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
+def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
+    num_cluster_cpus = 8
+    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
+
     ray.init(head_node.address)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == 4)
-    num_cpus_used = int(controller_cpu) + int(proxy_cpu)
+    wait_for_condition(
+        lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
+
+    num_cpus_used = int(controller_cpu) + num_proxy_cpus
+
     serve.start(
         dedicated_cpu=controller_cpu,
-        http_options=HTTPOptions(dedicated_cpu=proxy_cpu))
+        http_options=HTTPOptions(num_cpus=num_proxy_cpus))
     wait_for_condition(
-        lambda: ray.available_resources().get("CPU") == 4 - num_cpus_used)
+        lambda: ray.available_resources().get("CPU") == num_cluster_cpus - num_cpus_used
+    )
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
