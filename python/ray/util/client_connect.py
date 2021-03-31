@@ -1,5 +1,5 @@
 from ray.util.client import ray
-
+from ray.job_config import JobConfig
 from ray._private.client_mode_hook import _enable_client_hook
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
@@ -10,6 +10,7 @@ def connect(conn_str: str,
             secure: bool = False,
             metadata: List[Tuple[str, str]] = None,
             connection_retries: int = 3,
+            job_config: JobConfig = None,
             *,
             ignore_version: bool = False) -> Dict[str, Any]:
     if ray.is_connected():
@@ -26,6 +27,7 @@ def connect(conn_str: str,
     # the correct metadata
     return ray.connect(
         conn_str,
+        job_config=job_config,
         secure=secure,
         metadata=metadata,
         connection_retries=3,
