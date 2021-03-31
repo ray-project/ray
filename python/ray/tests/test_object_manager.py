@@ -10,7 +10,7 @@ from ray.cluster_utils import Cluster
 from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
-        or ray.utils.get_system_memory() < 50 * 10**9):
+        or ray._private.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
 

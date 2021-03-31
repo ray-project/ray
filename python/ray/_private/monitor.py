@@ -25,7 +25,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
-from ray.ray_logging import setup_component_logger
+from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
 
@@ -168,7 +168,9 @@ class Monitor:
             self.update_resource_requests()
             self.update_event_summary()
             status = {
-                "load_metrics_report": self.load_metrics.summary()._asdict()
+                "load_metrics_report": self.load_metrics.summary()._asdict(),
+                "time": time.time(),
+                "monitor_pid": os.getpid()
             }
 
             # Process autoscaling actions
@@ -254,7 +256,7 @@ class Monitor:
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
-        from ray.utils import push_error_to_driver_through_redis
+        from ray._private.utils import push_error_to_driver_through_redis
         push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
 

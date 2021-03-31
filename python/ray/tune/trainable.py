@@ -59,7 +59,7 @@ class Trainable:
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.
 
-        Subclasses should prefer defining ``build()`` instead of overriding
+        Subclasses should prefer defining ``setup()`` instead of overriding
         ``__init__()`` directly.
 
         Args:
@@ -143,7 +143,7 @@ class Trainable:
         return ""
 
     def get_current_ip(self):
-        self._local_ip = ray.services.get_node_ip_address()
+        self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
 
     def train_buffered(self,
@@ -502,7 +502,7 @@ class Trainable:
             from ray.tune.logger import UnifiedLogger
 
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
+            ray._private.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(

@@ -118,20 +118,9 @@ def compute_gae_for_sample_batch(
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
-        if policy.config.get("_use_trajectory_view_api"):
-            # Create an input dict according to the Model's requirements.
-            input_dict = policy.model.get_input_dict(
-                sample_batch, index="last")
-            last_r = policy._value(**input_dict)
-        # TODO: (sven) Remove once trajectory view API is all-algo default.
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append(sample_batch["state_out_{}".format(i)][-1])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
+        # Create an input dict according to the Model's requirements.
+        input_dict = policy.model.get_input_dict(sample_batch, index="last")
+        last_r = policy._value(**input_dict, seq_lens=input_dict.seq_lens)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.

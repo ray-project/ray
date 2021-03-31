@@ -4,7 +4,7 @@ from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 
 bundle_reservation_check = None
 

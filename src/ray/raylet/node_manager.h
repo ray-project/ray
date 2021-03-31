@@ -27,6 +27,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -92,6 +93,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The path of this ray resource dir.
+  std::string resource_dir;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.
@@ -100,6 +103,9 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
+  // reports from raylets.
+  bool pull_based_resource_reporting;
 };
 
 class HeartbeatSender {
@@ -381,12 +387,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
-  /// Process client message of SubmitTask
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessSubmitTaskMessage(const uint8_t *message_data);
-
   /// Process client message of NotifyDirectCallTaskBlocked
   ///
   /// \param message_data A pointer to the message data.
@@ -542,11 +542,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                    rpc::RequestObjectSpillageReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `RestoreSpilledObject` request.
-  void HandleRestoreSpilledObject(const rpc::RestoreSpilledObjectRequest &request,
-                                  rpc::RestoreSpilledObjectReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `ReleaseUnusedBundles` request.
   void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
@@ -582,11 +577,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;
 
-  /// Send a object restoration request to a remote node of a given node id.
-  void SendSpilledObjectRestorationRequestToRemoteNode(const ObjectID &object_id,
-                                                       const std::string &spilled_url,
-                                                       const NodeID &node_id);
-
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///
@@ -609,10 +599,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param client The client that sent the message.
   /// \param disconnect_type The reason to disconnect the specified client.
+  /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+
+  /// Delete URI in local node.
+  ///
+  /// \param uri The URI of the resource.
+  void DeleteLocalURI(const std::string &uri, std::function<void(bool)> cb);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -632,6 +629,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   PeriodicalRunner periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
+  /// The time that the last resource report was sent at. Used to make sure we are
+  /// keeping up with resource reports.
+  uint64_t last_resource_report_at_ms_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -729,7 +729,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t record_metrics_period_ms_;
 
   /// Last time metrics are recorded.
-  uint64_t metrics_last_recorded_time_ms_;
+  uint64_t last_metrics_recorded_at_ms_;
 
   /// Number of tasks that are received and scheduled.
   uint64_t metrics_num_task_scheduled_;
@@ -742,6 +742,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
+
+  /// Manage all runtime env locally
+  RuntimeEnvManager runtime_env_manager_;
 };
 
 }  // namespace raylet

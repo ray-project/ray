@@ -20,9 +20,10 @@ from collections import defaultdict
 import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
-import ray.utils
+import ray._private.utils
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory, try_to_symlink, open_log
+from ray._private.utils import (try_to_create_directory, try_to_symlink,
+                                open_log)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -90,7 +91,7 @@ class Node:
 
         self.head = head
         self.kernel_fate_share = bool(
-            spawn_reaper and ray.utils.detect_fate_sharing_support())
+            spawn_reaper and ray._private.utils.detect_fate_sharing_support())
         self.all_processes = {}
         self.removal_lock = threading.Lock()
 
@@ -98,10 +99,10 @@ class Node:
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
         elif ray_params.redis_address:
-            node_ip_address = ray._private.services.get_node_ip_address(
+            node_ip_address = ray.util.get_node_ip_address(
                 ray_params.redis_address)
         else:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
         if ray_params.raylet_ip_address:
@@ -125,7 +126,7 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray.utils.get_ray_temp_dir(),
+            temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
@@ -161,7 +162,7 @@ class Node:
         else:
             redis_client = self.create_redis_client()
             session_name = _get_with_retry(redis_client, "session_name")
-            self.session_name = ray.utils.decode(session_name)
+            self.session_name = ray._private.utils.decode(session_name)
 
         self._init_temp(redis_client)
 
@@ -254,7 +255,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        ray.utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create a dictionary to store temp file index.
@@ -264,7 +265,7 @@ class Node:
             self._temp_dir = self._ray_params.temp_dir
         else:
             temp_dir = _get_with_retry(redis_client, "temp_dir")
-            self._temp_dir = ray.utils.decode(temp_dir)
+            self._temp_dir = ray._private.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
 
@@ -272,7 +273,7 @@ class Node:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
             session_dir = _get_with_retry(redis_client, "session_dir")
-            self._session_dir = ray.utils.decode(session_dir)
+            self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -287,11 +288,11 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._session_dir,
-                                             "runtime_resources")
-        try_to_create_directory(self._runtime_env_dir)
+        self._resource_dir = os.path.join(self._session_dir,
+                                          "runtime_resources")
+        try_to_create_directory(self._resource_dir)
         import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._runtime_env_dir
+        runtime_env.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -470,7 +471,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray.utils.get_ray_temp_dir()
+            directory_name = ray._private.utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,
@@ -725,26 +726,6 @@ class Node:
             redis_client = self.create_redis_client()
             redis_client.hset("webui", mapping={"url": self._webui_url})
 
-    def start_plasma_store(self, plasma_directory, object_store_memory):
-        """Start the plasma store."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "plasma_store", unique=True)
-        process_info = ray._private.services.start_plasma_store(
-            self.get_resource_spec(),
-            plasma_directory,
-            object_store_memory,
-            self._plasma_store_socket_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            huge_pages=self._ray_params.huge_pages,
-            keep_idle=bool(self._config.get("plasma_store_as_thread")),
-            fate_share=self.kernel_fate_share)
-        assert (
-            ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
-        self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info,
-        ]
-
     def start_gcs_server(self):
         """Start the gcs server.
         """
@@ -790,6 +771,7 @@ class Node:
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
+            self._resource_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -809,7 +791,6 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
@@ -895,7 +876,6 @@ class Node:
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
             )
-        self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
@@ -1011,16 +991,6 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
-
-    def kill_plasma_store(self, check_alive=True):
-        """Kill the plasma store.
-
-        Args:
-            check_alive (bool): Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.

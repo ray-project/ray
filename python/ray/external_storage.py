@@ -60,6 +60,8 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     query_dict = urllib.parse.parse_qs(parsed_result.query)
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
+    if "offset" not in query_dict or "size" not in query_dict:
+        raise ValueError("Failed to parse URL: {}".format(url_with_offset))
     offset = int(query_dict["offset"][0])
     size = int(query_dict["size"][0])
     return ParsedURL(base_url=base_url, offset=offset, size=size)
@@ -111,7 +113,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 in the external storage.
 
         Return:
-            List of urls_with_offset of fusioned objects.
+            List of urls_with_offset of fused objects.
             The order of returned keys are equivalent to the one
             with given object_refs.
         """
@@ -168,6 +170,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
         Args:
             object_refs: The list of the refs of the objects to be spilled.
+            owner_addresses(list): Owner addresses for the provided objects.
         Returns:
             A list of internal URLs with object offset.
         """
@@ -267,7 +270,7 @@ class FileSystemStorage(ExternalStorage):
             (self.current_directory_index + 1) % len(self.directory_paths))
         directory_path = self.directory_paths[self.current_directory_index]
 
-        # Always use the first object ref as a key when fusioning objects.
+        # Always use the first object ref as a key when fusing objects.
         first_ref = object_refs[0]
         filename = f"{first_ref.hex()}-multi-{len(object_refs)}"
         url = f"{os.path.join(directory_path, filename)}"
@@ -319,7 +322,7 @@ class FileSystemStorage(ExternalStorage):
             try:
                 shutil.rmtree(directory_path)
             except FileNotFoundError:
-                # If excpetion occurs when other IO workers are
+                # If exception occurs when other IO workers are
                 # deleting the file at the same time.
                 pass
             except Exception:

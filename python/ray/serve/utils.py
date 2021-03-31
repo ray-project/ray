@@ -2,24 +2,25 @@ import asyncio
 from functools import singledispatch
 import importlib
 from itertools import groupby
+import inspect
 import json
 import logging
 import random
 import string
 import time
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict, Optional, Type
 import os
-from ray.serve.exceptions import RayServeException
 from collections import UserDict
-from pathlib import Path
 
 import starlette.requests
+import starlette.responses
 import requests
 import numpy as np
 import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.serve.exceptions import RayServeException
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -177,47 +178,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
-
-
-def get_conda_env_dir(env_name):
-    """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory. Untested on Windows.
-    """
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix is None:
-        # The caller is neither in a conda env or in (base).  This is rare
-        # because by default, new terminals start in (base), but we can still
-        # support this case.
-        conda_exe = os.environ.get("CONDA_EXE")
-        if conda_exe is None:
-            raise RayServeException(
-                "Ray Serve cannot find environment variables set by conda. "
-                "Please verify conda is installed.")
-        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
-        # Strip out the /bin/python by going up two parent directories.
-        conda_prefix = str(Path(conda_exe).parent.parent)
-
-    # There are two cases:
-    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
-    #    CONDA_PREFIX=$HOME/anaconda3
-    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
-    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
-        # Not recommended by conda, but we can still try to support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
-    else:
-        # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
-        conda_envs_dir = os.path.split(conda_prefix)[0]
-        env_dir = os.path.join(conda_envs_dir, env_name)
-    if not os.path.isdir(env_dir):
-        raise ValueError(
-            "conda env " + env_name +
-            " not found in conda envs directory. Run `conda env list` to " +
-            "verify the name is correct.")
-    return env_dir
 
 
 @singledispatch
@@ -407,3 +367,133 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def register_custom_serializers():
+    """Install custom serializers needed for Ray Serve."""
+    import starlette.datastructures
+    import pydantic.fields
+
+    assert ray.is_initialized(
+    ), "This functional must be ran with Ray initialized."
+
+    # Pydantic's Cython validators are not serializable.
+    # https://github.com/cloudpipe/cloudpickle/issues/408
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            pydantic.fields.ModelField,
+            serializer=lambda o: {
+                "name": o.name,
+                "type_": o.type_,
+                "class_validators": o.class_validators,
+                "model_config": o.model_config,
+                "default": o.default,
+                "default_factory": o.default_factory,
+                "required": o.required,
+                "alias": o.alias,
+                "field_info": o.field_info,
+            },
+            deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
+        )
+    )
+
+    # FastAPI's app.state object is not serializable
+    # because it overrides __getattr__
+    ray.worker.global_worker.run_function_on_all_workers(
+        lambda _: ray.util.register_serializer(
+            starlette.datastructures.State,
+            serializer=lambda s: s._state,
+            deserializer=lambda s: starlette.datastructures.State(s),
+        )
+    )
+
+
+class ASGIHTTPSender:
+    """Implement the interface for ASGI sender, build Starlette Response"""
+
+    def __init__(self) -> None:
+        self.status_code: Optional[int] = 200
+        self.header: Dict[str, str] = {}
+        self.buffer: List[bytes] = []
+
+    async def __call__(self, message):
+        if (message["type"] == "http.response.start"):
+            self.status_code = message["status"]
+            for key, value in message["headers"]:
+                self.header[key.decode()] = value.decode()
+        elif (message["type"] == "http.response.body"):
+            self.buffer.append(message["body"])
+        else:
+            raise ValueError("ASGI type must be one of "
+                             "http.responses.{body,start}.")
+
+    def build_starlette_response(self) -> starlette.responses.Response:
+        return starlette.responses.Response(
+            b"".join(self.buffer),
+            status_code=self.status_code,
+            headers=dict(self.header))
+
+
+def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
+    """Transform the `cls`'s methods and class annotations to FastAPI routes.
+
+    Modified from
+    https://github.com/dmontagu/fastapi-utils/blob/master/fastapi_utils/cbv.py
+
+    Usage:
+    >>> app = FastAPI()
+    >>> class A:
+            @app.route("/{i}")
+            def func(self, i: int) -> str:
+                return self.dep + i
+    >>> # just running the app won't work, here.
+    >>> make_fastapi_class_based_view(app, A)
+    >>> # now app can be run properly
+    """
+    # Delayed import to prevent ciruclar imports in workers.
+    from fastapi import Depends, APIRouter
+    from fastapi.routing import APIRoute
+
+    def get_current_servable_instance():
+        from ray import serve
+        return serve.get_replica_context().servable_object
+
+    # Find all the class method routes
+    member_methods = {
+        func
+        for _, func in inspect.getmembers(cls, inspect.isfunction)
+    }
+    class_method_routes = [
+        route for route in fastapi_app.routes
+        if isinstance(route, APIRoute) and route.endpoint in member_methods
+    ]
+
+    # Modify these routes and mount it to a new APIRouter.
+    # We need to to this (instead of modifying in place) because we want to use
+    # the laster fastapi_app.include_router to re-run the dependency analysis
+    # for each routes.
+    new_router = APIRouter()
+    for route in class_method_routes:
+        fastapi_app.routes.remove(route)
+
+        # This block just adds a default values to the self parameters so that
+        # FastAPI knows to inject the object when calling the route.
+        # Before: def method(self, i): ...
+        # After: def method(self=Depends(...), *, i):...
+        old_endpoint = route.endpoint
+        old_signature = inspect.signature(old_endpoint)
+        old_parameters = list(old_signature.parameters.values())
+        old_self_parameter = old_parameters[0]
+        new_self_parameter = old_self_parameter.replace(
+            default=Depends(get_current_servable_instance))
+        new_parameters = [new_self_parameter] + [
+            # Make the rest of the parameters keyword only because
+            # the first argument is no longer positional.
+            parameter.replace(kind=inspect.Parameter.KEYWORD_ONLY)
+            for parameter in old_parameters[1:]
+        ]
+        new_signature = old_signature.replace(parameters=new_parameters)
+        setattr(route.endpoint, "__signature__", new_signature)
+        # route.endpoint.__signature__ = new_signature
+        new_router.routes.append(route)
+    fastapi_app.include_router(new_router)

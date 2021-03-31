@@ -1,3 +1,4 @@
+import copy
 import logging
 import time
 from uuid import uuid4
@@ -50,7 +51,12 @@ class KubernetesNodeProvider(NodeProvider):
             field_selector=field_selector,
             label_selector=label_selector)
 
-        return [pod.metadata.name for pod in pod_list.items]
+        # Don't return pods marked for deletion,
+        # i.e. pods with non-null metadata.DeletionTimestamp.
+        return [
+            pod.metadata.name for pod in pod_list.items
+            if pod.metadata.deletion_timestamp is None
+        ]
 
     def is_running(self, node_id):
         pod = core_api().read_namespaced_pod(node_id, self.namespace)
@@ -98,7 +104,7 @@ class KubernetesNodeProvider(NodeProvider):
         core_api().patch_namespaced_pod(node_id, self.namespace, pod)
 
     def create_node(self, node_config, tags, count):
-        conf = node_config.copy()
+        conf = copy.deepcopy(node_config)
         pod_spec = conf.get("pod", conf)
         service_spec = conf.get("service")
         ingress_spec = conf.get("ingress")

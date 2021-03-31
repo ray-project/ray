@@ -189,6 +189,9 @@ class CoreWorkerClientInterface {
   virtual void AddSpilledUrl(const AddSpilledUrlRequest &request,
                              const ClientCallback<AddSpilledUrlReply> &callback) {}
 
+  virtual void RunOnUtilWorker(const RunOnUtilWorkerRequest &request,
+                               const ClientCallback<RunOnUtilWorkerReply> &callback) {}
+
   virtual void PlasmaObjectReady(const PlasmaObjectReadyRequest &request,
                                  const ClientCallback<PlasmaObjectReadyReply> &callback) {
   }
@@ -210,9 +213,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
       : addr_(address) {
-    grpc_client_ =
-        std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
-            addr_.ip_address(), addr_.port(), client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
+        addr_.ip_address(), addr_.port(), client_call_manager);
   };
 
   const rpc::Address &Addr() const override { return addr_; }
@@ -255,6 +257,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, DeleteSpilledObjects, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, AddSpilledUrl, grpc_client_, override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService, RunOnUtilWorker, grpc_client_, override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService, PlasmaObjectReady, grpc_client_, override)
 

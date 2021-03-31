@@ -75,7 +75,7 @@ matrix:
       install:
         - . ./ci/travis/ci.sh init
       before_script:
-        - . ./ci/travis/ci.sh build
+        - ./ci/keep_alive ./ci/travis/ci.sh build
       script:
         # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
         # NOTE: core_worker_test is out-of-date and should already covered by
@@ -183,8 +183,8 @@ matrix:
       install:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
-        - brew tap adoptopenjdk/openjdk
-        - brew install --cask adoptopenjdk8
+        - ./ci/keep_alive brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+        - ./ci/keep_alive brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
         - ./ci/keep_alive bash ./ci/travis/ci.sh build
@@ -473,7 +473,7 @@ script:
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 after_script:
