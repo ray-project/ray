@@ -84,4 +84,8 @@ public class LocalModeWorkerContext implements WorkerContext {
   public void setCurrentTask(TaskSpec taskSpec) {
     currentTask.set(taskSpec);
   }
+
+  public TaskSpec getCurrentTask() {
+    return currentTask.get();
+  }
 }
