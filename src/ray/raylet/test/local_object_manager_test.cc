@@ -293,7 +293,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
                 /*is_external_storage_type_fs=*/true,
-                /*max_fused_object_count*/max_fused_object_count_,
+                /*max_fused_object_count*/ max_fused_object_count_,
                 /*on_objects_freed=*/
                 [&](const std::vector<ObjectID> &object_ids) {
                   for (const auto &object_id : object_ids) {
@@ -646,8 +646,9 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
-  // Make sure only max_fused_object_count_ objects are spilled although we requested to spill as much as total size.
-  // It is because we limit the max fused number of objects to be 10.
+  // Make sure only max_fused_object_count_ objects are spilled although we requested to
+  // spill as much as total size. It is because we limit the max fused number of objects
+  // to be 10.
   std::vector<std::string> urls;
   for (size_t i = 0; i < max_fused_object_count_; i++) {
     urls.push_back(BuildURL("url" + std::to_string(i)));
