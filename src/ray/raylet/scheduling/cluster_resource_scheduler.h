@@ -174,7 +174,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   int64_t NumNodes() const;
 
   /// Temporarily get the StringIDMap.
-  const StringIdMap GetStringIdMap() const;
+  const StringIdMap &GetStringIdMap() const;
 
   /// Add a local resource that is available.
   ///

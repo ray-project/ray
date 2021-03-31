@@ -94,7 +94,7 @@ TaskRequest ResourceMapToTaskRequest(
   return task_request;
 }
 
-const std::vector<FixedPoint> TaskResourceInstances::Get(
+const std::vector<FixedPoint> &TaskResourceInstances::Get(
     const std::string &resource_name, const StringIdMap &string_id_map) const {
   if (ray::kCPU_ResourceLabel == resource_name) {
     return predefined_resources[CPU];

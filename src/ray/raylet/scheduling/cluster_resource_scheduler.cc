@@ -404,7 +404,7 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
 
 int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
 
-const StringIdMap ClusterResourceScheduler::GetStringIdMap() const {
+const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
   return string_to_int_map_;
 }
 
