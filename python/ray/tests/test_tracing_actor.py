@@ -75,7 +75,6 @@ def test_tracing_actor():
                     for line in Lines:
                         span_string += line
                         num_spans += 1
-        print(span_string)
         assert num_spans == 4
         # check that all 4 spans are as expected
         assert all(

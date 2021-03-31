@@ -62,7 +62,6 @@ def test_tracing_task():
                     for line in Lines:
                         span_string += line
                         num_spans += 1
-        print(span_string)
         assert num_spans == 2
         assert all(
             [
