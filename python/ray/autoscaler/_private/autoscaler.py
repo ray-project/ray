@@ -270,7 +270,7 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
-                    self.node_tracker.untrack(node)
+                    self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
 
             if failed_nodes:
