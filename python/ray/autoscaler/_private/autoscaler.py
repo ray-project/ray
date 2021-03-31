@@ -259,7 +259,6 @@ class StandardAutoscaler:
             if not updater.is_alive():
                 completed_nodes.append(node_id)
         if completed_nodes:
-            # self.process_completed_updates(completed_nodes)
             failed_nodes = []
             for node_id in completed_nodes:
                 if self.updaters[node_id].exitcode == 0:
@@ -325,9 +324,6 @@ class StandardAutoscaler:
 
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
-
-    def process_complete_updates(node_ids):
-        pass
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
