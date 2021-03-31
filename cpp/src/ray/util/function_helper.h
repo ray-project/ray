@@ -21,7 +21,8 @@ class FunctionHelper {
 
   std::shared_ptr<boost::dll::shared_library> LoadDll(const std::string &lib_name);
   std::function<msgpack::sbuffer(const std::string &,
-                                 const std::vector<std::shared_ptr<::ray::RayObject>> &)>
+                                 const std::vector<std::shared_ptr<::ray::RayObject>> &,
+                                 msgpack::sbuffer *)>
   GetExecuteFunction(const std::string &lib_name);
 
  private:
@@ -37,7 +38,8 @@ class FunctionHelper {
   std::unordered_map<
       std::string,
       std::function<msgpack::sbuffer(
-          const std::string &, const std::vector<std::shared_ptr<::ray::RayObject>> &)>>
+          const std::string &, const std::vector<std::shared_ptr<::ray::RayObject>> &,
+          msgpack::sbuffer *)>>
       funcs_;
 };
 }  // namespace api

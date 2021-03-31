@@ -181,11 +181,23 @@ template <typename ActorType, typename FuncType, typename ExecFuncType,
 inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
                                                         ExecFuncType &exec_func,
                                                         ArgTypes &... args) {
+  RemoteFunctionPtrHolder ptr{};
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
+    if (function_name.empty()) {
+      throw RayException(
+          "Function not found. Please use RAY_REMOTE to register this function.");
+    }
+
+    ptr.function_name = std::move(function_name);
+  } else {
+    ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
+    ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
+  }
+
   std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
   Arguments::WrapArgs(&task_args, args...);
-  RemoteFunctionPtrHolder ptr;
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
   return ActorCreator<ActorType>(ray::internal::RayRuntime().get(), ptr,
                                  std::move(task_args));
 }

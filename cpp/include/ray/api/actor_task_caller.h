@@ -35,9 +35,12 @@ class ActorTaskCaller {
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args) {
     using ActorType = boost::callable_traits::class_of_t<F>;
     using ReturnType = boost::callable_traits::return_type_t<F>;
-    auto exe_func =
-        ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>;
-    ptr_.exec_function_pointer = reinterpret_cast<uintptr_t>(exe_func);
+    if (!ray::api::RayConfig::GetInstance()->use_ray_remote) {
+      auto exe_func =
+          ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>;
+      ptr_.exec_function_pointer = reinterpret_cast<uintptr_t>(exe_func);
+    }
+
     Arguments::WrapArgs(&args_, args...);
     auto returned_object_id = runtime_->CallActor(ptr_, id_, args_);
     return ObjectRef<ReturnType>(returned_object_id);
