@@ -254,13 +254,14 @@ class StandardAutoscaler:
             nodes = self.workers()
 
         # Process any completed updates
-        completed = []
-        failed_nodes = []
+        completed_nodes = []
         for node_id, updater in self.updaters.items():
             if not updater.is_alive():
-                completed.append(node_id)
-        if completed:
-            for node_id in completed:
+                completed_nodes.append(node_id)
+        if completed_nodes:
+            # self.process_completed_updates(completed_nodes)
+            failed_nodes = []
+            for node_id in completed_nodes:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
                     # Mark the node as active to prevent the node recovery
@@ -270,6 +271,7 @@ class StandardAutoscaler:
                 else:
                     failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.node_tracker.untrack(node)
                 del self.updaters[node_id]
 
             if failed_nodes:
@@ -291,8 +293,6 @@ class StandardAutoscaler:
                             aggregate=operator.add)
                 if nodes_to_terminate:
                     self.provider.terminate_nodes(nodes_to_terminate)
-                    for node in nodes_to_terminate:
-                        self.node_tracker.untrack(node)
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -321,6 +321,9 @@ class StandardAutoscaler:
 
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def process_complete_updates(node_ids):
+        pass
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
