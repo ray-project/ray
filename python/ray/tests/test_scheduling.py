@@ -56,6 +56,7 @@ def test_load_balancing(ray_start_cluster):
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
 def test_hybrid_policy(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def get_node():
