@@ -40,7 +40,3 @@ table ObjectInfo {
   // Specifies if this object was deleted or added.
   is_deletion: bool;
 }
-
-table PlasmaNotification {
-  object_info: [ObjectInfo];
-}
