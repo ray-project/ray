@@ -321,6 +321,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Get the current object store memory usage.
   int64_t GetUsedMemory() const { return used_memory_; }
 
+  int64_t GetMemoryCapacity() const { return config_.object_store_memory; }
+
  private:
   friend class TestObjectManager;
 
