@@ -291,6 +291,10 @@ class StandardAutoscaler:
                             self._get_node_type(node_id) + " (launch failed).",
                             quantity=1,
                             aggregate=operator.add)
+                    else:
+                        logger.error(f"StandardAutoscaler: {node_id}:"
+                                     " Failed to setup/initialize node."
+                                     " Node has already been terminated.")
                 if nodes_to_terminate:
                     self.provider.terminate_nodes(nodes_to_terminate)
                     nodes = self.workers()
