@@ -1249,7 +1249,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   // The number of times each thread executes subscribe & resubscribe & unsubscribe.
   int sub_and_unsub_loop_count = 20;
 
-  // Multithreading subscribe/resubscribe/unsubscribe actors.
+  // Multithreading subscribe/unsubscribe actors.
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
@@ -1257,7 +1257,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
             actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
-        gcs_client_->Actors().AsyncResubscribe(false);
         UnsubscribeActor(actor_id);
       }
     }));
@@ -1267,7 +1266,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
     thread.reset();
   }
 
-  // Multithreading subscribe/resubscribe/unsubscribe objects.
+  // Multithreading subscribe/unsubscribe objects.
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
@@ -1275,7 +1274,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         ASSERT_TRUE(SubscribeToLocations(
             object_id, [](const ObjectID &id,
                           const std::vector<rpc::ObjectLocationChange> &result) {}));
-        gcs_client_->Objects().AsyncResubscribe(false);
         UnsubscribeToLocations(object_id);
       }
     }));
