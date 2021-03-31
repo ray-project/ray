@@ -208,6 +208,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Whether to run evaluation in parallel to a Trainer.train() call
+    # using threading. Default=False.
+    # E.g. evaluation_interval=2 -> For every other training iteration,
+    # the Trainer.train() and Trainer._evaluate() calls run in parallel.
+    # Note: This is experimental. Possible pitfalls could be race conditions
+    # for weight synching at the beginning of the evaluation loop.
+    "evaluation_parallel_to_training": False,
     # Internal flag that is set to True for evaluation workers.
     "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator
@@ -555,6 +562,7 @@ class Trainer(Trainable):
     @PublicAPI
     def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
+        print("Training ...")
 
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
@@ -822,12 +830,14 @@ class Trainer(Trainable):
                 for _ in range(self.config["evaluation_num_episodes"]):
                     self.evaluation_workers.local_worker().sample()
             else:
+                print("Evaluating ...")
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
                               self.config["evaluation_num_workers"]))
                 num_workers = len(self.evaluation_workers.remote_workers())
                 num_episodes = num_rounds * num_workers
                 for i in range(num_rounds):
+                    print(f"... eval episode {i+1}")
                     logger.info("Running round {} of parallel evaluation "
                                 "({}/{} episodes)".format(
                                     i, (i + 1) * num_workers, num_episodes))

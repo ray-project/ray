@@ -2137,6 +2137,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/parallel_evaluation_and_training_tf",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["examples", "examples_P"],
+    size = "small",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--stop-reward=50.0"]
+)
+
+py_test(
     name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
