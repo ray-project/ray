@@ -292,8 +292,8 @@ class StandardAutoscaler:
                             quantity=1,
                             aggregate=operator.add)
                     else:
-                        logger.error(f"StandardAutoscaler: {node_id}:"
-                                     " Failed to setup/initialize node."
+                        logger.info(f"StandardAutoscaler: {node_id}:"
+                                     " Failed to update node."
                                      " Node has already been terminated.")
                 if nodes_to_terminate:
                     self.provider.terminate_nodes(nodes_to_terminate)
