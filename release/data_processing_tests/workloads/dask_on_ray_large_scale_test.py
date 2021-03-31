@@ -269,7 +269,7 @@ def main():
     # change to save files to a different place
     file_save_dirpath = "."
     # Adjust this to change how many _output_ files are saved at a time.
-    BATCH_SIZE = 1500
+    BATCH_SIZE = 1000
 
     ray.init(address="auto")
     logging.info("Ray available resources = {}".format(
