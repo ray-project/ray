@@ -2,7 +2,10 @@ package io.ray.api.options;
 
 import io.ray.api.Ray;
 import io.ray.api.placementgroup.PlacementGroup;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** The options for creating actor. */
@@ -10,7 +13,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final boolean global;
   public final String name;
   public final int maxRestarts;
-  public final String jvmOptions;
+  public final List<String> jvmOptions;
   public final int maxConcurrency;
   public final PlacementGroup group;
   public final int bundleIndex;
@@ -20,7 +23,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
       String name,
       Map<String, Double> resources,
       int maxRestarts,
-      String jvmOptions,
+      List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex) {
@@ -40,7 +43,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private String name;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
-    private String jvmOptions = null;
+    private List<String> jvmOptions = new ArrayList<>();
     private int maxConcurrency = 1;
     private PlacementGroup group;
     private int bundleIndex;
@@ -120,8 +123,22 @@ public class ActorCreationOptions extends BaseTaskOptions {
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
+     * @deprecated Use {@link #setJvmOptions(List)} instead.
      */
     public Builder setJvmOptions(String jvmOptions) {
+      this.jvmOptions = Arrays.asList(jvmOptions.split(" +"));
+      return this;
+    }
+
+    /**
+     * Set the JVM options for the Java worker that this actor is running in.
+     *
+     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
+     *
+     * @param jvmOptions JVM options for the Java worker that this actor is running in.
+     * @return self
+     */
+    public Builder setJvmOptions(List<String> jvmOptions) {
       this.jvmOptions = jvmOptions;
       return this;
     }
