@@ -78,7 +78,7 @@ def test_hybrid_policy(ray_start_cluster):
     ]
     for node_ip in node_resources:
         print("Warming worker pool on ", node_ip)
-        ray.get(get_node.remote())
+        ray.get([get_node.remote() for _ in range(num_cpus)])
 
     # Below the hybrid threshold we pack on the local node first.
     nodes = ray.get([get_node.remote() for _ in range(5)])
@@ -88,6 +88,7 @@ def test_hybrid_policy(ray_start_cluster):
     nodes = ray.get([get_node.remote() for _ in range(10)])
     counter = collections.Counter(nodes)
     for node_id in counter:
+        print(f"{node_id}: {counter[node_id]}")
         assert counter[node_id] == 5
 
     # Once all nodes are past the hybrid threshold we round robin.
@@ -96,6 +97,7 @@ def test_hybrid_policy(ray_start_cluster):
     nodes = ray.get([get_node.remote() for _ in range(20)])
     counter = collections.Counter(nodes)
     for node_id in counter:
+        print(f"{node_id}: {counter[node_id]}")
         assert counter[node_id] == 10, counter
 
 
