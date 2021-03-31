@@ -106,15 +106,6 @@ class Ray {
   static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
                                                      ExecFuncType &exec_func,
                                                      ArgTypes &... args);
-
-  /// Include the `Call` methods for calling actor methods.
-  /// Used by ActorHandle to implement .Call()
-  /// It is called by ActorHandle: Ray::Task(&Counter::Add, counter/*instance of
-  /// Counter*/, 1);
-  template <typename ReturnType, typename ActorType, typename... Args>
-  static ActorTaskCaller<ReturnType> Task(
-      ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-      ActorHandle<ActorType> &actor, Args... args);
 };
 
 }  // namespace api
@@ -221,17 +212,6 @@ ActorCreator<ActorType> Ray::Actor(
 /// TODO: The bellow specific version of creating an actor will be replaced with generic
 /// version later.
 #include <ray/api/generated/create_actors_impl.generated.h>
-
-/// Actor task.
-template <typename ReturnType, typename ActorType, typename... Args>
-ActorTaskCaller<ReturnType> Ray::Task(
-    ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-    ActorHandle<ActorType> &actor, Args... args) {
-  return CallActorInternal<ReturnType, ActorType>(
-      actor_func,
-      ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>,
-      actor, args...);
-}
 
 }  // namespace api
 }  // namespace ray
