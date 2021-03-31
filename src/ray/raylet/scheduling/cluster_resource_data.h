@@ -94,6 +94,9 @@ class TaskResourceInstances {
   /// The list of instances of each custom resource allocated to a task.
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
+  /// Get instances based on the string.
+  const std::vector<FixedPoint> Get(const std::string &resource_name,
+                                    const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
