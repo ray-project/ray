@@ -60,7 +60,7 @@ def test_hybrid_policy(ray_start_cluster):
     @ray.remote(num_cpus=1)
     def get_node():
         # Sleep to avoid lease reuse.
-        time.sleep(1)
+        time.sleep(3)
         return ray.worker.global_worker.current_node_id
 
     cluster = ray_start_cluster
