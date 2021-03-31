@@ -562,7 +562,6 @@ class Trainer(Trainable):
     @PublicAPI
     def train(self) -> ResultDict:
         """Overrides super.train to synchronize global vars."""
-        print("Training ...")
 
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
@@ -830,14 +829,12 @@ class Trainer(Trainable):
                 for _ in range(self.config["evaluation_num_episodes"]):
                     self.evaluation_workers.local_worker().sample()
             else:
-                print("Evaluating ...")
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
                               self.config["evaluation_num_workers"]))
                 num_workers = len(self.evaluation_workers.remote_workers())
                 num_episodes = num_rounds * num_workers
                 for i in range(num_rounds):
-                    print(f"... eval episode {i+1}")
                     logger.info("Running round {} of parallel evaluation "
                                 "({}/{} episodes)".format(
                                     i, (i + 1) * num_workers, num_episodes))

@@ -2142,7 +2142,7 @@ py_test(
     tags = ["examples", "examples_P"],
     size = "small",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6"]
 )
 
 py_test(
