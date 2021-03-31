@@ -1,6 +1,5 @@
 import logging
 import pytest
-import sys
 from unittest.mock import patch
 
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner

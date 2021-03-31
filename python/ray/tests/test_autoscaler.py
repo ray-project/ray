@@ -10,7 +10,6 @@ import unittest
 from unittest.mock import Mock
 import yaml
 import copy
-import sys
 from jsonschema.exceptions import ValidationError
 
 import ray
