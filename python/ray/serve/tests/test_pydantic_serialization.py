@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 from fastapi import FastAPI
@@ -165,6 +165,22 @@ def test_serialize_serve_dataclass(start_ray):
         pass
 
     ray.get(consume.remote(BackendConfig()))
+
+
+@pytest.mark.skip("Fails. https://github.com/ray-project/ray/issues/14960.")
+def test_serialize_nested_field(start_ray):
+    class B(BaseModel):
+        v: List[int]
+
+    # this shouldn't error
+    B(v=[1])
+
+    @ray.remote
+    def func():
+        # this shouldn't error
+        return B(v=[1])
+
+    ray.get(func.remote())
 
 
 if __name__ == "__main__":

@@ -69,14 +69,14 @@ def load_package(config_path: str) -> "_RuntimePackage":
     # Autofill working directory by uploading to GCS storage.
     if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
-            working_dir=base_dir, modules=[])
+            working_dir=base_dir, py_modules=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
 
         def do_register_package():
             if not runtime_support.package_exists(pkg_uri):
                 tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
                 runtime_support.create_project_package(
-                    working_dir=base_dir, modules=[], output_path=tmp_path)
+                    working_dir=base_dir, py_modules=[], output_path=tmp_path)
                 # TODO(ekl) does this get garbage collected correctly with the
                 # current job id?
                 runtime_support.push_package(pkg_uri, tmp_path)

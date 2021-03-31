@@ -219,7 +219,7 @@ class ValueNetworkMixin:
                 input_dict = self._lazy_tensor_dict(input_dict)
                 model_out, _ = self.model(input_dict)
                 # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                return self.model.value_function()[0].item()
 
         # When not doing GAE, we do not require the value function's output.
         else:

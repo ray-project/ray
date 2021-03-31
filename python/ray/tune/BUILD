@@ -312,7 +312,7 @@ py_test(
 
 py_test(
     name = "ext_pytorch",
-    size = "medium",
+    size = "large",
     srcs = ["tests/ext_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],

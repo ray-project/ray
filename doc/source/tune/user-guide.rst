@@ -273,12 +273,18 @@ You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoin
     )
 
 
+.. _tune-distributed-checkpointing:
+
 Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing. Also, if running Tune on Kubernetes, be sure to use the :ref:`KubernetesSyncer <tune-kubernetes>` to transfer files between different pods.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
+
+If you are running Ray Tune on Kubernetes, you should usually use a
+:func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
+Please :ref`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
 disable cross-node syncing:
@@ -604,9 +610,48 @@ with docker containers, you will need to pass a
 
 Using Tune with Kubernetes
 --------------------------
-Tune automatically syncs files and checkpoints between different remote
-nodes as needed.
-To make this work in your Kubernetes cluster, you will need to pass a
+Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
+This usually happens via SSH, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
+especially when running many trials in parallel.
+
+Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
+is necessary. There are two main options.
+
+First, you can use a :func:`DurableTrainable <ray.tune.durable>` to store your
+logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        tune.durable(train_fn),
+        # ...,
+        sync_config=tune.SyncConfig(
+            sync_to_driver=False,
+            upload_dir="s3://your-s3-bucket/durable-trial/"
+        )
+    )
+
+Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        train_fn,
+        # ...,
+        local_dir="/path/to/shared/storage",
+        sync_config=tune.SyncConfig(
+            # Do not sync to driver because we are on shared storage
+            sync_to_driver=False
+        )
+    )
+
+
+Lastly, if you still want to use ssh for trial synchronization, but are not running
+on the Ray cluster launcher, you might need to pass a
 ``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
@@ -619,6 +664,9 @@ You have to specify your Kubernetes namespace explicitly:
 
     tune.run(train, sync_config=sync_config)
 
+
+Please note that we strongly encourage you to use one of the other two options instead, as they will
+result in less overhead and don't require pods to SSH into each other.
 
 
 .. _tune-log_to_file:

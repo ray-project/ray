@@ -83,8 +83,13 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
           NodeID::FromBinary(location_reply.spilled_node_id());
       RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
                      << new_spilled_node_id;
-      *spilled_url = new_spilled_url;
-      *spilled_node_id = new_spilled_node_id;
+      if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
+        *spilled_url = "";
+        *spilled_node_id = NodeID::Nil();
+      } else {
+        *spilled_url = new_spilled_url;
+        *spilled_node_id = new_spilled_node_id;
+      }
       is_updated = true;
     }
   }

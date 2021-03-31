@@ -63,6 +63,7 @@ class SampleBatch(dict):
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
+
         self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
         if self.seq_lens is None and len(args) > 0 and isinstance(
                 args[0], dict):
@@ -70,6 +71,7 @@ class SampleBatch(dict):
                 "seq_lens", None))
         if isinstance(self.seq_lens, list):
             self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
+
         self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
@@ -428,7 +430,9 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.values())
+        return sum(
+            v.nbytes if isinstance(v, np.ndarray) else sys.getsizeof(v)
+            for v in self.values())
 
     def get(self, key, default=None):
         try:

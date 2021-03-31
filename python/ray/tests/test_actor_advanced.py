@@ -335,6 +335,7 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
@@ -371,6 +372,7 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -411,6 +413,7 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
