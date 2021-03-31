@@ -41,3 +41,13 @@ BACKEND_RECONFIGURE_METHOD = "reconfigure"
 #: Internally reserved version tag that cannot be used by applications.
 # TODO(edoakes): this should be removed when we remove the old codepath.
 RESERVED_VERSION_TAG = "__serve_version__"
+
+#: All defined HTTP methods.
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+ALL_HTTP_METHODS = [
+    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
+    "PATCH"
+]
+
+#: Path suffix used to wildcard all subpaths.
+WILDCARD_PATH_SUFFIX = "/{wildcard:path}"

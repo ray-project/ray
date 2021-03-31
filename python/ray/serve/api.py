@@ -1092,6 +1092,10 @@ def ingress(
             # the fast api routes here.
             make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
+            if not path_prefix.startswith("/"):
+                raise ValueError("path_prefix must start with '/'")
+            if "{" in path_prefix or "}" in path_prefix:
+                raise ValueError("path_prefix may not contain wildcards")
             cls._serve_path_prefix = path_prefix
 
         return cls
@@ -1101,7 +1105,7 @@ def ingress(
 
 class ServeDeployment(ABC):
     @classmethod
-    def deploy(self, *init_args) -> None:
+    def deploy(cls, *init_args) -> None:
         """Deploy this deployment.
 
         Args:
@@ -1112,17 +1116,17 @@ class ServeDeployment(ABC):
         raise NotImplementedError()
 
     @classmethod
-    def delete(self) -> None:
+    def delete(cls) -> None:
         """Delete this deployment."""
         raise NotImplementedError()
 
     @classmethod
-    def get_handle(self, sync: Optional[bool] = True
+    def get_handle(cls, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
     @classmethod
-    def options(self,
+    def options(cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
                 version: Optional[str] = None,

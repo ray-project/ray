@@ -16,7 +16,11 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
+from ray.serve.constants import (
+    ALL_HTTP_METHODS,
+    RESERVED_VERSION_TAG,
+    WILDCARD_PATH_SUFFIX,
+)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -258,18 +262,19 @@ class ServeController:
             # Backend config should be synchronized so the backend worker
             # is aware of it.
             backend_config.internal_metadata.path_prefix = f"/{name}"
+        else:
+            if ("{" in replica_config.path_prefix
+                    or "}" in replica_config.path_prefix):
+                raise ValueError(
+                    "Wildcard routes are not supported for deployment paths.")
 
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            http_route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-            http_methods = [
-                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
-                "TRACE", "PATCH"
-            ]
+            http_route = replica_config.path_prefix + WILDCARD_PATH_SUFFIX
+            http_methods = ALL_HTTP_METHODS
         else:
             http_route = replica_config.path_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
