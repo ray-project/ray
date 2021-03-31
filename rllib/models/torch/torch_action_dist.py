@@ -116,7 +116,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        arr = [cat.deterministic_sample() for cat in self.cats]
+        arr = [torch.argmax(cat.probs, -1) for cat in self.cats]
         sample_ = torch.stack(arr, dim=1)
         if isinstance(self.action_space, gym.spaces.Box):
             sample_ = torch.reshape(sample_,
