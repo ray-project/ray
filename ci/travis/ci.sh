@@ -143,6 +143,7 @@ test_python() {
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
+      -python/ray/tests:test_actor_failures # flako
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
