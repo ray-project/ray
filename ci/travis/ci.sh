@@ -157,6 +157,7 @@ test_python() {
       -python/ray/tests:test_failure
       -python/ray/tests:test_failure_2
       -python/ray/tests:test_global_gc
+      -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
