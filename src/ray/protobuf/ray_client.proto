@@ -16,8 +16,6 @@ syntax = "proto3";
 
 package ray.rpc;
 
-import "src/ray/protobuf/common.proto";
-
 enum Type { DEFAULT = 0; }
 
 // An argument to a ClientTask.
