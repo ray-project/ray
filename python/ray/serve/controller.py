@@ -290,7 +290,7 @@ class ServeController:
             backend_info = BackendInfo(
                 worker_class=create_backend_replica(
                     replica_config.backend_def),
-                version=None,
+                version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)
 

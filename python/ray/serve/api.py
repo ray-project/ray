@@ -1176,18 +1176,13 @@ def make_deployment_cls(
             if len(init_args) == 0 and cls._init_args is not None:
                 init_args = cls._init_args
 
-            if cls._version is not None:
-                version = cls._version
-            else:
-                version = get_random_letters()
-
             return _get_global_client().deploy(
                 cls._name,
                 cls._backend_def,
                 *init_args,
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
-                version=version,
+                version=cls._version,
                 _internal=True)
 
         @classmethod
