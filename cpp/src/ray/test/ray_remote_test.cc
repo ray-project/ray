@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/serializer.h>
+
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
 #include "ray/core.h"
@@ -35,6 +36,26 @@ void VoidFuncWithArgs(int x, int y) { out_for_void_func_no_args = (x + y); }
 int NotRegisteredFunc(int x) { return x; }
 
 void ExceptionFunc(int x) { throw std::invalid_argument(std::to_string(x)); }
+
+class DummyObject {
+ public:
+  int count;
+
+  MSGPACK_DEFINE(count);
+  DummyObject() = default;
+  DummyObject(int init) {
+    std::cout << "construct DummyObject\n";
+    count = init;
+  }
+
+  int Add(int x, int y) { return x + y; }
+
+  ~DummyObject() { std::cout << "destruct DummyObject\n"; }
+
+  static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
+};
+RAY_REMOTE(DummyObject::FactoryCreate);
+RAY_REMOTE(&DummyObject::Add);
 
 RAY_REMOTE(PlusOne);
 RAY_REMOTE(PlusTwo);
