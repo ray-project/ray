@@ -35,7 +35,7 @@ class ObjectStoreNotificationManager {
  public:
   ObjectStoreNotificationManager(instrumented_io_context &io_service)
       : main_service_(&io_service), num_adds_processed_(0), num_removes_processed_(0) {}
-  virtual ~ObjectStoreNotificationManager() {}
+  ~ObjectStoreNotificationManager() {}
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   /// already exist in the local store
