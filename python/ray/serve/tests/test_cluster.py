@@ -21,7 +21,8 @@ def ray_cluster():
 
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=3)
+    cluster.connect()
 
     @serve.deployment("D", version="1", num_replicas=1)
     def D(*args):
@@ -36,7 +37,6 @@ def test_scale_up(ray_cluster):
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
 
-    ray.init(head_node.address)
     serve.start(detached=True)
     client = serve.connect()
 
@@ -61,10 +61,11 @@ def test_scale_up(ray_cluster):
     assert pids2.issubset(pids3)
 
 
-@pytest.mark.skip("Currently hangs due to max_task_retries=-1.")
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
+    cluster.connect()
+
     worker_node = cluster.add_node(num_cpus=2)
 
     @serve.deployment("D", version="1", num_replicas=3)
@@ -80,7 +81,6 @@ def test_node_failure(ray_cluster):
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
 
-    ray.init(cluster.address)
     serve.start(detached=True)
 
     print("Initial deploy.")
