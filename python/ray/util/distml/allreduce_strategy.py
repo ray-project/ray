@@ -16,16 +16,23 @@ class AllReduceStrategy(BaseTrainer):
 
     def train(self, *, max_retries=1, info=None):
         # train one epoch
-        rets = [replica.train.remote()
-                for _, replica in enumerate(self.data_parallel_group.replicas)]
-        ray.get(rets)
 
-    def train_batch(self, batches):
-        # First, let each worker proceed with a train_step
-        # self.data_parallel_group.train()
-        rets = [replica.train_batch.remote(batches[i])
-                for i, replica in enumerate(self.data_parallel_group.replicas)]
-        ray.get(rets)
+        stats = self.data_parallel_group.train(max_retries=1, info={})
+        return stats
+        # rets = [replica.train.remote()
+        #         for _, replica in enumerate(self.data_parallel_group.replicas)]
+        # ray.get(rets)
+
+    # def train_batch(self, batches):
+    #     # First, let each worker proceed with a train_step
+    #     # self.data_parallel_group.train()
+    #     rets = [replica.train_batch.remote(batches[i])
+    #             for i, replica in enumerate(self.data_parallel_group.replicas)]
+    #     ray.get(rets)
+
+    def validate(self):
+        stats = self.data_parallel_group.validate(info={})
+        return stats[0] # validate result should be the same in all workers
 
     def _start_workers(self, num_workers):
         """Create worker(actor), maybe need worker group to manager these workers.
@@ -63,6 +70,10 @@ class AllReduceStrategy(BaseTrainer):
         self.data_parallel_group.start_replicas(num_workers)
 
 
+    def shutdown(self, force=False):
+        self.data_parallel_group.shutdown(force=force)
+
+
 class Replica:
     """Express the training semantics of data-parallel replica.
 
@@ -85,16 +96,19 @@ class Replica:
     def setup_collective_group(self, rank, world_size, backend, group_name="default"):
         self.rank = rank
         self.group_name = group_name
+        self.group_size = world_size
         col.init_collective_group(world_size, rank,
                                   backend=backend, group_name=group_name)
         return
 
     def train(self):
+        # need to record some metric, like loss
         for batch in self.training_operator.yield_train_loader():
-            self.train_batch(batch)
+            loss_val = self.train_batch(batch)
+        return 1
 
     def train_batch(self, batch):
-        updates = self.derive_updates(batch)
+        loss_val, updates = self.derive_updates(batch)
         assert updates
         # TODO: make the signature correct
         
@@ -103,6 +117,7 @@ class Replica:
         for g in self.updates_transform(updates):
             col.allreduce(g)
         self.apply_updates(updates)
+        return loss_val
 
     def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
@@ -116,12 +131,15 @@ class Replica:
     def updates_transform(self, updates):
         return self.training_operator.updates_transform(updates)
 
+    def validate(self, info={}):
+        return self.training_operator.validate(info)
+
     def shutdown(self):
         # destroy the collective group resources on this process
         col.destroy_collective_group(self.group_name)
         if not self.training_operator:
             del self.training_operator
-
+        return 1
 
 class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
@@ -166,8 +184,23 @@ class DataParallelGroup:
         # setup the model training operator
         ray.get(self._setup_operator())
 
+    def train(self, max_retries=1, info={}):
+        rets = [replica.train.remote()
+                for _, replica in enumerate(self.replicas)]
+        stats = ray.get(rets)
+        return stats
+
+    def validate(self, info={}):
+        rets = [replica.validate.remote(info)
+                for _, replica in enumerate(self.replicas)]
+        stats = ray.get(rets)
+        return stats
+
     def shutdown(self, force=False):
-        pass
+        rets = [replica.shutdown.remote()
+                for _, replica in enumerate(self.replicas)]
+        stats = ray.get(rets)
+        return stats
 
     def reset(self):
         pass

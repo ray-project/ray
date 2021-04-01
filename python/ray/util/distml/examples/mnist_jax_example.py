@@ -12,6 +12,7 @@ from ray.util.distml.allreduce_strategy import AllReduceStrategy
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE, override
 
+import numpy as np
 import numpy.random as npr
 import jax
 from jax import jit, grad, random
@@ -87,7 +88,6 @@ class CifarTrainingOperator(JAXTrainingOperator):
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
-
         # def accuracy_batch(outputs, targets):
         #     predicted_class = jnp.argmax(outputs, axis=-1)
         #     target_class = jnp.argmax(targets, axis=-1)
@@ -154,6 +154,7 @@ if __name__ == "__main__":
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
+        print(val_stats)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     print(trainer1.validate())
