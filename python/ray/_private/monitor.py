@@ -168,7 +168,9 @@ class Monitor:
             self.update_resource_requests()
             self.update_event_summary()
             status = {
-                "load_metrics_report": self.load_metrics.summary()._asdict()
+                "load_metrics_report": self.load_metrics.summary()._asdict(),
+                "time": time.time(),
+                "monitor_pid": os.getpid()
             }
 
             # Process autoscaling actions
@@ -259,8 +261,9 @@ class Monitor:
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
 
     def _signal_handler(self, sig, frame):
-        return self._handle_failure(f"Terminated with signal {sig}\n" +
-                                    "".join(traceback.format_stack(frame)))
+        self._handle_failure(f"Terminated with signal {sig}\n" +
+                             "".join(traceback.format_stack(frame)))
+        sys.exit(sig + 128)
 
     def run(self):
         # Register signal handlers for autoscaler termination.

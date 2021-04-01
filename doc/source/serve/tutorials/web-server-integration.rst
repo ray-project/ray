@@ -69,7 +69,7 @@ Here's how to run this example:
 2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.
 
 .. note::
-  Because we have omitted the keyword argument ``route`` in ``client.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.
+  Because we have omitted the keyword argument ``route`` in ``serve.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.
 
 3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker --bind localhost:8001`` to start the AIOHTTP app using gunicorn. We bind to port 8001 because the Ray Dashboard is already using port 8000 by default.
 

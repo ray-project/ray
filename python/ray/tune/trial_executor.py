@@ -285,3 +285,7 @@ class TrialExecutor:
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return False
+
+    def set_max_pending_trials(self, max_pending: int):
+        """Set the maximum number of allowed pending trials."""
+        pass

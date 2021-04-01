@@ -14,6 +14,39 @@ from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
+# This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
+# NOTE: Commented out metrics are not available in this test.
+# TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
+_METRICS = [
+    "ray_gcs_latency_sum",
+    # "ray_local_available_resource",
+    # "ray_local_total_resource",
+    # "ray_live_actors",
+    # "ray_restarting_actors",
+    "ray_object_store_available_memory",
+    "ray_object_store_used_memory",
+    "ray_object_store_num_local_objects",
+    "ray_object_manager_num_pull_requests",
+    "ray_object_directory_subscriptions",
+    "ray_object_directory_updates",
+    "ray_object_directory_lookups",
+    "ray_object_directory_added_locations",
+    "ray_object_directory_removed_locations",
+    # "ray_num_infeasible_tasks",
+    "ray_heartbeat_report_ms_sum",
+    "ray_process_startup_time_ms_sum",
+    "ray_avg_num_scheduled_tasks",
+    "ray_avg_num_executed_tasks",
+    "ray_avg_num_spilled_back_tasks",
+    # "ray_object_spilling_bandwidth_mb",
+    # "ray_object_restoration_bandwidth_mb",
+    # "ray_unintentional_worker_failures_total",
+    # "ray_node_failure_total",
+    "ray_pending_actors",
+    "ray_pending_placement_groups",
+    "ray_outbound_heartbeat_size_kb_sum",
+]
+
 
 @pytest.fixture
 def _setup_cluster_for_test(ray_start_cluster):
@@ -96,8 +129,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         ]:
             assert any(metric_name in full_name for full_name in metric_names)
 
-        # Make sure GCS server metrics are recorded.
-        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
+        # Make sure metrics are recorded.
+        for metric in _METRICS:
+            assert metric in metric_names
 
         # Make sure the numeric values are correct
         test_counter_sample = [

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
+from ray.job_config import JobConfig
 import ray.cloudpickle as cloudpickle
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
@@ -145,6 +146,7 @@ class Worker:
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
+
         self.closed = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
@@ -155,7 +157,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -209,7 +211,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -299,7 +301,8 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -393,6 +396,11 @@ class Worker:
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
 
+    def internal_kv_exists(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
         req = ray_client_pb2.KVPutRequest(
@@ -421,6 +429,7 @@ class Worker:
         an actual response.
         """
         if self.server is not None:
+            logger.debug("Pinging server.")
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
             return result is not None
@@ -428,6 +437,30 @@ class Worker:
 
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _server_init(self, job_config: JobConfig):
+        """Initialize the server"""
+        try:
+            if job_config is None:
+                init_req = ray_client_pb2.InitRequest()
+                self.data_client.Init(init_req)
+                return
+
+            import ray._private.runtime_env as runtime_env
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                if runtime_env.PKG_DIR is None:
+                    runtime_env.PKG_DIR = tmp_dir
+                # Generate the uri for runtime env
+                runtime_env.rewrite_working_dir_uri(job_config)
+                init_req = ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(job_config))
+                self.data_client.Init(init_req)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

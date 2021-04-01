@@ -7,13 +7,14 @@ import starlette.responses
 import starlette.routing
 
 import ray
+from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve.common import EndpointTag
-from ray.serve.constants import LongPollKey
+from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
 
@@ -21,19 +22,17 @@ class ServeStarletteEndpoint:
     """Wraps the given Serve endpoint in a Starlette endpoint.
 
     Implements the ASGI protocol.  Constructs a Starlette endpoint for use by
-    a Starlette app or Starlette Router which calls the given Serve endpoint
-    using the given Serve client.
+    a Starlette app or Starlette Router which calls the given Serve endpoint.
 
     Usage:
         route = starlette.routing.Route(
                 "/api",
-                ServeStarletteEndpoint(self.client, endpoint_tag),
+                ServeStarletteEndpoint(endpoint_tag),
                 methods=methods)
         app = starlette.applications.Starlette(routes=[route])
     """
 
-    def __init__(self, client, endpoint_tag: EndpointTag):
-        self.client = client
+    def __init__(self, endpoint_tag: EndpointTag):
         self.endpoint_tag = endpoint_tag
         # This will be lazily populated when the first request comes in.
         # TODO(edoakes): we should be able to construct the handle here, but
@@ -45,7 +44,7 @@ class ServeStarletteEndpoint:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         if self.handle is None:
-            self.handle = self.client.get_handle(self.endpoint_tag, sync=False)
+            self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
         object_ref = await self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
@@ -86,12 +85,11 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name))
     """
 
-    def __init__(self, controller_name):
+    def __init__(self, controller_name: str):
         # Set the controller name so that serve.connect() will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(None, None,
-                                                    controller_name)
-        self.client = ray.serve.connect()
+                                                    controller_name, None)
 
         controller = ray.get_actor(controller_name)
 
@@ -100,8 +98,8 @@ class HTTPProxy:
         # route -> (endpoint_tag, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
-        self.long_poll_client = LongPollAsyncClient(controller, {
-            LongPollKey.ROUTE_TABLE: self._update_route_table,
+        self.long_poll_client = LongPollClient(controller, {
+            LongPollNamespace.ROUTE_TABLE: self._update_route_table,
         })
 
         self.request_counter = metrics.Counter(
@@ -109,15 +107,13 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
-    async def _update_route_table(self, route_table):
+    def _update_route_table(self, route_table: Dict[str, List[str]]):
         logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 
         routes = [
             starlette.routing.Route(
-                route,
-                ServeStarletteEndpoint(self.client, endpoint_tag),
-                methods=methods)
+                route, ServeStarletteEndpoint(endpoint_tag), methods=methods)
             for route, (endpoint_tag, methods) in route_table.items()
             if not self._is_headless(route)
         ]
@@ -161,13 +157,12 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPProxyActor:
-    async def __init__(
-            self,
-            host,
-            port,
-            controller_name,
-            http_middlewares: List[
-                "starlette.middleware.Middleware"] = []):  # noqa: F821
+    def __init__(self,
+                 host: str,
+                 port: int,
+                 controller_name: str,
+                 http_middlewares: List[
+                     "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
         self.port = port
 

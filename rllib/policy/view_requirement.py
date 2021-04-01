@@ -10,9 +10,6 @@ torch, _ = try_import_torch()
 class ViewRequirement:
     """Single view requirement (for one column in an SampleBatch/input_dict).
 
-    Note: This is an experimental class used only if
-    `_use_trajectory_view_api` in the config is set to True.
-
     Policies and ModelV2s return a Dict[str, ViewRequirement] upon calling
     their `[train|inference]_view_requirements()` methods, where the str key
     represents the column name (C) under which the view is available in the

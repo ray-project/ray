@@ -8,8 +8,6 @@ from ray.serve.config import BackendConfig
 
 
 def test_batching(serve_instance):
-    client = serve_instance
-
     class BatchingExample:
         def __init__(self):
             self.count = 0
@@ -22,12 +20,12 @@ def test_batching(serve_instance):
 
     # set the max batch size
     config = BackendConfig(max_batch_size=5, batch_wait_timeout=1)
-    client.create_backend("counter:v11", BatchingExample, config=config)
-    client.create_endpoint(
+    serve.create_backend("counter:v11", BatchingExample, config=config)
+    serve.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
 
     future_list = []
-    handle = client.get_handle("counter1")
+    handle = serve.get_handle("counter1")
     for _ in range(20):
         f = handle.remote(temp=1)
         future_list.append(f)
@@ -40,8 +38,6 @@ def test_batching(serve_instance):
 
 
 def test_batching_exception(serve_instance):
-    client = serve_instance
-
     class NoListReturned:
         def __init__(self):
             self.count = 0
@@ -52,17 +48,15 @@ def test_batching_exception(serve_instance):
 
     # Set the max batch size.
     config = BackendConfig(max_batch_size=5)
-    client.create_backend("exception:v1", NoListReturned, config=config)
-    client.create_endpoint("exception-test", backend="exception:v1")
+    serve.create_backend("exception:v1", NoListReturned, config=config)
+    serve.create_endpoint("exception-test", backend="exception:v1")
 
-    handle = client.get_handle("exception-test")
+    handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
 
 
 def test_app_level_batching(serve_instance):
-    client = serve_instance
-
     class BatchingExample:
         def __init__(self):
             self.count = 0
@@ -77,12 +71,12 @@ def test_app_level_batching(serve_instance):
             return await self.handle_batch(request)
 
     # set the max batch size
-    client.create_backend("counter:v11", BatchingExample)
-    client.create_endpoint(
+    serve.create_backend("counter:v11", BatchingExample)
+    serve.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
 
     future_list = []
-    handle = client.get_handle("counter1")
+    handle = serve.get_handle("counter1")
     for _ in range(20):
         f = handle.remote(temp=1)
         future_list.append(f)
@@ -95,8 +89,6 @@ def test_app_level_batching(serve_instance):
 
 
 def test_app_level_batching_exception(serve_instance):
-    client = serve_instance
-
     class NoListReturned:
         def __init__(self):
             self.count = 0
@@ -109,10 +101,10 @@ def test_app_level_batching_exception(serve_instance):
             return await self.handle_batch(request)
 
     # Set the max batch size.
-    client.create_backend("exception:v1", NoListReturned)
-    client.create_endpoint("exception-test", backend="exception:v1")
+    serve.create_backend("exception:v1", NoListReturned)
+    serve.create_endpoint("exception-test", backend="exception:v1")
 
-    handle = client.get_handle("exception-test")
+    handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
 

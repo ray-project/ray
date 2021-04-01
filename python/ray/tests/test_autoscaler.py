@@ -444,7 +444,12 @@ class AutoscalingTest(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNode(self):
-        config_path = self.write_config(SMALL_CLUSTER)
+        config = copy.deepcopy(SMALL_CLUSTER)
+        head_run_option = "--kernel-memory=10g"
+        standard_run_option = "--memory-swap=5g"
+        config["docker"]["head_run_options"] = [head_run_option]
+        config["docker"]["run_options"] = [standard_run_option]
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
@@ -477,7 +482,7 @@ class AutoscalingTest(unittest.TestCase):
 
         self.provider.create_node = _create_node
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
@@ -491,6 +496,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "start_ray_head")
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+        runner.assert_has_call("1.2.3.4", pattern=head_run_option)
+        runner.assert_has_call("1.2.3.4", pattern=standard_run_option)
 
         docker_mount_prefix = get_docker_host_mount_location(
             SMALL_CLUSTER["cluster_name"])
@@ -503,6 +510,7 @@ class AutoscalingTest(unittest.TestCase):
         pattern_to_assert = \
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+        return config
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodePodman(self):
@@ -553,12 +561,12 @@ class AutoscalingTest(unittest.TestCase):
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testGetOrCreateHeadNodeFromStopped(self):
-        self.testGetOrCreateHeadNode()
+        config = self.testGetOrCreateHeadNode()
         self.provider.cache_stopped = True
         existing_nodes = self.provider.non_terminated_nodes({})
         assert len(existing_nodes) == 1
         self.provider.terminate_node(existing_nodes[0])
-        config_path = self.write_config(SMALL_CLUSTER)
+        config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
         # Two initial calls to docker cp, + 2 more calls during run_init
@@ -566,7 +574,7 @@ class AutoscalingTest(unittest.TestCase):
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=False,
@@ -619,12 +627,12 @@ class AutoscalingTest(unittest.TestCase):
             assert first_rsync < first_cp
 
     def testGetOrCreateHeadNodeFromStoppedRestartOnly(self):
-        self.testGetOrCreateHeadNode()
+        config = self.testGetOrCreateHeadNode()
         self.provider.cache_stopped = True
         existing_nodes = self.provider.non_terminated_nodes({})
         assert len(existing_nodes) == 1
         self.provider.terminate_node(existing_nodes[0])
-        config_path = self.write_config(SMALL_CLUSTER)
+        config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
         # Two initial calls to docker cp, + 2 more calls during run_init
@@ -632,7 +640,7 @@ class AutoscalingTest(unittest.TestCase):
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
-            SMALL_CLUSTER,
+            config,
             printable_config_file=config_path,
             no_restart=False,
             restart_only=True,
@@ -1595,6 +1603,10 @@ class AutoscalingTest(unittest.TestCase):
                 "ray-legacy-worker-node-type." in events), events
         assert ("Removing 4 nodes of type "
                 "ray-legacy-worker-node-type (idle)." in events), events
+
+        summary = autoscaler.summary()
+        assert len(summary.failed_nodes) == 0, \
+            "Autoscaling policy decisions shouldn't result in failed nodes"
 
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()

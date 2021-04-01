@@ -426,7 +426,7 @@ def postprocess_nstep_and_prio(policy: Policy,
             batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (np.abs(convert_to_numpy(td_errors)) +
                           policy.config["prioritized_replay_eps"])
-        batch.data[PRIO_WEIGHTS] = new_priorities
+        batch[PRIO_WEIGHTS] = new_priorities
 
     return batch
 
@@ -446,7 +446,6 @@ DQNTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False,
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,

@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 import sys
@@ -413,6 +414,21 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
+
+
+def test_error_serialization(ray_start_regular_shared):
+    """Test that errors will be serialized properly."""
+    fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
+    with pytest.raises(FileNotFoundError):
+        with ray_start_client_server() as ray:
+
+            @ray.remote
+            def g():
+                with open(fake_path, "r") as f:
+                    f.read()
+
+            # Raises a FileNotFoundError
+            ray.get(g.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

@@ -400,7 +400,7 @@ we can now run Ray programs on our cluster.
 In the following examples, we assume that we have a running Ray cluster with one head node and
 two worker nodes. This can be achieved in one of two ways:
 
-- Using the :ref:`Operator <k8s-operator>` with the example resource `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
+- Using the :ref:`Operator <k8s-operator>` with the example resource `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
 - Using :ref:`Cluster Launcher <k8s-cluster-launcher>`. Modify the example file `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
   by setting the field ``available_node_types.worker_node.min_workers``
   to 2 and then run ``ray up`` with the modified config.

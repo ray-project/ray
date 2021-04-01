@@ -48,9 +48,9 @@ class ImageModel:
 
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
-client = serve.start()
-client.create_backend("resnet18:v0", ImageModel)
-client.create_endpoint(
+serve.start()
+serve.create_backend("resnet18:v0", ImageModel)
+serve.create_endpoint(
     "predictor",
     backend="resnet18:v0",
     route="/image_predict",

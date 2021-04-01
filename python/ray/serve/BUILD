@@ -18,6 +18,30 @@ py_test(
 )
 
 py_test(
+    name = "test_api_new",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_get_deployment",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -66,6 +90,14 @@ py_test(
 )
 
 py_test(
+    name = "test_backend_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
@@ -94,7 +126,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -152,6 +184,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cluster",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_util",
     size = "small",
     srcs = serve_tests_srcs,
@@ -167,6 +207,21 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_pydantic_serialization",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_fastapi",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
 
 # Runs test_api and test_failure with injected failures in the controller.
 # TODO(simon): Tests are disabled until #11683 is fixed.

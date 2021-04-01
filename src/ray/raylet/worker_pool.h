@@ -80,6 +80,10 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -253,6 +257,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -342,7 +349,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// otherwise it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      std::vector<std::string> dynamic_options = {},
+      const std::vector<std::string> &dynamic_options = {},
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.

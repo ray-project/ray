@@ -121,7 +121,7 @@ def get_autodetected_resources(container_data):
         if node_type_resources[key] == 0:
             del node_type_resources[key]
 
-    memory_limits = _get_resource(container_resources, "memory", "limits")
+    memory_limits = get_resource(container_resources, "memory")
     node_type_resources["memory"] = int(
         memory_limits *
         (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION))

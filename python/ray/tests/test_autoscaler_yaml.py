@@ -10,6 +10,8 @@ import copy
 from unittest.mock import MagicMock, Mock, patch
 import pytest
 
+from ray.autoscaler._private.azure.config import (_configure_key_pair as
+                                                  _azure_configure_key_pair)
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -370,6 +372,29 @@ class AutoscalingConfigTest(unittest.TestCase):
             assert prepared_legacy["available_node_types"][
                 NODE_TYPE_LEGACY_WORKER]["node_config"] == legacy_config[
                     "worker_nodes"]
+
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"), reason="Fails on Windows.")
+    def testAzureKeyPair(self):
+        azure_config_path = os.path.join(RAY_PATH,
+                                         "autoscaler/azure/example-full.yaml")
+        azure_config = yaml.safe_load(open(azure_config_path))
+        azure_config["auth"]["ssh_user"] = "default_user"
+        with tempfile.NamedTemporaryFile(
+        ) as pub_key, tempfile.NamedTemporaryFile() as priv_key:
+            pub_key.write(b"PUBLICKEY")
+            pub_key.flush()
+            priv_key.write(b"PRIVATEKEY")
+            priv_key.flush()
+            azure_config["auth"]["ssh_private_key"] = priv_key.name
+            azure_config["auth"]["ssh_public_key"] = pub_key.name
+            modified_config = _azure_configure_key_pair(azure_config)
+        for node_type in modified_config["available_node_types"].values():
+            assert node_type["node_config"]["azure_arm_parameters"][
+                "adminUsername"] == "default_user"
+
+            assert node_type["node_config"]["azure_arm_parameters"][
+                "publicKey"] == "PUBLICKEY"
 
 
 if __name__ == "__main__":

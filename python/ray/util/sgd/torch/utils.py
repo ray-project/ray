@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def setup_address():
-    ip = ray.services.get_node_ip_address()
+    ip = ray.util.get_node_ip_address()
     port = find_free_port()
     return f"tcp://{ip}:{port}"
 

@@ -352,7 +352,8 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
         ])
         _die_on_error(result)
 
-        result = runner.invoke(scripts.dashboard, [DEFAULT_TEST_CONFIG_PATH])
+        result = runner.invoke(scripts.dashboard,
+                               [DEFAULT_TEST_CONFIG_PATH, "--no-config-cache"])
         _check_output_via_pattern("test_ray_dashboard.txt", result)
 
 

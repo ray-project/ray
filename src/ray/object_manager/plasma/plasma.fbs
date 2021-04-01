@@ -48,10 +48,6 @@ enum MessageType:long {
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
-  // Subscribe to a list of objects or to all objects.
-  PlasmaSubscribeRequest,
-  // Unsubscribe.
-  PlasmaUnsubscribeRequest,
   // Sending and receiving data.
   // PlasmaDataRequest initiates sending the data, there will be one
   // such message per data transfer.
@@ -60,8 +56,6 @@ enum MessageType:long {
   // object store that requested the data. For each transfer, multiple
   // reply messages get sent. Each one contains a fixed number of bytes.
   PlasmaDataReply,
-  // Object notifications.
-  PlasmaNotification,
   // Set memory quota for a client.
   PlasmaSetOptionsRequest,
   PlasmaSetOptionsReply,

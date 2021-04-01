@@ -3,7 +3,6 @@ import os
 import time
 import numpy as np
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray import tune
@@ -12,13 +11,14 @@ from ray.tune.trial import Trial
 from ray.tune import Callback
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.util import placement_group_table
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
 
 
 class TrialRunnerPlacementGroupTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
         self.head_cpus = 8
         self.head_gpus = 4
         self.head_custom = 16
@@ -154,15 +154,13 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         """Assert that reuse actors doesn't leak placement groups"""
         self.testPlacementGroupRequests(reuse_actors=True)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
     def testPlacementGroupLimitedRequests(self):
         """Assert that maximum number of placement groups is enforced."""
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "6"
         self.testPlacementGroupRequests(scheduled=6)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
     def testPlacementGroupLimitedRequestsWithActorReuse(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "6"
         self.testPlacementGroupRequests(reuse_actors=True, scheduled=6)
 
     def testPlacementGroupDistributedTraining(self, reuse_actors=False):
