@@ -34,7 +34,8 @@ class ServeStarletteEndpoint:
 
     def __init__(self, endpoint_tag: EndpointTag):
         self.endpoint_tag = endpoint_tag
-        self.handle = serve.get_handle(self.endpoint_tag, sync=False)
+        self.handle = serve.get_handle(
+            self.endpoint_tag, sync=False, missing_ok=True)
 
     async def __call__(self, scope, receive, send):
         http_body_bytes = await self.receive_http_body(scope, receive, send)
@@ -81,7 +82,7 @@ class HTTPProxy:
     """
 
     def __init__(self, controller_name: str):
-        # Set the controller name so that serve.connect() will connect to the
+        # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.api._set_internal_replica_context(None, None,
                                                     controller_name, None)
@@ -93,9 +94,11 @@ class HTTPProxy:
         # route -> (endpoint_tag, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
-        self.long_poll_client = LongPollClient(controller, {
-            LongPollNamespace.ROUTE_TABLE: self._update_route_table,
-        })
+        self.long_poll_client = LongPollClient(
+            controller, {
+                LongPollNamespace.ROUTE_TABLE: self._update_route_table,
+            },
+            call_in_event_loop=asyncio.get_event_loop())
 
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
