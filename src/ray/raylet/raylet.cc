@@ -61,7 +61,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
     : main_service_(main_service),
-      self_node_id_(NodeID::FromRandom()),
+      self_node_id_(GenerateNodeIdFromIpAddress(node_ip_address)),
       gcs_client_(gcs_client),
       object_directory_(
           RayConfig::instance().ownership_based_object_directory_enabled()

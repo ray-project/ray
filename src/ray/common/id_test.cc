@@ -14,8 +14,8 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/common_protocol.h"
+#include "ray/common/network_util.h"
 #include "ray/common/task/task_spec.h"
-
 namespace ray {
 
 void TestFromIndexObjectId(const TaskID &task_id, int64_t index) {
@@ -97,6 +97,35 @@ TEST(HashTest, TestNilHash) {
   ObjectID id2 = ObjectID::FromBinary(ObjectID::FromRandom().Binary());
   ASSERT_NE(nil_hash, id2.Hash());
   ASSERT_NE(id1.Hash(), id2.Hash());
+}
+
+TEST(PlacementGroupIDTest, TestPlacementGroup) {
+  {
+    // test from binary
+    PlacementGroupID placement_group_id_1 = PlacementGroupID::Of(JobID::FromInt(1));
+    const auto placement_group_id_1_binary = placement_group_id_1.Binary();
+    const auto placement_group_id_2 =
+        PlacementGroupID::FromBinary(placement_group_id_1_binary);
+    ASSERT_EQ(placement_group_id_1, placement_group_id_2);
+    const auto placement_group_id_1_hex = placement_group_id_1.Hex();
+    const auto placement_group_id_3 = PlacementGroupID::FromHex(placement_group_id_1_hex);
+    ASSERT_EQ(placement_group_id_1, placement_group_id_3);
+  }
+
+  {
+    // test get job id
+    auto job_id = JobID::FromInt(1);
+    const PlacementGroupID placement_group_id = PlacementGroupID::Of(job_id);
+    ASSERT_EQ(job_id, placement_group_id.JobId());
+  }
+}
+
+TEST(NodeIDTest, TestGenerateNodeIdFromIpAddress) {
+  {
+    std::string ip = std::string("1.10.0.122");
+    const NodeID node_id = GenerateNodeIdFromIpAddress(ip);
+    ASSERT_EQ("001010000122", node_id.Hex().substr(0, 12));
+  }
 }
 
 }  // namespace ray

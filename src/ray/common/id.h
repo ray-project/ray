@@ -16,6 +16,8 @@
 
 #include <inttypes.h>
 #include <limits.h>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/system/error_code.hpp>
 
 #include <chrono>
 #include <cstring>
@@ -495,6 +497,18 @@ std::string BaseID<T>::Hex() const {
   }
   return result;
 }
+
+/// Generate a NodeID from an IP address (IPv4).
+/// The IP address will be filled to the first 12 characters of the generated NodeID's
+/// hexadecimal representation, and the remaining will be padded with random binary data.
+/// For example, if the input IP address is `1.10.0.122`, the output will be
+/// `0010100001226f7a6e09a0f51136c6243b502bcd2fac0cf21e05e874`.
+///
+/// \param ip_address The IP address.
+///
+/// \return NodeID, in its hexadecimal representation, the first 12 digits represent the
+/// IP address.
+NodeID GenerateNodeIdFromIpAddress(const std::string &ip_address);
 
 }  // namespace ray
 

@@ -266,4 +266,40 @@ ID_OSTREAM_OPERATOR(ActorID);
 ID_OSTREAM_OPERATOR(TaskID);
 ID_OSTREAM_OPERATOR(ObjectID);
 ID_OSTREAM_OPERATOR(PlacementGroupID);
+
+NodeID GenerateNodeIdFromIpAddress(const std::string &ip_address) {
+  // check IP version 4 address.
+  boost::system::error_code err;
+  boost::asio::ip::address_v4 ip_v4 = boost::asio::ip::make_address_v4(ip_address, err);
+  if (err) {
+    RAY_LOG(WARNING) << "Inavlid IP address: " << ip_address
+                     << ", error message: " << err.message()
+                     << ". Falling back to a random NodeID.";
+    return NodeID::FromRandom();
+  }
+
+  // Format the IP version 4 address to a 12-digits hex string, and add 1 for the
+  // null terminator.
+  char ip_buffer[13];
+  int split_bit = 8;
+  int mask = (1 << split_bit) - 1;
+  unsigned int uint_ip_v4 = ip_v4.to_uint();
+  sprintf(ip_buffer, "%03d%03d%03d%03d", (uint_ip_v4 >> 3 * split_bit) & mask,
+          (uint_ip_v4 >> 2 * split_bit) & mask, (uint_ip_v4 >> 1 * split_bit) & mask,
+          (uint_ip_v4 >> 0 * split_bit) & mask);
+
+  // Convert hex-format `ip_buffer` to binary.
+  std::string ip_prefix(6, 0);
+  for (unsigned int index = 0; index < ip_prefix.size(); index++) {
+    int number = ((ip_buffer[index * 2] - '0') << 4) + (ip_buffer[index * 2 + 1] - '0');
+    ip_prefix[index] = static_cast<uint8_t>(number);
+  }
+
+  // Filling the remaining bits with random data.
+  std::string random_suffix(NodeID::Size() - ip_prefix.size(), 0);
+  FillRandom(&random_suffix);
+
+  return NodeID::FromBinary(ip_prefix + random_suffix);
+}
+
 }  // namespace ray
