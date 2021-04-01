@@ -282,7 +282,7 @@ Process WorkerPool::StartWorkerProcess(
   // When import ray, it will import setproctitle.
   // Add SPT_NOENV env, prevent setproctitle break /proc/PID/environ
   if (language == Language::PYTHON) {
-    env.insert("SPT_NOENV", "1");
+    env.insert({"SPT_NOENV", "1"});
   }
 
   // Start a process and measure the startup time.
