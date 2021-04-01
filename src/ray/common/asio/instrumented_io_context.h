@@ -76,6 +76,63 @@ class instrumented_io_context : public boost::asio::io_context {
   void post(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
+  /// Increments the  current and cumulative counts and returns the enqueueing time
+  /// for this handler.
+  /// The returned enqueueing time and handler stats pointer should be given to a
+  /// subsequent Instrument() call. The handler stats is also returned in order to
+  /// obviate the need for multiple handler stats table lookups, therefore reducing
+  /// contention on the table lock.
+  ///
+  /// \param name A human-readable name to which collected stats will be associated.
+  /// \return The time at which this handler was enqueued, in nanoseconds, and the
+  ///  handler stats.
+  std::pair<int64_t, std::shared_ptr<GuardedHandlerStats>> Enqueue(
+      const std::string name = "UNKNOWN");
+
+  /// Increments the current and cumulative counts and returns the enqueueing time
+  /// for this handler.
+  /// The returned enqueueing time should be given to a subsequent Instrument() call.
+  ///
+  /// \param stats The handler stats.
+  /// \return The time at which this handler was enqueued, in nanonseconds.
+  static int64_t Enqueue(std::shared_ptr<GuardedHandlerStats> stats);
+
+  /// Records stats about the provided function's execution. This version of the
+  /// function exists in case there was no sensible Enqueue() call to be made.
+  ///
+  /// \param fn The function to execute and instrument.
+  /// \param name The human-readable name for the handler.
+  /// \return The stats for this handler.
+  std::shared_ptr<GuardedHandlerStats> Instrument(std::function<void()> fn,
+                                                  const std::string name = "UNKNOWN");
+
+  /// Records stats about the provided function's execution. The stats and enqueue_time
+  /// arguments should be taken from an Enqueue("some_handler_name") call.
+  ///
+  /// \param fn The function to execute and instrument.
+  /// \param stats The stats for the provided handler.
+  /// \param global_stats The global stats for this event loop.
+  /// \param enqueue_time The time at which this handler was enqueued for execution, in
+  ///  nanoseconds.
+  static void Instrument(std::function<void()> fn,
+                         std::shared_ptr<GuardedHandlerStats> stats,
+                         std::shared_ptr<GuardedGlobalStats> global_stats,
+                         absl::optional<int64_t> enqueue_time = absl::nullopt);
+
+  /// Returns a live guarded view of the global count, queueing, and execution statistics
+  /// across all handlers.
+  ///
+  /// \return A live guarded view of the global handler stats.
+  std::shared_ptr<GuardedGlobalStats> get_guarded_global_stats() const;
+
+  /// Returns a live guarded view of the count, queueing, and execution statistics for the
+  /// provided handler. If the handler stats doesn't yet exist, one is created.
+  ///
+  /// \param handler_name The name of the handler whose stats should be returned.
+  /// \return A live guarded view of the handler's stats.
+  std::shared_ptr<GuardedHandlerStats> get_guarded_handler_stats(
+      const std::string &handler_name) LOCKS_EXCLUDED(mutex_);
+
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.
   ///
@@ -105,13 +162,21 @@ class instrumented_io_context : public boost::asio::io_context {
   std::string StatsString() const LOCKS_EXCLUDED(mutex_);
 
  private:
+  using HandlerStatsTable =
+      absl::flat_hash_map<std::string, std::shared_ptr<GuardedHandlerStats>>;
+  /// Get an iterator to the stats for this handler if it exists, otherwise create the
+  /// stats for this handler and return an iterator pointing to it.
+  ///
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler.
+  std::shared_ptr<GuardedHandlerStats> GetOrCreate(const std::string name);
+
   /// Global stats, across all handlers.
   std::shared_ptr<GuardedGlobalStats> global_stats_;
 
   /// Table of per-handler post stats.
   /// We use a std::shared_ptr value in order to ensure pointer stability.
-  absl::flat_hash_map<std::string, std::shared_ptr<GuardedHandlerStats>>
-      post_handler_stats_ GUARDED_BY(mutex_);
+  HandlerStatsTable post_handler_stats_ GUARDED_BY(mutex_);
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
