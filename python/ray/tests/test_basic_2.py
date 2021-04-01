@@ -561,7 +561,7 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
-def test_actor_max_concurrency(ray_start_regular):
+def test_actor_max_concurrency(ray_start_regular_shared):
     """
     Test that an actor of max_concurrency=N should only run
     N tasks at most concurrently.
