@@ -45,7 +45,6 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
@@ -119,13 +118,17 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
                          bool hugepages_enabled, const std::string &socket_name,
                          uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
-                         std::function<void()> object_store_full_callback)
+                         std::function<void()> object_store_full_callback,
+                         ray::AddObjectCallback add_object_callback,
+                         ray::DeleteObjectCallback delete_object_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
       spill_objects_callback_(spill_objects_callback),
+      add_object_callback_(add_object_callback),
+      delete_object_callback_(delete_object_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
@@ -606,11 +609,8 @@ ObjectStatus PlasmaStore::ContainsObject(const ObjectID &object_id) {
 }
 
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
-  std::vector<ObjectInfoT> infos;
-
   for (size_t i = 0; i < object_ids.size(); ++i) {
     RAY_LOG(DEBUG) << "sealing object " << object_ids[i];
-    ObjectInfoT object_info;
     auto entry = GetObjectTableEntry(&store_info_, object_ids[i]);
     RAY_CHECK(entry != nullptr);
     RAY_CHECK(entry->state == ObjectState::PLASMA_CREATED);
@@ -619,20 +619,20 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     // Set object construction duration.
     entry->construct_duration = std::time(nullptr) - entry->create_time;
 
-    object_info.object_id = object_ids[i].Binary();
-    object_info.data_size = entry->data_size;
-    object_info.owner_raylet_id = entry->owner_raylet_id.Binary();
-    object_info.owner_ip_address = entry->owner_ip_address;
-    object_info.owner_port = entry->owner_port;
-    object_info.owner_worker_id = entry->owner_worker_id.Binary();
-    object_info.metadata_size = entry->metadata_size;
-    infos.push_back(object_info);
-
     num_objects_unsealed_--;
     num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
-  }
 
-  PushNotifications(infos);
+    ray::ObjectInfo info = {
+        .object_id = object_ids[i],
+        .data_size = entry->data_size,
+        .metadata_size = entry->metadata_size,
+        .owner_raylet_id = entry->owner_raylet_id,
+        .owner_ip_address = entry->owner_ip_address,
+        .owner_port = entry->owner_port,
+        .owner_worker_id = entry->owner_worker_id,
+    };
+    add_object_callback_(info);
+  }
 
   for (size_t i = 0; i < object_ids.size(); ++i) {
     UpdateObjectGetRequests(object_ids[i]);
@@ -682,26 +682,14 @@ PlasmaError PlasmaStore::DeleteObject(ObjectID &object_id) {
     return PlasmaError::ObjectInUse;
   }
 
-  // Prepare the notification before deleting the object.
-  ObjectInfoT notification;
-  notification.object_id = object_id.Binary();
-  notification.owner_raylet_id = entry->owner_raylet_id.Binary();
-  notification.owner_ip_address = entry->owner_ip_address;
-  notification.owner_port = entry->owner_port;
-  notification.owner_worker_id = entry->owner_worker_id.Binary();
-  notification.is_deletion = true;
-
   eviction_policy_.RemoveObject(object_id);
   EraseFromObjectTable(object_id);
   // Inform all subscribers that the object has been deleted.
-  PushNotification(&notification);
+  delete_object_callback_(object_id);
   return PlasmaError::OK;
 }
 
 void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
-  if (object_ids.size() == 0) {
-    return;
-  }
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
@@ -713,19 +701,10 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
         << "To evict an object it must have been sealed.";
     RAY_CHECK(entry->ref_count == 0)
         << "To evict an object, there must be no clients currently using it.";
-
-    // Prepare the notification before deleting the object.
-    ObjectInfoT notification;
-    notification.object_id = object_id.Binary();
-    notification.owner_raylet_id = entry->owner_raylet_id.Binary();
-    notification.owner_ip_address = entry->owner_ip_address;
-    notification.owner_port = entry->owner_port;
-    notification.owner_worker_id = entry->owner_worker_id.Binary();
-    notification.is_deletion = true;
     // Erase the object entry and send a deletion notification.
     EraseFromObjectTable(object_id);
     // Inform all subscribers that the object has been deleted.
-    PushNotification(&notification);
+    delete_object_callback_(object_id);
   }
 }
 
@@ -770,22 +749,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   }
 
   create_request_queue_.RemoveDisconnectedClientRequests(client);
-}
-
-void PlasmaStore::PushNotification(ObjectInfoT *object_info) {
-  PushNotifications({*object_info});
-}
-
-void PlasmaStore::PushNotifications(const std::vector<ObjectInfoT> &object_info) {
-  if (notification_listener_) {
-    for (const auto &info : object_info) {
-      if (!info.is_deletion) {
-        notification_listener_->ProcessStoreAdd(info);
-      } else {
-        notification_listener_->ProcessStoreRemove(ObjectID::FromBinary(info.object_id));
-      }
-    }
-  }
 }
 
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
