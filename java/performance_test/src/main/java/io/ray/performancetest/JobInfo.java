@@ -33,16 +33,6 @@ public class JobInfo {
     String namespaceId = System.getenv("namespaceId");
     LOGGER.info("namespaceId: {}", namespaceId);
 
-    // List<NodeInfo> nodes = Ray.getRuntimeContext().getAllNodeInfoByNamespace(namespaceId);
-    // LOGGER.info("Found {} nodes in cluster.", nodes.size());
-    // for (int i = 0; i < nodes.size(); i++) {
-    //   UniqueId nodeId = nodes.get(i).nodeId;
-    //   String resourceName = "Node" + i;
-    //   double capacity = 10000; // Make sure we can put a large number of actors on the node.
-    //   Ray.setResource(nodeId, resourceName, capacity);
-    // }
-
-    // jobInfo.nodes = nodes;
     return jobInfo;
   }
 
