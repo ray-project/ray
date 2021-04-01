@@ -277,7 +277,8 @@ class PlasmaStore {
   QuotaAwarePolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>> object_get_requests_;
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 

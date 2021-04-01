@@ -475,7 +475,8 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms, bool is_from_worker) {
   // Create a get request for this object.
-  auto get_req = std::make_shared<GetRequest>(GetRequest(io_context_, client, object_ids, is_from_worker));
+  auto get_req = std::make_shared<GetRequest>(
+      GetRequest(io_context_, client, object_ids, is_from_worker));
   for (auto object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
