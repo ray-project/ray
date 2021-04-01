@@ -1136,11 +1136,11 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.resource_demand_scheduler.node_types[
             NODE_TYPE_LEGACY_HEAD]["resources"] == {
                 "CPU": 1
-        }
+            }
         assert autoscaler.resource_demand_scheduler.node_types[
             NODE_TYPE_LEGACY_WORKER]["resources"] == {
                 "CPU": 1
-        }
+            }
 
     def testUnmanagedNodes(self):
         config = SMALL_CLUSTER.copy()
@@ -2307,8 +2307,7 @@ MemAvailable:   33000000 kB
 
         autoscaler.process_runner = MockProcessRunner(
             fail_cmds=["ray_start_cmd"],
-            cmd_to_callback={"ray_start_cmd": terminate_worker_zero}
-        )
+            cmd_to_callback={"ray_start_cmd": terminate_worker_zero})
 
         num_calls = len(autoscaler.process_runner.calls)
         autoscaler.update()
@@ -2326,9 +2325,9 @@ MemAvailable:   33000000 kB
             " update."
         # Missed heartbeat triggered recovery for both nodes.
         events = autoscaler.event_summarizer.summary()
-        assert ("Restarting 2 nodes of type "
-                "ray.worker.default (lost contact with raylet)." in
-                events), events
+        assert (
+            "Restarting 2 nodes of type "
+            "ray.worker.default (lost contact with raylet)." in events), events
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
@@ -2348,13 +2347,11 @@ MemAvailable:   33000000 kB
         events = autoscaler.event_summarizer.summary()
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
-        assert (
-            "Removing 1 nodes of type "
-            "ray.worker.default (launch failed)." in events), events
+        assert ("Removing 1 nodes of type "
+                "ray.worker.default (launch failed)." in events), events
         # To be more explicit,
-        assert (
-            "Removing 2 nodes of type "
-            "ray.worker.default (launch failed)." not in events), events
+        assert ("Removing 2 nodes of type "
+                "ray.worker.default (launch failed)." not in events), events
 
         # Should get two new nodes after the next update.
         autoscaler.update()
@@ -2365,4 +2362,4 @@ MemAvailable:   33000000 kB
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
