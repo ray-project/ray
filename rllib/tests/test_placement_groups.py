@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import ray
@@ -52,6 +53,7 @@ class _TestCallback(Callback):
 
 class TestPlacementGroups(unittest.TestCase):
     def setUp(self) -> None:
+        os.environ["TUNE_PLACEMENT_GROUP_RECON_INTERVAL"] = "0"
         ray.init(num_cpus=6)
 
     def tearDown(self) -> None:

@@ -8,7 +8,7 @@ import sys
 import time
 import socket
 import math
-
+from typing import Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
@@ -178,11 +178,12 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script):
+def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 
     Args:
-        driver_script: A string to run as a Python script.
+        driver_script (str): A string to run as a Python script.
+        env (dict): The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -191,7 +192,9 @@ def run_string_as_driver(driver_script):
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
@@ -489,7 +492,7 @@ def new_scheduler_enabled():
 
 
 def client_test_enabled() -> bool:
-    return os.environ.get("RAY_CLIENT_MODE") == "1"
+    return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
 def fetch_prometheus(prom_addresses):

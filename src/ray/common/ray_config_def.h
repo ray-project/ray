@@ -388,3 +388,6 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// debug_state.txt for raylets.
 /// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
 RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+
+/// Maximum amount of memory that will be used by running tasks' args.
+RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
