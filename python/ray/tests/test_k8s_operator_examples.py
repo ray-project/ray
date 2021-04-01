@@ -64,11 +64,12 @@ def wait_for_job(job_pod):
     print(">>>Checking job logs.")
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
     try:
-        out = subprocess.check_output(cmd, shell=True).decode()
+        out = subprocess.check_output(
+            cmd, shell=True, stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as e:
         print(">>>Failed to check job logs.")
         print(e.output.decode())
-        raise (e)
+        raise e
     success = "success" in out.lower()
     if success:
         print(">>>Job submission succeeded.")
