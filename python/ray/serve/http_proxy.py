@@ -37,14 +37,12 @@ class ServeStarletteEndpoint:
         # This will be lazily populated when the first request comes in.
         # TODO(edoakes): we should be able to construct the handle here, but
         # that currently breaks pytest. This seems like a bug.
-        self.handle = None
+        self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
     async def __call__(self, scope, receive, send):
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        if self.handle is None:
-            self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
         object_ref = await self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
