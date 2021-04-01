@@ -1,5 +1,3 @@
-import asyncio
-from functools import singledispatch
 import importlib
 from itertools import groupby
 import inspect
@@ -178,62 +176,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
-
-
-@singledispatch
-def chain_future(src, dst):
-    """Base method for chaining futures together.
-
-    Chaining futures means the output from source future(s) are written as the
-    results of the destination future(s). This method can work with the
-    following inputs:
-        - src: Future, dst: Future
-        - src: List[Future], dst: List[Future]
-    """
-    raise NotImplementedError()
-
-
-@chain_future.register(asyncio.Future)
-def _chain_future_single(src: asyncio.Future, dst: asyncio.Future):
-    asyncio.futures._chain_future(src, dst)
-
-
-@chain_future.register(list)
-def _chain_future_list(src: List[asyncio.Future], dst: List[asyncio.Future]):
-    if len(src) != len(dst):
-        raise ValueError(
-            "Source and destination list doesn't have the same length. "
-            "Source: {}. Destination: {}.".foramt(len(src), len(dst)))
-
-    for s, d in zip(src, dst):
-        chain_future(s, d)
-
-
-def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
-    """Unpack the result of source future to num_items futures.
-
-    This function takes in a Future and splits its result into many futures. If
-    the result of the source future is an exception, then all destination
-    futures will have the same exception.
-    """
-    dest_futures = [
-        asyncio.get_event_loop().create_future() for _ in range(num_items)
-    ]
-
-    def unwrap_callback(fut: asyncio.Future):
-        exception = fut.exception()
-        if exception is not None:
-            [f.set_exception(exception) for f in dest_futures]
-            return
-
-        result = fut.result()
-        assert len(result) == num_items
-        for item, future in zip(result, dest_futures):
-            future.set_result(item)
-
-    src.add_done_callback(unwrap_callback)
-
-    return dest_futures
 
 
 def get_all_node_ids():

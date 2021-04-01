@@ -38,19 +38,12 @@ class _BatchQueue:
             self._handle_batch_task = asyncio.get_event_loop().create_task(
                 self._handle_batches(handle_batch_func))
 
-    def set_config(self, max_batch_size: int, timeout_s: float) -> None:
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
-
     def put(self, request: Tuple[Any, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         # Signal when the full batch is ready. The event will be reset
         # in wait_for_batch.
         if self.queue.qsize() == self.max_batch_size:
             self.full_batch_event.set()
-
-    def qsize(self) -> int:
-        return self.queue.qsize()
 
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
