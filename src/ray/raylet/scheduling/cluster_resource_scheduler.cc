@@ -16,12 +16,21 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
 
+ClusterResourceScheduler::ClusterResourceScheduler()
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+
+          {};
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id),
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -31,7 +40,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
-    : loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -215,11 +226,9 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
-                                                         bool actor_creation,
-                                                         bool force_spillback,
-                                                         int64_t *total_violations,
-                                                         bool *is_infeasible) {
+int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
+    const TaskRequest &task_req, bool actor_creation, bool force_spillback,
+    int64_t *total_violations, bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
   // being set.
   *is_infeasible = false;
@@ -230,30 +239,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // Node associated to min_violations.
   std::vector<int64_t> best_nodes;
   *total_violations = 0;
-
-  if (actor_creation && task_req.IsEmpty()) {
-    int64_t best_node = -1;
-    // This an actor which requires no resources.
-    // Pick a random node to to avoid all scheduling all actors on the local node.
-    if (nodes_.size() > 0) {
-      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
-      int idx = distribution(gen_);
-      for (auto &node : nodes_) {
-        if (idx == 0) {
-          best_nodes.emplace_back(node.first);
-          break;
-        }
-        idx--;
-      }
-    }
-    if (!best_nodes.empty()) {
-      best_node = best_nodes.back();
-    }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << nodes_.size()
-                   << ", task_req = " << task_req.DebugString();
-    return best_node;
-  }
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
@@ -334,6 +319,51 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // it means the task is infeasible.
   *is_infeasible = best_node == -1 && !local_node_feasible;
   return best_node;
+}
+
+int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
+                                                         bool force_spillback,
+                                                         int64_t *total_violations,
+                                                         bool *is_infeasible) {
+  // The zero cpu actor is a special case that must be handled the same way by all
+  // scheduling policies.
+  if (actor_creation && task_req.IsEmpty()) {
+    int64_t best_node = -1;
+    // This is an actor which requires no resources.
+    // Pick a random node to to avoid scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
+      best_node = std::next(nodes_.begin(), idx)->first;
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
+
+  if (!hybrid_spillback_) {
+    return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
+                                               total_violations, is_infeasible);
+  }
+
+  // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+  // remain bug compatible with the legacy scheduling algorithms.
+  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
+      task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
+      force_spillback);
+  *is_infeasible = best_node_id == -1 ? true : false;
+  if (!*is_infeasible) {
+    // TODO (Alex): Support soft constraints if needed later.
+    *total_violations = 0;
+  }
+
+  RAY_LOG(DEBUG) << "Scheduling decision. "
+                 << "forcing spillback: " << force_spillback
+                 << ". Best node: " << best_node_id
+                 << ", is infeasible: " << *is_infeasible;
+  return best_node_id;
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
