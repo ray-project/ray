@@ -56,7 +56,7 @@ class MockProcessRunner:
     def __init__(self, fail_cmds=None, cmd_to_callback=None):
         self.calls = []
         self.cmd_to_callback = cmd_to_callback or {
-        }  # type: Dict[str, Callable] # noqa
+        }  # type: Dict[str, Callable]
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
         self.ready_to_run = threading.Event()
