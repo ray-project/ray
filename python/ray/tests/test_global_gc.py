@@ -90,7 +90,7 @@ def test_global_gc(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced, timeout=60)
     finally:
         gc.enable()
 
