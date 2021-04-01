@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 try:
     from opentelemetry import context, trace
     from opentelemetry.context.context import Context
-    from opentelemetry.util import types
     from opentelemetry.util.types import Attributes
     from opentelemetry import propagators
     from opentelemetry.trace.propagation.textmap import DictGetter
@@ -39,6 +38,7 @@ _global_is_tracing_enabled = None
 
 
 def is_tracing_enabled() -> bool:
+    """Checks environment variable feature flag to see if tracing is turned on. Tracing is off by default."""
     global _global_is_tracing_enabled
     if _global_is_tracing_enabled is None:
         _global_is_tracing_enabled = os.getenv(
@@ -49,34 +49,19 @@ def is_tracing_enabled() -> bool:
 
 class DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
+        """Inject trace context into otel propagator"""
         context_dict: Dict[Any, Any] = {}
         propagators.inject(dict.__setitem__, context_dict)
         return context_dict
 
     def extract(context_dict: Dict[Any, Any]) -> Context:
+        """Given a trace context, extract as a Context"""
         return cast(Context, propagators.extract(DictGetter(), context_dict))
-
-
-def get_formatted_current_trace_id() -> str:
-    current_span = trace.get_current_span()
-
-    assert (
-        current_span is not None,
-        "Expected to find a trace-id for this API request",
-    )
-
-    trace_id = current_span.get_span_context().trace_id
-    return trace.format_trace_id(trace_id)[2:] if trace_id != 0 else "NO_TRACE_ID"
-
-
-def nest_tracing_attributes(
-    attributes: Dict[str, types.AttributeValue], parent: str
-) -> Dict[str, types.AttributeValue]:
-    return {f"{parent}.{key}": value for (key, value) in attributes.items()}
 
 
 @contextmanager
 def use_context(parent_context: Context) -> Generator[None, None, None]:
+    """Uses the Ray trace context for the span."""
     new_context = parent_context if parent_context is not None else Context()
     token = context.attach(new_context)
     try:
@@ -86,6 +71,7 @@ def use_context(parent_context: Context) -> Generator[None, None, None]:
 
 
 def _function_hydrate_span_args(func: Callable[..., Any]) -> Attributes:
+    """Get the attributes of the function that will be reported as attributes in the trace."""
     runtime_context = get_runtime_context().get()
 
     span_args = {
@@ -112,6 +98,7 @@ def _function_hydrate_span_args(func: Callable[..., Any]) -> Attributes:
 
 
 def _function_span_producer_name(func: Callable[..., Any]) -> str:
+    """Returns the function span name that has span kind of producer."""
     args = _function_hydrate_span_args(func)
     assert args is not None
     name = args["ray.function"]
@@ -120,6 +107,7 @@ def _function_span_producer_name(func: Callable[..., Any]) -> str:
 
 
 def _function_span_consumer_name(func: Callable[..., Any]) -> str:
+    """Returns the function span name that has span kind of consumer."""
     args = _function_hydrate_span_args(func)
     assert args is not None
     name = args["ray.function"]
@@ -127,7 +115,10 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable, method: _nameable) -> Attributes:
+def _actor_hydrate_span_args(
+    class_: _nameable, method: _nameable
+    ) -> Attributes:
+    """Get the attributes of the actor that will be reported as attributes in the trace."""
     if callable(class_):
         class_ = class_.__name__
     if callable(method):
@@ -162,6 +153,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable) -> Attributes
 
 
 def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
+    """Returns the actor span name that has span kind of producer."""
     args = _actor_hydrate_span_args(class_, method)
     assert args is not None
     name = args["ray.function"]
@@ -170,6 +162,7 @@ def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
 
 
 def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
+    """Returns the actor span name that has span kind of consumer."""
     args = _actor_hydrate_span_args(class_, method)
     assert args is not None
     name = args["ray.function"]
@@ -195,9 +188,9 @@ def _tracing_task_invocation(method):
         assert "_ray_trace_ctx" not in kwargs
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
-            _function_span_producer_name("tester"),
+            _function_span_producer_name(method.__name__),
             kind=trace.SpanKind.PRODUCER,
-            attributes=_function_hydrate_span_args("tester"),
+            attributes=_function_hydrate_span_args(method.__name__),
         ):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
@@ -236,7 +229,7 @@ def _inject_tracing_into_function(function):
     return _function_with_tracing
 
 
-def _tracing_actor_class_invocation(method):
+def _tracing_actor_creation(method):
     """Trace the creation of an actor. Inject
     the current span context into kwargs for propagation."""
 

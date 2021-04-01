@@ -22,9 +22,11 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-from ray.util.tracing import (_tracing_actor_class_invocation,
-                              _tracing_actor_method_invocation,
-                              _inject_tracing_into_class)
+from ray.util.tracing import (
+    _tracing_actor_creation,
+    _tracing_actor_method_invocation,
+    _inject_tracing_into_class,
+)
 
 logger = logging.getLogger(__name__)
 
