@@ -31,12 +31,20 @@ class PeriodicalRunner {
 
   ~PeriodicalRunner();
 
-  void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms);
+  void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms,
+                         const std::string name = "UNKNOWN");
 
  private:
   void DoRunFnPeriodically(std::function<void()> fn,
                            boost::posix_time::milliseconds period,
                            boost::asio::deadline_timer &timer);
+
+  void DoRunFnPeriodically(std::function<void()> fn,
+                           boost::posix_time::milliseconds period,
+                           boost::asio::deadline_timer &timer,
+                           std::shared_ptr<GuardedHandlerStats> handler_stats,
+                           std::shared_ptr<GuardedGlobalStats> global_stats,
+                           absl::optional<int64_t> enqueue_time = absl::nullopt);
 
   instrumented_io_context &io_service_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_;
