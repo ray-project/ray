@@ -384,7 +384,7 @@ def register_custom_serializers():
             pydantic.fields.ModelField,
             serializer=lambda o: {
                 "name": o.name,
-                "type_": o.type_,
+                "type_": o.outer_type_,
                 "class_validators": o.class_validators,
                 "model_config": o.model_config,
                 "default": o.default,
