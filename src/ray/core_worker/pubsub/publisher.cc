@@ -101,7 +101,8 @@ bool SubscriptionIndex::AssertNoLeak() const {
   return objects_to_subscribers_.size() == 0 && subscribers_to_objects_.size() == 0;
 }
 
-bool Subscriber::Connect(LongPollConnectCallback long_polling_reply_callback) {
+bool Subscriber::ConnectToSubscriber(
+    LongPollConnectCallback long_polling_reply_callback) {
   if (long_polling_reply_callback_ == nullptr) {
     long_polling_reply_callback_ = long_polling_reply_callback;
     return true;
@@ -120,10 +121,15 @@ bool Subscriber::PublishIfPossible(bool force) {
   if (long_polling_reply_callback_ == nullptr) {
     return false;
   }
+
   if (force || mailbox_.size() > 0) {
-    long_polling_reply_callback_(mailbox_);
+    std::vector<ObjectID> mails_to_post;
+    while (mailbox_.size() > 0 && mails_to_post.size() < 1000) {
+      mails_to_post.push_back(mailbox_.back());
+      mailbox_.pop_back();
+    }
+    long_polling_reply_callback_(mails_to_post);
     long_polling_reply_callback_ = nullptr;
-    mailbox_.clear();
     return true;
   }
   return false;
@@ -133,8 +139,8 @@ bool Subscriber::AssertNoLeak() const {
   return long_polling_reply_callback_ == nullptr && mailbox_.size() == 0;
 }
 
-void Publisher::Connect(const NodeID &subscriber_node_id,
-                        LongPollConnectCallback long_poll_connect_callback) {
+void Publisher::ConnectToSubscriber(const NodeID &subscriber_node_id,
+                                    LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
@@ -154,7 +160,7 @@ void Publisher::Connect(const NodeID &subscriber_node_id,
 
   // Since the long polling connection is synchronous between the client and coordinator,
   // when it connects, the connection shouldn't have existed.
-  RAY_CHECK(subscriber->Connect(std::move(long_poll_connect_callback)));
+  RAY_CHECK(subscriber->ConnectToSubscriber(std::move(long_poll_connect_callback)));
   subscriber->PublishIfPossible();
 }
 

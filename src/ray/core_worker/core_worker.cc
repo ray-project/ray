@@ -2408,8 +2408,8 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
-  object_status_publisher_->Connect(subscriber_id,
-                                    std::move(long_polling_reply_callback));
+  object_status_publisher_->ConnectToSubscriber(subscriber_id,
+                                                std::move(long_polling_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(

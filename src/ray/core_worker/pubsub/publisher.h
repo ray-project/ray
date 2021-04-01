@@ -78,7 +78,7 @@ class Subscriber {
   ///
   /// \param long_polling_reply_callback reply callback to the long polling request.
   /// \return True if connection is new. False if there were already connections cached.
-  bool Connect(LongPollConnectCallback long_polling_reply_callback);
+  bool ConnectToSubscriber(LongPollConnectCallback long_polling_reply_callback);
 
   /// Queue the object id to publish to the subscriber.
   ///
@@ -119,8 +119,8 @@ class Publisher {
   // TODO(sang): Currently, we need to pass the callback for connection because we are
   // using long polling internally. This should be changed once the bidirectional grpc
   // streaming is supported.
-  void Connect(const NodeID &subscriber_node_id,
-               LongPollConnectCallback long_poll_connect_callback);
+  void ConnectToSubscriber(const NodeID &subscriber_node_id,
+                           LongPollConnectCallback long_poll_connect_callback);
 
   /// Register the subscription.
   ///

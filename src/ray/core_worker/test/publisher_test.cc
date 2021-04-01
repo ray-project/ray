@@ -199,9 +199,9 @@ TEST_F(PublisherTest, TestSubscriber) {
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber.PublishIfPossible());
   // Try connecting it. Should return true.
-  ASSERT_TRUE(subscriber.Connect(reply));
+  ASSERT_TRUE(subscriber.ConnectToSubscriber(reply));
   // If connecting it again, it should fail the request.
-  ASSERT_FALSE(subscriber.Connect(reply));
+  ASSERT_FALSE(subscriber.ConnectToSubscriber(reply));
   // Since there's no published objects, it should return false.
   ASSERT_FALSE(subscriber.PublishIfPossible());
 
@@ -223,7 +223,7 @@ TEST_F(PublisherTest, TestSubscriber) {
   }
   // Since there's no connection, objects won't be published.
   ASSERT_FALSE(subscriber.PublishIfPossible());
-  ASSERT_TRUE(subscriber.Connect(reply));
+  ASSERT_TRUE(subscriber.ConnectToSubscriber(reply));
   ASSERT_TRUE(subscriber.PublishIfPossible());
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.count(oid) > 0);
@@ -241,7 +241,7 @@ TEST_F(PublisherTest, TestBasicSingleSubscriber) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
 
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   object_status_publisher_->Publish(oid);
   ASSERT_EQ(batched_ids[0], oid);
@@ -261,7 +261,7 @@ TEST_F(PublisherTest, TestNoConnectionWhenRegistered) {
   object_status_publisher_->Publish(oid);
   // Nothing has been published because there's no connection.
   ASSERT_EQ(batched_ids.size(), 0);
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   // When the connection is coming, it should be published.
   ASSERT_EQ(batched_ids[0], oid);
 }
@@ -285,7 +285,7 @@ TEST_F(PublisherTest, TestMultiObjectsFromSingleNode) {
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -320,7 +320,8 @@ TEST_F(PublisherTest, TestMultiObjectsFromMultiNodes) {
   // Check all of nodes are publishing objects properly.
   for (int i = 0; i < num_nodes; i++) {
     const auto subscriber_node_id = subscribers[i];
-    object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+    object_status_publisher_->ConnectToSubscriber(subscriber_node_id,
+                                                  long_polling_connect);
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
     ASSERT_EQ(oid_test, published_oid);
@@ -347,7 +348,7 @@ TEST_F(PublisherTest, TestBatch) {
   ASSERT_EQ(batched_ids.size(), 0);
 
   // Now connection is initiated, and all oids are published.
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -363,7 +364,7 @@ TEST_F(PublisherTest, TestBatch) {
     object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
     object_status_publisher_->Publish(oid);
   }
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   for (int i = 0; i < num_oids; i++) {
     const auto oid_test = oids[i];
     const auto published_oid = batched_ids[i];
@@ -380,7 +381,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   dead_nodes_.emplace(subscriber_node_id);
   // All these ops should be no-op.
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
@@ -414,7 +415,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   ASSERT_EQ(long_polling_connection_replied, false);
 
   // Connect should reply right away to avoid memory leak.
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   ASSERT_EQ(long_polling_connection_replied, true);
   long_polling_connection_replied = false;
 
@@ -429,7 +430,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   ///
   subscriber_node_id = NodeID::FromRandom();
   oid = ObjectID::FromRandom();
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   dead_nodes_.emplace(subscriber_node_id);
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_EQ(long_polling_connection_replied, true);
@@ -447,7 +448,7 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
 
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(long_polling_connection_replied, false);
 
@@ -482,7 +483,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   // Test basic.
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   ASSERT_EQ(long_polling_connection_replied, false);
   int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
@@ -492,7 +493,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
 
   // Test when registration wasn't done.
   long_polling_connection_replied = false;
-  object_status_publisher_->Connect(subscriber_node_id, long_polling_connect);
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_FALSE(erased);
   ASSERT_EQ(long_polling_connection_replied, true);
