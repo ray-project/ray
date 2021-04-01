@@ -240,7 +240,7 @@ class TuneBOHB(Searcher):
         self.running.add(trial_id)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
+    def convert_search_space(spec: Dict) -> "ConfigSpace.ConfigurationSpace":
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
