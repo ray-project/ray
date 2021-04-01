@@ -591,7 +591,7 @@ def test_actor_max_concurrency(ray_start_regular):
     ray.get([call.remote(actor) for _ in range(CONCURRENCY * 10)])
 
     # Check that the number of threads shouldn't be greater than CONCURRENCY.
-    assert ray.get(actor.num_threads.remote()) <= CONCURRENCY
+    assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
 
 
 def test_wait(ray_start_regular_shared):
