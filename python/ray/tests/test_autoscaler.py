@@ -12,6 +12,7 @@ import yaml
 import copy
 import sys
 from jsonschema.exceptions import ValidationError
+from typing import Dict, Callable
 
 import ray
 from ray.autoscaler._private.util import prepare_config, validate_config
@@ -52,8 +53,10 @@ class MockNode:
 
 
 class MockProcessRunner:
-    def __init__(self, fail_cmds=None):
+    def __init__(self, fail_cmds=None, cmd_to_callback=None):
         self.calls = []
+        self.cmd_to_callback = cmd_to_callback or {
+        }  # type: Dict[str, Callable] # noqa
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
         self.ready_to_run = threading.Event()
@@ -61,6 +64,14 @@ class MockProcessRunner:
 
     def check_call(self, cmd, *args, **kwargs):
         self.ready_to_run.wait()
+        for token in self.cmd_to_callback:
+            if token in str(cmd):
+                # Trigger a callback if token is in cmd.
+                # Can be used to simulate background events during a node
+                # update (e.g. node disconnected).
+                callback = self.cmd_to_callback[token]
+                callback()
+
         for token in self.fail_cmds:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
@@ -357,13 +368,13 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitFor(self, condition, num_retries=50):
+    def waitFor(self, condition, num_retries=50, fail_msg=None):
         for _ in range(num_retries):
             if condition():
                 return
             time.sleep(.1)
-        raise RayTestTimeoutException(
-            "Timed out waiting for {}".format(condition))
+        fail_msg = fail_msg or "Timed out waiting for {}".format(condition)
+        raise RayTestTimeoutException(fail_msg)
 
     def waitForNodes(self, expected, comparison=None, tag_filters={}):
         MAX_ITER = 50
@@ -372,7 +383,7 @@ class AutoscalingTest(unittest.TestCase):
             if comparison is None:
                 comparison = self.assertEqual
             try:
-                comparison(n, expected)
+                comparison(n, expected, msg="Unexpected node quantity.")
                 return
             except Exception:
                 if i == MAX_ITER - 1:
