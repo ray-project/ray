@@ -1,23 +1,25 @@
 import ray
 import grpc
+import os
 from typing import List, Union
 
 from ray._private.client_mode_hook import client_mode_hook
 
-redis = False
+redis = os.environ.get("RAY_KV_USE_GCS", "0") == "0"
 
 
 @client_mode_hook
 def _internal_kv_initialized():
     global redis
     worker = ray.worker.global_worker
-    inited = hasattr(worker, "mode") and worker.mode is not None
-    if inited:
+    if not (hasattr(worker, "mode") and worker.mode is not None):
+        return False
+    if not redis:
         try:
             _internal_kv_exists("dummy")
         except grpc.RpcError:
             redis = True
-    return inited
+    return True
 
 
 @client_mode_hook
@@ -51,9 +53,11 @@ def _internal_kv_put(key: Union[str, bytes],
     """
     if redis:
         if overwrite:
-            updated = ray.worker.redis_client.hset(key, "value", value)
+            updated = ray.worker.global_worker.redis_client.hset(
+                key, "value", value)
         else:
-            updated = ray.worker.redis_client.hsetnx(key, "value", value)
+            updated = ray.worker.global_worker.redis_client.hsetnx(
+                key, "value", value)
         return updated == 0  # already exists
     else:
         return not ray.worker.global_worker.gcs_client.kv_put(
