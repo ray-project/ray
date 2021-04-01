@@ -129,14 +129,18 @@ class AutoscalingTest2(unittest.TestCase):
         assert ("Restarting 2 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
-        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150,
-                     fail_msg="Did not get additional calls on first"
-                     " autoscaler update.")
+        self.waitFor(
+            lambda: len(runner.calls) > num_calls,
+            num_retries=150,
+            fail_msg="Did not get additional calls on first"
+            " autoscaler update.")
         # Node 0 was terminated during update.
         # Node 1's update failed, but it won't be terminated until the next
         # autoscaler update.
-        self.waitFor(lambda: 0 not in autoscaler.workers(), num_retries=150,
-                     fail_msg="Node zero still non-terminated")
+        self.waitFor(
+            lambda: 0 not in autoscaler.workers(),
+            num_retries=150,
+            fail_msg="Node zero still non-terminated")
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -151,9 +155,9 @@ class AutoscalingTest2(unittest.TestCase):
         events = autoscaler.event_summarizer.summary()
         # Just one node (node_id 1) terminated here.
         # Validates that we didn't try to double-terminate node 0.
-        assert ("Removing 1 nodes of type "
-                "ray-legacy-worker-node-type (launch failed)." in
-                events), events
+        assert (
+            "Removing 1 nodes of type "
+            "ray-legacy-worker-node-type (launch failed)." in events), events
 
         # Should get two new nodes after the next update.
         autoscaler.update()
