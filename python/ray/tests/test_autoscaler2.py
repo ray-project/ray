@@ -73,7 +73,20 @@ class AutoscalingTest2(unittest.TestCase):
             f.write(yaml.dump(new_config))
         return path
 
-    def testZNodeTerminatedDuringUpdate(self):
+    def testNodeTerminatedDuringUpdate(self):
+        """
+        Tests autoscaler handling a node getting terminated during an update
+        triggered by the node missing a heartbeat.
+
+        Extension of testRecoverUnhealthyWorkers in test_autoscaler.py.
+
+        In this test, two nodes miss a heartbeat.
+        One of them (node 0) is terminated during its recovery update.
+        The other (node 1) just fails its update.
+
+        When processing completed updates, the autoscaler terminates node 1
+        but does not try to terminate node 0.
+        """
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
