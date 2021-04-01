@@ -23,7 +23,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
-        pin_task_arguments)
+        get_task_arguments,
+    size_t max_pinned_task_arguments_bytes)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -35,7 +36,8 @@ ClusterTaskManager::ClusterTaskManager(
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
-      pin_task_arguments_(pin_task_arguments) {}
+      get_task_arguments_(get_task_arguments),
+      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -148,44 +150,36 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
+      TaskID task_id = spec.TaskId();
 
-      std::vector<std::unique_ptr<RayObject>> args;
-      bool success = true;
-      const auto &deps = spec.GetDependencyIds();
-      if (!deps.empty()) {
-        // This gets refs to the arguments stored in plasma. The refs should be
-        // deleted once we no longer need to pin the arguments.
-        success = pin_task_arguments_(deps, &args);
-        if (!success) {
-          RAY_LOG(WARNING) << "Error getting task arguments from plasma store";
-        }
-        for (size_t i = 0; i < deps.size(); i++) {
-          if (args[i] == nullptr) {
-            // This can happen if the task's arguments were all local at some
-            // point, but then at least one was evicted before the task could
-            // be dispatched to a worker.
-            RAY_LOG(INFO)
-                << "Task " << spec.TaskId() << " argument " << deps[i]
-                << " was evicted before the task could be dispatched. This can happen "
-                   "when there are many objects needed on this node. The task will be "
-                   "scheduled once all of its dependencies are local.";
-            success = false;
-            break;
-          }
-        }
-      }
-
+      bool args_missing = false;
+      bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
       // An argument was evicted since this task was added to the dispatch
       // queue. Move it back to the waiting queue. The caller is responsible
       // for notifying us when the task is unblocked again.
       if (!success) {
-        const auto task_id = spec.TaskId();
-        // Insert the task at the head of the waiting queue because we
-        // prioritize spilling from the end of the queue.
-        auto it =
-            waiting_task_queue_.insert(waiting_task_queue_.begin(), std::move(*work_it));
-        RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
-        work_it = dispatch_queue.erase(work_it);
+        if (args_missing) {
+          // Insert the task at the head of the waiting queue because we
+          // prioritize spilling from the end of the queue.
+          auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
+                                               std::move(*work_it));
+          RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
+          work_it = dispatch_queue.erase(work_it);
+        } else {
+          // The task's args cannot be pinned due to lack of memory. We should
+          // retry dispatching the task once another task finishes and releases
+          // its arguments.
+          RAY_LOG(INFO) << "Dispatching task " << task_id
+                        << " would put this node over the max memory allowed for "
+                           "arguments of executing tasks ("
+                        << max_pinned_task_arguments_bytes_
+                        << "). Waiting to dispatch task until other tasks complete";
+          RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
+              << "Cannot dispatch task " << task_id
+              << " until another task finishes and releases its arguments, but no other "
+                 "task is running";
+          work_it++;
+        }
         continue;
       }
 
@@ -198,8 +192,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
+          task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
+        ReleaseTaskArgs(task_id);
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -212,6 +207,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
       if (!schedulable) {
+        ReleaseTaskArgs(task_id);
         // The local node currently does not have the resources to run the task, so we
         // should try spilling to another node.
         bool did_spill = TrySpillback(work, is_infeasible);
@@ -235,13 +231,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // No worker available, we won't be able to schedule any kind of task.
           // Worker processes spin up pretty quickly, so it's not worth trying to spill
           // this task.
+          ReleaseTaskArgs(task_id);
           return;
         }
 
-        num_pinned_task_arguments_ += args.size();
-        RAY_CHECK(pinned_task_arguments_.emplace(spec.TaskId(), std::move(args)).second)
-            << spec.TaskId();
-
+        RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
+                       << worker->WorkerId();
         auto reply = std::get<1>(*work_it);
         auto callback = std::get<2>(*work_it);
         Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
@@ -332,12 +327,102 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  auto it = pinned_task_arguments_.find(task->GetTaskSpecification().TaskId());
-  RAY_CHECK(it != pinned_task_arguments_.end());
-  num_pinned_task_arguments_ -= it->second.size();
-  pinned_task_arguments_.erase(it);
+  ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
+  }
+}
+
+bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
+                                                      bool *args_missing) {
+  std::vector<std::unique_ptr<RayObject>> args;
+  const auto &deps = spec.GetDependencyIds();
+  if (!deps.empty()) {
+    // This gets refs to the arguments stored in plasma. The refs should be
+    // deleted once we no longer need to pin the arguments.
+    if (!get_task_arguments_(deps, &args)) {
+      *args_missing = true;
+      return false;
+    }
+    for (size_t i = 0; i < deps.size(); i++) {
+      if (args[i] == nullptr) {
+        // This can happen if the task's arguments were all local at some
+        // point, but then at least one was evicted before the task could
+        // be dispatched to a worker.
+        RAY_LOG(INFO)
+            << "Task " << spec.TaskId() << " argument " << deps[i]
+            << " was evicted before the task could be dispatched. This can happen "
+               "when there are many objects needed on this node. The task will be "
+               "scheduled once all of its dependencies are local.";
+        *args_missing = true;
+        return false;
+      }
+    }
+  }
+
+  *args_missing = false;
+  size_t task_arg_bytes = 0;
+  for (auto &arg : args) {
+    task_arg_bytes += arg->GetSize();
+  }
+  PinTaskArgs(spec, std::move(args));
+  RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_task_arguments_bytes_;
+  if (task_arg_bytes > max_pinned_task_arguments_bytes_) {
+    RAY_LOG(WARNING)
+        << "Dispatched task " << spec.TaskId() << " has arguments of size "
+        << task_arg_bytes
+        << ", but the max memory allowed for arguments of executing tasks is only "
+        << max_pinned_task_arguments_bytes_;
+  } else if (pinned_task_arguments_bytes_ > max_pinned_task_arguments_bytes_) {
+    ReleaseTaskArgs(spec.TaskId());
+    return false;
+  }
+
+  return true;
+}
+
+void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
+                                     std::vector<std::unique_ptr<RayObject>> args) {
+  const auto &deps = spec.GetDependencyIds();
+  // TODO(swang): This should really be an assertion, but we can sometimes
+  // receive a duplicate task request if there is a failure and the original
+  // version of the task has not yet been canceled.
+  auto inserted = executing_task_args_.emplace(spec.TaskId(), deps).second;
+  if (inserted) {
+    for (size_t i = 0; i < deps.size(); i++) {
+      auto inserted =
+          pinned_task_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+      auto it = inserted.first;
+      if (inserted.second) {
+        // This is the first task that needed this argument.
+        pinned_task_arguments_bytes_ += it->second.first->GetSize();
+      }
+      it->second.second++;
+    }
+  } else {
+    RAY_LOG(INFO) << "Scheduler received duplicate task " << spec.TaskId()
+                  << ", most likely because the first execution failed";
+  }
+}
+
+void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
+  auto it = executing_task_args_.find(task_id);
+  // TODO(swang): This should really be an assertion, but we can sometimes
+  // receive a duplicate task request if there is a failure and the original
+  // version of the task has not yet been canceled.
+  if (it != executing_task_args_.end()) {
+    for (auto &arg : it->second) {
+      auto arg_it = pinned_task_arguments_.find(arg);
+      RAY_CHECK(arg_it != pinned_task_arguments_.end());
+      RAY_CHECK(arg_it->second.second > 0);
+      arg_it->second.second--;
+      if (arg_it->second.second == 0) {
+        // This is the last task that needed this argument.
+        pinned_task_arguments_bytes_ -= arg_it->second.first->GetSize();
+        pinned_task_arguments_.erase(arg_it);
+      }
+    }
+    executing_task_args_.erase(it);
   }
 }
 
@@ -676,8 +761,8 @@ std::string ClusterTaskManager::DebugStr() const {
   buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
   buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
-  buffer << "Number of executing tasks: " << pinned_task_arguments_.size() << "\n";
-  buffer << "Number of pinned task arguments: " << num_pinned_task_arguments_ << "\n";
+  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
+  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";

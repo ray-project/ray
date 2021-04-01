@@ -137,10 +137,6 @@ class Node:
         self._redis_address = ray_params.redis_address
         self._config = ray_params._system_config or {}
 
-        # Enable Plasma Store as a thread by default.
-        if "plasma_store_as_thread" not in self._config:
-            self._config["plasma_store_as_thread"] = True
-
         # Configure log rotation parameters.
         self.max_bytes = int(
             os.getenv("RAY_ROTATION_MAX_BYTES",

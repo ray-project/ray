@@ -249,6 +249,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto announce_infeasible_task = [this](const Task &task) {
     PublishInfeasibleTaskError(task);
   };
+  RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
+            RayConfig::instance().max_task_args_memory_fraction() <= 1)
+      << "max_task_args_memory_fraction must be a nonzero fraction.";
+  int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
+                                 RayConfig::instance().max_task_args_memory_fraction();
+  RAY_CHECK(max_task_args_memory > 0);
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -257,7 +263,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
-      }));
+      },
+      max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
@@ -382,6 +389,18 @@ ray::Status NodeManager::RegisterGcs() {
   periodical_runner_.RunFnPeriodically(
       [this] { GetObjectManagerProfileInfo(); },
       RayConfig::instance().raylet_heartbeat_period_milliseconds());
+
+  /// If periodic asio stats print is enabled, it will print it.
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms != -1 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+        },
+        asio_stats_print_interval_ms);
+  }
 
   return ray::Status::OK();
 }

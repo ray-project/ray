@@ -264,9 +264,6 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, plasma_store_as_thread, false)
-
 /// Whether to release worker CPUs during plasma fetches.
 /// See https://github.com/ray-project/ray/issues/12912 for further discussion.
 RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
@@ -382,3 +379,12 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The interval of periodic asio event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+
+/// Maximum amount of memory that will be used by running tasks' args.
+RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

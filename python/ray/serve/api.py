@@ -12,7 +12,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag, GoalId
+from ray.serve.common import BackendInfo, EndpointTag, GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -512,6 +512,10 @@ class Client:
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
         self._wait_for_goal(self._controller.delete_deployment.remote(name))
+
+    @_ensure_connected
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+        return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
@@ -1162,7 +1166,7 @@ def make_deployment_cls(
         _ray_actor_options = ray_actor_options
 
         @classmethod
-        def deploy(cls, *init_args):
+        def deploy(cls, *init_args, _blocking=True):
             """Deploy this deployment.
 
             Args:
@@ -1172,18 +1176,14 @@ def make_deployment_cls(
             if len(init_args) == 0 and cls._init_args is not None:
                 init_args = cls._init_args
 
-            if cls._version is not None:
-                version = cls._version
-            else:
-                version = get_random_letters()
-
             return _get_global_client().deploy(
                 cls._name,
                 cls._backend_def,
                 *init_args,
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
-                version=version,
+                version=cls._version,
+                _blocking=_blocking,
                 _internal=True)
 
         @classmethod
@@ -1306,3 +1306,27 @@ def deployment(
             ray_actor_options=ray_actor_options)
 
     return decorator
+
+
+def get_deployment(name: str) -> ServeDeployment:
+    """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+
+    Args:
+        name(str): name of the deployment. This must have already been
+        deployed.
+
+    Returns:
+        ServeDeployment
+    """
+    try:
+        backend_info, route = _get_global_client().get_deployment_info(name)
+    except KeyError:
+        raise KeyError(f"Deployment {name} was not found. "
+                       "Did you call Deployment.deploy()?")
+    return make_deployment_cls(
+        backend_info.replica_config.backend_def,
+        name,
+        backend_info.backend_config,
+        version=backend_info.version,
+        init_args=backend_info.replica_config.init_args,
+        ray_actor_options=backend_info.replica_config.ray_actor_options)
