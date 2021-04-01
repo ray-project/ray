@@ -105,7 +105,7 @@ const std::vector<FixedPoint> &TaskResourceInstances::Get(
   } else if (ray::kMemory_ResourceLabel == resource_name) {
     return predefined_resources[MEM];
   } else {
-    int resource_id = string_id_map.Get(resource_name);
+    int64_t resource_id = string_id_map.Get(resource_name);
     auto it = custom_resources.find(resource_id);
     RAY_CHECK(it != custom_resources.end());
     return it->second;
