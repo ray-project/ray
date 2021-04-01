@@ -82,10 +82,12 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
       object_manager_(
           main_service, self_node_id_, object_manager_config, object_directory_,
           [this](const ObjectID &object_id, const std::string &object_url,
-                 const NodeID &node_id,
                  std::function<void(const ray::Status &)> callback) {
             node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
-                object_id, object_url, node_id, callback);
+                object_id, object_url, callback);
+          },
+          [this](const ObjectID &object_id) {
+            return node_manager_.GetLocalObjectManager().GetSpilledObjectURL(object_id);
           },
           [this]() {
             // This callback is called from the plasma store thread.

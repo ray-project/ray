@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
   std::cout << "task_result1 = " << task_result1 << std::endl;
 
   /// common task with args
-  task_obj = Ray::Task(Plus1, 5).Remote();
+  task_obj = Ray::Task(Plus1).Remote(5);
   int task_result2 = *(Ray::Get(task_obj));
   std::cout << "task_result2 = " << task_result2 << std::endl;
 
@@ -92,15 +92,15 @@ int main(int argc, char **argv) {
 
   /// general function remote call（args passed by value）
   auto r0 = Ray::Task(Return1).Remote();
-  auto r2 = Ray::Task(Plus, 3, 22).Remote();
+  auto r2 = Ray::Task(Plus).Remote(3, 22);
   int task_result3 = *(Ray::Get(r2));
   std::cout << "task_result3 = " << task_result3 << std::endl;
 
   /// general function remote call（args passed by reference）
   auto r3 = Ray::Task(Return1).Remote();
-  auto r4 = Ray::Task(Plus1, r3).Remote();
-  auto r5 = Ray::Task(Plus, r4, r3).Remote();
-  auto r6 = Ray::Task(Plus, r4, 10).Remote();
+  auto r4 = Ray::Task(Plus1).Remote(r3);
+  auto r5 = Ray::Task(Plus).Remote(r4, r3);
+  auto r6 = Ray::Task(Plus).Remote(r4, 10);
   int task_result4 = *(Ray::Get(r6));
   int task_result5 = *(Ray::Get(r5));
   std::cout << "task_result4 = " << task_result4 << ", task_result5 = " << task_result5
@@ -118,8 +118,8 @@ int main(int argc, char **argv) {
   auto r12 = actor5.Task(&Counter::Add, r11).Remote();
   auto r13 = actor5.Task(&Counter::Add, r10).Remote();
   auto r14 = actor5.Task(&Counter::Add, r13).Remote();
-  auto r15 = Ray::Task(Plus, r0, r11).Remote();
-  auto r16 = Ray::Task(Plus1, r15).Remote();
+  auto r15 = Ray::Task(Plus).Remote(r0, r11);
+  auto r16 = Ray::Task(Plus1).Remote(r15);
   int result12 = *(Ray::Get(r12));
   int result14 = *(Ray::Get(r14));
   int result11 = *(Ray::Get(r11));

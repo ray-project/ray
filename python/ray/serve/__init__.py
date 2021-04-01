@@ -2,7 +2,7 @@ from ray.serve.api import (
     accept_batch, connect, start, get_replica_context, get_handle,
     shadow_traffic, set_traffic, delete_backend, list_backends, create_backend,
     get_backend_config, update_backend_config, list_endpoints, delete_endpoint,
-    create_endpoint, shutdown, ingress, deployment)
+    create_endpoint, shutdown, ingress, deployment, get_deployment)
 from ray.serve.batching import batch
 from ray.serve.config import BackendConfig, HTTPOptions
 from ray.serve.utils import ServeRequest
@@ -18,5 +18,5 @@ __all__ = [
     "shadow_traffic", "set_traffic", "delete_backend", "list_backends",
     "create_backend", "get_backend_config", "update_backend_config",
     "list_endpoints", "delete_endpoint", "create_endpoint", "shutdown",
-    "ingress", "deployment"
+    "ingress", "deployment", "get_deployment"
 ]

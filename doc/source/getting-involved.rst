@@ -181,7 +181,6 @@ scripts. Some of the examples include:
 
 * Raylet integration tests commands:
     * ``bazel test //:core_worker_test``
-    * ``src/ray/test/run_object_manager_tests.sh``
 
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``
