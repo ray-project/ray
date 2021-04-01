@@ -1,16 +1,18 @@
 """TODO(Runhui): JAX Operator"""
-from jax import grad
+import cupy as cp
+from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
 from jax.tree_util import tree_flatten
-from ray.util.distml.base_operator import TrainingOperator
 
-import cupy as cp
+from ray.util.distml.base_operator import TrainingOperator
+from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
 
 class JAXTrainingOperator(TrainingOperator):
 
     def __init__(self, operator_config):
         self.train_step_num = 0 # use to record the training step that has passed.
+        self.timers = TimerCollection()
         super(JAXTrainingOperator, self).__init__(operator_config)
 
     def setup(self, *args, **kwargs):
@@ -35,18 +37,18 @@ class JAXTrainingOperator(TrainingOperator):
 
     def register(self, *, model, optimizer, criterion, jit_mode=False):
         """Register a few critical information about the model to operator."""
-        self._criterion = criterion
+        self.criterion = criterion
         
         self._register_model(model)
         self._register_optimizer(optimizer)
             
     def _register_model(self, model):
-        self._opt_state = model[0]
-        self._get_params = model[1]
-        self._predict_fun = model[2]
+        self.opt_state = model[0]
+        self.get_params = model[1]
+        self.predict_fun = model[2]
 
     def _register_optimizer(self, optimizer):
-        self._opt_update = optimizer
+        self.opt_update = optimizer
 
     def register_data(self, *, train_loader=None, validation_loader=None):
         self.train_loader = train_loader
@@ -54,8 +56,8 @@ class JAXTrainingOperator(TrainingOperator):
 
     def loss_fn(self, params, batch):
         inputs, targets = batch
-        logits = self._predict_fun(params, inputs)
-        return self._criterion(logits, targets)
+        logits = self.predict_fun(params, inputs)
+        return self.criterion(logits, targets)
 
     def yield_train_loader(self):
         for batch in self.train_loader:
@@ -64,6 +66,7 @@ class JAXTrainingOperator(TrainingOperator):
     def yield_validation_loader(self):
         for batch in self.validation_loader:
             yield batch
+
     # def train_epoch(self, iterator, info):
     #     if not self.train_dataloader:
     #         raise RuntimeError("Train dataloader hasn't been set.")
@@ -90,10 +93,10 @@ class JAXTrainingOperator(TrainingOperator):
     #     self.apply_updates(gradient)
 
     def derive_updates(self, batch):
-        return self._calculate_gradient(self._opt_state, batch)
+        return self._calculate_gradient(self.opt_state, batch)
         
     def apply_updates(self, gradient):
-        self._opt_state = self._opt_update(self.train_step_num, gradient, self._opt_state)
+        self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
 
     def updates_transform(self, updates):
@@ -107,13 +110,54 @@ class JAXTrainingOperator(TrainingOperator):
             # cp_g/=self.world_size
 
     def _calculate_gradient(self, opt_state, batch):
-        params = self._get_params(opt_state)
-        gradient = grad(self.loss_fn)(params, batch)
-        return gradient
+        params = self.get_params(opt_state)
+        loss_val, gradient = value_and_grad(self.loss_fn)(params, batch)
+        return loss_val, gradient
 
     def get_jax_dlpack(self, tensor):
         return xla_client._xla.buffer_to_dlpack_managed_tensor(tensor.device_buffer,
                                                                take_ownership=False)
+
+    def validate(self, info={}):
+        if not hasattr(self, "opt_state"):
+            raise RuntimeError("model has not registered.")
+        params = self.get_params(self.opt_state)
+        validation_loader = self.validation_loader
+        metric_meters = AverageMeterCollection()
+
+        for batch_idx, batch in enumerate(validation_loader):
+            batch_info = {"batch_idx": batch_idx}
+            batch_info.update(info)
+            metrics = self.validate_batch(params, batch, batch_info)
+            metric_meters.update(metrics, n=metrics.pop("samples_num", 1))
+
+        return metric_meters.summary()
+
+    def validate_batch(self, params, batch, batch_info):
+        if not hasattr(self, "opt_state"):
+            raise RuntimeError("model unset. Please register model in setup.")
+        if not hasattr(self, "criterion"):
+            raise RuntimeError("criterion unset. Please register criterion in setup.")
+        criterion = self.criterion
+        predict_fun = self.predict_fun
+        # unpack features into list to support multiple inputs model
+        *inputs, targets = batch
+
+        with self.timers.record("eval_fwd"):
+            outputs = predict_fun(params, *inputs)
+            loss = criterion(outputs, targets)
+            prediction_class = jnp.argmax(outputs, axis=1)
+            targets_class = jnp.argmax(targets, axis=1)
+
+        acc = jnp.mean(prediction_class == targets_class)
+        samples_num = targets.shape[0]
+
+        return {
+            "val_loss": loss,
+            "val_accuracy": acc,
+            "samples_num": samples_num
+        }
+
 
     def set_parameters(self, params):
         # need in place parameters in opt_state
@@ -121,4 +165,4 @@ class JAXTrainingOperator(TrainingOperator):
         pass
         
     def get_parameters(self):
-        return self._get_params(self._opt_state)
+        return self.get_params(self.opt_state)
