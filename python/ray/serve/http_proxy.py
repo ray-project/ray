@@ -34,9 +34,6 @@ class ServeStarletteEndpoint:
 
     def __init__(self, endpoint_tag: EndpointTag):
         self.endpoint_tag = endpoint_tag
-        # This will be lazily populated when the first request comes in.
-        # TODO(edoakes): we should be able to construct the handle here, but
-        # that currently breaks pytest. This seems like a bug.
         self.handle = serve.get_handle(self.endpoint_tag, sync=False)
 
     async def __call__(self, scope, receive, send):
