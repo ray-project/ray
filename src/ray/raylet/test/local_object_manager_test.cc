@@ -322,7 +322,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   MockIOWorkerPool worker_pool;
   MockObjectInfoAccessor object_table;
   NodeID manager_node_id_;
-  int max_fused_object_count_;
+  size_t max_fused_object_count_;
   LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;
