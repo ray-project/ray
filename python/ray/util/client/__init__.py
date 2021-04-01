@@ -33,6 +33,7 @@ class RayAPIStub:
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
+                _skip_uploading=False,
                 *,
                 ignore_version: bool = False) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -69,7 +70,7 @@ class RayAPIStub:
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
-            self.client_worker._server_init(job_config)
+            self.client_worker._server_init(job_config, _skip_uploading)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
             return conn_info
