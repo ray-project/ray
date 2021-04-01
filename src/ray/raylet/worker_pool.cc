@@ -278,6 +278,13 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
+
+  // When import ray, it will import setproctitle.
+  // Add SPT_NOENV env, prevent setproctitle break /proc/PID/environ
+  if (language == Language::PYTHON) {
+    env.insert("SPT_NOENV", "1");
+  }
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
