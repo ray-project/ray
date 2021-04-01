@@ -121,20 +121,7 @@ TEST(RayApiTest, NotExistFunction) {
   EXPECT_THROW(Ray::Task(NotRegisteredFunc), RayException);
 }
 
-TEST(RayApiTest, ArgumentsNotMatch) {
-  /// Arguments number is not match.
-  auto r = Ray::Task(PlusOne).Remote();
-  EXPECT_THROW(r.Get(), RayException);
-
-  auto r1 = Ray::Task(PlusOne).Remote(1, 2);
-  EXPECT_THROW(r1.Get(), RayException);
-
-  auto r2 = Ray::Task(ExceptionFunc).Remote();
-  EXPECT_THROW(r2.Get(), RayException);
-
-  auto r3 = Ray::Task(ExceptionFunc).Remote(1, 2);
-  EXPECT_THROW(r3.Get(), RayException);
-
+TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = Ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), RayException);

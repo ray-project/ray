@@ -4,20 +4,11 @@
 #include <ray/api/arguments.h>
 #include <ray/api/exec_funcs.h>
 #include <ray/api/object_ref.h>
+#include <ray/api/static_check.h>
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
-
-template <typename T>
-struct FilterArgType {
-  using type = T;
-};
-
-template <typename T>
-struct FilterArgType<ObjectRef<T>> {
-  using type = T;
-};
 
 template <typename F>
 class ActorTaskCaller {
@@ -35,6 +26,7 @@ class ActorTaskCaller {
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args) {
     using ActorType = boost::callable_traits::class_of_t<F>;
     using ReturnType = boost::callable_traits::return_type_t<F>;
+    StaticCheck<F, Args...>();
     if (!ray::api::RayConfig::GetInstance()->use_ray_remote) {
       auto exe_func =
           ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>;

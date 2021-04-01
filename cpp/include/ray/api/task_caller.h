@@ -1,12 +1,13 @@
 
 #pragma once
 
+#include <ray/api/static_check.h>
 #include "ray/core.h"
 
 namespace ray {
 namespace api {
 
-template <typename ReturnType>
+template <typename F>
 class TaskCaller {
  public:
   TaskCaller();
@@ -14,7 +15,9 @@ class TaskCaller {
   TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr);
 
   template <typename... Args>
-  ObjectRef<ReturnType> Remote(Args... args) {
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args) {
+    StaticCheck<F, Args...>();
+    using ReturnType = boost::callable_traits::return_type_t<F>;
     Arguments::WrapArgs(&args_, args...);
     ptr_.exec_function_pointer = reinterpret_cast<uintptr_t>(
         NormalExecFunction<ReturnType, typename FilterArgType<Args>::type...>);
@@ -31,11 +34,11 @@ class TaskCaller {
 
 // ---------- implementation ----------
 
-template <typename ReturnType>
-TaskCaller<ReturnType>::TaskCaller() {}
+template <typename F>
+TaskCaller<F>::TaskCaller() {}
 
-template <typename ReturnType>
-TaskCaller<ReturnType>::TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr)
+template <typename F>
+TaskCaller<F>::TaskCaller(RayRuntime *runtime, RemoteFunctionPtrHolder ptr)
     : runtime_(runtime), ptr_(ptr) {}
 }  // namespace api
 }  // namespace ray

@@ -79,7 +79,7 @@ class Ray {
   /// \param[in] args The function arguments passed by a value or ObjectRef.
   /// \return TaskCaller.
   template <typename F>
-  static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func);
+  static TaskCaller<F> Task(F func);
 
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
@@ -98,8 +98,8 @@ class Ray {
  private:
   static std::once_flag is_inited_;
 
-  template <typename ReturnType, typename FuncType>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func);
+  template <typename FuncType>
+  static TaskCaller<FuncType> TaskInternal(FuncType &func);
 
   template <typename ActorType, typename FuncType, typename ExecFuncType,
             typename... ArgTypes>
@@ -161,8 +161,8 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return ray::internal::RayRuntime()->Wait(ids, num_objects, timeout_ms);
 }
 
-template <typename ReturnType, typename FuncType>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func) {
+template <typename FuncType>
+inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
   RemoteFunctionPtrHolder ptr{};
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
@@ -173,7 +173,7 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func) {
     }
     ptr.function_name = std::move(function_name);
   }
-  return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), ptr);
 }
 
 template <typename ActorType, typename FuncType, typename ExecFuncType,
@@ -204,10 +204,8 @@ inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
 
 /// Normal task.
 template <typename F>
-TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func) {
-  using ReturnType = boost::callable_traits::return_type_t<F>;
-
-  return TaskInternal<ReturnType>(func);
+TaskCaller<F> Ray::Task(F func) {
+  return TaskInternal<F>(func);
 }
 
 /// Generic version of creating an actor.
