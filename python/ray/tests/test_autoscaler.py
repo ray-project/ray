@@ -53,95 +53,104 @@ class MockNode:
 
 
 class MockProcessRunner:
-    def __init__(self, fail_cmds=None, cmd_to_callback=None):
+    def __init__(self, fail_cmds=None, cmd_to_callback=None, print_out=False):
         self.calls = []
         self.cmd_to_callback = cmd_to_callback or {
         }  # type: Dict[str, Callable]
+        self.print_out = print_out
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
-        self.ready_to_run = threading.Event()
-        self.ready_to_run.set()
+
+        self.lock = threading.RLock()
 
     def check_call(self, cmd, *args, **kwargs):
-        self.ready_to_run.wait()
-        for token in self.cmd_to_callback:
-            if token in str(cmd):
-                # Trigger a callback if token is in cmd.
-                # Can be used to simulate background events during a node
-                # update (e.g. node disconnected).
-                callback = self.cmd_to_callback[token]
-                callback()
+        with self.lock:
+            self.calls.append(cmd)
+            if self.print_out:
+                print(f">>>Process runner: Executing \n {str(cmd)}")
+            for token in self.cmd_to_callback:
+                if token in str(cmd):
+                    # Trigger a callback if token is in cmd.
+                    # Can be used to simulate background events during a node
+                    # update (e.g. node disconnected).
+                    callback = self.cmd_to_callback[token]
+                    callback()
 
-        for token in self.fail_cmds:
-            if token in str(cmd):
-                raise CalledProcessError(1, token,
-                                         "Failing command on purpose")
-        self.calls.append(cmd)
+            for token in self.fail_cmds:
+                if token in str(cmd):
+                    raise CalledProcessError(1, token,
+                                             "Failing command on purpose")
 
     def check_output(self, cmd):
-        self.check_call(cmd)
-        return_string = "command-output"
-        key_to_shrink = None
-        for pattern, response_list in self.call_response.items():
-            if pattern in str(cmd):
-                return_string = response_list[0]
-                key_to_shrink = pattern
-                break
-        if key_to_shrink:
-            self.call_response[key_to_shrink] = self.call_response[
-                key_to_shrink][1:]
-            if len(self.call_response[key_to_shrink]) == 0:
-                del self.call_response[key_to_shrink]
+        with self.lock:
+            self.check_call(cmd)
+            return_string = "command-output"
+            key_to_shrink = None
+            for pattern, response_list in self.call_response.items():
+                if pattern in str(cmd):
+                    return_string = response_list[0]
+                    key_to_shrink = pattern
+                    break
+            if key_to_shrink:
+                self.call_response[key_to_shrink] = self.call_response[
+                    key_to_shrink][1:]
+                if len(self.call_response[key_to_shrink]) == 0:
+                    del self.call_response[key_to_shrink]
 
-        return return_string.encode()
+            return return_string.encode()
 
     def assert_has_call(self, ip, pattern=None, exact=None):
-        assert pattern or exact, \
-            "Must specify either a pattern or exact match."
-        out = ""
-        if pattern is not None:
+        with self.lock:
+            assert pattern or exact, \
+                "Must specify either a pattern or exact match."
+            out = ""
+            if pattern is not None:
+                for cmd in self.command_history():
+                    if ip in cmd:
+                        out += cmd
+                        out += "\n"
+                if pattern in out:
+                    return True
+                else:
+                    raise Exception(
+                        f"Did not find [{pattern}] in [{out}] for ip={ip}."
+                        f"\n\nFull output: {self.command_history()}")
+            elif exact is not None:
+                exact_cmd = " ".join(exact)
+                for cmd in self.command_history():
+                    if ip in cmd:
+                        out += cmd
+                        out += "\n"
+                    if cmd == exact_cmd:
+                        return True
+                raise Exception(
+                    f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
+                    f"\n\nFull output: {self.command_history()}")
+
+    def assert_not_has_call(self, ip, pattern):
+        with self.lock:
+            out = ""
             for cmd in self.command_history():
                 if ip in cmd:
                     out += cmd
                     out += "\n"
             if pattern in out:
-                return True
+                raise Exception("Found [{}] in [{}] for {}".format(
+                    pattern, out, ip))
             else:
-                raise Exception(
-                    f"Did not find [{pattern}] in [{out}] for ip={ip}."
-                    f"\n\nFull output: {self.command_history()}")
-        elif exact is not None:
-            exact_cmd = " ".join(exact)
-            for cmd in self.command_history():
-                if ip in cmd:
-                    out += cmd
-                    out += "\n"
-                if cmd == exact_cmd:
-                    return True
-            raise Exception(
-                f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
-                f"\n\nFull output: {self.command_history()}")
-
-    def assert_not_has_call(self, ip, pattern):
-        out = ""
-        for cmd in self.command_history():
-            if ip in cmd:
-                out += cmd
-                out += "\n"
-        if pattern in out:
-            raise Exception("Found [{}] in [{}] for {}".format(
-                pattern, out, ip))
-        else:
-            return True
+                return True
 
     def clear_history(self):
-        self.calls = []
+        with self.lock:
+            self.calls = []
 
     def command_history(self):
-        return [" ".join(cmd) for cmd in self.calls]
+        with self.lock:
+            return [" ".join(cmd) for cmd in self.calls]
 
     def respond_to_call(self, pattern, response_list):
-        self.call_response[pattern] = response_list
+        with self.lock:
+            self.call_response[pattern] = response_list
 
 
 class MockProvider(NodeProvider):
@@ -1127,11 +1136,11 @@ class AutoscalingTest(unittest.TestCase):
         assert autoscaler.resource_demand_scheduler.node_types[
             NODE_TYPE_LEGACY_HEAD]["resources"] == {
                 "CPU": 1
-            }
+        }
         assert autoscaler.resource_demand_scheduler.node_types[
             NODE_TYPE_LEGACY_WORKER]["resources"] == {
                 "CPU": 1
-            }
+        }
 
     def testUnmanagedNodes(self):
         config = SMALL_CLUSTER.copy()
@@ -2238,7 +2247,122 @@ MemAvailable:   33000000 kB
 
         assert node == 1
 
+    def testNodeTerminatedDuringUpdate(self):
+        """
+        Tests autoscaler handling a node getting terminated during an update
+        triggered by the node missing a heartbeat.
+
+        Extension of testRecoverUnhealthyWorkers.
+
+        In this test, two nodes miss a heartbeat.
+        One of them (node 0) is terminated during its recovery update.
+        The other (node 1) just fails its update.
+
+        When processing completed updates, the autoscaler terminates node 1
+        but does not try to terminate node 0 again.
+        """
+        cluster_config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
+        cluster_config["available_node_types"]["ray.worker.default"][
+            "min_workers"] = 2
+        cluster_config["worker_start_ray_commands"] = ["ray_start_cmd"]
+
+        # Don't need the extra node type or a docker config.
+        cluster_config["head_node_type"] = ["ray.worker.default"]
+        del cluster_config["available_node_types"]["ray.head.default"]
+        del cluster_config["docker"]
+
+        config_path = self.write_config(cluster_config)
+
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+
+        # Scale up to two up-to-date workers
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+
+        # Mark both nodes as unhealthy
+        for _ in range(5):
+            if autoscaler.updaters:
+                time.sleep(0.05)
+                autoscaler.update()
+        assert not autoscaler.updaters
+        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        lm.last_heartbeat_time_by_ip["172.0.0.1"] = 0
+
+        # Set up process runner to terminate worker 0 during missed heartbeat
+        # recovery and also cause the updater to fail.
+        def terminate_worker_zero():
+            self.provider.terminate_node(0)
+
+        autoscaler.process_runner = MockProcessRunner(
+            fail_cmds=["ray_start_cmd"],
+            cmd_to_callback={"ray_start_cmd": terminate_worker_zero}
+        )
+
+        num_calls = len(autoscaler.process_runner.calls)
+        autoscaler.update()
+        # Wait for updaters spawned by last autoscaler update to finish.
+        self.waitFor(
+            lambda: all(not updater.is_alive()
+                        for updater in autoscaler.updaters.values()),
+            num_retries=500,
+            fail_msg="Last round of updaters didn't complete on time."
+        )
+        # Check that updaters processed some commands in the last autoscaler
+        # update.
+        assert len(autoscaler.process_runner.calls) > num_calls,\
+            "Did not get additional process runner calls on last autoscaler"\
+            " update."
+        # Missed heartbeat triggered recovery for both nodes.
+        events = autoscaler.event_summarizer.summary()
+        assert ("Restarting 2 nodes of type "
+                "ray.worker.default (lost contact with raylet)." in
+                events), events
+        # Node 0 was terminated during the last update.
+        # Node 1's updater failed, but node 1 won't be terminated until the
+        # next autoscaler update.
+        assert 0 not in autoscaler.workers(), "Node zero still non-terminated."
+        assert not self.provider.is_terminated(1),\
+            "Node one terminated prematurely."
+
+        autoscaler.update()
+        # Failed updates processed are now processed.
+        assert autoscaler.num_failed_updates[0] == 1,\
+            "Node zero update failure not registered"
+        assert autoscaler.num_failed_updates[1] == 1,\
+            "Node one update failure not registered"
+        # Completed-update-processing logic should terminated node 1.
+        assert self.provider.is_terminated(1), "Node 1 not terminated on time."
+
+        events = autoscaler.event_summarizer.summary()
+        # Just one node (node_id 1) terminated in the last update.
+        # Validates that we didn't try to double-terminate node 0.
+        assert (
+            "Removing 1 nodes of type "
+            "ray.worker.default (launch failed)." in events), events
+        # To be more explicit,
+        assert (
+            "Removing 2 nodes of type "
+            "ray.worker.default (launch failed)." not in events), events
+
+        # Should get two new nodes after the next update.
+        autoscaler.update()
+        self.waitForNodes(2)
+        assert set(autoscaler.workers()) == {2, 3},\
+            "Unexpected node_ids"
+
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
