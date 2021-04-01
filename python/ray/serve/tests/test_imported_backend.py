@@ -4,7 +4,7 @@ from ray.serve.config import BackendConfig
 
 
 def test_imported_backend(serve_instance):
-    config = BackendConfig(user_config="config", max_batch_size=2)
+    config = BackendConfig(user_config="config")
     serve.create_backend(
         "imported",
         "ray.serve.utils.MockImportedBackend",
@@ -29,10 +29,8 @@ def test_imported_backend(serve_instance):
     assert ray.get(handle.remote("hello")) == "hello"
 
     # Check that functions work as well.
-    serve.create_backend(
-        "imported_func",
-        "ray.serve.utils.mock_imported_function",
-        config=BackendConfig(max_batch_size=2))
+    serve.create_backend("imported_func",
+                         "ray.serve.utils.mock_imported_function")
     serve.create_endpoint("imported_func", backend="imported_func")
     handle = serve.get_handle("imported_func")
     assert ray.get(handle.remote("hello")) == "hello"

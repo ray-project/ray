@@ -435,7 +435,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         self._wait_for_goal(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
@@ -486,7 +485,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         goal_ref = self._controller.deploy.remote(name, backend_config,
                                                   replica_config, version)
 

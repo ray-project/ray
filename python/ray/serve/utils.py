@@ -222,11 +222,8 @@ def import_attr(full_path: str):
     return getattr(module, attr_name)
 
 
-async def mock_imported_function(batch):
-    result = []
-    for request in batch:
-        result.append(await request.body())
-    return result
+async def mock_imported_function(request):
+    return await request.body()
 
 
 class MockImportedBackend:
@@ -244,17 +241,11 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, batch):
-        return [{
-            "arg": self.arg,
-            "config": self.config
-        } for _ in range(len(batch))]
+    def __call__(self, request):
+        return {"arg": self.arg, "config": self.config}
 
-    async def other_method(self, batch):
-        responses = []
-        for request in batch:
-            responses.append(await request.body())
-        return responses
+    async def other_method(self, request):
+        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,
