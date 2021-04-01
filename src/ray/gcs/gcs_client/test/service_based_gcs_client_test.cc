@@ -1246,7 +1246,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   std::vector<std::unique_ptr<std::thread>> threads;
   threads.resize(size);
 
-  // The number of times each thread executes subscribe & resubscribe & unsubscribe.
+  // The number of times each thread executes subscribe & unsubscribe.
   int sub_and_unsub_loop_count = 20;
 
   // Multithreading subscribe/unsubscribe actors.
@@ -1317,16 +1317,17 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
+  absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
 
   // Restart GCS.
   RestartGcsServer();
 
-  absl::flat_hash_set<ActorID> actor_ids;
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
