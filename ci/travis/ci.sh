@@ -146,6 +146,7 @@ test_python() {
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
+      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
@@ -155,6 +156,7 @@ test_python() {
       -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
+      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_failure
       -python/ray/tests:test_failure_2
       -python/ray/tests:test_gcs_fault_tolerance # flaky
