@@ -38,7 +38,7 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic
+pydantic>=1.8
 dataclasses; python_version < '3.7'
 starlette
 
@@ -80,3 +80,5 @@ starlette
 fastapi
 smart_open[s3]
 tqdm
+async-exit-stack
+async-generator

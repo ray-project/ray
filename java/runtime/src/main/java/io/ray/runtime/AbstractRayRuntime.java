@@ -1,7 +1,6 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
@@ -219,26 +218,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     isContextSet.set(true);
   }
 
-  // TODO (kfstorm): Simplify the duplicate code in wrap*** methods.
-
   @Override
   public final Runnable wrapRunnable(Runnable runnable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         runnable.run();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
@@ -247,20 +232,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public final <T> Callable<T> wrapCallable(Callable<T> callable) {
     Object asyncContext = getAsyncContext();
     return () -> {
-      boolean oldIsContextSet = isContextSet.get();
-      Object oldAsyncContext = null;
-      if (oldIsContextSet) {
-        oldAsyncContext = getAsyncContext();
-      }
-      setAsyncContext(asyncContext);
-      try {
+      try (RayAsyncContextUpdater updater = new RayAsyncContextUpdater(asyncContext, this)) {
         return callable.call();
-      } finally {
-        if (oldIsContextSet) {
-          setAsyncContext(oldAsyncContext);
-        } else {
-          setIsContextSet(false);
-        }
       }
     };
   }
@@ -322,10 +295,38 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
+      Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
+  }
+
+  /// An auto closable class that is used for updating the async context when invoking Ray APIs.
+  private static final class RayAsyncContextUpdater implements AutoCloseable {
+
+    private AbstractRayRuntime runtime;
+
+    private boolean oldIsContextSet;
+
+    private Object oldAsyncContext = null;
+
+    public RayAsyncContextUpdater(Object asyncContext, AbstractRayRuntime runtime) {
+      this.runtime = runtime;
+      oldIsContextSet = runtime.isContextSet.get();
+      if (oldIsContextSet) {
+        oldAsyncContext = runtime.getAsyncContext();
+      }
+      runtime.setAsyncContext(asyncContext);
+    }
+
+    @Override
+    public void close() {
+      if (oldIsContextSet) {
+        runtime.setAsyncContext(oldAsyncContext);
+      } else {
+        runtime.setIsContextSet(false);
+      }
+    }
   }
 
   @Override

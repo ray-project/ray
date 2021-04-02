@@ -1,5 +1,6 @@
 import binascii
 import errno
+import functools
 import hashlib
 import logging
 import math
@@ -13,7 +14,9 @@ import threading
 import time
 from typing import Optional
 import uuid
+import warnings
 
+import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
@@ -902,3 +905,82 @@ def get_conda_env_dir(env_name):
             " not found in conda envs directory. Run `conda env list` to " +
             "verify the name is correct.")
     return env_dir
+
+
+def get_call_location(back=1):
+    """
+    Get the location (filename and line number) of a function caller, `back`
+    frames up the stack.
+
+    Args:
+        back (int): The number of frames to go up the stack, not including this
+            function.
+    """
+    stack = inspect.stack()
+    try:
+        frame = stack[back + 1]
+        return f"{frame.filename}:{frame.lineno}"
+    except IndexError:
+        return "UNKNOWN"
+
+
+# Used to only print a deprecation warning once for a given function if we
+# don't wish to spam the caller.
+_PRINTED_WARNING = set()
+
+
+# The following is inspired by
+# https://github.com/tensorflow/tensorflow/blob/dec8e0b11f4f87693b67e125e67dfbc68d26c205/tensorflow/python/util/deprecation.py#L274-L329
+def deprecated(instructions=None,
+               removal_release=None,
+               removal_date=None,
+               warn_once=True):
+    """
+    Creates a decorator for marking functions as deprecated. The decorator
+    will log a deprecation warning on the first (or all, see `warn_once` arg)
+    invocations, and will otherwise leave the wrapped function unchanged.
+
+    Args:
+        instructions (str): Instructions for the caller to update their code.
+        removal_release (str): The release in which this deprecated function
+            will be removed. Only one of removal_release and removal_date
+            should be specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        removal_date (str): The date on which this deprecated function will be
+            removed. Only one of removal_release and removal_date should be
+            specified. If neither is specfieid, we'll warning that
+            the function will be removed "in a future release".
+        warn_once (bool): If true, the deprecation warning will only be logged
+            on the first invocation. Otherwise, the deprecation warning will
+            be logged on every invocation. Defaults to True.
+
+    Returns:
+        A decorator to be used for wrapping deprecated functions.
+    """
+    if removal_release is not None and removal_date is not None:
+        raise ValueError(
+            "Only one of removal_release and removal_date should be specified."
+        )
+
+    def deprecated_wrapper(func):
+        @functools.wraps(func)
+        def new_func(*args, **kwargs):
+            global _PRINTED_WARNING
+            if func not in _PRINTED_WARNING:
+                if warn_once:
+                    _PRINTED_WARNING.add(func)
+                msg = ("From {}: {} (from {}) is deprecated and will ".format(
+                    get_call_location(), func.__name__,
+                    func.__module__) + "be removed " +
+                       (f"in version {removal_release}."
+                        if removal_release is not None else
+                        f"after {removal_date}"
+                        if removal_date is not None else "in a future version")
+                       + (f" {instructions}"
+                          if instructions is not None else ""))
+                warnings.warn(msg)
+            return func(*args, **kwargs)
+
+        return new_func
+
+    return deprecated_wrapper

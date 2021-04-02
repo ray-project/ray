@@ -397,6 +397,8 @@ We strongly advise to try reproduction on smaller toy problems first before rely
 on it for larger experiments.
 
 
+.. _tune-bottlenecks:
+
 How can I avoid bottlenecks?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Sometimes you might run into a message like this:

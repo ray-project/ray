@@ -36,3 +36,9 @@ def test_imported_backend(serve_instance):
     serve.create_endpoint("imported_func", backend="imported_func")
     handle = serve.get_handle("imported_func")
     assert ray.get(handle.remote("hello")) == "hello"
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -499,7 +499,6 @@ class TestRolloutWorker(unittest.TestCase):
         ev_env_steps = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy_spec=MockPolicy,
-            policy_config={"_use_trajectory_view_api": True},
             rollout_fragment_length=15,
             batch_mode="truncate_episodes")
         batch = ev_env_steps.sample()
@@ -515,7 +514,6 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="env_steps",
@@ -533,7 +531,6 @@ class TestRolloutWorker(unittest.TestCase):
                 "pol0": (MockPolicy, obs_space, action_space, {}),
                 "pol1": (MockPolicy, obs_space, action_space, {}),
             },
-            policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
             count_steps_by="agent_steps",

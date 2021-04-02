@@ -12,7 +12,6 @@ class TestTrainer(unittest.TestCase):
         """
         # Given
         standard_config = copy.deepcopy(COMMON_CONFIG)
-        standard_config["_use_trajectory_view_api"] = False
 
         # When (we validate config 2 times)
         Trainer._validate_config(standard_config)

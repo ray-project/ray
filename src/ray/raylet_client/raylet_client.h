@@ -353,15 +353,6 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Ask the raylet to restore the object of a given id.
-  /// \param object_id Object id that the remote raylet needs to restore.
-  /// \param object_url Object URL where the object is spilled.
-  /// \param spilled_node_id Node id of a node where the object is spilled.
-  void RestoreSpilledObject(
-      const ObjectID &object_id, const std::string &object_url,
-      const NodeID &spilled_node_id,
-      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,

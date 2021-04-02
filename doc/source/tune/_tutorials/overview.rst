@@ -162,4 +162,4 @@ Check out:
 
 .. _tune-faq:
 
-.. include:: _faq.rst
+.. include:: _faq.inc

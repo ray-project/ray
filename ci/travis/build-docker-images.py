@@ -230,6 +230,10 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
+        # Do not tag release builds because they are no longer up to
+        # date after the branch cut.
+        if "nightly" in tag and _release_build():
+            return
         if merge_build:
             print(f"PUSHING: {image}:{tag}, result:")
             # This docker API is janky. Without "stream=True" it returns a
@@ -276,11 +280,9 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
 
             for arch_tag in ["-cpu", "-gpu", ""]:
                 full_arch_tag = f"nightly{py_version}{arch_tag}"
-                # Do not tag release builds because they are no longer up to
-                # date after the branch cut.
-                if not _release_build():
-                    # Tag and push rayproject/<image>:nightly<arch_tag>
-                    docker_push(full_image, full_arch_tag)
+
+                # Tag and push rayproject/<image>:nightly<py_tag><arch_tag>
+                docker_push(full_image, full_arch_tag)
 
                 # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
                 specific_tag = get_new_tag(
@@ -299,6 +301,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
                         tag=non_python_specific_tag)
+                    # Tag and push rayproject/<image>:<sha/date><arch_tag>
                     docker_push(full_image, non_python_specific_tag)
 
                     non_python_nightly_tag = full_arch_tag.replace("-py37", "")
@@ -306,6 +309,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
                         tag=non_python_nightly_tag)
+                    # Tag and push rayproject/<image>:nightly<arch_tag>
                     docker_push(full_image, non_python_nightly_tag)
 
 

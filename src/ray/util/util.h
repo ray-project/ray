@@ -23,6 +23,13 @@
 #include <thread>
 #include <unordered_map>
 
+// Portable code for unreachable
+#if defined(_MSC_VER)
+#define UNREACHABLE __assume(0)
+#else
+#define UNREACHABLE __builtin_unreachable()
+#endif
+
 // Boost forward-declarations (to avoid forcing slow header inclusions)
 namespace boost {
 

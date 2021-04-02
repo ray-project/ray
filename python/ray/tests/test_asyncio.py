@@ -256,6 +256,32 @@ def test_async_function_errored(ray_start_regular_shared):
         ray.get(ref)
 
 
+async def test_async_obj_unhandled_errors(ray_start_regular_shared):
+    @ray.remote
+    def f():
+        raise ValueError()
+
+    num_exceptions = 0
+
+    def interceptor(e):
+        nonlocal num_exceptions
+        num_exceptions += 1
+
+    # Test we report unhandled exceptions.
+    ray.worker._unhandled_error_handler = interceptor
+    x1 = f.remote()
+    del x1
+    wait_for_condition(lambda: num_exceptions == 1)
+
+    # Test we don't report handled exceptions.
+    x1 = f.remote()
+    with pytest.raises(ray.exceptions.RayError):
+        await x1
+    del x1
+    await asyncio.sleep(1)
+    assert num_exceptions == 1, num_exceptions
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

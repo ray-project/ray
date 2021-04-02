@@ -128,6 +128,9 @@ class ObjectDirectoryInterface {
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
 
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -171,6 +174,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(
       const ObjectID &object_id, const NodeID &node_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
+
+  void RecordMetrics(uint64_t duration_ms) override;
 
   std::string DebugString() const override;
 

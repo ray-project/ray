@@ -334,18 +334,6 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "plasma_store_server",
-    srcs = [
-        "src/ray/plasma/store_exec.cc",
-    ],
-    copts = PLASMA_COPTS,
-    visibility = ["//visibility:public"],
-    deps = [
-        ":plasma_store_server_lib",
-    ],
-)
-
 FLATC_ARGS = [
     "--gen-object-api",
     "--gen-mutable",
@@ -647,6 +635,7 @@ cc_library(
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
+            "src/ray/core_worker/pubsub/*.cc",
             "src/ray/core_worker/transport/*.cc",
             "src/ray/rpc/worker/*.cc",
         ],
@@ -659,6 +648,7 @@ cc_library(
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
         "src/ray/core_worker/store_provider/memory_store/*.h",
+        "src/ray/core_worker/pubsub/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -705,7 +695,6 @@ cc_test(
     name = "core_worker_test",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
     args = [
-        "$(location //:plasma_store_server)",
         "$(location raylet)",
         "$(location mock_worker)",
         "$(location gcs_server)",
@@ -718,7 +707,6 @@ cc_test(
         "//:gcs_server",
         "//:libray_redis_module.so",
         "//:mock_worker",
-        "//:plasma_store_server",
         "//:raylet",
         "//:redis-cli",
         "//:redis-server",
@@ -783,6 +771,16 @@ cc_test(
 )
 
 cc_test(
+    name = "publisher_test",
+    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -835,6 +833,18 @@ cc_test(
 )
 
 cc_test(
+    name = "scheduling_policy_test",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_task_manager_test",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
@@ -850,6 +860,18 @@ cc_test(
     name = "local_object_manager_test",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subscriber_test",
+    srcs = [
+        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -1249,6 +1271,19 @@ cc_test(
     name = "gcs_resource_scheduler_test",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_resource_report_poller_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_resource_report_poller_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -1903,12 +1938,6 @@ copy_to_workspace(
     dstdir = "python/ray/core/src/ray/gcs",
 )
 
-copy_to_workspace(
-    name = "cp_plasma_store_server",
-    srcs = [":plasma_store_server"],
-    dstdir = "python/ray/core/src/plasma",
-)
-
 genrule(
     name = "install_py_proto",
     srcs = [
@@ -1940,7 +1969,6 @@ genrule(
         ":cp_libray_redis_module",
         ":cp_raylet",
         ":cp_gcs_server",
-        ":cp_plasma_store_server",
     ],
     outs = ["ray_pkg.out"],
     cmd = """

@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 import ray
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
 # Unique strings.
@@ -267,7 +267,7 @@ def test_memory_used_output(ray_start_regular):
     info = memory_summary(address)
     print(info)
     assert count(info, "Plasma memory usage 8 MiB") == 1, info
-    assert count(info, "8388861 B") == 2, info
+    assert count(info, "8388861.0 B") == 2, info
 
 
 if __name__ == "__main__":
