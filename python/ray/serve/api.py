@@ -21,10 +21,9 @@ from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_current_node_resource_key, get_random_letters,
-                             logger, make_fastapi_class_based_view,
-                             register_custom_serializers)
+from ray.serve.utils import (
+    format_actor_name, get_current_node_resource_key, get_random_letters,
+    logger, make_fastapi_class_based_view, register_custom_serializers)
 
 import ray
 
