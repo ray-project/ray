@@ -118,7 +118,7 @@ class HTTPProxy:
             starlette.routing.Route(
                 route, ServeStarletteEndpoint(endpoint_tag), methods=methods)
             for route, (endpoint_tag, methods) in sorted(
-                route_table.items(), key=lambda tag, _: len(tag), reverse=True)
+                route_table.items(), key=lambda x: len(x[0]), reverse=True)
             if not self._is_headless(route)
         ]
 
