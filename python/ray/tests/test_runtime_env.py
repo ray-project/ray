@@ -167,69 +167,6 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
-    # start job_config=None
-    # start job_config=something
-    cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
-    runtime_env = None
-    execute_statement = """
-sleep(600)
-"""
-    script = driver_script.format(**locals())
-    # Have one running with job config = None
-    proc = run_string_as_driver_nonblocking(script, env)
-    # waiting it to be up
-    sleep(5)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
-    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "ERROR"
-    proc.kill()
-
-
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=None
-    cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    execute_statement = """
-sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    sleep(5)
-    runtime_env = None
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "OK"
-    proc.kill()
-
-
-@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
-    # start job_config=something
-    # start job_config=something else
-    cluster = ray_start_cluster_head
-    (address, env, PKG_DIR) = start_client_server(cluster, True)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
-    execute_statement = """
-sleep(600)
-"""
-    script = driver_script.format(**locals())
-    proc = run_string_as_driver_nonblocking(script, env)
-    sleep(5)
-    runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
-    execute_statement = "print('OK')"
-    script = driver_script.format(**locals())
-    out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "ERROR"
-    proc.kill()
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -256,6 +193,74 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
+    # start job_config=None
+    # start job_config=something
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    runtime_env = None
+    execute_statement = """
+sleep(600)
+"""
+    script = driver_script.format(**locals())
+    # Have one running with job config = None
+    proc = run_string_as_driver_nonblocking(script, env)
+    # waiting it to be up
+    sleep(5)
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == "ERROR"
+    proc.kill()
+    proc.wait()
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
+    # start job_config=something
+    # start job_config=None
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    execute_statement = """
+sleep(600)
+"""
+    script = driver_script.format(**locals())
+    proc = run_string_as_driver_nonblocking(script, env)
+    sleep(5)
+    runtime_env = None
+    execute_statement = "print('OK')"
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == "OK"
+    proc.kill()
+    proc.wait()
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
+    # start job_config=something
+    # start job_config=something else
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, True)
+    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    execute_statement = """
+sleep(600)
+"""
+    script = driver_script.format(**locals())
+    proc = run_string_as_driver_nonblocking(script, env)
+    sleep(5)
+    runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
+    execute_statement = "print('OK')"
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    proc.kill()
+    proc.wait()
+    assert out.strip().split()[-1] == "ERROR"
 
 
 @pytest.fixture(scope="session")
