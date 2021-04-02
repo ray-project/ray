@@ -119,7 +119,7 @@ def test_path_prefixing(serve_instance):
     class D4:
         @app.get("/")
         def root(self):
-            return "4"
+            return 4
 
         @app.get("/{p}")
         def subpath(self, p: str):
@@ -129,9 +129,8 @@ def test_path_prefixing(serve_instance):
     assert req("/") == "1"
     assert req("/hello") == "2"
     assert req("/hello/world") == "3"
-    # TODO(edoakes): these fail with an obscure error message right now.
-    # assert req("/hello/world/again") == "4"
-    # assert req("/hello/world/again/") == "4"
+    assert req("/hello/world/again") == "4"
+    assert req("/hello/world/again/") == "4"
     assert req("/hello/world/again/hi") == '"hi"'
 
 
