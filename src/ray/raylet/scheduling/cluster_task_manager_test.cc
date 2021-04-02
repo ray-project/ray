@@ -295,12 +295,11 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
 
   Task finished_task;
+  // If a resource was double-freed, we will crash in this call.
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
 
-  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic,
-  // but it's not easy to do because in general, it is possible to overflow.
   AssertNoLeaks();
 }
 
@@ -343,8 +342,6 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   // Block the worker. Which releases only the CPU resource.
   task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
 
-  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic,
-  // but it's not easy to do because in general, it is possible to overflow.
   AssertNoLeaks();
 }
 

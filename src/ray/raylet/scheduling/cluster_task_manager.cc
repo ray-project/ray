@@ -848,8 +848,6 @@ void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface>
   if (worker->IsBlocked()) {
     // If the worker is blocked, its CPU instances have already been released. We clear
     // the CPU instances to avoid double freeing.
-    RAY_LOG(ERROR)
-        << "Freeing resources for a blocked worker. Skipping the CPU resources.";
     allocated_instances->ClearCPUInstances();
   }
   cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
