@@ -43,9 +43,7 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
             ConsoleSpanExporter(
                 out=open(f"{spans_dir}/{os.getpid()}.txt", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
-            )
-        )
-    )
+            )))
 
 
 def test_tracing(ray_start_regular_shared, cleanup_dirs):
@@ -84,16 +82,14 @@ def test_tracing(ray_start_regular_shared, cleanup_dirs):
                     num_spans += 1
     print(f"spans dir is {spans_dir}")
     assert num_spans == 6
-    assert all(
-        [
-            "f ray.remote" in span_string,  # YAPF formatting
-            "f ray.remote_worker" in span_string,
-            "Counter.__init__ ray.remote" in span_string,
-            "Counter.increment ray.remote" in span_string,
-            "Counter.__init__ ray.remote_worker" in span_string,
-            "Counter.increment ray.remote_worker" in span_string,
-        ]
-    )
+    assert all([
+        "f ray.remote" in span_string,  # YAPF formatting
+        "f ray.remote_worker" in span_string,
+        "Counter.__init__ ray.remote" in span_string,
+        "Counter.increment ray.remote" in span_string,
+        "Counter.__init__ ray.remote_worker" in span_string,
+        "Counter.increment ray.remote_worker" in span_string,
+    ])
 
 
 if __name__ == "__main__":

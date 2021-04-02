@@ -13,7 +13,6 @@ from opentelemetry.sdk.trace.export import (
 from typing import Any  # noqa: E402
 import ray  # noqa: E402
 
-
 spans_dir = "/tmp/spans"
 
 
@@ -30,9 +29,7 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
             ConsoleSpanExporter(
                 out=open(f"{spans_dir}/{os.getpid()}.txt", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
-            )
-        )
-    )
+            )))
 
 
 # This test is similar to test_tracing_task(), but the tests cannot be in the
@@ -77,14 +74,12 @@ def test_tracing_actor():
                         num_spans += 1
         assert num_spans == 4
         # check that all 4 spans are as expected
-        assert all(
-            [
-                "Counter.__init__ ray.remote" in span_string,
-                "Counter.increment ray.remote" in span_string,
-                "Counter.__init__ ray.remote_worker" in span_string,
-                "Counter.increment ray.remote_worker" in span_string,
-            ]
-        )
+        assert all([
+            "Counter.__init__ ray.remote" in span_string,
+            "Counter.increment ray.remote" in span_string,
+            "Counter.__init__ ray.remote_worker" in span_string,
+            "Counter.increment ray.remote_worker" in span_string,
+        ])
         # assert "\"name\": \"Counter.__init__ ray.remote_worker\"" in span_string
         # assert "{\"name\": \"Counter.increment ray.remote_worker\"" in span_string
     finally:
