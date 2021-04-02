@@ -264,17 +264,17 @@ class PlasmaStore {
   /// complete.
   /// NOTE: This function should guarantee the thread-safety because the callback is
   /// shared with the main raylet thread.
-  ray::SpillObjectsCallback spill_objects_callback_;
+  const ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is
   /// shared with the main raylet thread.
-  ray::AddObjectCallback add_object_callback_;
+  const ray::AddObjectCallback add_object_callback_;
 
   /// A callback to asynchronously notify that an object is deleted.
   /// NOTE: This function should guarantee the thread-safety because the callback is
   /// shared with the main raylet thread.
-  ray::DeleteObjectCallback delete_object_callback_;
+  const ray::DeleteObjectCallback delete_object_callback_;
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
