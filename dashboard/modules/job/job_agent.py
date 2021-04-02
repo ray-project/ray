@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os.path
+import itertools
 import subprocess
 import sys
 import uuid
@@ -21,16 +22,6 @@ from ray.core.generated import agent_manager_pb2
 from ray._private.utils import hex_to_binary, binary_to_hex
 
 logger = logging.getLogger(__name__)
-
-
-class CmdIndex:
-    _global_cmd_index = 1
-
-    @classmethod
-    def get_next(cls):
-        cmd_index = cls._global_cmd_index
-        cls._global_cmd_index += 1
-        return cmd_index
 
 
 @attr.s(kw_only=True, slots=True)
@@ -57,13 +48,15 @@ class JobInfo(JobDescription):
 
 
 class JobProcessor:
+    _cmd_index_gen = itertools.count(1)
+
     def __init__(self, job_info):
         assert isinstance(job_info, JobInfo)
         self._job_info = job_info
 
     async def _download_package(self, http_session, url, filename):
         job_id = self._job_info.job_id
-        cmd_index = CmdIndex.get_next()
+        cmd_index = next(self._cmd_index_gen)
         logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index, url,
                     filename)
         async with http_session.get(url, ssl=False) as response:
@@ -89,7 +82,7 @@ class JobProcessor:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
         job_id = self._job_info.job_id
-        cmd_index = CmdIndex.get_next()
+        cmd_index = next(self._cmd_index_gen)
         proc.cmd_index = cmd_index
         logger.info("[%s] Run cmd[%s] %s", job_id, cmd_index, repr(cmd))
         stdout, stderr = await proc.communicate()
