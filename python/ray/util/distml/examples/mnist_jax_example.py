@@ -83,11 +83,12 @@ class CifarTrainingOperator(JAXTrainingOperator):
 
         train_loader = Dataloader(train_images, train_labels, batch_size=128, shuffle=True)
         test_loader = Dataloader(test_images, test_labels, batch_size=128)
-            
+        
         self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
+        self.register_input_signatures(input_shape=input_shape)
         # def accuracy_batch(outputs, targets):
         #     predicted_class = jnp.argmax(outputs, axis=-1)
         #     target_class = jnp.argmax(targets, axis=-1)
@@ -129,6 +130,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,6"
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
@@ -146,6 +148,10 @@ if __name__ == "__main__":
             "num_classes": 10,
         },
         )
+
+    trainer1.save_parameters("jax_checkpoint")
+    trainer1.load_parameters("jax_checkpoint")
+
     pbar = trange(args.num_epochs, unit="epoch")
     for i in pbar:
         info = {"num_steps": 1} if args.smoke_test else {}
@@ -154,9 +160,7 @@ if __name__ == "__main__":
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
-        print(val_stats)
         pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
-    print(trainer1.validate())
     trainer1.shutdown()
     print("success!")

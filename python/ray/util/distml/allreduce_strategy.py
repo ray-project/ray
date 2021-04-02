@@ -69,9 +69,14 @@ class AllReduceStrategy(BaseTrainer):
         # Once the group is created, we start it.
         self.data_parallel_group.start_replicas(num_workers)
 
-
     def shutdown(self, force=False):
         self.data_parallel_group.shutdown(force=force)
+
+    def save_parameters(self, checkpoint):
+        self.data_parallel_group.save_parameters(checkpoint)
+
+    def load_parameters(self, checkpoint):
+        self.data_parallel_group.load_parameters(checkpoint)
 
 
 class Replica:
@@ -141,6 +146,14 @@ class Replica:
             del self.training_operator
         return 1
 
+    def save_parameters(self, checkpoint):
+        self.training_operator.save_parameters(checkpoint)
+
+    def load_parameters(self, checkpoint):
+        self.training_operator.load_parameters(checkpoint)
+
+
+
 class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
     def __init__(self,
@@ -208,3 +221,12 @@ class DataParallelGroup:
     @property
     def replicas(self):
         return self._distributed_replicas
+
+    def save_parameters(self, checkpoint):
+        rets = [self.replicas[0].save_parameters.remote(checkpoint)]
+        ray.get(rets)
+
+    def load_parameters(self, checkpoint):
+        rets = [replica.load_parameters.remote(checkpoint)
+                for _, replica in enumerate(self.replicas)]
+        ray.get(rets)

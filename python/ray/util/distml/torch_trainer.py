@@ -9,7 +9,6 @@ import ray
 from ray.util.distml.scratch.core.ps import PSStrategy
 
 
-
 parser = argparse.ArgumentParser(description='parameter server')
 parser.add_argument('-a', '--num-iterations', type=int, default=1000,
                     help='enable asynchronous training')
