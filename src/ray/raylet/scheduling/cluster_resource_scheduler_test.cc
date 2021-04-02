@@ -655,7 +655,8 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
 
   ASSERT_EQ(EqualVectors(instances.available, old_instances.available), true);
 
-  // TODO (Alex): This tests the overflow case, but it's unclear if we even need the overflow logic.
+  // TODO (Alex): This tests the overflow case, but it's unclear if we even need the
+  // overflow logic.
   a = {10., 1., 1.};
   cluster.AddAvailableResourceInstances(a, &instances, true);
   std::vector<FixedPoint> expected_available{6., 3., 6.};
@@ -920,17 +921,19 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
                            expected_available_gpu_instances.begin()));
 
-    // TODO (Alex): The following code tests the GPU overflow logic, but we should never overflow.
-    // allocate_gpu_instances = {1.0, .5, 1., .5};
-    // std::vector<double> overflow =
+    // TODO (Alex): The following code tests the GPU overflow logic, but we should never
+    // overflow. allocate_gpu_instances = {1.0, .5, 1., .5}; std::vector<double> overflow
+    // =
     //     resource_scheduler.AddGPUResourceInstances(allocate_gpu_instances);
     // std::vector<double> expected_overflow{.0, .0, .5, 0.};
-    // ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
-    // available_gpu_instances = resource_scheduler.GetLocalResources()
+    // ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(),
+    // expected_overflow.begin())); available_gpu_instances =
+    // resource_scheduler.GetLocalResources()
     //                               .GetAvailableResourceInstances()
     //                               .GetGPUInstancesDouble();
     // expected_available_gpu_instances = {1., .5, 1., .5};
-    // ASSERT_TRUE(std::equal(available_gpu_instances.begin(), available_gpu_instances.end(),
+    // ASSERT_TRUE(std::equal(available_gpu_instances.begin(),
+    // available_gpu_instances.end(),
     //                        expected_available_gpu_instances.begin()));
   }
 }
