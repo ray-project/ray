@@ -38,7 +38,8 @@ _global_is_tracing_enabled = None
 
 
 def is_tracing_enabled() -> bool:
-    """Checks environment variable feature flag to see if tracing is turned on. Tracing is off by default."""
+    """Checks environment variable feature flag to see if tracing is turned on.
+    Tracing is off by default."""
     global _global_is_tracing_enabled
     if _global_is_tracing_enabled is None:
         _global_is_tracing_enabled = os.getenv(
@@ -184,9 +185,9 @@ def _tracing_task_invocation(method):
         assert "_ray_trace_ctx" not in kwargs
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
-                _function_span_producer_name(method.__name__),
+                _function_span_producer_name(self._function_name),
                 kind=trace.SpanKind.PRODUCER,
-                attributes=_function_hydrate_span_args(method.__name__),
+                attributes=_function_hydrate_span_args(self._function_name),
         ):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = DictPropagator.inject_current_context()
@@ -214,12 +215,14 @@ def _inject_tracing_into_function(function):
 
         assert _ray_trace_ctx is not None, f"Missing ray_trace_ctx!: {args}, {kwargs}"
 
+        function_name = function.__module__ + "." + function.__name__
+
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
         with use_context(DictPropagator.extract(
                 _ray_trace_ctx)), tracer.start_as_current_span(
-                    _function_span_consumer_name(function.__name__),
+                    _function_span_consumer_name(function_name),
                     kind=trace.SpanKind.CONSUMER,
-                    attributes=_function_hydrate_span_args(function.__name__),
+                    attributes=_function_hydrate_span_args(function_name),
                 ):
             return function(*args, **kwargs)
 
@@ -245,7 +248,6 @@ def _tracing_actor_creation(method):
         class_name = self.__ray_metadata__.class_name
         method_name = "__init__"
         assert "_ray_trace_ctx" not in _kwargs
-
         tracer = trace.get_tracer(__name__)
         with tracer.start_as_current_span(
                 name=_actor_span_producer_name(class_name, method_name),
