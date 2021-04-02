@@ -280,7 +280,15 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
-  RAY_CHECK(iter != unfulfilled_push_requests_.end());
+  // Under this scenario, `HandlePushTaskTimeout` can be invoked
+  // although timer cancels it.
+  // 1. wait timer is done and the task is queued.
+  // 2. While task is queued, timer->cancel() is invoked.
+  // In this case this method can be invoked although it is not timed out.
+  // https://www.boost.org/doc/libs/1_66_0/doc/html/boost_asio/reference/basic_deadline_timer/cancel/overload1.html.
+  if (iter == unfulfilled_push_requests_.end()) {
+    return;
+  }
   size_t num_erased = iter->second.erase(node_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
