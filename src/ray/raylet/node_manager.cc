@@ -198,22 +198,26 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(self_node_id_,
-                            RayConfig::instance().free_objects_batch_size(),
-                            RayConfig::instance().free_objects_period_milliseconds(),
-                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
-                            /* automatic_object_deletion_enabled */
-                            config.automatic_object_deletion_enabled,
-                            /*max_io_workers*/ config.max_io_workers,
-                            /*min_spilling_size*/ config.min_spilling_size,
-                            /*is_external_storage_type_fs*/
-                            RayConfig::instance().is_external_storage_type_fs(),
-                            /*on_objects_freed*/
-                            [this](const std::vector<ObjectID> &object_ids) {
-                              object_manager_.FreeObjects(object_ids,
-                                                          /*local_only=*/false);
-                            },
-                            is_plasma_object_spillable),
+      local_object_manager_(
+          self_node_id_, config.node_manager_address, config.node_manager_port,
+          RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
+          /* automatic_object_deletion_enabled */
+          config.automatic_object_deletion_enabled,
+          /*max_io_workers*/ config.max_io_workers,
+          /*min_spilling_size*/ config.min_spilling_size,
+          /*is_external_storage_type_fs*/
+          RayConfig::instance().is_external_storage_type_fs(),
+          /*on_objects_freed*/
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids,
+                                        /*local_only=*/false);
+          },
+          is_plasma_object_spillable,
+          /*core_worker_subscriber_=*/
+          std::make_shared<Subscriber>(self_node_id_, config.node_manager_address,
+                                       config.node_manager_port, worker_rpc_pool_)),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -249,6 +253,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto announce_infeasible_task = [this](const Task &task) {
     PublishInfeasibleTaskError(task);
   };
+  RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
+            RayConfig::instance().max_task_args_memory_fraction() <= 1)
+      << "max_task_args_memory_fraction must be a nonzero fraction.";
+  int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
+                                 RayConfig::instance().max_task_args_memory_fraction();
+  RAY_CHECK(max_task_args_memory > 0);
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -257,7 +267,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
-      }));
+      },
+      max_task_args_memory));
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
@@ -970,7 +981,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
   if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
-        worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
+        worker_type != rpc::WorkerType::RESTORE_WORKER &&
+        worker_type != rpc::WorkerType::UTIL_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
   } else {
@@ -1002,7 +1014,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   };
   if (worker_type == rpc::WorkerType::WORKER ||
       worker_type == rpc::WorkerType::SPILL_WORKER ||
-      worker_type == rpc::WorkerType::RESTORE_WORKER) {
+      worker_type == rpc::WorkerType::RESTORE_WORKER ||
+      worker_type == rpc::WorkerType::UTIL_WORKER) {
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
@@ -1067,6 +1080,12 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
     // Return the worker to the idle pool.
     worker_pool_.PushRestoreWorker(worker);
+    return;
+  }
+
+  if (worker->GetWorkerType() == rpc::WorkerType::UTIL_WORKER) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushUtilWorker(worker);
     return;
   }
 

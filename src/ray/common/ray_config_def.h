@@ -108,6 +108,18 @@ RAY_CONFIG(bool, scheduler_loadbalance_spillback,
            getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
                getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
 
+/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
+/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
+/// then spread via weighted (by critical resource usage).
+RAY_CONFIG(bool, scheduler_hybrid_scheduling,
+           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
+               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+
+RAY_CONFIG(float, scheduler_hybrid_threshold,
+           getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
+               ? 0.5
+               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
@@ -385,3 +397,6 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// debug_state.txt for raylets.
 /// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
 RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+
+/// Maximum amount of memory that will be used by running tasks' args.
+RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

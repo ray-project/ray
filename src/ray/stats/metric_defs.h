@@ -126,9 +126,9 @@ static Sum NumDispatchedTasks(
     "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
 
 static Sum NumSpilledTasks("internal_num_spilled_tasks",
-                             "The cumulative number of lease requeusts that this raylet "
-                             "has spilled to other raylets.",
-                             "tasks");
+                           "The cumulative number of lease requeusts that this raylet "
+                           "has spilled to other raylets.",
+                           "tasks");
 
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
                                  "Bandwidth of object spilling.", "MB");

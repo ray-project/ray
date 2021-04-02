@@ -16,12 +16,21 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
 
+ClusterResourceScheduler::ClusterResourceScheduler()
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+
+          {};
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id),
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -31,7 +40,9 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
-    : loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -215,11 +226,9 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
-                                                         bool actor_creation,
-                                                         bool force_spillback,
-                                                         int64_t *total_violations,
-                                                         bool *is_infeasible) {
+int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
+    const TaskRequest &task_req, bool actor_creation, bool force_spillback,
+    int64_t *total_violations, bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
   // being set.
   *is_infeasible = false;
@@ -230,30 +239,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // Node associated to min_violations.
   std::vector<int64_t> best_nodes;
   *total_violations = 0;
-
-  if (actor_creation && task_req.IsEmpty()) {
-    int64_t best_node = -1;
-    // This an actor which requires no resources.
-    // Pick a random node to to avoid all scheduling all actors on the local node.
-    if (nodes_.size() > 0) {
-      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
-      int idx = distribution(gen_);
-      for (auto &node : nodes_) {
-        if (idx == 0) {
-          best_nodes.emplace_back(node.first);
-          break;
-        }
-        idx--;
-      }
-    }
-    if (!best_nodes.empty()) {
-      best_node = best_nodes.back();
-    }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << nodes_.size()
-                   << ", task_req = " << task_req.DebugString();
-    return best_node;
-  }
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
@@ -336,6 +321,51 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   return best_node;
 }
 
+int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
+                                                         bool force_spillback,
+                                                         int64_t *total_violations,
+                                                         bool *is_infeasible) {
+  // The zero cpu actor is a special case that must be handled the same way by all
+  // scheduling policies.
+  if (actor_creation && task_req.IsEmpty()) {
+    int64_t best_node = -1;
+    // This is an actor which requires no resources.
+    // Pick a random node to to avoid scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
+      best_node = std::next(nodes_.begin(), idx)->first;
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
+
+  if (!hybrid_spillback_) {
+    return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
+                                               total_violations, is_infeasible);
+  }
+
+  // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+  // remain bug compatible with the legacy scheduling algorithms.
+  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
+      task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
+      force_spillback);
+  *is_infeasible = best_node_id == -1 ? true : false;
+  if (!*is_infeasible) {
+    // TODO (Alex): Support soft constraints if needed later.
+    *total_violations = 0;
+  }
+
+  RAY_LOG(DEBUG) << "Scheduling decision. "
+                 << "forcing spillback: " << force_spillback
+                 << ". Best node: " << best_node_id
+                 << ", is infeasible: " << *is_infeasible;
+  return best_node_id;
+}
+
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
     bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
@@ -402,36 +432,41 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
   return node_it->second.GetLocalView();
 }
 
-int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
 
-void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
-                                                double resource_total) {
-  string_to_int_map_.Insert(resource_name);
-  int64_t resource_id = string_to_int_map_.Get(resource_name);
+const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
+  return string_to_int_map_;
+}
 
-  if (local_resources_.custom_resources.contains(resource_id)) {
-    FixedPoint total(resource_total);
-    auto &instances = local_resources_.custom_resources[resource_id];
-    instances.total[0] += total;
-    instances.available[0] += total;
-    auto local_node_it = nodes_.find(local_node_id_);
-    RAY_CHECK(local_node_it != nodes_.end());
-    auto &capacity =
-        local_node_it->second.GetMutableLocalView()->custom_resources[resource_id];
-    capacity.available += total;
-    capacity.total += total;
+void ClusterResourceScheduler::AddLocalResourceInstances(
+    const std::string &resource_name, const std::vector<FixedPoint> &instances) {
+  ResourceInstanceCapacities *node_instances;
+  local_resources_.predefined_resources.resize(PredefinedResources_MAX);
+  if (kCPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[CPU];
+  } else if (kGPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[GPU];
+  } else if (kObjectStoreMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[OBJECT_STORE_MEM];
+  } else if (kMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[MEM];
   } else {
-    ResourceInstanceCapacities capacity;
-    capacity.total.resize(1);
-    capacity.total[0] = resource_total;
-    capacity.available.resize(1);
-    capacity.available[0] = resource_total;
-    local_resources_.custom_resources.emplace(resource_id, capacity);
-    std::string node_id_string = string_to_int_map_.Get(local_node_id_);
-    RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
-    UpdateResourceCapacity(node_id_string, resource_name, resource_total);
-    UpdateLocalAvailableResourcesFromResourceInstances();
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    node_instances = &local_resources_.custom_resources[resource_id];
   }
+
+  if (node_instances->total.size() < instances.size()) {
+    node_instances->total.resize(instances.size());
+    node_instances->available.resize(instances.size());
+  }
+
+  for (size_t i = 0; i < instances.size(); i++) {
+    node_instances->available[i] += instances[i];
+    node_instances->total[i] =
+        std::max(node_instances->total[i], node_instances->available[i]);
+  }
+  UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
 bool ClusterResourceScheduler::IsAvailableResourceEmpty(
@@ -824,14 +859,17 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
     }
   }
 
-  for (auto &custom_resource : local_view->custom_resources) {
-    auto it = local_resources_.custom_resources.find(custom_resource.first);
-    if (it != local_resources_.custom_resources.end()) {
-      custom_resource.second.available = 0;
-      for (const auto &available : it->second.available) {
-        custom_resource.second.available += available;
-      }
-    }
+  for (auto &custom_resource : local_resources_.custom_resources) {
+    int64_t resource_name = custom_resource.first;
+    auto &instances = custom_resource.second;
+
+    FixedPoint available = std::accumulate(instances.available.begin(),
+                                           instances.available.end(), FixedPoint());
+    FixedPoint total =
+        std::accumulate(instances.total.begin(), instances.total.end(), FixedPoint());
+
+    local_view->custom_resources[resource_name].available = available;
+    local_view->custom_resources[resource_name].total = total;
   }
 }
 
