@@ -238,14 +238,14 @@ class PlasmaStore {
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
   /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(std::shared_ptr<GetRequest> get_request);
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
   void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
 
-  void ReturnFromGet(std::shared_ptr<GetRequest> get_req);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 

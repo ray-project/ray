@@ -361,7 +361,7 @@ void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
   object->device_num = entry->device_num;
 }
 
-void PlasmaStore::RemoveGetRequest(std::shared_ptr<GetRequest> get_request) {
+void PlasmaStore::RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request) {
   // Remove the get request from each of the relevant object_get_requests hash
   // tables if it is present there. It should only be present there if the get
   // request timed out or if it was issued by a client that has disconnected.
@@ -388,7 +388,7 @@ void PlasmaStore::RemoveGetRequest(std::shared_ptr<GetRequest> get_request) {
 void PlasmaStore::RemoveGetRequestsForClient(const std::shared_ptr<Client> &client) {
   std::unordered_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
   for (auto const &pair : object_get_requests_) {
-    for (const auto get_request : pair.second) {
+    for (const auto &get_request : pair.second) {
       if (get_request->client == client) {
         get_requests_to_remove.insert(get_request);
       }
@@ -398,12 +398,12 @@ void PlasmaStore::RemoveGetRequestsForClient(const std::shared_ptr<Client> &clie
   // It shouldn't be possible for a given client to be in the middle of multiple get
   // requests.
   RAY_CHECK(get_requests_to_remove.size() <= 1);
-  for (const auto get_request : get_requests_to_remove) {
+  for (const auto &get_request : get_requests_to_remove) {
     RemoveGetRequest(get_request);
   }
 }
 
-void PlasmaStore::ReturnFromGet(std::shared_ptr<GetRequest> get_req) {
+void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   // If the get request is already removed, do no-op. This can happen because the boost
   // timer is not atomic. See https://github.com/ray-project/ray/pull/15071.
   if (get_req->IsRemoved()) {
