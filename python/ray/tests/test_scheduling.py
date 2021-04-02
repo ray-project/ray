@@ -38,6 +38,7 @@ def attempt_to_load_balance(remote_function,
     assert attempts < num_attempts
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets
     # in a roughly equal manner.
