@@ -61,29 +61,32 @@ ObjectManager::ObjectManager(
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
-      object_store_internal_(config, spill_objects_callback, object_store_full_callback,
-                             /*add_object_callback=*/
-                             [=](const ObjectInfo &object_info) {
-                               main_service_->post(
-                                   [=]() {
-                                     HandleObjectAdded(object_info);
-                                     if (add_object_callback) {
-                                       add_object_callback(object_info);
-                                     }
-                                   },
-                                   "ObjectManager.ObjectAdded");
-                             },
-                             /*delete_object_callback=*/
-                             [=](const ObjectID &object_id) {
-                               main_service_->post(
-                                   [=]() {
-                                     HandleObjectDeleted(object_id);
-                                     if (delete_object_callback) {
-                                       delete_object_callback(object_id);
-                                     }
-                                   },
-                                   "ObjectManager.ObjectDeleted");
-                             }),
+      object_store_internal_(
+          config, spill_objects_callback, object_store_full_callback,
+          /*add_object_callback=*/
+          [this, add_object_callback =
+                     std::move(add_object_callback)](const ObjectInfo &object_info) {
+            main_service_->post(
+                [this, add_object_callback = std::move(add_object_callback)]() {
+                  HandleObjectAdded(object_info);
+                  if (add_object_callback) {
+                    add_object_callback(object_info);
+                  }
+                },
+                "ObjectManager.ObjectAdded");
+          },
+          /*delete_object_callback=*/
+          [this, delete_object_callback =
+                     std::move(delete_object_callback)](const ObjectID &object_id) {
+            main_service_->post(
+                [this, delete_object_callback = std::move(delete_object_callback)]() {
+                  HandleObjectDeleted(object_id);
+                  if (delete_object_callback) {
+                    delete_object_callback(object_id);
+                  }
+                },
+                "ObjectManager.ObjectDeleted");
+          }),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
