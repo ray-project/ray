@@ -60,11 +60,14 @@ class MockProcessRunner:
         self.print_out = print_out
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
+        self.ready_to_run = threading.Event()
+        self.ready_to_run.set()
 
         self.lock = threading.RLock()
 
     def check_call(self, cmd, *args, **kwargs):
         with self.lock:
+            self.ready_to_run.wait()
             self.calls.append(cmd)
             if self.print_out:
                 print(f">>>Process runner: Executing \n {str(cmd)}")
