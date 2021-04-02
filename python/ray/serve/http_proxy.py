@@ -206,6 +206,10 @@ class HTTPProxyActor:
         # Return None, or re-throw the exception from self.running_task.
         return await done_set.pop()
 
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
+
     async def run(self):
         sock = socket.socket()
         # These two socket options will allow multiple process to bind the the
