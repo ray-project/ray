@@ -31,8 +31,7 @@ except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
         logger.warning(
             "Install opentelemetry with 'pip install opentelemetry-api' and"
-            "'pip install opentelemetry-sdk' to enable tracing."
-        )
+            "'pip install opentelemetry-sdk' to enable tracing.")
 
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = None
@@ -216,8 +215,9 @@ def _inject_tracing_into_function(function):
 
         tracer = trace.get_tracer(__name__)
 
-        assert (_ray_trace_ctx is not None,  # noqa: F631
-        f"Missing ray_trace_ctx!: {args}, {kwargs}")
+        assert (
+            _ray_trace_ctx is not None,  # noqa: F631
+            f"Missing ray_trace_ctx!: {args}, {kwargs}")
 
         function_name = function.__module__ + "." + function.__name__
 

@@ -119,7 +119,7 @@ def test_tracing(ray_start_regular_shared, cleanup_dirs):
         "test_tracing.<locals>.AsyncActor.run_concurrent ray.remote": 4,
         "AsyncActor.__init__ ray.remote_worker": 1,
         "AsyncActor.run_concurrent ray.remote_worker": 4,
-        }
+    }
 
 
 if __name__ == "__main__":
