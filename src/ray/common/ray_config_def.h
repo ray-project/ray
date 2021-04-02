@@ -108,6 +108,18 @@ RAY_CONFIG(bool, scheduler_loadbalance_spillback,
            getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
                getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
 
+/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
+/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
+/// then spread via weighted (by critical resource usage).
+RAY_CONFIG(bool, scheduler_hybrid_scheduling,
+           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
+               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+
+RAY_CONFIG(float, scheduler_hybrid_threshold,
+           getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
+               ? 0.5
+               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
@@ -348,6 +360,9 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// The minimum object size that can be spilled by each spill operation. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Maximum number of objects that can be fused into a single file.
+RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
 /// Whether to enable automatic object deletion when refs are gone out of scope.
 /// When it is true, manual (force) spilling is not available.

@@ -44,6 +44,7 @@ class LocalObjectManager {
       rpc::CoreWorkerClientPool &owner_client_pool,
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
+      int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       std::shared_ptr<SubscriberInterface> core_worker_subscriber)
@@ -63,6 +64,7 @@ class LocalObjectManager {
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
         is_external_storage_type_fs_(is_external_storage_type_fs),
+        max_fused_object_count_(max_fused_object_count),
         core_worker_subscriber_(core_worker_subscriber) {}
 
   /// Pin objects.
@@ -147,6 +149,7 @@ class LocalObjectManager {
 
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
@@ -280,6 +283,9 @@ class LocalObjectManager {
   /// If it is not (meaning it is distributed backend), it always restores objects
   /// directly from the external storage.
   bool is_external_storage_type_fs_;
+
+  /// Maximum number of objects that can be fused into a single file.
+  int64_t max_fused_object_count_;
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
