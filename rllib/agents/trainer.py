@@ -14,6 +14,11 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
+<<<<<<< HEAD
+=======
+from ray.rllib.env.normalize_actions import \
+    NormalizeActionWrapper, NormalizeMultiAgentActionWrapper
+>>>>>>> normalize multiagent action wrapper added, modified trainer
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.utils import gym_env_creator
@@ -676,11 +681,16 @@ class Trainer(Trainable):
 
             def normalize(env):
                 import gym  # soft dependency
-                if not isinstance(env, gym.Env):
+                from ray.rllib.env.multi_agent_env import MultiAgentEnv
+                if isinstance(env, gym.Env):
+                    return NormalizeActionWrapper(env)
+                elif isinstance(env, MultiAgentEnv):
+                    return NormalizeMultiAgentActionWrapper(env, self.config)
+                else:
                     raise ValueError(
-                        "Cannot apply NormalizeActionActionWrapper to env of "
-                        "type {}, which does not subclass gym.Env.", type(env))
-                return NormalizeActionWrapper(env)
+                        "Cannot apply NormalalizeWrapper to env of type {}, "
+                        "which does not subclass gym.Env or MultiAgentEnv.",
+                        type(env))
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
