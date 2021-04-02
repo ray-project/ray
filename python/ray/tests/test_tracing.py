@@ -83,14 +83,20 @@ def test_tracing(ray_start_regular_shared, cleanup_dirs):
                 span_string += line
                 span_list.append(json.loads(line))
     assert len(span_list) == 6
+
+    # The spans could show up in a different order, so just check that
+    # all spans are as expected
+    span_names = set()
     for span in span_list:
-        assert span["name"] in [
-            "test_tracing.f ray.remote",
-            "test_tracing.f ray.remote_worker",
-            "test_tracing.<locals>.Counter.__init__ ray.remote",
-            "test_tracing.<locals>.Counter.increment ray.remote",
-            "Counter.__init__ ray.remote_worker",
-            "Counter.increment ray.remote_worker"]
+        span_names.add(span["name"])
+
+    assert span_names == {
+        "test_tracing.f ray.remote",
+        "test_tracing.f ray.remote_worker",
+        "test_tracing.<locals>.Counter.__init__ ray.remote",
+        "test_tracing.<locals>.Counter.increment ray.remote",
+        "Counter.__init__ ray.remote_worker",
+        "Counter.increment ray.remote_worker"}
 
 
 if __name__ == "__main__":
