@@ -455,7 +455,10 @@ class Worker:
                 runtime_env.rewrite_working_dir_uri(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
-                self.data_client.Init(init_req)
+                init_resp = self.data_client.Init(init_req)
+                if not init_resp.ok:
+                    logger.error("Init failed due to: ", init_resp.msg)
+                    raise IOError(init_resp.msg)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
                 self.data_client.PrepRuntimeEnv(prep_req)
