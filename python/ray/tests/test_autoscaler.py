@@ -2344,7 +2344,7 @@ MemAvailable:   33000000 kB
             "Node zero update failure not registered"
         assert autoscaler.num_failed_updates[1] == 1,\
             "Node one update failure not registered"
-        # Completed-update-processing logic should terminated node 1.
+        # Completed-update-processing logic should have terminated node 1.
         assert self.provider.is_terminated(1), "Node 1 not terminated on time."
 
         events = autoscaler.event_summarizer.summary()
