@@ -3,10 +3,7 @@ import argparse
 from ray import tune
 from ray.tune import run
 from ray.tune.utils._mock_trainable import MyTrainableClass
-from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-
-from hyperopt import hp
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
