@@ -167,8 +167,6 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
-
-
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
