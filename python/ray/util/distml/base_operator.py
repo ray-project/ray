@@ -45,3 +45,9 @@ class TrainingOperator:
 
     def apply_updates(self, updates):
         raise NotImplementedError()
+
+    def save_parameters(self, checkpoint):
+        raise NotImplementedError()
+
+    def load_parameters(self, checkpoint):
+        raise NotImplementedError()

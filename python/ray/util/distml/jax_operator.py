@@ -3,11 +3,19 @@ import cupy as cp
 from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
-from jax.tree_util import tree_flatten
+from jax.tree_util import tree_flatten, tree_structure
 
 from ray.util.distml.base_operator import TrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
 
+jax2tf_available = True
+# try:
+# from jax.experimental import jax2tf
+import tensorflow as tf
+from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
+# except:
+    # print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
+    # jax2tf_available = False
 class JAXTrainingOperator(TrainingOperator):
 
     def __init__(self, operator_config):
@@ -53,6 +61,16 @@ class JAXTrainingOperator(TrainingOperator):
     def register_data(self, *, train_loader=None, validation_loader=None):
         self.train_loader = train_loader
         self.validation_loader = validation_loader
+
+    def register_input_signatures(self, *, input_shape):
+        if not isinstance(input_shape, list):
+            input_shape = [input_shape]
+        input_signatures = [
+            # The first one will be the serving signature
+            tf.TensorSpec(s, tf.float32)
+            for s in input_shape
+        ]
+        self.input_signatures = input_signatures
 
     def loss_fn(self, params, batch):
         inputs, targets = batch
@@ -159,9 +177,36 @@ class JAXTrainingOperator(TrainingOperator):
         }
 
 
+    def save_parameters(self, checkpoint):
+        # save model
+        if jax2tf_available:
+            if not getattr(self, "input_signatures"):
+                print("Warning: input_signatures has not set. "
+                    "Please using register_input_signatures to register it.")
+                self.input_signatures = [tf.TensorSpec([], tf.float32)]
+            convert_and_save_model(
+                self.predict_fun,
+                self.get_params(self.opt_state),
+                checkpoint,
+                input_signatures=self.input_signatures,
+                compile_model=False)
+        else:
+            raise RuntimeError("jax2tf is not available.")
+
+    def load_parameters(self, checkpoint):
+        print("Warning: Jax not support loading checkpoint. ")
+        if jax2tf_available:
+            restored_model = load_params_from_tf(checkpoint)
+        else:
+            raise RuntimeError("jax2tf is not available.")
+
     def set_parameters(self, params):
         # need in place parameters in opt_state
         
+        # TODO(HUI): check the input params has the same tree.
+        assert tree_structure(params) == tree_structure(self.get_params(self.opt_state))
+
+        self.opt_state = params, self.opt_state[1]
         pass
         
     def get_parameters(self):

@@ -42,23 +42,21 @@ class BaseTrainer:
         """
         pass
 
-    def state_dict(self):
-        """return model parameter.
-        """
-
-    def load_state_dict(self, state_dict, blocking=False):
+    def get_parameters(self, state_dict, blocking=False):
         """load model parameter.
         """
+        raise NotImplementedError()
 
-    def save(self, save_fn, checkpoint):
+    def save_parameters(self, checkpoint):
         """Saves the Trainer state to the provided checkpoint path.
 
         Args:
-            save_fn (function): The saving function for different machine learning systems.
             checkpoint (str): Path to target checkpoint file.
         """
-        save_fn(self.state_dict(), checkpoint)
-        return checkpoint
+        raise NotImplementedError()
+
+    def load_parameters(self, checkpoint):
+        raise NotImplementedError()
 
     def shutdown(self, force=False):
         """Kill all workers.
