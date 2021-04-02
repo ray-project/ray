@@ -274,14 +274,18 @@ class ServeController:
             if ("{" in replica_config.path_prefix
                     or "}" in replica_config.path_prefix):
                 raise ValueError(
-                    "Wildcard routes are not supported for deployment paths.")
+                    "Wildcard routes are not supported for deployment paths. "
+                    "Please use @serve.ingress with FastAPI instead.")
 
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            http_route = replica_config.path_prefix + WILDCARD_PATH_SUFFIX
+            path_prefix = replica_config.path_prefix
+            if path_prefix.endswith("/"):
+                path_prefix = path_prefix[:-1]
+            http_route = path_prefix + WILDCARD_PATH_SUFFIX
             http_methods = ALL_HTTP_METHODS
         else:
             http_route = replica_config.path_prefix

@@ -132,7 +132,7 @@ def test_path_prefixing(serve_instance):
     # TODO(edoakes): these fail with an obscure error message right now.
     # assert req("/hello/world/again") == "4"
     # assert req("/hello/world/again/") == "4"
-    assert req("/hello/world/again/hi") == "\"hi\""
+    assert req("/hello/world/again/hi") == '"hi"'
 
 
 if __name__ == "__main__":
