@@ -75,14 +75,14 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   void TearDown() override {
     client_io_service_->stop();
+    client_io_service_thread_->join();
     gcs_client_->Disconnect();
 
-    gcs_server_->Stop();
     server_io_service_->stop();
     server_io_service_thread_->join();
+    gcs_server_->Stop();
     gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
-    client_io_service_thread_->join();
   }
 
   void RestartGcsServer() {
