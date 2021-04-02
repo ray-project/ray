@@ -207,7 +207,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
- std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
@@ -262,7 +262,8 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
 
 TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   /*
-   Tests the edge case in which a worker crashes while it's blocked. In this case, its CPU resources should not be double freed.
+   Tests the edge case in which a worker crashes while it's blocked. In this case, its CPU
+   resources should not be double freed.
    */
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -270,8 +271,8 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   bool *callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr](Status, std::function<void()>,
                                           std::function<void()>) {
-                    *callback_occurred_ptr = true;
-                  };
+    *callback_occurred_ptr = true;
+  };
 
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
 
@@ -280,7 +281,7 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   task_manager_.ScheduleAndDispatchTasks();
@@ -298,13 +299,15 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
 
-  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic, but it's not easy to do because in general, it is possible to overflow.
+  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic,
+  // but it's not easy to do because in general, it is possible to overflow.
   AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   /*
-    Same edge case as the previous test, but this time the block and finish requests happen in the opposite order.
+    Same edge case as the previous test, but this time the block and finish requests
+    happen in the opposite order.
    */
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -312,8 +315,8 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   bool *callback_occurred_ptr = &callback_occurred;
   auto callback = [callback_occurred_ptr](Status, std::function<void()>,
                                           std::function<void()>) {
-                    *callback_occurred_ptr = true;
-                  };
+    *callback_occurred_ptr = true;
+  };
 
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
 
@@ -322,7 +325,7 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   task_manager_.ScheduleAndDispatchTasks();
@@ -340,7 +343,8 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
   // Block the worker. Which releases only the CPU resource.
   task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
 
-  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic, but it's not easy to do because in general, it is possible to overflow.
+  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic,
+  // but it's not easy to do because in general, it is possible to overflow.
   AssertNoLeaks();
 }
 

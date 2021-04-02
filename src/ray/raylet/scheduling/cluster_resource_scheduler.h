@@ -290,7 +290,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// capacities in "available", i.e.,
   /// min(available + resource_instances.available, resource_instances.total)
   std::vector<FixedPoint> AddAvailableResourceInstances(
-                                                        std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
 
   /// Decrease the available capacities of the instances of a given resource.
   ///

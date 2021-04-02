@@ -372,7 +372,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   return task_resources;
 };
 
-
 bool TaskRequest::IsEmpty() const {
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
     if (this->predefined_resources[i].demand != 0) {

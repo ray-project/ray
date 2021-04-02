@@ -634,7 +634,7 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 }
 
 std::vector<FixedPoint> ClusterResourceScheduler::AddAvailableResourceInstances(
-                                                                                std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances) {
+    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances) {
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] + available[i];
@@ -839,9 +839,9 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    auto overflow = AddAvailableResourceInstances(task_allocation->predefined_resources[i],
-                                  &local_resources_.predefined_resources[i]);
-
+    auto overflow =
+        AddAvailableResourceInstances(task_allocation->predefined_resources[i],
+                                      &local_resources_.predefined_resources[i]);
   }
 
   for (const auto &task_allocation_custom_resource : task_allocation->custom_resources) {
