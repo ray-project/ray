@@ -244,7 +244,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
                 x: psutil._common.sdiskusage(
-                    total=0, used=0, free=0, percent=0)
+                    total=0, used=0, free=0, percent=0.0)
                 for x in dirs
             }
         else:
