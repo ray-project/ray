@@ -89,17 +89,33 @@ struct GetRequest {
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout) {
+    RAY_CHECK(!is_removed_);
     // Set an expiry time relative to now.
     timer_.expires_from_now(std::chrono::milliseconds(timeout_ms));
     timer_.async_wait(on_timeout);
   }
 
-  void CancelTimer() { timer_.cancel(); }
+  void CancelTimer() {
+    RAY_CHECK(!is_removed_);
+    timer_.cancel();
+  }
+
+  /// Mark that the get request is removed.
+  void MarkRemoved() {
+    RAY_CHECK(!is_removed_);
+    is_removed_ = true;
+  }
+
+  bool IsRemoved() const { return is_removed_; }
 
  private:
   /// The timer that will time out and cause this wait to return to
   /// the client if it hasn't already returned.
   boost::asio::steady_timer timer_;
+  /// Whether or not if this get request is removed.
+  /// Once the get request is removed, any operation on top of the get request shouldn't
+  /// happen.
+  bool is_removed_ = false;
 };
 
 GetRequest::GetRequest(instrumented_io_context &io_context,
@@ -366,6 +382,7 @@ void PlasmaStore::RemoveGetRequest(std::shared_ptr<GetRequest> get_request) {
   }
   // Remove the get request.
   get_request->CancelTimer();
+  get_request->MarkRemoved();
 }
 
 void PlasmaStore::RemoveGetRequestsForClient(const std::shared_ptr<Client> &client) {
@@ -387,6 +404,12 @@ void PlasmaStore::RemoveGetRequestsForClient(const std::shared_ptr<Client> &clie
 }
 
 void PlasmaStore::ReturnFromGet(std::shared_ptr<GetRequest> get_req) {
+  // If the get request is already removed, do no-op. This can happen because the boost
+  // timer is not atomic. See https://github.com/ray-project/ray/pull/15071.
+  if (get_req->IsRemoved()) {
+    return;
+  }
+
   // Figure out how many file descriptors we need to send.
   std::unordered_set<MEMFD_TYPE> fds_to_send;
   std::vector<MEMFD_TYPE> store_fds;
