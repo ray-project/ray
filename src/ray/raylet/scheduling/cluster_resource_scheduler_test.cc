@@ -1233,18 +1233,18 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
       task_request, false, false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 
-  resource_scheduler.AddLocalResource("custom123", 5);
+  resource_scheduler.AddLocalResourceInstances("custom123", {0., 1.0, 1.0});
 
   result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
                                                      &is_infeasible);
-  ASSERT_FALSE(result.empty());
+  ASSERT_FALSE(result.empty()) << resource_scheduler.DebugString();
 
-  task_request["custom123"] = 6;
+  task_request["custom123"] = 3;
   result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_TRUE(result.empty());
 
-  resource_scheduler.AddLocalResource("custom123", 5);
+  resource_scheduler.AddLocalResourceInstances("custom123", {1.0});
   result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_FALSE(result.empty());

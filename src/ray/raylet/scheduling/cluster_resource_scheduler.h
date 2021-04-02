@@ -191,13 +191,17 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   const NodeResources &GetLocalNodeResources() const;
 
   /// Get number of nodes in the cluster.
-  int64_t NumNodes();
+  int64_t NumNodes() const;
+
+  /// Temporarily get the StringIDMap.
+  const StringIdMap &GetStringIdMap() const;
 
   /// Add a local resource that is available.
   ///
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResource(const std::string &resource_name, double resource_total);
+  void AddLocalResourceInstances(const std::string &resource_name,
+                                 const std::vector<FixedPoint> &instances);
 
   /// Check whether the available resources are empty.
   ///
