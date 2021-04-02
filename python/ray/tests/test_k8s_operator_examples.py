@@ -12,6 +12,9 @@ import kubernetes
 import pytest
 import yaml
 
+from ray.autoscaler._private.kubernetes.node_provider import\
+    KubernetesNodeProvider
+
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
 
@@ -97,6 +100,14 @@ def get_operator_config_path(file_name):
 
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
+
+        # Validate terminate_node error handling
+        provider = KubernetesNodeProvider({
+            "namespace": NAMESPACE
+        }, "default_cluster_name")
+        # 404 caught, no error
+        provider.terminate_node("no-such-node")
+
         with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
                 tempfile.NamedTemporaryFile("w+") as example_cluster2_file,\
                 tempfile.NamedTemporaryFile("w+") as operator_file,\
