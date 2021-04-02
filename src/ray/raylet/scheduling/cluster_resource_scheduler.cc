@@ -640,7 +640,7 @@ std::vector<FixedPoint> ClusterResourceScheduler::AddAvailableResourceInstances(
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] + available[i];
     if (resource_instances->available[i] > resource_instances->total[i]) {
-      RAY_CHECK(allow_overflow) << "Resources should never overflow";
+      // RAY_CHECK(allow_overflow) << "Resources should never overflow";
       overflow[i] = (resource_instances->available[i] - resource_instances->total[i]);
       resource_instances->available[i] = resource_instances->total[i];
     }
