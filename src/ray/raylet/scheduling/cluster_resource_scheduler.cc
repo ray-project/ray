@@ -402,36 +402,41 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
   return node_it->second.GetLocalView();
 }
 
-int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
 
-void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
-                                                double resource_total) {
-  string_to_int_map_.Insert(resource_name);
-  int64_t resource_id = string_to_int_map_.Get(resource_name);
+const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
+  return string_to_int_map_;
+}
 
-  if (local_resources_.custom_resources.contains(resource_id)) {
-    FixedPoint total(resource_total);
-    auto &instances = local_resources_.custom_resources[resource_id];
-    instances.total[0] += total;
-    instances.available[0] += total;
-    auto local_node_it = nodes_.find(local_node_id_);
-    RAY_CHECK(local_node_it != nodes_.end());
-    auto &capacity =
-        local_node_it->second.GetMutableLocalView()->custom_resources[resource_id];
-    capacity.available += total;
-    capacity.total += total;
+void ClusterResourceScheduler::AddLocalResourceInstances(
+    const std::string &resource_name, const std::vector<FixedPoint> &instances) {
+  ResourceInstanceCapacities *node_instances;
+  local_resources_.predefined_resources.resize(PredefinedResources_MAX);
+  if (kCPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[CPU];
+  } else if (kGPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[GPU];
+  } else if (kObjectStoreMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[OBJECT_STORE_MEM];
+  } else if (kMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[MEM];
   } else {
-    ResourceInstanceCapacities capacity;
-    capacity.total.resize(1);
-    capacity.total[0] = resource_total;
-    capacity.available.resize(1);
-    capacity.available[0] = resource_total;
-    local_resources_.custom_resources.emplace(resource_id, capacity);
-    std::string node_id_string = string_to_int_map_.Get(local_node_id_);
-    RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
-    UpdateResourceCapacity(node_id_string, resource_name, resource_total);
-    UpdateLocalAvailableResourcesFromResourceInstances();
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    node_instances = &local_resources_.custom_resources[resource_id];
   }
+
+  if (node_instances->total.size() < instances.size()) {
+    node_instances->total.resize(instances.size());
+    node_instances->available.resize(instances.size());
+  }
+
+  for (size_t i = 0; i < instances.size(); i++) {
+    node_instances->available[i] += instances[i];
+    node_instances->total[i] =
+        std::max(node_instances->total[i], node_instances->available[i]);
+  }
+  UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
 bool ClusterResourceScheduler::IsAvailableResourceEmpty(
@@ -824,14 +829,17 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
     }
   }
 
-  for (auto &custom_resource : local_view->custom_resources) {
-    auto it = local_resources_.custom_resources.find(custom_resource.first);
-    if (it != local_resources_.custom_resources.end()) {
-      custom_resource.second.available = 0;
-      for (const auto &available : it->second.available) {
-        custom_resource.second.available += available;
-      }
-    }
+  for (auto &custom_resource : local_resources_.custom_resources) {
+    int64_t resource_name = custom_resource.first;
+    auto &instances = custom_resource.second;
+
+    FixedPoint available = std::accumulate(instances.available.begin(),
+                                           instances.available.end(), FixedPoint());
+    FixedPoint total =
+        std::accumulate(instances.total.begin(), instances.total.end(), FixedPoint());
+
+    local_view->custom_resources[resource_name].available = available;
+    local_view->custom_resources[resource_name].total = total;
   }
 }
 
