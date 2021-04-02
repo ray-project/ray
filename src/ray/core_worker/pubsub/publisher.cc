@@ -124,7 +124,7 @@ bool Subscriber::PublishIfPossible(bool force) {
 
   if (force || mailbox_.size() > 0) {
     std::vector<ObjectID> mails_to_post;
-    while (mailbox_.size() > 0 && mails_to_post.size() < 1000) {
+    while (mailbox_.size() > 0 && mails_to_post.size() < publish_batch_size_) {
       mails_to_post.push_back(mailbox_.back());
       mailbox_.pop_back();
     }
@@ -154,7 +154,10 @@ void Publisher::ConnectToSubscriber(const NodeID &subscriber_node_id,
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_node_id);
   if (it == subscribers_.end()) {
-    it = subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>()).first;
+    it = subscribers_
+             .emplace(subscriber_node_id,
+                      std::make_shared<Subscriber>(publish_batch_size_))
+             .first;
   }
   auto &subscriber = it->second;
 
@@ -174,7 +177,8 @@ void Publisher::RegisterSubscription(const NodeID &subscriber_node_id,
 
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_node_id) == 0) {
-    subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
+    subscribers_.emplace(subscriber_node_id,
+                         std::make_shared<Subscriber>(publish_batch_size_));
   }
   subscription_index_.AddEntry(object_id, subscriber_node_id);
 }

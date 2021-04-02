@@ -562,7 +562,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              task_manager_));
 
   object_status_publisher_ = std::make_shared<Publisher>(
-      /*is_node_dead=*/[this](const NodeID &node_id) {
+      /*is_node_dead=*/
+      [this](const NodeID &node_id) {
         if (auto node_info =
                 gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false)) {
           return node_info->state() ==
@@ -571,7 +572,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         // Node information is probably not
         // subscribed yet, so report that the node is alive.
         return true;
-      });
+      },
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
