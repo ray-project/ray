@@ -17,13 +17,14 @@ import ray  # noqa: E402
 
 # Create temporary spans folder for trace output.
 spans_dir = tempfile.gettempdir() + "/spans"
-if not os.path.exists(spans_dir):
-    os.makedirs(spans_dir)
 
 
 @pytest.fixture(scope="session")
 def cleanup_dirs():
-    """Cleanup temporary spans_dir folder at end of test."""
+    """Cleanup temporary spans_dir folder at beginning and end of test."""
+    if os.path.exists(spans_dir):
+        shutil.rmtree(spans_dir)
+    os.makedirs(spans_dir)
     yield
     print("at end of test")
     if os.path.exists(spans_dir):
