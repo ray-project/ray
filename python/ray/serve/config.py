@@ -45,7 +45,7 @@ class BackendConfig(BaseModel):
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
-            will handle requests to this backend. Defaults to 0.
+            will handle requests to this backend. Defaults to 1.
         max_batch_size (Optional[int]): The maximum number of requests that
             will be processed in one batch by this backend. Defaults to None
             (no maximium).
@@ -137,6 +137,9 @@ class BackendConfig(BaseModel):
                     and values["max_batch_size"] is not None
                     and values["batch_wait_timeout"] > 0):
                 v = 2 * values["max_batch_size"]
+        else:
+            if v <= 0:
+                raise ValueError("max_concurrent_queries must be >= 0")
         return v
 
 
@@ -147,7 +150,7 @@ class ReplicaConfig:
         self.is_blocking = _callable_is_blocking(backend_def)
         self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
         self.path_prefix = getattr(backend_def, "_serve_path_prefix", None)
-        self.init_args = list(init_args)
+        self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:

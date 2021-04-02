@@ -8,11 +8,11 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
-                    Optional, Type, Union)
+                    Optional, Tuple, Type, Union)
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag, GoalId
+from ray.serve.common import BackendInfo, EndpointTag, GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -512,6 +512,10 @@ class Client:
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
         self._wait_for_goal(self._controller.delete_deployment.remote(name))
+
+    @_ensure_connected
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+        return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
@@ -1098,6 +1102,10 @@ def ingress(
             # the fast api routes here.
             make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
+            if not path_prefix.startswith("/"):
+                raise ValueError("path_prefix must start with '/'")
+            if "{" in path_prefix or "}" in path_prefix:
+                raise ValueError("path_prefix may not contain wildcards")
             cls._serve_path_prefix = path_prefix
 
         return cls
@@ -1107,7 +1115,7 @@ def ingress(
 
 class ServeDeployment(ABC):
     @classmethod
-    def deploy(self, *init_args) -> None:
+    def deploy(cls, *init_args) -> None:
         """Deploy this deployment.
 
         Args:
@@ -1118,17 +1126,17 @@ class ServeDeployment(ABC):
         raise NotImplementedError()
 
     @classmethod
-    def delete(self) -> None:
+    def delete(cls) -> None:
         """Delete this deployment."""
         raise NotImplementedError()
 
     @classmethod
-    def get_handle(self, sync: Optional[bool] = True
+    def get_handle(cls, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
     @classmethod
-    def options(self,
+    def options(cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
                 version: Optional[str] = None,
@@ -1141,71 +1149,122 @@ class ServeDeployment(ABC):
 def make_deployment_cls(
         backend_def: Callable,
         name: str,
-        version: str,
+        config: BackendConfig,
+        version: Optional[str] = None,
+        init_args: Optional[Tuple[Any]] = None,
         ray_actor_options: Optional[Dict] = None,
-        config: Optional[BackendConfig] = None) -> ServeDeployment:
+) -> ServeDeployment:
+    if not callable(backend_def):
+        raise TypeError(
+            "@serve.deployment must be called on a class or function.")
+    if not isinstance(name, str):
+        raise TypeError("Deployment name must be a string.")
+    if not (version is None or isinstance(version, str)):
+        raise TypeError("Deployment version must be a string if provided.")
+    if not (init_args is None or isinstance(init_args, tuple)):
+        raise TypeError("Deployment init_args must be a tuple if provided.")
+    if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
+        raise TypeError(
+            "Deployment ray_actor_options must be a dict if provided.")
+
     class Deployment(ServeDeployment):
         _backend_def = backend_def
         _name = name
         _version = version
-        _ray_actor_options = ray_actor_options
         _config = config
+        _init_args = init_args
+        _ray_actor_options = ray_actor_options
 
         @classmethod
-        def deploy(self, *init_args):
+        def deploy(cls, *init_args, _blocking=True):
             """Deploy this deployment.
 
             Args:
                 *init_args (optional): args to pass to the class __init__
                     method. Not valid if this deployment wraps a function.
             """
+            if len(init_args) == 0 and cls._init_args is not None:
+                init_args = cls._init_args
+
             return _get_global_client().deploy(
-                Deployment._name,
-                Deployment._backend_def,
+                cls._name,
+                cls._backend_def,
                 *init_args,
-                ray_actor_options=Deployment._ray_actor_options,
-                config=Deployment._config,
-                version=Deployment._version,
+                ray_actor_options=cls._ray_actor_options,
+                config=cls._config,
+                version=cls._version,
+                _blocking=_blocking,
                 _internal=True)
 
         @classmethod
-        def delete(self):
+        def delete(cls):
             """Delete this deployment."""
-            return _get_global_client().delete_deployment(Deployment._name)
+            return _get_global_client().delete_deployment(cls._name)
 
         @classmethod
-        def get_handle(self, sync: Optional[bool] = True
+        def get_handle(cls, sync: Optional[bool] = True
                        ) -> Union[RayServeHandle, RayServeSyncHandle]:
             """Get a ServeHandle to this deployment."""
             return _get_global_client().get_handle(
-                Deployment._name, missing_ok=False, sync=sync, _internal=True)
+                cls._name, missing_ok=True, sync=sync, _internal=True)
 
         @classmethod
-        def options(self,
-                    backend_def: Optional[Callable] = None,
-                    name: Optional[str] = None,
-                    version: Optional[str] = None,
-                    ray_actor_options: Optional[Dict] = None,
-                    config: Optional[BackendConfig] = None) -> "Deployment":
+        def options(
+                cls,
+                backend_def: Optional[Callable] = None,
+                name: Optional[str] = None,
+                version: Optional[str] = None,
+                init_args: Optional[Tuple[Any]] = None,
+                num_replicas: Optional[int] = None,
+                ray_actor_options: Optional[Dict] = None,
+                user_config: Optional[Any] = None,
+                max_concurrent_queries: Optional[int] = None,
+        ) -> "Deployment":
             """Return a new deployment with the specified options set."""
+            new_config = config.copy()
+            if num_replicas is not None:
+                new_config.num_replicas = num_replicas
+            if user_config is not None:
+                new_config.user_config = user_config
+            if max_concurrent_queries is not None:
+                new_config.max_concurrent_queries = max_concurrent_queries
+
+            if backend_def is None:
+                backend_def = cls._backend_def
+
+            if name is None:
+                name = cls._name
+
+            if version is None:
+                version = cls._version
+
+            if init_args is None:
+                init_args = cls._init_args
+
+            if ray_actor_options is None:
+                ray_actor_options = cls._ray_actor_options
+
             return make_deployment_cls(
-                backend_def or Deployment._backend_def,
-                name or Deployment._name,
-                version or Deployment._version,
-                ray_actor_options=ray_actor_options
-                or Deployment._ray_actor_options,
-                config=config or Deployment._config,
+                backend_def,
+                name,
+                new_config,
+                version=version,
+                init_args=init_args,
+                ray_actor_options=ray_actor_options,
             )
 
     return Deployment
 
 
-# TODO(edoakes): better typing on the return value of the decorator.
-def deployment(name: str,
-               version: Optional[str] = None,
-               ray_actor_options: Optional[Dict] = None,
-               config: Optional[Union[BackendConfig, Dict[str, Any]]] = None
-               ) -> Callable[[Callable], ServeDeployment]:
+def deployment(
+        name: str,
+        version: Optional[str] = None,
+        num_replicas: Optional[int] = None,
+        init_args: Optional[Tuple[Any]] = None,
+        ray_actor_options: Optional[Dict] = None,
+        user_config: Optional[Any] = None,
+        max_concurrent_queries: Optional[int] = None,
+) -> Callable[[Callable], ServeDeployment]:
     """Define a Serve deployment.
 
     Args:
@@ -1213,19 +1272,20 @@ def deployment(name: str,
         version (str): Version of the deployment. This is used to indicate a
             code change for the deployment; when it is re-deployed with a
             version change, a rolling update of the replicas will be performed.
+            If not passed, every deployment will be treated as a new version.
+        num_replicas (Optional[int]): The number of processes to start up that
+            will handle requests to this backend. Defaults to 1.
+        init_args (Optional[Tuple]): Arguments to be passed to the class
+            constructor when starting up deployment replicas. These can also be
+            passed when you call `.deploy()` on the returned Deployment.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
-        config (dict, serve.BackendConfig, optional): Configuration options
-            for this backend. Either a BackendConfig, or a dictionary
-            mapping strings to values for the following supported options:
-            - "num_replicas": number of processes to start up that
-            will handle requests to this backend.
-            - "max_concurrent_queries": the maximum number of queries that
-            will be sent to a replica of this backend without receiving a
-            response.
-            - "user_config" (experimental): Arguments to pass to the
+        user_config (Optional[Any]): [experimental] Arguments to pass to the
             reconfigure method of the backend. The reconfigure method is
-            called if "user_config" is not None.
+            called if user_config is not None.
+        max_concurrent_queries (Optional[int]): The maximum number of queries
+            that will be sent to a replica of this backend without receiving a
+            response. Defaults to None (no maximum).
 
     Example:
     >>> @serve.deployment("deployment1", version="v1")
@@ -1233,10 +1293,50 @@ def deployment(name: str,
             pass
 
     >>> MyDeployment.deploy(*init_args)
+    >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
     """
 
+    config = BackendConfig()
+    if num_replicas is not None:
+        config.num_replicas = num_replicas
+
+    if user_config is not None:
+        config.user_config = user_config
+
+    if max_concurrent_queries is not None:
+        config.max_concurrent_queries = max_concurrent_queries
+
     def decorator(backend_def):
-        return make_deployment_cls(backend_def, name, version,
-                                   ray_actor_options, config)
+        return make_deployment_cls(
+            backend_def,
+            name,
+            config,
+            version=version,
+            init_args=init_args,
+            ray_actor_options=ray_actor_options)
 
     return decorator
+
+
+def get_deployment(name: str) -> ServeDeployment:
+    """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+
+    Args:
+        name(str): name of the deployment. This must have already been
+        deployed.
+
+    Returns:
+        ServeDeployment
+    """
+    try:
+        backend_info, route = _get_global_client().get_deployment_info(name)
+    except KeyError:
+        raise KeyError(f"Deployment {name} was not found. "
+                       "Did you call Deployment.deploy()?")
+    return make_deployment_cls(
+        backend_info.replica_config.backend_def,
+        name,
+        backend_info.backend_config,
+        version=backend_info.version,
+        init_args=backend_info.replica_config.init_args,
+        ray_actor_options=backend_info.replica_config.ray_actor_options)

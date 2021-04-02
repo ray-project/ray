@@ -29,26 +29,22 @@ namespace ray {
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      SpillObjectsCallback spill_objects_callback,
                                      std::function<void()> object_store_full_callback) {
-  if (config.object_store_memory > 0) {
-    plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
-        config.store_socket_name, config.object_store_memory, config.huge_pages,
-        config.plasma_directory));
-    // Initialize object store.
-    store_thread_ =
-        std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
-                    spill_objects_callback, object_store_full_callback);
-    // Sleep for sometime until the store is working. This can suppress some
-    // connection warnings.
-    std::this_thread::sleep_for(std::chrono::microseconds(500));
-  }
+  plasma::plasma_store_runner.reset(
+      new plasma::PlasmaStoreRunner(config.store_socket_name, config.object_store_memory,
+                                    config.huge_pages, config.plasma_directory));
+  // Initialize object store.
+  store_thread_ =
+      std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
+                  spill_objects_callback, object_store_full_callback);
+  // Sleep for sometime until the store is working. This can suppress some
+  // connection warnings.
+  std::this_thread::sleep_for(std::chrono::microseconds(500));
 }
 
 ObjectStoreRunner::~ObjectStoreRunner() {
-  if (plasma::plasma_store_runner != nullptr) {
-    plasma::plasma_store_runner->Stop();
-    store_thread_.join();
-    plasma::plasma_store_runner.reset();
-  }
+  plasma::plasma_store_runner->Stop();
+  store_thread_.join();
+  plasma::plasma_store_runner.reset();
 }
 
 ObjectManager::ObjectManager(
@@ -82,13 +78,8 @@ ObjectManager::ObjectManager(
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
 
-  if (plasma::plasma_store_runner) {
-    store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
-    plasma::plasma_store_runner->SetNotificationListener(store_notification_);
-  } else {
-    store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
-        main_service, config_.store_socket_name);
-  }
+  store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
+  plasma::plasma_store_runner->SetNotificationListener(store_notification_);
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
@@ -289,7 +280,15 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
-  RAY_CHECK(iter != unfulfilled_push_requests_.end());
+  // Under this scenario, `HandlePushTaskTimeout` can be invoked
+  // although timer cancels it.
+  // 1. wait timer is done and the task is queued.
+  // 2. While task is queued, timer->cancel() is invoked.
+  // In this case this method can be invoked although it is not timed out.
+  // https://www.boost.org/doc/libs/1_66_0/doc/html/boost_asio/reference/basic_deadline_timer/cancel/overload1.html.
+  if (iter == unfulfilled_push_requests_.end()) {
+    return;
+  }
   size_t num_erased = iter->second.erase(node_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {

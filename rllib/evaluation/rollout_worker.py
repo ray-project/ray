@@ -1226,6 +1226,7 @@ def _validate_and_canonicalize(
 
 def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
                                 allow_none_graph: bool = False) -> None:
+    # Loop through all policy definitions in multi-agent policie
     for k, v in policy.items():
         if not isinstance(k, str):
             raise ValueError("policy keys must be strs, got {}".format(
