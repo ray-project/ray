@@ -688,9 +688,9 @@ class Trainer(Trainable):
                     return NormalizeMultiAgentActionWrapper(env, self.config)
                 else:
                     raise ValueError(
-                        "Cannot apply NormalalizeWrapper to env of type {}, "
-                        "which does not subclass gym.Env or MultiAgentEnv.",
-                        type(env))
+                        "Cannot apply NormalalizeWrapper to env of type"
+                        "{}, which does not subclass gym.Env".format(
+                            type(env)), " or MultiAgentEnv.")
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
