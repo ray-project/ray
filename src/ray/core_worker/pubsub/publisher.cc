@@ -125,8 +125,9 @@ bool Subscriber::PublishIfPossible(bool force) {
   if (force || mailbox_.size() > 0) {
     std::vector<ObjectID> mails_to_post;
     while (mailbox_.size() > 0 && mails_to_post.size() < publish_batch_size_) {
-      mails_to_post.push_back(mailbox_.back());
-      mailbox_.pop_back();
+      // It ensures that mails are posted in the FIFO order.
+      mails_to_post.push_back(mailbox_.front());
+      mailbox_.pop_front();
     }
     long_polling_reply_callback_(mails_to_post);
     long_polling_reply_callback_ = nullptr;

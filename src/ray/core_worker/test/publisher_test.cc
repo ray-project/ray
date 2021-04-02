@@ -30,7 +30,8 @@ class PublisherTest : public ::testing::Test {
   void SetUp() {
     dead_nodes_.clear();
     object_status_publisher_ = std::shared_ptr<Publisher>(new Publisher(
-        [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; }));
+        [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; },
+        /*batch_size*/ 100));
   }
 
   void TearDown() { subscribers_map_.clear(); }
@@ -195,40 +196,80 @@ TEST_F(PublisherTest, TestSubscriber) {
         }
       };
 
-  Subscriber subscriber;
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(10);
   // If there's no connection, it will return false.
-  ASSERT_FALSE(subscriber.PublishIfPossible());
+  ASSERT_FALSE(subscriber->PublishIfPossible());
   // Try connecting it. Should return true.
-  ASSERT_TRUE(subscriber.ConnectToSubscriber(reply));
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
   // If connecting it again, it should fail the request.
-  ASSERT_FALSE(subscriber.ConnectToSubscriber(reply));
+  ASSERT_FALSE(subscriber->ConnectToSubscriber(reply));
   // Since there's no published objects, it should return false.
-  ASSERT_FALSE(subscriber.PublishIfPossible());
+  ASSERT_FALSE(subscriber->PublishIfPossible());
 
   std::unordered_set<ObjectID> published_objects;
   // Make sure publishing one object works as expected.
   auto oid = ObjectID::FromRandom();
-  subscriber.QueueMessage(oid, /*try_publish=*/false);
+  subscriber->QueueMessage(oid, /*try_publish=*/false);
   published_objects.emplace(oid);
-  ASSERT_TRUE(subscriber.PublishIfPossible());
+  ASSERT_TRUE(subscriber->PublishIfPossible());
   ASSERT_TRUE(object_ids_published.count(oid) > 0);
   // Since the object is published, and there's no connection, it should return false.
-  ASSERT_FALSE(subscriber.PublishIfPossible());
+  ASSERT_FALSE(subscriber->PublishIfPossible());
 
   // Add 3 oids and see if it works properly.
   for (int i = 0; i < 3; i++) {
     oid = ObjectID::FromRandom();
-    subscriber.QueueMessage(oid, /*try_publish=*/false);
+    subscriber->QueueMessage(oid, /*try_publish=*/false);
     published_objects.emplace(oid);
   }
   // Since there's no connection, objects won't be published.
-  ASSERT_FALSE(subscriber.PublishIfPossible());
-  ASSERT_TRUE(subscriber.ConnectToSubscriber(reply));
-  ASSERT_TRUE(subscriber.PublishIfPossible());
+  ASSERT_FALSE(subscriber->PublishIfPossible());
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  ASSERT_TRUE(subscriber->PublishIfPossible());
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.count(oid) > 0);
   }
-  ASSERT_TRUE(subscriber.AssertNoLeak());
+  ASSERT_TRUE(subscriber->AssertNoLeak());
+}
+
+TEST_F(PublisherTest, TestSubscriberBatchSize) {
+  std::unordered_set<ObjectID> object_ids_published;
+  LongPollConnectCallback reply =
+      [&object_ids_published](const std::vector<ObjectID> &object_ids) {
+        for (auto &oid : object_ids) {
+          object_ids_published.emplace(oid);
+        }
+      };
+
+  auto max_publish_size = 5;
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(max_publish_size);
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+
+  std::unordered_set<ObjectID> published_objects;
+  std::vector<ObjectID> oids;
+  for (int i = 0; i < 10; i++) {
+    auto oid = ObjectID::FromRandom();
+    oids.push_back(oid);
+    subscriber->QueueMessage(oid, /*try_publish=*/false);
+    published_objects.emplace(oid);
+  }
+
+  // Make sure only up to batch size is published.
+  ASSERT_TRUE(subscriber->PublishIfPossible());
+
+  for (int i = 0; i < max_publish_size; i++) {
+    ASSERT_TRUE(object_ids_published.count(oids[i]) > 0);
+  }
+  for (int i = max_publish_size; i < 10; i++) {
+    ASSERT_FALSE(object_ids_published.count(oids[i]) > 0);
+  }
+
+  // Remainings are published.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  ASSERT_TRUE(subscriber->PublishIfPossible());
+  for (int i = 0; i < 10; i++) {
+    ASSERT_TRUE(object_ids_published.count(oids[i]) > 0);
+  }
 }
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {

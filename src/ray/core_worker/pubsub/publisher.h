@@ -103,7 +103,7 @@ class Subscriber {
   /// Cached long polling reply callback.
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
   /// Queued messages to publish.
-  std::vector<ObjectID> mailbox_;
+  std::list<ObjectID> mailbox_;
   /// The maximum number of objects to publish for each publish calls.
   const uint64_t publish_batch_size_;
 };
