@@ -184,6 +184,8 @@ class ServeController:
             self.endpoint_state.create_endpoint(endpoint, route, methods,
                                                 TrafficPolicy(traffic_dict))
 
+        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
+
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
 

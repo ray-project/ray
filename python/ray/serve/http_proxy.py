@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import time
 from typing import List, Dict, Tuple
 
 import uvicorn
@@ -104,6 +105,17 @@ class HTTPProxy:
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
+
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        start = time.time()
+        while True:
+            if time.time() - start > timeout_s:
+                raise TimeoutError(
+                    f"Waited {timeout_s} for {endpoint} to propogate.")
+            if endpoint in self.route_table:
+                return
+            await asyncio.sleep(0.2)
 
     def _update_route_table(self, route_table: Dict[str, List[str]]):
         logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")

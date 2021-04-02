@@ -280,29 +280,6 @@ class Client:
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
 
-        # Block until the route table has been propagated to all HTTP proxies.
-        if route is not None:
-
-            def check_ready(http_response):
-                return route in http_response.json()
-
-            futures = []
-            for node_id in ray.state.node_ids():
-                future = block_until_http_ready.options(
-                    num_cpus=0, resources={
-                        node_id: 0.01
-                    }).remote(
-                        "http://{}:{}/-/routes".format(self._http_config.host,
-                                                       self._http_config.port),
-                        check_ready=check_ready,
-                        timeout=HTTP_PROXY_TIMEOUT)
-                futures.append(future)
-            try:
-                ray.get(futures)
-            except ray.exceptions.RayTaskError:
-                raise TimeoutError("Route not available at HTTP proxies "
-                                   "after {HTTP_PROXY_TIMEOUT}s.")
-
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
         """Delete the given endpoint.
