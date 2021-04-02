@@ -238,14 +238,14 @@ class PlasmaStore {
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
   /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(GetRequest *get_request);
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
   void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
 
-  void ReturnFromGet(GetRequest *get_req);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
@@ -277,7 +277,8 @@ class PlasmaStore {
   QuotaAwarePolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests_;
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 
