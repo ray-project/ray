@@ -119,7 +119,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         check_support_multiagent("SAC", {
             "num_workers": 0,
             "buffer_size": 1000,
-            "normalize_actions": False,
+            "normalize_actions": True,
         })
 
 
