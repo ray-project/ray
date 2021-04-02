@@ -207,7 +207,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+ std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
@@ -257,6 +257,90 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
 
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
+  /*
+   Tests the edge case in which a worker crashes while it's blocked. In this case, its CPU resources should not be double freed.
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+                    *callback_occurred_ptr = true;
+                  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  // Block the worker. Which releases only the CPU resource.
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+
+  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic, but it's not easy to do because in general, it is possible to overflow.
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
+  /*
+    Same edge case as the previous test, but this time the block and finish requests happen in the opposite order.
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+                    *callback_occurred_ptr = true;
+                  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+
+  // Block the worker. Which releases only the CPU resource.
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+
+  // TODO (Alex): Ideally we'd like to assert that we never triggered any overflow logic, but it's not easy to do because in general, it is possible to overflow.
   AssertNoLeaks();
 }
 

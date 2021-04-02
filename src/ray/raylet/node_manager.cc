@@ -1616,9 +1616,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;  // The worker may have died or is no longer processing the task.
   }
 
-  if (cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker)) {
-    worker->MarkBlocked();
-  }
+  cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
