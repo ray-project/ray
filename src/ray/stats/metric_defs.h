@@ -113,19 +113,19 @@ static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
 
-static Count NumWorkersStarted(
+static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");
 
-static Count NumReceivedTasks(
+static Sum NumReceivedTasks(
     "internal_num_received_tasks",
     "The cumulative number of lease requeusts that this raylet has received.", "tasks");
 
-static Count NumDispatchedTasks(
+static Sum NumDispatchedTasks(
     "internal_num_dispatched_tasks",
     "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
 
-static Count NumSpilledTasks("internal_num_spilled_tasks",
+static Sum NumSpilledTasks("internal_num_spilled_tasks",
                              "The cumulative number of lease requeusts that this raylet "
                              "has spilled to other raylets.",
                              "tasks");
