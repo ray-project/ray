@@ -30,7 +30,8 @@ try:
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
         logger.warning(
-            "Install opentelemetry with 'pip install opentelemetry-api' and 'pip install opentelemetry-sdk' to enable tracing."
+            "Install opentelemetry with 'pip install opentelemetry-api' and"
+            "'pip install opentelemetry-sdk' to enable tracing."
         )
 
 _nameable = Union[str, Callable[..., Any]]
