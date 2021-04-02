@@ -15,14 +15,16 @@ import tempfile  # noqa: E402
 from typing import Any  # noqa: E402
 import ray  # noqa: E402
 
-
-# spans_dir = "/tmp/spans"
-_, spans_dir = tempfile.mkstemp()
+# Create temporary spans folder for trace output.
+spans_dir = tempfile.gettempdir() + "/spans"
+if not os.path.exists(spans_dir):
+    os.makedirs(spans_dir)
 
 
 @pytest.fixture(scope="session")
 def cleanup_dirs():
-    """Cleanup temporary spans_dir folder"""
+    """Cleanup temporary spans_dir folder at end of test."""
+    yield
     print("at end of test")
     if os.path.exists(spans_dir):
         shutil.rmtree(spans_dir)
@@ -46,10 +48,7 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
     )
 
 
-def test_tracing(ray_start_regular_shared):
-    # if os.path.exists(spans_dir):
-    #     shutil.rmtree(spans_dir)
-    # os.mkdir(spans_dir)
+def test_tracing(ray_start_regular_shared, cleanup_dirs):
     ray.worker.global_worker.run_function_on_all_workers(_setup_tracing)
 
     @ray.remote
@@ -95,9 +94,6 @@ def test_tracing(ray_start_regular_shared):
             "Counter.increment ray.remote_worker" in span_string,
         ]
     )
-    # spans_dir.cleanup()
-    # if os.path.exists(spans_dir):
-    #     shutil.rmtree(spans_dir)
 
 
 if __name__ == "__main__":
