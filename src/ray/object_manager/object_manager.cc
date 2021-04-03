@@ -70,9 +70,7 @@ ObjectManager::ObjectManager(
                 [this, object_info,
                  add_object_callback = std::move(add_object_callback)]() {
                   HandleObjectAdded(object_info);
-                  if (add_object_callback) {
-                    add_object_callback(object_info);
-                  }
+                  add_object_callback(object_info);
                 },
                 "ObjectManager.ObjectAdded");
           },
@@ -83,9 +81,7 @@ ObjectManager::ObjectManager(
                 [this, object_id,
                  delete_object_callback = std::move(delete_object_callback)]() {
                   HandleObjectDeleted(object_id);
-                  if (delete_object_callback) {
-                    delete_object_callback(object_id);
-                  }
+                  delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
           }),
@@ -131,10 +127,7 @@ ObjectManager::ObjectManager(
       [spill_objects_callback, object_store_full_callback]() {
         // TODO(swang): This copies the out-of-memory handling in the
         // CreateRequestQueue. It would be nice to unify these.
-        if (object_store_full_callback) {
-          object_store_full_callback();
-        }
-
+        object_store_full_callback();
         static_cast<void>(spill_objects_callback());
       }));
   // Start object manager rpc server and send & receive request threads
