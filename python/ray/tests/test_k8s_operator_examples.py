@@ -72,7 +72,7 @@ def wait_for_job(job_pod):
     except subprocess.CalledProcessError as e:
         print(">>>Failed to check job logs.")
         print(e.output.decode())
-        raise e
+        return False
     success = "success" in out.lower()
     if success:
         print(">>>Job submission succeeded.")
