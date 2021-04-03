@@ -24,8 +24,8 @@ class BaseTrainer:
                         "multi-node training, be sure to run `ray.init("
                         "address='auto')` before instantiating the Trainer.")
             ray.init()
-        self._init_strategy()
         self._start_workers(world_size)
+        self._init_strategy()
 
     def train(self):
         """Call operator train_one_epoch. Or run all epoches?

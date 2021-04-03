@@ -54,6 +54,7 @@ class AllReduceStrategy(BaseTrainer):
         # (2) params for setting up collective group and the strategy-related things;
         # For now, we do not have many of them though.
         dist_params = dict(
+            strategy="allreduce",
             group_name="default",
         )
         # (3) other arguments that used to init the DataParallelGrup
@@ -230,3 +231,12 @@ class DataParallelGroup:
         rets = [replica.load_parameters.remote(checkpoint)
                 for _, replica in enumerate(self.replicas)]
         ray.get(rets)
+
+    def set_parameters(self, params):
+        rets = [replica.set_parameters.remote(params)
+                for _, replica in enumerate(self.replicas)]
+        ray.get(rets)
+        
+    def get_parameters(self, cpu=False):
+        ret = self.replicas[0].get_parameters.remote(cpu)
+        return ray.get(ret)
