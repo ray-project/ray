@@ -13,7 +13,7 @@ def add(x, y):
 @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_callback_active():
     """Test that callbacks are active within context"""
-    from ray.util.dask import ray_dask_get, RayDaskCallback
+    from ray.util.dask import RayDaskCallback
     assert not RayDaskCallback.ray_active
 
     with RayDaskCallback():
