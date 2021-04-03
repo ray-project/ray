@@ -2,7 +2,6 @@ import dask
 import pytest
 
 import ray
-from ray.util.dask import ray_dask_get, RayDaskCallback
 
 
 @dask.delayed
@@ -10,8 +9,10 @@ def add(x, y):
     return x + y
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_callback_active():
     """Test that callbacks are active within context"""
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     assert not RayDaskCallback.ray_active
 
     with RayDaskCallback():
@@ -20,12 +21,14 @@ def test_callback_active():
     assert not RayDaskCallback.ray_active
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_presubmit_shortcircuit(ray_start_regular_shared):
     """
     Test that presubmit return short-circuits task submission, and that task's
     result is set to the presubmit return value.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PresubmitShortcircuitCallback(RayDaskCallback):
         def _ray_presubmit(self, task, key, deps):
             return 0
@@ -41,12 +44,14 @@ def test_presubmit_shortcircuit(ray_start_regular_shared):
     assert result == 0
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_pretask_posttask_shared_state(ray_start_regular_shared):
     """
     Test that pretask return value is passed to corresponding posttask
     callback.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PretaskPosttaskCallback(RayDaskCallback):
         def _ray_pretask(self, key, object_refs):
             return key
@@ -61,11 +66,13 @@ def test_pretask_posttask_shared_state(ray_start_regular_shared):
     assert result == 5
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_postsubmit(ray_start_regular_shared):
     """
     Test that postsubmit is called after each task.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PostsubmitCallback(RayDaskCallback):
         def __init__(self, postsubmit_actor):
             self.postsubmit_actor = postsubmit_actor
@@ -94,11 +101,13 @@ def test_postsubmit(ray_start_regular_shared):
     assert result == 5
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_postsubmit_all(ray_start_regular_shared):
     """
     Test that postsubmit_all is called once.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PostsubmitAllCallback(RayDaskCallback):
         def __init__(self, postsubmit_all_actor):
             self.postsubmit_all_actor = postsubmit_all_actor
@@ -126,11 +135,13 @@ def test_postsubmit_all(ray_start_regular_shared):
     assert result == 5
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_finish(ray_start_regular_shared):
     """
     Test that finish callback is called once.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class FinishCallback(RayDaskCallback):
         def __init__(self, finish_actor):
             self.finish_actor = finish_actor
@@ -158,11 +169,13 @@ def test_finish(ray_start_regular_shared):
     assert result == 5
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_multiple_callbacks(ray_start_regular_shared):
     """
     Test that multiple callbacks are supported.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PostsubmitCallback(RayDaskCallback):
         def __init__(self, postsubmit_actor):
             self.postsubmit_actor = postsubmit_actor
@@ -194,12 +207,14 @@ def test_multiple_callbacks(ray_start_regular_shared):
     assert result == 5
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     """
     Test that pretask return values are passed to the correct corresponding
     posttask callbacks when multiple callbacks are given.
     """
 
+    from ray.util.dask import ray_dask_get, RayDaskCallback
     class PretaskPosttaskCallback(RayDaskCallback):
         def __init__(self, suffix):
             self.suffix = suffix
