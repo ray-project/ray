@@ -212,12 +212,11 @@ const NodeInfo: React.FC<{}> = () => {
 
   // Don't show disk on Kubernetes. K8s node disk usage should be monitored
   // elsewhere.
-  // If a Ray node is running in a K8s pod, it marks total and used disk as 0.
-  // Check if there are any nodes with total or used disk marked positive.
+  // If a Ray node is running in a K8s pod, it marks available disk as 1 byte.
+  // (See ReporterAgent._get_disk_usage() in reporter_agent.py)
+  // Check if there are any nodes with realistic disk total:
   const showDisk =
-    nodes.filter((n) => {
-      return n.disk["/"].total > 0 || n.disk["/"].used > 0;
-    }).length !== 0;
+    nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
 
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,
