@@ -357,7 +357,7 @@ def _configure_key_pair(config):
     return config
 
 
-def _key_assert_msg(node_type):
+def _key_assert_msg(node_type: str) -> str:
     if node_type == NODE_TYPE_LEGACY_WORKER:
         return "`KeyName` missing for worker nodes."
     elif node_type == NODE_TYPE_LEGACY_HEAD:
