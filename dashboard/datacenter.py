@@ -301,3 +301,11 @@ class DataOrganizer:
                 view_data[view_name] = measure_value
 
         return view_data
+
+    @classmethod
+    def iter_agent_addresses(cls):
+        for node_id, ports in DataSource.agents.items():
+            _, grpc_port = ports
+            ip = DataSource.node_id_to_ip.get(node_id)
+            if ip:
+                yield f"{ip}:{grpc_port}"

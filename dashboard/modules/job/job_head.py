@@ -1,17 +1,25 @@
+import json
+import random
 import logging
 import asyncio
 
 import aiohttp.web
 from aioredis.pubsub import Receiver
+from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.gcs_utils
-import ray.new_dashboard.modules.job.job_consts as job_consts
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.modules.job import job_consts
+from ray.new_dashboard.modules.job.job_description import JobDescription
+from ray.core.generated import agent_manager_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import job_agent_pb2
+from ray.core.generated import job_agent_pb2_grpc
 from ray.new_dashboard.datacenter import (
     DataSource,
+    DataOrganizer,
     GlobalSignals,
 )
 
@@ -30,6 +38,48 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         # JobInfoGcsServiceStub
         self._gcs_job_info_stub = None
+
+    async def _next_job_id(self):
+        counter_str = await self._dashboard_head.aioredis_client.incr(
+            job_consts.REDIS_KEY_JOB_COUNTER)
+        job_id_int = int(counter_str)
+        return ray.JobID.from_int(job_id_int)
+
+    @routes.post("/jobs")
+    async def submit_job(self, req) -> aiohttp.web.Response:
+        agent_addresses = list(DataOrganizer.iter_agent_addresses())
+        if len(agent_addresses) == 0:
+            return dashboard_utils.rest_response(
+                success=False,
+                message=f"Failed to submit job: no nodes available.")
+
+        job_description_data = dict(await req.json())
+        # Validate the job description data.
+        try:
+            JobDescription(**job_description_data)
+        except Exception as ex:
+            return dashboard_utils.rest_response(
+                success=False, message=f"Failed to submit job: {ex}")
+        job_id = await self._next_job_id()
+
+        agent_address = random.choice(agent_addresses)
+        options = (("grpc.enable_http_proxy", 0), )
+        channel = aiogrpc.insecure_channel(agent_address, options=options)
+        stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
+        request = job_agent_pb2.InitializeJobEnvRequest(
+            job_id=job_id.binary(),
+            job_description=json.dumps(job_description_data))
+        reply = await stub.InitializeJobEnv(request)
+        if reply.status == agent_manager_pb2.AGENT_RPC_STATUS_OK:
+            logger.info("Succeeded to submit job %s", job_id.hex())
+            return dashboard_utils.rest_response(
+                success=True, message="Job submitted.", job_id=job_id.hex())
+        else:
+            logger.info("Failed to submit job %s", job_id.hex())
+            return dashboard_utils.rest_response(
+                success=False,
+                message=f"Failed to submit job: {reply.error_message}",
+                job_id=job_id.hex())
 
     @routes.get("/jobs")
     @dashboard_utils.aiohttp_cache
