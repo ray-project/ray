@@ -16,6 +16,7 @@ from ray.new_dashboard.modules.job import job_consts
 from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
+    wait_for_condition,
 )
 import pytest
 
@@ -258,6 +259,15 @@ def test_submit_job_validation(ray_start_with_dashboard):
     webui_url = format_web_url(webui_url)
 
     shutil.rmtree(JOB_ROOT_DIR, ignore_errors=True)
+
+    def _ensure_available_nodes():
+        resp = requests.post(f"{webui_url}/jobs")
+        resp.raise_for_status()
+        result = resp.json()
+        assert result["result"] is False
+        return "no nodes available" not in result["msg"]
+
+    wait_for_condition(_ensure_available_nodes, timeout=5)
 
     # Invalid value.
     resp = requests.post(
