@@ -7,12 +7,14 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.agents.sac import SACTrainer
+
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, FlexAgentsMultiAgent, \
-    RoundRobinMultiAgent
+    RoundRobinMultiAgent, MultiAgentPendulum,
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
@@ -448,6 +450,39 @@ class TestMultiAgentEnv(unittest.TestCase):
             KeyError,
             lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
 
+    def test_train_multiagent_sac_normalize_action(self):
+        n = 2
+        register_env("multi_agent_pendulum",
+                        lambda _: MultiAgentPendulum({"num_agents": n}))
+        single_env = gym.make("Pendulum-v0")
+
+        def gen_policy():
+            obs_space = single_env.observation_space
+            act_space = single_env.action_space
+            return (None, obs_space, act_space, {})
+
+        # Check multi agent SAC trains well when normalize_actions is True
+        sac = SACTrainer(
+            env="multi_agent_pendulum",
+            config={
+                "normalize_actions": True,
+                "framework": "torch",
+                "multiagent": {
+                    "policies": {
+                        "policy_1": gen_policy(),
+                        "policy_2": gen_policy(),
+                    },
+                    "policy_mapping_fn": lambda agent_id: "policy_1",
+                },
+            })
+
+        for i in range(100):
+            result = sac.train()
+            print("Iteration {}, reward {}, timesteps {}".format(
+                i, result["episode_reward_max"], result["timesteps_total"]))
+            if result["episode_reward_max"] >= -200 * n:
+                return
+        raise Exception("failed to improve reward")
 
 if __name__ == "__main__":
     import pytest
