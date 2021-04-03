@@ -622,15 +622,14 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
     num_objects_unsealed_--;
     num_bytes_unsealed_ -= entry->data_size + entry->metadata_size;
 
-    ray::ObjectInfo info = {
-        .object_id = object_ids[i],
-        .data_size = entry->data_size,
-        .metadata_size = entry->metadata_size,
-        .owner_raylet_id = entry->owner_raylet_id,
-        .owner_ip_address = entry->owner_ip_address,
-        .owner_port = entry->owner_port,
-        .owner_worker_id = entry->owner_worker_id,
-    };
+    ray::ObjectInfo info;
+    info.object_id = object_ids[i];
+    info.data_size = entry->data_size;
+    info.metadata_size = entry->metadata_size;
+    info.owner_raylet_id = entry->owner_raylet_id;
+    info.owner_ip_address = entry->owner_ip_address;
+    info.owner_port = entry->owner_port;
+    info.owner_worker_id = entry->owner_worker_id;
     add_object_callback_(info);
   }
 
