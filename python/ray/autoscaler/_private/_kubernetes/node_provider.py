@@ -5,9 +5,9 @@ from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
-from ray.autoscaler._private.kubernetes import core_api, log_prefix, \
+from ray.autoscaler._private._kubernetes import core_api, log_prefix, \
     extensions_beta_api
-from ray.autoscaler._private.kubernetes.config import bootstrap_kubernetes, \
+from ray.autoscaler._private._kubernetes.config import bootstrap_kubernetes, \
     fillout_resources_kubernetes
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
