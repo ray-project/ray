@@ -14,7 +14,7 @@ from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, FlexAgentsMultiAgent, \
-    RoundRobinMultiAgent, MultiAgentPendulum,
+    RoundRobinMultiAgent, MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
@@ -453,7 +453,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_train_multiagent_sac_normalize_action(self):
         n = 2
         register_env("multi_agent_pendulum",
-                        lambda _: MultiAgentPendulum({"num_agents": n}))
+                     lambda _: MultiAgentPendulum({"num_agents": n}))
         single_env = gym.make("Pendulum-v0")
 
         def gen_policy():
@@ -483,6 +483,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             if result["episode_reward_max"] >= -200 * n:
                 return
         raise Exception("failed to improve reward")
+
 
 if __name__ == "__main__":
     import pytest
