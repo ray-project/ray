@@ -12,6 +12,7 @@ import select
 import socket
 import subprocess
 import sys
+import urllib.request
 import uuid
 from pdb import Pdb
 import setproctitle
@@ -196,9 +197,7 @@ def connect_ray_pdb(host=None,
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
-    import urllib.request
-    host = urllib.request.urlopen("http://169.254.169.254/latest/meta-data/public-ipv4").read().decode()
-    # host = ray.services.get_node_ip_address()
+    host = urllib.request.urlopen('https://checkip.amazonaws.com').read().decode().strip()
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
@@ -243,17 +242,20 @@ def post_mortem():
     rdb.post_mortem()
 
 
-def connect_pdb_client(host, port, ssh_key=None):
-    if os.environ.get("RAY_DEBUG_SSH_COMMAND") and host != ray.services.get_node_ip_address():
-        # RAY_DEBUG_SSH_COMMAND = f"ssh -o BatchMode=yes -o ServerAliveInterval=1 -o ServerAliveCountMax=5 -f -o ExitOnForwardFailure=yes -i {ssh_key} -N -L {port}:localhost:{port} ubuntu@{host}"
+def connect_pdb_client(host, port):
+    local_host = urllib.request.urlopen('https://checkip.amazonaws.com').read().decode().strip()
+    if os.environ.get("RAY_DEBUG_SSH_COMMAND") and host != local_host:
         cmd = os.environ["RAY_DEBUG_SSH_COMMAND"].format(host=host, port=port)
-        print("running", cmd)
         p = subprocess.Popen(
             cmd,
             universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stat = p.poll()
         while stat == None:
             stat = p.poll()
+        if stat != 0:
+            stdout, _ = p.communicate()
+            print("Error connecting to remote host: ", stdout)
+            print("Command was: ", cmd)
 
     while True:
         try:
@@ -285,7 +287,7 @@ def connect_pdb_client(host, port, ssh_key=None):
                 s.send(msg.encode())
 
 
-def continue_debug_session(ssh_key=None):
+def continue_debug_session():
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -308,15 +310,15 @@ def continue_debug_session(ssh_key=None):
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port), key)
                     ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session(ssh_key)
+                    continue_debug_session()
                     return
                 time.sleep(1.0)
 
 
-def run_debug_loop(ssh_key=None):
+def run_debug_loop():
 
     while True:
-        continue_debug_session(ssh_key)
+        continue_debug_session()
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
@@ -338,4 +340,4 @@ def run_debug_loop(ssh_key=None):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            ray.util.rpdb.connect_pdb_client(host, int(port), ssh_key)
+            ray.util.rpdb.connect_pdb_client(host, int(port))
