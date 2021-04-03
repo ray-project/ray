@@ -144,16 +144,11 @@ ObjectManager::ObjectManager(
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
 void ObjectManager::Stop() {
-  if (plasma::plasma_store_runner != nullptr) {
-    plasma::plasma_store_runner->Stop();
-  }
+  plasma::plasma_store_runner->Stop();
 }
 
 bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
-  if (plasma::plasma_store_runner != nullptr) {
-    return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
-  }
-  return false;
+  return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
 }
 
 void ObjectManager::RunRpcService(int index) {
@@ -879,9 +874,7 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_used(used_memory_);
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
-  if (plasma::plasma_store_runner) {
-    stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
-  }
+  stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
 }
 
 void ObjectManager::Tick(const boost::system::error_code &e) {
@@ -891,15 +884,13 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 
   // Request the current available memory from the object
   // store.
-  if (plasma::plasma_store_runner) {
-    plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
-      main_service_->post(
-          [this, available_memory]() {
-            pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
-          },
-          "ObjectManager.UpdateAvailableMemory");
-    });
-  }
+  plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+    main_service_->post(
+        [this, available_memory]() {
+          pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+        },
+        "ObjectManager.UpdateAvailableMemory");
+  });
 
   pull_manager_->Tick();
 
