@@ -363,8 +363,8 @@ def _key_assert_msg(node_type):
     elif node_type == NODE_TYPE_LEGACY_HEAD:
         return "`KeyName` missing for head node."
     else:
-        return "`KeyName` missing from the `node_config` of"
-        f" node type {node_type}"
+        return ("`KeyName` missing from the `node_config` of"
+                f" node type `{node_type}`.")
 
 
 def _configure_subnet(config):

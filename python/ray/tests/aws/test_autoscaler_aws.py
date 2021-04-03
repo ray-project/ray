@@ -11,7 +11,8 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_AUX_SUBNET, DEFAULT_SG, DEFAULT_SG_DUAL_GROUP_RULES, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_RULES, DEFAULT_SG_WITH_NAME, \
-    DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES
+    DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES, \
+    DEFAULT_KEY_PAIR
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
@@ -225,17 +226,38 @@ def test_fills_out_amis(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
-def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
+def test_missing_key(iam_client_stub):
+    """
+    Check that an error is raised when ssh_private_key is given in the
+    auth_config but a node type is missing KeyName.
+    """
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    config["auth"]["ssh_private_key"] = "~/fake/path"
+    config["available_node_types"]["ray.head.default"]["node_config"][
+        "KeyName"] = "fakeKey"
+
+    # bootstrap_config configures iam role and then raises an assertion error
+    stubs.configure_iam_role_default(iam_client_stub)
+    with pytest.raises(AssertionError):
+        helpers.bootstrap_aws_config(config)
+
+    # expect no pending responses left in IAM client stub queue
+    iam_client_stub.assert_no_pending_responses()
+
+
+def test_multinode(iam_client_stub, ec2_client_stub):
     """
     Test AWS Bootstrap logic when config being bootstrapped has the
     following properties:
 
+    (0) auth config does not specify ssh key path
     (1) available_node_types is provided
     (2) security group name and ip permissions set in provider field
     (3) head_node and worker_nodes have only SubnetIds field set and this
         field is of form SubnetIds: [subnet-xxxxx].
         head_node and worker_nodes specify the same subnet-xxxxx.
 
+    Tests creation of a security group and key pair under these conditions.
     """
 
     # Generate a config of the desired form.
@@ -314,8 +336,15 @@ def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
     assert config["provider"]["security_group"][
         "IpPermissions"] == CUSTOM_IN_BOUND_RULES
 
-    # Confirming boostrap config does not currently touch available node types.
-    assert bootstrapped_config["available_node_types"] == config[
+    # Confirming boostrap config does not currently touch available node types,
+    # except for KeyName, which is correctly configured.
+    bootstrapped_config_copy = copy.deepcopy(bootstrapped_config)
+    node_types = bootstrapped_config_copy["available_node_types"]
+    for node_type in node_types:
+        node_config = node_types[node_type]["node_config"]
+        node_config["KeyName"] == DEFAULT_KEY_PAIR["KeyName"]
+        node_config.pop("KeyName")
+    assert bootstrapped_config_copy["available_node_types"] == config[
         "available_node_types"]
 
     # Confirming head and worker subnet_ids are untouched
@@ -336,6 +365,9 @@ def test_temp_create_sg_multinode(iam_client_stub, ec2_client_stub):
     assert DEFAULT_SG["VpcId"] == DEFAULT_SUBNET["VpcId"]
     assert DEFAULT_SUBNET["SubnetId"] ==\
         bootstrapped_config["head_node"]["SubnetIds"][0]
+
+    # ssh private key filled in
+    assert "ssh_private_key" in bootstrapped_config["auth"]
 
     # expect no pending responses left in IAM or EC2 client stub queues
     iam_client_stub.assert_no_pending_responses()
