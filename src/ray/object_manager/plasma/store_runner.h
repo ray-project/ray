@@ -5,7 +5,6 @@
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/store.h"
 
 namespace plasma {
@@ -15,12 +14,11 @@ class PlasmaStoreRunner {
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
                     bool hugepages_enabled, std::string plasma_directory);
   void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr,
-             std::function<void()> object_store_full_callback = nullptr);
+             std::function<void()> object_store_full_callback = nullptr,
+             ray::AddObjectCallback add_object_callback = nullptr,
+             ray::DeleteObjectCallback delete_object_callback = nullptr);
   void Stop();
-  void SetNotificationListener(
-      const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
-    store_->SetNotificationListener(notification_listener);
-  }
+
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
   int64_t GetConsumedBytes();
@@ -39,7 +37,6 @@ class PlasmaStoreRunner {
   std::string plasma_directory_;
   mutable instrumented_io_context main_service_;
   std::unique_ptr<PlasmaStore> store_;
-  std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;
 };
 
 // We use a global variable for Plasma Store instance here because:
