@@ -219,8 +219,7 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback,
-      DeleteObjectCallback delete_object_callback);
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
 
   ~ObjectManager();
 
