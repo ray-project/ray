@@ -13,7 +13,8 @@ from botocore.config import Config
 import botocore
 
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
-from ray.autoscaler.tags import NODE_KIND_WORKER, NODE_KIND_HEAD
+from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD,\
+    NODE_TYPE_LEGACY_WORKER, NODE_KIND_WORKER, NODE_KIND_HEAD
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
     handle_boto_error
@@ -274,6 +275,9 @@ def _configure_iam_role(config):
 
 
 def _configure_key_pair(config):
+
+    node_types = config["available_node_types"]
+
     if "ssh_private_key" in config["auth"]:
         _set_config_info(keypair_src="config")
 
@@ -282,17 +286,13 @@ def _configure_key_pair(config):
         # else we will risk starting a node that we cannot
         # SSH into:
 
-        if "UserData" not in config["head_node"]:
-            cli_logger.doassert(  # todo: verify schema beforehand?
-                "KeyName" in config["head_node"],
-                "`KeyName` missing for head node.")  # todo: err msg
-            assert "KeyName" in config["head_node"]
-
-        if "UserData" not in config["worker_nodes"]:
-            cli_logger.doassert(
-                "KeyName" in config["worker_nodes"],
-                "`KeyName` missing for worker nodes.")  # todo: err msg
-            assert "KeyName" in config["worker_nodes"]
+        for node_type in node_types:
+            node_config = node_types[node_type]["node_config"]
+            if "UserData" not in node_config:
+                cli_logger.doassert(  # todo: verify schema beforehand?
+                    "KeyName" in node_config,
+                    _key_assert_msg(node_type))  # todo: err msg
+                assert "KeyName" in node_config
 
         return config
 
@@ -350,10 +350,21 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path
-    config["head_node"]["KeyName"] = key_name
-    config["worker_nodes"]["KeyName"] = key_name
+    for node_type in node_types:
+        node_config = node_types[node_type]["node_config"]
+        node_config["KeyName"] = key_name
 
     return config
+
+
+def _key_assert_msg(node_type):
+    if node_type == NODE_TYPE_LEGACY_WORKER:
+        return "`KeyName` missing for worker nodes."
+    elif node_type == NODE_TYPE_LEGACY_HEAD:
+        return "`KeyName` missing for head node."
+    else:
+        return "`KeyName` missing from the `node_config` of"
+        f" node type {node_type}"
 
 
 def _configure_subnet(config):
