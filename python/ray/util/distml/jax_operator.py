@@ -1,9 +1,13 @@
 """TODO(Runhui): JAX Operator"""
+import numpy as np
 import cupy as cp
 from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
-from jax.tree_util import tree_flatten, tree_structure
+from jax.tree_util import tree_flatten, tree_unflatten, tree_structure
+from jax._src.util import unzip2
+
+
 
 from ray.util.distml.base_operator import TrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
@@ -200,14 +204,67 @@ class JAXTrainingOperator(TrainingOperator):
         else:
             raise RuntimeError("jax2tf is not available.")
 
+    def get_parameters(self, cpu):
+        params = self.get_params(self.opt_state)
+        flatten_params, tree = tree_flatten(params)
+        if not hasattr(self, "tree"):
+            self.tree = tree
+        
+        if cpu:
+            flatten_params = list(map(np.asarray, flatten_params))
+        return flatten_params
+
+    def get_named_parameters(self, cpu):
+        params = self.get_parameters(cpu)
+        dict_params = {f"{idx}":p for idx, p in enumerate(params)}
+        return dict_params
+
     def set_parameters(self, params):
         # need in place parameters in opt_state
-        
-        # TODO(HUI): check the input params has the same tree.
-        assert tree_structure(params) == tree_structure(self.get_params(self.opt_state))
+        if isinstance(params, dict):
+            print("Warning: using named parameter to set params")
+            params = list(params.values())
 
-        self.opt_state = params, self.opt_state[1]
-        pass
-        
-    def get_parameters(self):
-        return self.get_params(self.opt_state)
+        if not hasattr(self, "tree"):
+            self.tree = tree_structure(self.get_params(self.opt_state)) 
+
+        states_flat, tree, subtrees = self.opt_state
+        states = list(map(tree_unflatten, subtrees, states_flat))
+
+        new_states = params, *states[1:]
+        new_states_flat, subtrees2 = unzip2(map(tree_flatten, states))
+        # print("1",tree)
+        # print("1",subtrees, len(subtrees))
+
+        # tree_params = tree_unflatten(self.tree, params)
+        # # # opt_state store flatten params
+
+        # tree_params_subflat, subtrees = map(tree_flatten, tree_params)
+        # # # If we want to set param, we need to sync the subtree.
+        # # state_flat2, subtrees2 = unzip2(map(tree_flatten, tree_params_subflat))
+        # print("2",subtrees2, len(subtrees2))
+        for idx, (subtree, subtree2) in enumerate(zip(subtrees, subtrees2)):
+            if subtree2 != subtree:
+                msg = ("optimizer update function produced an output structure that "
+                        "did not match its input structure: input {} and output {}.")
+                print(idx)
+                raise TypeError(msg.format(subtree, subtree2))
+
+        self.opt_state = new_states_flat, tree, subtrees
+
+    # some operation for this ml system.
+    def ones(self, shape, cpu=True):
+        if cpu:
+            return np.ones(shape)
+        else:
+            return jnp.ones(shape)
+
+    # some operation for this ml system.
+    def zeros(self, shape, cpu=True):
+        if cpu:
+            return np.zeros(shape)
+        else:
+            return jnp.zeros(shape)
+
+    def numel(self, v):
+        return np.size(v)
