@@ -46,6 +46,11 @@ except:
 def run_test():
     return test_module.one()
 
+#ray.remote
+def check_file(name):
+    with open(name) as f:
+        return f.read()
+
 @ray.remote
 class TestActor(object):
     @ray.method(num_returns=1)
@@ -79,8 +84,10 @@ def one():
             f.write("""
 from test_module.test import one
 """)
-
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
         yield tmp_dir
+        os.chdir(old_dir)
 
 
 def start_client_server(cluster, client_mode):
@@ -182,9 +189,9 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert out.strip().split()[-1] == "1000"
     # It's a detached actors, so it should still be there
     assert len(list(Path(PKG_DIR).iterdir())) == 2
-    pkg = list(Path(PKG_DIR).glob("*.zip"))[0]
+    pkg_dir = [f for f in Path(PKG_DIR).glob("*") if f.is_dir()][0]
     import sys
-    sys.path.insert(0, str(pkg))
+    sys.path.insert(0, str(pkg_dir))
     test_actor = ray.get_actor("test_actor")
     assert sum(ray.get([test_actor.one.remote()] * 1000)) == 1000
     ray.kill(test_actor)

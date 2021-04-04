@@ -14,6 +14,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
 from typing import List, Tuple
 from urllib.parse import urlparse
 import os
+import sys
 
 from ray._private.utils import get_conda_env_dir
 
@@ -194,11 +195,6 @@ def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
-def _get_package_dir(pkg_file: Path) -> Path:
-    """Return the directory corresponding to this package"""
-    return pkg_file.stem
-
-
 def create_project_package(working_dir: str, py_modules: List[str],
                            output_path: str) -> None:
     """Create a pckage that will be used by workers.
@@ -222,26 +218,24 @@ def create_project_package(working_dir: str, py_modules: List[str],
             _zip_module(Path(py_module), Path(py_module).parent, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
-    """Fetch a package from a given uri.
+def fetch_package(pkg_uri: str) -> int:
+    """Fetch a package from a given uri if not exists locally.
 
-    This function is used to fetch a pacakge from the given uri to local
-    filesystem. If it exists, it'll just return 0.
+    This function is used to fetch a pacakge from the given uri and unpack it.
 
     Args:
         pkg_uri (str): The uri of the package to download.
-        pkg_file (pathlib.Path): The path in local filesystem to download the
-            package.
 
     Returns:
-        The number of bytes downloaded.
+        The directory containing this package
     """
-    if pkg_file is None:
-        pkg_file = Path(_get_local_path(pkg_uri))
-    local_dir = _get_package_dir(pkg_file)
+    pkg_file = Path(_get_local_path(pkg_uri))
+    local_dir =  pkg_file.with_suffix("")
+    assert local_dir != pkg_file, "Invalid pkg_file!"
     if local_dir.exists():
-        assert local_dir.is_dir()
-        return 0
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        return local_dir
+    logger.debug("Fetch packge")
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         code = _internal_kv_get(pkg_uri)
@@ -249,9 +243,14 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
             raise IOError("Fetch uri failed")
         code = code or b""
         pkg_file.write_bytes(code)
-        return len(code)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+    logger.debug(f"Unpack {pkg_file} to {local_dir}")
+    with ZipFile(str(pkg_file), "r") as zip_ref:
+        zip_ref.extractall(local_dir)
+    pkg_file.unlink()
+    return local_dir
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
@@ -346,7 +345,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> str:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
@@ -354,24 +353,19 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
 
     Args:
         pkg_uri list(str): Package of the working dir for the runtime env.
-    """
 
+    Return:
+        Working directory is returned.
+    """
+    pkg_dir = None
     assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
-        pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
-        pkg_dir = _get_package_dir(pkg_file)
+        pkg_file = Path(_get_local_path(pkg_uri))
         with FileLock(str(pkg_file) + ".lock"):
-            pkg_size = fetch_package(pkg_uri, pkg_file)
-            if pkg_size == 0:
-                logger.debug(
-                    f"{pkg_uri} has existed locally, skip downloading")
-            else:
-                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-                # We need to unpack it
-                with ZipFile(str(pkg_file), "r") as zip_ref:
-                    zip_ref.extractall(pkg_dir)
-                # Delete the downloaded file
-                pkg_file.unlink()
-        os.chdir(str(pkg_dir))
+            pkg_dir = fetch_package(pkg_uri)
+        sys.path.insert(0, str(pkg_dir))
+    # Right now, multiple pkg_uris are not supported correctly.
+    # We return the last one as working directory
+    return str(pkg_dir) if pkg_dir else None
