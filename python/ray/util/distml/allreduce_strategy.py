@@ -239,4 +239,8 @@ class DataParallelGroup:
         
     def get_parameters(self, cpu=False):
         ret = self.replicas[0].get_parameters.remote(cpu)
-        return ray.get(ret)
+        return ray.get(ret)[0]
+
+    def get_named_parameters(self, cpu=False):
+        ret = self.replicas[0].get_named_parameters.remote(cpu)
+        return ray.get([ret])[0]

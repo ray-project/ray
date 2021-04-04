@@ -1,6 +1,7 @@
 import ray
 from ray.util.distml.base_trainer import BaseTrainer
 import ray.util.collective as col
+import numpy as np
 import cupy as cp
 
 
@@ -142,20 +143,21 @@ class ParameterServerStrategy(BaseTrainer):
             assignments[i] = min_ps_index
         print("Load of each ps {}".format(loads))
         self.assignments = assignments
+        print(assignments)
 
     def step(self):
         loss_vals = []
         rets = []
-        for worker in self.workers:
-            for server in self.servers:
+        for worker_idx, worker in enumerate(self.worker_group.replicas):
+            for server_idx, server in enumerate(self.server_group.replicas):
                 # every server sends its shard to the worker
-                server.send_params.remote(self.workers.index(worker))
+                server.send_params.remote(worker_idx)
             # the worker receives shards from ps, compute loss, gradients
             # and sends these gradients to every server
             loss = worker.compute.remote()
             time.sleep(100)
             for server in self.servers:
-                rets.append(server.update.remote(self.workers.index(worker)))
+                rets.append(server.update.remote(worker_idx))
             rets.append(loss)
             loss_vals.append(loss)
         ray.get(rets)
@@ -228,8 +230,10 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
     def _inc_gradients(self, gradients):
+        # TODO(HUI): jax how to do it?
+
         # gradients should be a stitched dict
-        for name, p in self.get_params().items():
+        for name, p in self.get_named_parameters():
             if gradients[name] is not None:
                 if p.grad is None:
                     p.grad = gradients[name]
@@ -244,7 +248,8 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         recv_list = []
         for key in keys:
             to_recv = self.params[key]
-            recv_list.append(torch.zeros(to_recv.size()).cuda())
+            recv_list.append(self.training_operator.zeros(to_recv.size(), cpu=False))
+            # recv_list.append(torch.zeros(to_recv.size()).cuda())
 
         groupStart()
         for i in range(len(keys)):
@@ -255,7 +260,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
             grads[keys[i]] = recv_list[i]
 
         self._inc_gradients(grads)
-        if self.grad_counts == len(self.workers):
+        if self.grad_counts == len(self.worker_group.replicas):
             #self.optimizer.zero_grad()
             #self._set_gradients(grads)
 
@@ -308,9 +313,9 @@ class Worker(object):
 
     def params_distribution(self):
         distribution = []
-        weights = self.get_parameters(cpu=True)
+        weights = self.get_named_parameters(cpu=True)
         for k, v in weights.items():
-            distribution.append(v.numel())
+            distribution.append(self.training_operator.numel(v))
         return distribution
 
     def get_data_loader(self):
@@ -328,7 +333,9 @@ class Worker(object):
     def updates_transform(self, updates):
         return self.training_operator.updates_transform(updates)
 
-    def compute_gradients(self, weights):
+    def compute_gradients(self, weights, batch):
+        self.set_parameters(weights)
+
         # different from original core ps. 
         # Here derive_updates return loss_val and graident in order.
         return self.training_operator.derive_updates(batch)
@@ -343,7 +350,7 @@ class Worker(object):
         return shards
 
     def split_parameters(self, assignments):
-        params = self.get_parameters(cpu=False)
+        params = self.get_named_parameters(cpu=False)
         num_shards = np.unique(np.array(assignments)).size
         shards = [dict() for i in range(num_shards)]
         for i, (k, v) in enumerate(params.items()):
@@ -357,16 +364,23 @@ class Worker(object):
         return self.training_operator.set_parameters(params)
 
     def get_parameters(self, cpu):
-        return self.training_operator.get_parameters()
+        # HUI: we might need to convert different tensor type to a unified one.
+        # GPU use cupy, CPU use numpy.
+        return self.training_operator.get_parameters(cpu)
+
+    def get_named_parameters(self, cpu):
+        # HUI: we might need to convert different tensor type to a unified one.
+        # GPU use cupy, CPU use numpy.
+        return self.training_operator.get_named_parameters(cpu)
 
     def get_gradients(self):
         # training_operator call gradients or we save gradient in replica 
         # when derive_updates.
-        self.training_operator.get_gradients()
+        return self.training_operator.get_gradients()
 
     def set_assignments(self, assignments):
         self.assignments = assignments
-        keys = list(self.get_weights(cpu=False).keys())
+        keys = list(self.get_named_parameters(cpu=False).keys())
         for i, a in enumerate(self.assignments):
             self.name_list[a].append(keys[i])
 
@@ -383,7 +397,7 @@ class Worker(object):
             param_shard_keys = self.name_list[i]
             for key in param_shard_keys:
                 to_recv = weights[key]
-                recv_list[-1].append((torch.ones(to_recv.size()) * 2).cuda())
+                recv_list[-1].append(self.training_operator.ones(to_recv.size(), cpu=False) * 2)
 
         logging.warning(f"worker {self.rank} {recv_list[0][0][0][0]}, {recv_list[0][0].size()}, {recv_list[0][1]}, {recv_list[0][1].size()}, {recv_list[0][2]}, {recv_list[0][2].size()}")
         groupStart()
@@ -402,13 +416,13 @@ class Worker(object):
             for j in range(len(param_shard_keys)):
                 params[param_shard_keys[j]] = recv_list[i][j]
 
-        loss, grad  = self.compute_gradients(params)
+        loss, grad = self.compute_gradients(params)
         split_grad = self.split_gradients(grad, self.assignments)
         groupStart()
         for i in range(self.num_ps):
             this_shard = self.index_shard(split_grad, i)
             for _, v in this_shard.items():
-                col.send(v, self.num_workers+i, "default")
+                col.send(v, self.num_workers+i, self.group_name)
         groupEnd()
         return loss
 
@@ -476,7 +490,7 @@ class DataParallelGroup:
                 for _, replica in enumerate(self.replicas)]
         return rets
 
-    def set_assignments(assignments):
+    def set_assignments(self, assignments):
         rets = [replica.set_assignments.remote(assignments) 
                 for _, replica in enumerate(self.replicas)]
         return rets
@@ -523,8 +537,12 @@ class DataParallelGroup:
         
     def get_parameters(self, cpu=False):
         ret = self.replicas[0].get_parameters.remote(cpu)
-        return ray.get([ret])
+        return ray.get([ret])[0]
+
+    def get_named_parameters(self, cpu=False):
+        ret = self.replicas[0].get_named_parameters.remote(cpu)
+        return ray.get([ret])[0]
 
     def split_parameters(self, assignments):
         ret = self.replicas[0].split_parameters.remote(assignments)
-        return ray.get([ret])
+        return ray.get([ret])[0]
