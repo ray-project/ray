@@ -298,7 +298,7 @@ class Analysis:
         if trial is None:
             trial = self.get_best_logdir(metric, mode)
 
-        return self.get_best_checkpoint(trial, metric, mode)
+        return self.get_best_checkpoint(trial, "training_iteration", "max")
 
     def _retrieve_rows(self,
                        metric: Optional[str] = None,
