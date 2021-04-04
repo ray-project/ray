@@ -46,7 +46,7 @@ except:
 def run_test():
     return test_module.one()
 
-#ray.remote
+@ray.remote
 def check_file(name):
     with open(name) as f:
         return f.read()
@@ -127,11 +127,29 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_module(two_node_cluster, working_dir, client_mode):
+def test_two_node(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
-    runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    assert out.strip().split()[-1] == "1000"
+    assert len(list(Path(PKG_DIR).iterdir())) == 1
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_two_node_local_file(two_node_cluster, working_dir, client_mode):
+    with open(os.path.join(working_dir, "test_file"), "w") as f:
+        f.write("1")
+    cluster, _ = two_node_cluster
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    execute_statement = """
+vals = ray.get([check_file.remote('test_file')] * 1000)
+print(sum([int(v) for v in vals]))
+"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
