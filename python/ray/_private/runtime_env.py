@@ -230,7 +230,7 @@ def fetch_package(pkg_uri: str) -> int:
         The directory containing this package
     """
     pkg_file = Path(_get_local_path(pkg_uri))
-    local_dir =  pkg_file.with_suffix("")
+    local_dir = pkg_file.with_suffix("")
     assert local_dir != pkg_file, "Invalid pkg_file!"
     if local_dir.exists():
         assert local_dir.is_dir(), f"{local_dir} is not a directory"
