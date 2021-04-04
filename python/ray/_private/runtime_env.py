@@ -195,6 +195,11 @@ def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
+def _get_package_dir(pkg_file: Path) -> Path:
+    """Return the directory corresponding to this package"""
+    return pkg_file.stem
+
+
 def create_project_package(working_dir: str, py_modules: List[str],
                            output_path: str) -> None:
     """Create a pckage that will be used by workers.
@@ -234,7 +239,9 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     """
     if pkg_file is None:
         pkg_file = Path(_get_local_path(pkg_uri))
-    if pkg_file.exists():
+    local_dir = _get_package_dir(pkg_file)
+    if locl_dir.exists():
+        assert local_dir.is_dir()
         return 0
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
@@ -355,12 +362,17 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
         pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
+        pkg_dir = _get_package_dir(pkg_file)
         with FileLock(str(pkg_file) + ".lock"):
-            # TODO(yic): checksum calculation is required
-            if pkg_file.exists():
+            pkg_size = fetch_package(pkg_uri, pkg_file)
+            if pkg_size == 0:
                 logger.debug(
                     f"{pkg_uri} has existed locally, skip downloading")
             else:
-                pkg_size = fetch_package(pkg_uri, pkg_file)
                 logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-        sys.path.insert(0, str(pkg_file))
+                # We need to unpack it
+                with ZipFile(str(pkg_file), 'r') as zip_ref:
+                    zip_ref.extractall(pkg_dir)
+                # Delete the downloaded file
+                pkg_file.unlink()
+        os.chdir(str(pkg_dir))

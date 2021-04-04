@@ -1243,8 +1243,9 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
     RAY_LOG(ERROR) << "Invalid uri: " << uri;
     cb(true);
   }
+  auto from_path = resource_path /
+                   boost::filesystem::path(uri.substr(pos + sep.size())).stem();
 
-  auto from_path = resource_path / boost::filesystem::path(uri.substr(pos + sep.size()));
   if (!boost::filesystem::exists(from_path)) {
     RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
     cb(true);
