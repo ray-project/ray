@@ -1,5 +1,5 @@
 """Tests launch, teardown, and update of multiple Ray clusters using Kubernetes
-operator."""
+operator. Also tests submission of jobs via Ray client."""
 import copy
 import sys
 import os
@@ -25,8 +25,8 @@ PULL_POLICY_ENV = "KUBERNETES_OPERATOR_TEST_PULL_POLICY"
 PULL_POLICY = os.getenv(PULL_POLICY_ENV, "Always")
 
 RAY_PATH = os.path.abspath(
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+    os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 
 def retry_until_true(f):
@@ -83,10 +83,8 @@ def wait_for_job(job_pod):
 
 
 def kubernetes_configs_directory():
-    here = os.path.realpath(__file__)
-    ray_python_root = os.path.dirname(os.path.dirname(here))
-    relative_path = "autoscaler/kubernetes"
-    return os.path.join(ray_python_root, relative_path)
+    relative_path = "python/ray/autoscaler/kubernetes"
+    return os.path.join(RAY_PATH, relative_path)
 
 
 def get_kubernetes_config_path(name):
@@ -162,7 +160,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Check that autoscaling respects minWorkers by waiting for
             # six pods in the namespace.
             print(">>>Waiting for pods to join clusters.")
-            wait_for_pods(6)
+            wait_for_pods(30)
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
