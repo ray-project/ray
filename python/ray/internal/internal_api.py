@@ -45,7 +45,13 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
     if (node_manager_address is None or node_manager_port is None):
-        raylet = state.node_table()[0]
+        # We should ask for a raylet that is alive.
+        raylet = None
+        for node in state.node_table():
+            if node["Alive"]:
+                raylet = node
+                break
+        assert raylet is not None, "Every raylet is dead"
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         raylet["NodeManagerPort"])
     else:

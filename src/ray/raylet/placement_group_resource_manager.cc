@@ -94,9 +94,18 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state_ = CommitState::COMMITTED;
 
+  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
+  const auto &task_resource_instances = *bundle_state->resources_;
+
   for (const auto &resource : bundle_spec.GetFormattedResources()) {
-    cluster_resource_scheduler_->AddLocalResource(resource.first, resource.second);
+    const auto &resource_name = resource.first;
+    const auto &original_resource_name = GetOriginalResourceName(resource_name);
+    const auto &instances =
+        task_resource_instances.Get(original_resource_name, string_id_map);
+
+    cluster_resource_scheduler_->AddLocalResourceInstances(resource_name, instances);
   }
+  cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(

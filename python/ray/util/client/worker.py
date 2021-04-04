@@ -449,14 +449,17 @@ class Worker:
             import ray._private.runtime_env as runtime_env
             import tempfile
             with tempfile.TemporaryDirectory() as tmp_dir:
-                if runtime_env.PKG_DIR is None:
-                    runtime_env.PKG_DIR = tmp_dir
+                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
                 runtime_env.rewrite_working_dir_uri(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
-                self.data_client.Init(init_req)
+                init_resp = self.data_client.Init(init_req)
+                if not init_resp.ok:
+                    logger.error("Init failed due to: ", init_resp.msg)
+                    raise IOError(init_resp.msg)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
+                runtime_env.PKG_DIR = old_dir
                 prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
                 self.data_client.PrepRuntimeEnv(prep_req)
         except grpc.RpcError as e:
