@@ -14,7 +14,6 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
 from typing import List, Tuple
 from urllib.parse import urlparse
 import os
-import sys
 
 from ray._private.utils import get_conda_env_dir
 
@@ -240,7 +239,7 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
     if pkg_file is None:
         pkg_file = Path(_get_local_path(pkg_uri))
     local_dir = _get_package_dir(pkg_file)
-    if locl_dir.exists():
+    if local_dir.exists():
         assert local_dir.is_dir()
         return 0
     (protocol, pkg_name) = _parse_uri(pkg_uri)
@@ -371,7 +370,7 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
             else:
                 logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
                 # We need to unpack it
-                with ZipFile(str(pkg_file), 'r') as zip_ref:
+                with ZipFile(str(pkg_file), "r") as zip_ref:
                     zip_ref.extractall(pkg_dir)
                 # Delete the downloaded file
                 pkg_file.unlink()
