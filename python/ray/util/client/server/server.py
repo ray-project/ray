@@ -4,7 +4,6 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
-import sys
 import os
 import threading
 from typing import Any
@@ -432,7 +431,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             for uri in uris:
                 try:
                     pkg_dir = runtime_env.fetch_package(uri)
-                    os.chdir(pkg_dir)
+                    if pkg_dir:
+                        os.chdir(pkg_dir)
                 except IOError:
                     missing_uris.append(uri)
         return missing_uris
