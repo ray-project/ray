@@ -1,6 +1,8 @@
 import ray
 from ray._private.monitor import parse_resource_demands
 
+ray.experimental.internal_kv.redis = False
+
 
 def test_parse_resource_demands():
     resource_load_by_shape = ray.gcs_utils.ResourceLoad(resource_demands=[

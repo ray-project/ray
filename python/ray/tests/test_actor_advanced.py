@@ -922,7 +922,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             return count
 
         def set_count(self, count):
-            _internal_kv_put("count", count, True)
+            _internal_kv_put("count", str(count), True)
 
     # Verify we can get the object successfully.
     ra = RestartableActor.remote()

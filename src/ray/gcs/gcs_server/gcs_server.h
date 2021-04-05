@@ -17,6 +17,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
@@ -112,6 +113,9 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
+  /// Initialize KV manager.
+  void InitKVManager();
+
   /// Install event listeners.
   void InstallEventListeners();
 
@@ -182,6 +186,9 @@ class GcsServer {
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
