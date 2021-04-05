@@ -29,10 +29,11 @@ try:
     from opentelemetry.trace.propagation.textmap import DictGetter
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
-        raise Exception(
+        raise ImportError(
             "Install opentelemetry with "
-            "'pip install opentelemetry-api==1.0.0rc1' and "
-            "'pip install opentelemetry-sdk==1.0.0rc1' to enable tracing.")
+            "'pip install opentelemetry-api==1.0.0rc1' "
+            "and 'pip install opentelemetry-sdk==1.0.0rc1' to enable tracing. "
+            "See more at docs.ray.io/tracing.html")
 
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = None
@@ -55,13 +56,13 @@ class DictPropagator:
         propagators.inject(dict.__setitem__, context_dict)
         return context_dict
 
-    def extract(context_dict: Dict[Any, Any]):
+    def extract(context_dict: Dict[Any, Any]) -> "Context":
         """Given a trace context, extract as a Context."""
         return cast(Context, propagators.extract(DictGetter(), context_dict))
 
 
 @contextmanager
-def use_context(parent_context) -> Generator[None, None, None]:
+def use_context(parent_context: "Context") -> Generator[None, None, None]:
     """Uses the Ray trace context for the span."""
     new_context = parent_context if parent_context is not None else Context()
     token = context.attach(new_context)
@@ -71,7 +72,7 @@ def use_context(parent_context) -> Generator[None, None, None]:
         context.detach(token)
 
 
-def _function_hydrate_span_args(func: Callable[..., Any]):
+def _function_hydrate_span_args(func: Callable[..., Any]) -> "Attributes":
     """Get the Attributes of the function that will be reported as attributes
     in the trace."""
     runtime_context = get_runtime_context().get()
@@ -116,7 +117,7 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
+def _actor_hydrate_span_args(class_: _nameable, method: _nameable) -> "Attributes":
     """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
