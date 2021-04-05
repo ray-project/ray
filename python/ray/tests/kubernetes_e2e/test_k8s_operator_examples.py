@@ -160,7 +160,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Check that autoscaling respects minWorkers by waiting for
             # six pods in the namespace.
             print(">>>Waiting for pods to join clusters.")
-            wait_for_pods(30)
+            wait_for_pods(6)
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
