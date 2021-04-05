@@ -67,6 +67,7 @@ def test_scale_up(ray_cluster):
     assert pids2.issubset(pids3)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
