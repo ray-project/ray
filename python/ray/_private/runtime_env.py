@@ -11,7 +11,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from urllib.parse import urlparse
 import os
 import sys
@@ -345,7 +345,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uris: List[str]) -> str:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
@@ -355,7 +355,8 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> str:
         pkg_uri list(str): Package of the working dir for the runtime env.
 
     Return:
-        Working directory is returned.
+        Working directory is returned if the pkg_uris is not empty,
+        otherwise, None is returned.
     """
     pkg_dir = None
     assert _internal_kv_initialized()

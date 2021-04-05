@@ -99,12 +99,23 @@ def start_client_server(cluster, client_mode):
     return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
 
 
+"""
+The following test cases are related with runtime env. It following these steps
+  1) Creating a temporary dir with fixture working_dir
+  2) Using a template named driver_script defined globally
+  3) Overwrite runtime_env and execute_statement in the template
+  4) Execute it as a separate driver and return the result
+"""
+
+
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    # Setup runtime env here
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -117,7 +128,9 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
 def test_two_node(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    # Testing runtime env with working_dir
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -130,7 +143,9 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
 def test_two_node_module(two_node_cluster, working_dir, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    # test runtime_env iwth py_modules
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -145,7 +160,9 @@ def test_two_node_local_file(two_node_cluster, working_dir, client_mode):
         f.write("1")
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    # test runtime_env iwth working_dir
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = """
 vals = ray.get([check_file.remote('test_file')] * 1000)
 print(sum([int(v) for v in vals]))
@@ -169,6 +186,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
         runtime_env.create_project_package(working_dir, [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
+        # Execute the following cmd in driver with runtime_env
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -182,6 +200,7 @@ def test_regular_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = """
 test_actor = TestActor.options(name="test_actor").remote()
 print(sum(ray.get([test_actor.one.remote()] * 1000)))
@@ -198,6 +217,7 @@ def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the following cmd in driver with runtime_env
     execute_statement = """
 test_actor = TestActor.options(name="test_actor", lifetime="detached").remote()
 print(sum(ray.get([test_actor.one.remote()] * 1000)))
@@ -225,6 +245,7 @@ def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, True)
     runtime_env = None
+    # To make the first one hanging there
     execute_statement = """
 sleep(600)
 """
@@ -234,6 +255,7 @@ sleep(600)
     # waiting it to be up
     sleep(5)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    # Execute the second one which should trigger an error
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -249,6 +271,7 @@ def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, True)
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    # To make the first one hanging there
     execute_statement = """
 sleep(600)
 """
@@ -256,6 +279,8 @@ sleep(600)
     proc = run_string_as_driver_nonblocking(script, env)
     sleep(5)
     runtime_env = None
+    # Execute the following in the second one which should
+    # succeed
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
@@ -271,6 +296,7 @@ def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, True)
     runtime_env = """{  "py_modules": [test_module.__path__[0]] }"""
+    # To make the first one hanging ther
     execute_statement = """
 sleep(600)
 """
@@ -278,6 +304,8 @@ sleep(600)
     proc = run_string_as_driver_nonblocking(script, env)
     sleep(5)
     runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
+    # Execute the following cmd in the second one which should
+    # fail
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
