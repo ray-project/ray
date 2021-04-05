@@ -430,9 +430,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             for uri in uris:
                 try:
-                    pkg_dir = runtime_env.fetch_package(uri)
-                    if pkg_dir:
-                        os.chdir(pkg_dir)
+                    working_dir = runtime_env.fetch_package(uri)
+                    if working_dir:
+                        os.chdir(working_dir)
                 except IOError:
                     missing_uris.append(uri)
         return missing_uris
