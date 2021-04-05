@@ -1,21 +1,21 @@
 import pytest
 
 import ray
+from ray import serve
 
 
 def test_controller_inflight_requests_clear(serve_instance):
-    client = serve_instance
-    initial_number_reqs = ray.get(
-        client._controller._num_pending_goals.remote())
+    controller = serve.api._global_client._controller
+    initial_number_reqs = ray.get(controller._num_pending_goals.remote())
 
     def function(_):
         return "hello"
 
-    client.create_backend("tst", function)
-    client.create_endpoint("end_pt", backend="tst")
+    serve.create_backend("tst", function)
+    serve.create_endpoint("end_pt", backend="tst")
 
-    assert ray.get(client._controller._num_pending_goals.remote()
-                   ) - initial_number_reqs == 0
+    assert ray.get(
+        controller._num_pending_goals.remote()) - initial_number_reqs == 0
 
 
 if __name__ == "__main__":

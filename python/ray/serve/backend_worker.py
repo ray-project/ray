@@ -4,28 +4,29 @@ import traceback
 import inspect
 from collections.abc import Iterable
 from itertools import groupby
-from typing import Union, List, Any, Callable, Type
+from typing import Union, List, Any, Callable, Type, Optional
 import time
 
 import starlette.responses
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.batching import _BatchQueue
-from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future, import_attr)
+from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
+                             chain_future, unpack_future, import_attr)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollAsyncClient
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    LongPollKey,
 )
+from ray.serve.http_util import make_startup_shutdown_hooks
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -41,8 +42,9 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
-        def __init__(self, backend_tag, replica_tag, init_args,
-                     backend_config: BackendConfig, controller_name: str):
+        async def __init__(self, backend_tag, replica_tag, init_args,
+                           backend_config: BackendConfig,
+                           controller_name: str):
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
             else:
@@ -60,16 +62,37 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             # backend code will connect to the instance that this backend is
             # running in.
             ray.serve.api._set_internal_replica_context(
-                backend_tag, replica_tag, controller_name)
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=None)
             if is_function:
                 _callable = backend
             else:
                 _callable = backend(*init_args)
+            # Setting the context again to update the servable_object.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=_callable)
+
+            self.shutdown_hook: Optional[Callable] = None
+            if backend_config.internal_metadata.is_asgi_app:
+                app = _callable._serve_asgi_app
+                startup_hook, self.shutdown_hook = make_startup_shutdown_hooks(
+                    app)
+                await startup_hook()
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
+
+        def __del__(self):
+            if hasattr(self, "shutdown_hook") and self.shutdown_hook:
+                asyncio.get_event_loop().run_until_complete(
+                    self.shutdown_hook())
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -134,9 +157,15 @@ class RayServeReplica:
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollAsyncClient(controller_handle, {
-            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
-        })
+        self.loop = asyncio.get_event_loop()
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
+                _update_backend_configs,
+            },
+            call_in_event_loop=self.loop,
+        )
 
         self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
@@ -220,16 +249,6 @@ class RayServeReplica:
 
     async def ensure_serializable_response(self, response: Any) -> Any:
         if isinstance(response, starlette.responses.StreamingResponse):
-            # response contains a generator/iterator which is not serializable.
-            # Exhaust the generator/iterator and store the results in a buffer.
-            body_buffer = []
-
-            async def mock_send(message):
-                assert message["type"] in {
-                    "http.response.start", "http.response.body"
-                }
-                if (message["type"] == "http.response.body"):
-                    body_buffer.append(message["body"])
 
             async def mock_receive():
                 # This is called in a tight loop in response() just to check
@@ -238,32 +257,53 @@ class RayServeReplica:
                 never_set_event = asyncio.Event()
                 await never_set_event.wait()
 
-            await response(scope=None, receive=mock_receive, send=mock_send)
-            content = b"".join(body_buffer)
-            return starlette.responses.Response(
-                content,
-                status_code=response.status_code,
-                headers=response.headers,
-                media_type=response.media_type)
-        else:
-            return response
+            sender = ASGIHTTPSender()
+            await response(scope=None, receive=mock_receive, send=sender)
+            return sender.build_starlette_response()
+        return response
 
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = sync_to_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
+        method_to_call = None
         try:
-            result = await method_to_call(arg)
+            # TODO(simon): Split this section out when invoke_batch is removed.
+            if self.config.internal_metadata.is_asgi_app:
+                request: Request = arg
+                scope = request.scope
+                root_path = self.config.internal_metadata.path_prefix
+
+                # The incoming scope["path"] contains prefixed path and it
+                # won't be stripped by FastAPI.
+                request.scope["path"] = scope["path"].replace(root_path, "", 1)
+                # root_path is used such that the reverse look up and
+                # redirection works.
+                request.scope["root_path"] = root_path
+
+                sender = ASGIHTTPSender()
+                await self.callable._serve_asgi_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                result = sender.build_starlette_response()
+            else:
+                method_to_call = sync_to_async(
+                    self.get_runner_method(request_item))
+                result = await method_to_call(arg)
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(method_to_call.__name__, e)
+            function_name = "unknown"
+            if method_to_call is not None:
+                function_name = method_to_call.__name__
+            result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
@@ -382,13 +422,7 @@ class RayServeReplica:
                                          BACKEND_RECONFIGURE_METHOD)
             reconfigure_method(user_config)
 
-    async def _update_backend_configs(self, backend_configs):
-        # TODO(ilr) remove this loop when we poll per key
-        for backend_tag, config in backend_configs.items():
-            if backend_tag == self.backend_tag:
-                self._update_config(config)
-
-    def _update_config(self, new_config: BackendConfig) -> None:
+    def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)
@@ -432,3 +466,5 @@ class RayServeReplica:
                     f"to shutdown replica {self.replica_tag} because "
                     f"num_queries_waiting {num_queries_waiting} and "
                     f"num_ongoing_requests {self.num_ongoing_requests}")
+
+        ray.actor.exit_actor()

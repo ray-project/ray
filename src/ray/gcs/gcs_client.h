@@ -38,9 +38,15 @@ class GcsClientOptions {
   /// \param ip GCS service ip.
   /// \param port GCS service port.
   /// \param password GCS service password.
-  /// \param is_test_client Whether this client is used for tests.
-  GcsClientOptions(const std::string &ip, int port, const std::string &password)
-      : server_ip_(ip), server_port_(port), password_(password) {}
+  GcsClientOptions(const std::string &ip, int port, const std::string &password,
+                   bool enable_sync_conn = true, bool enable_async_conn = true,
+                   bool enable_subscribe_conn = true)
+      : server_ip_(ip),
+        server_port_(port),
+        password_(password),
+        enable_sync_conn_(enable_sync_conn),
+        enable_async_conn_(enable_async_conn),
+        enable_subscribe_conn_(enable_subscribe_conn) {}
 
   GcsClientOptions() {}
 
@@ -50,6 +56,11 @@ class GcsClientOptions {
 
   // Password of GCS server.
   std::string password_;
+
+  // Whether to enable connection for contexts.
+  bool enable_sync_conn_{true};
+  bool enable_async_conn_{true};
+  bool enable_subscribe_conn_{true};
 };
 
 /// \class GcsClient
@@ -143,6 +154,10 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  /// Get the sub-interface for accessing worker information in GCS.
+  /// This function is thread safe.
+  InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -164,6 +179,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
+  std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 };
 
 }  // namespace gcs

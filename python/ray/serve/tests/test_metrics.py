@@ -12,14 +12,12 @@ from ray.serve.utils import block_until_http_ready
 
 
 def test_serve_metrics(serve_instance):
-    client = serve_instance
-
     @serve.accept_batch
     def batcher(starlette_requests):
         return ["hello"] * len(starlette_requests)
 
-    client.create_backend("metrics", batcher)
-    client.create_endpoint("metrics", backend="metrics", route="/metrics")
+    serve.create_backend("metrics", batcher)
+    serve.create_endpoint("metrics", backend="metrics", route="/metrics")
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
@@ -72,9 +70,6 @@ def test_serve_metrics(serve_instance):
 
 def test_backend_logger(serve_instance):
     # Tests that backend tag and replica tag appear in Serve log output.
-
-    client = serve_instance
-
     logger = logging.getLogger("ray")
 
     class Counter:
@@ -85,8 +80,8 @@ def test_backend_logger(serve_instance):
             self.count += 1
             logger.info(f"count: {self.count}")
 
-    client.create_backend("my_backend", Counter)
-    client.create_endpoint(
+    serve.create_backend("my_backend", Counter)
+    serve.create_endpoint(
         "my_endpoint", backend="my_backend", route="/counter")
     f = io.StringIO()
     with redirect_stderr(f):

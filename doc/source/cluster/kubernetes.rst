@@ -400,7 +400,7 @@ we can now run Ray programs on our cluster.
 In the following examples, we assume that we have a running Ray cluster with one head node and
 two worker nodes. This can be achieved in one of two ways:
 
-- Using the :ref:`Operator <k8s-operator>` with the example resource `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
+- Using the :ref:`Operator <k8s-operator>` with the example resource `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
 - Using :ref:`Cluster Launcher <k8s-cluster-launcher>`. Modify the example file `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
   by setting the field ``available_node_types.worker_node.min_workers``
   to 2 and then run ``ray up`` with the modified config.
@@ -501,6 +501,8 @@ The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connec
   on the server and client end -- that is on the Ray head node and in the environment where
   ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
   Nightly builds are now available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=nightly-py>`_.
+
+  Connecting with Ray client currently also requires matching Ray versions. In particular, to connect from a local machine to a cluster running the examples in this document, the :ref:`nightly <install-nightlies>` version of Ray must be installed locally.
 
 Running the program on the head node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

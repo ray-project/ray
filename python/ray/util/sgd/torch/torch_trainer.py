@@ -10,8 +10,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import Trainable
-from ray.tune.resources import Resources
+from ray.tune import PlacementGroupFactory, Trainable
 from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
@@ -263,7 +262,11 @@ class TorchTrainer:
                         "multi-node training, be sure to run `ray.init("
                         "address='auto')` before instantiating the Trainer.")
             ray.init()
-        self._start_workers(self.max_replicas)
+        startup_success = self._start_workers(self.max_replicas)
+        if not startup_success:
+            raise RuntimeError("Worker startup failed. "
+                               "Are you sure you have enough resources to "
+                               "start the specified number of workers?")
 
     def _configure_and_split_batch(self, num_workers):
         """If sgd.utils.BATCH_SIZE is provided, split among workers."""
@@ -323,17 +326,17 @@ class TorchTrainer:
         #  num_workers workers, this command will hang. Instead,
         #  start_workers should take into account available resources when
         #  determining how many workers to create.
-        self.worker_group.start_workers(num_workers)
+        return self.worker_group.start_workers(num_workers)
 
-    def _resize_worker_group(self, max_retries=10):
+    def _resize_worker_group(self, state_dict, max_retries=10):
         """Resizes the number of remote workers based on available resources.
         Total number of workers will never exceed `num_workers` amount.
 
         Args:
+            state_dict (dict): The state dict to load to all workers.
             max_retries (int): How many times to attempt to resize workers
                 before failing.
         """
-        state_dict = self.state_dict()
         old_workers = self.worker_group.num_workers
         self.worker_group.reset()
 
@@ -342,7 +345,12 @@ class TorchTrainer:
             new_workers = self.worker_group.new_workers_size()
             if new_workers:
                 self._last_resize = time.time()
-                self._start_workers(int(new_workers))
+                startup_success = self._start_workers(int(new_workers))
+                if not startup_success:
+                    logger.info(f"Worker startup failed. Retrying "
+                                f"{max_retries-i-1} more times.")
+                    self.worker_group.reset()
+                    continue
                 self.load_state_dict(state_dict, blocking=True)
                 if self.use_local and new_workers == 1 and old_workers > 1:
                     # Major hack. If we go from LocalDistributedRunner to a
@@ -408,9 +416,10 @@ class TorchTrainer:
         assert isinstance(dataset, Dataset) is not None \
             or self.data_creator, \
             "Must specify either a data creator or a dataset"
+        state_dict = self.state_dict()
         if self.worker_group.should_scale_up():
             logger.info("Resize opportunity detected. Attempting to scale up.")
-            self._resize_worker_group()
+            self._resize_worker_group(state_dict)
         success, worker_stats = self.worker_group.train(
             num_steps=num_steps, profile=profile, info=info, dataset=dataset)
         # Fault handling
@@ -419,7 +428,7 @@ class TorchTrainer:
                 break
             else:
                 self._num_failures += 1
-            self._resize_worker_group()
+            self._resize_worker_group(state_dict)
             logger.info("Retrying training step with %d workers." %
                         self.worker_group.num_workers)
             success, worker_stats = self.worker_group.train(
@@ -640,20 +649,21 @@ class TorchTrainer:
                 use_local = config.get("use_local",
                                        kwargs.get("use_local", False))
 
-                if use_local:
-                    remote_worker_count = num_workers - 1
-                    local_cpus = 1
-                    local_gpus = int(use_gpu)
-                else:
-                    remote_worker_count = num_workers
-                    local_cpus = 0
-                    local_gpus = 0
+                bundles = []
 
-                return Resources(
-                    cpu=int(local_cpus * num_cpus_per_worker),
-                    gpu=int(local_gpus),
-                    extra_cpu=int(remote_worker_count * num_cpus_per_worker),
-                    extra_gpu=int(int(use_gpu) * remote_worker_count))
+                if not use_local:
+                    # We need a separate bundle for the driver
+                    bundles += [{"CPU": 1}]
+
+                bundles += [
+                    # Worker bundles
+                    {
+                        "CPU": num_cpus_per_worker,
+                        "GPU": int(use_gpu)
+                    }
+                ] * num_workers
+
+                return PlacementGroupFactory(bundles, strategy="PACK")
 
             def step(self):
                 if override_tune_step is not None:

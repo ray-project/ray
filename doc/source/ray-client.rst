@@ -8,7 +8,7 @@ Ray Client
 Basic usage
 ===========
 
-The Ray client server is automatically started on port ``10001`` when you use ``ray start --head`` or Ray in an autoscaling cluster. The port can be changed by specifying --ray-client-server-port in the ``ray start`` command.
+The Ray client server is automatically started on port ``10001`` when you use ``ray start --head`` or Ray in an autoscaling cluster. The port can be changed by specifying ``--ray-client-server-port`` in the ``ray start`` command to be any integer between 1024 and 65535.
 
 To start the server manually, you can run:
 

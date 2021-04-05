@@ -23,8 +23,8 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.typing import LocalOptimizer, ModelInputDict, \
+    TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -82,7 +82,7 @@ def build_sac_model_and_action_dist(
 def action_distribution_fn(
         policy: Policy,
         model: ModelV2,
-        obs_batch: TensorType,
+        input_dict: ModelInputDict,
         *,
         state_batches: Optional[List[TensorType]] = None,
         seq_lens: Optional[TensorType] = None,
@@ -106,8 +106,8 @@ def action_distribution_fn(
         model (TorchModelV2): The SAC specific Model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_policy_output` method.
-        obs_batch (TensorType): The observations to be used as inputs to the
-            model.
+        input_dict (ModelInputDict): The input-dict to be used for the model
+            call.
         state_batches (Optional[List[TensorType]]): The list of internal state
             tensor batches.
         seq_lens (Optional[TensorType]): The tensor of sequence lengths used
@@ -127,10 +127,7 @@ def action_distribution_fn(
             (in the RNN case).
     """
     # Get base-model output (w/o the SAC specific parts of the network).
-    model_out, _ = model({
-        "obs": obs_batch,
-        "is_training": is_training,
-    }, [], None)
+    model_out, _ = model(input_dict, [], None)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
     distribution_inputs = model.get_policy_output(model_out)

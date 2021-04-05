@@ -35,11 +35,11 @@ Here's an example:
 
    import ray
    from ray.util.dask import ray_dask_get
+   import dask
    import dask.array as da
    import dask.dataframe as dd
    import numpy as np
    import pandas as pd
-   import time
 
    # Start Ray.
    # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").
@@ -56,7 +56,7 @@ Here's an example:
 
    df = dd.from_pandas(pd.DataFrame(
        np.random.randint(0, 100, size=(1024, 2)),
-       columns=["age", "grade"]))
+       columns=["age", "grade"]), npartitions=2)
    df.groupby(["age"]).mean().compute()
 
 
@@ -156,10 +156,10 @@ Simply set the `dataframe_optimize` configuration option to our optimizer functi
 
    import ray
    from ray.util.dask import ray_dask_get, dataframe_optimize
+   import dask
    import dask.dataframe as dd
    import numpy as np
    import pandas as pd
-   import time
 
    # Start Ray.
    # Tip: If you're connecting to an existing cluster, use ray.init(address="auto").

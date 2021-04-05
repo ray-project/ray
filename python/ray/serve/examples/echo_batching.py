@@ -24,11 +24,11 @@ class MagicCounter:
         return await self.handle_batch(base_number)
 
 
-client = serve.start()
-client.create_backend("counter:v1", MagicCounter, 42)  # increment=42
-client.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
+serve.start()
+serve.create_backend("counter:v1", MagicCounter, 42)  # increment=42
+serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
-handle = client.get_handle("magic_counter")
+handle = serve.get_handle("magic_counter")
 future_list = []
 
 # fire 30 requests

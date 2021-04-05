@@ -320,7 +320,7 @@ class RayParams:
 
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
-            if self.min_worker_port is None and self.min_worker_port is None:
+            if self.min_worker_port is None and self.max_worker_port is None:
                 self.min_worker_port = 0
                 self.max_worker_port = 0
 
@@ -342,6 +342,12 @@ class RayParams:
                 elif self.max_worker_port <= self.min_worker_port:
                     raise ValueError("max_worker_port must be higher than "
                                      "min_worker_port.")
+
+        if self.ray_client_server_port is not None:
+            if (self.ray_client_server_port < 1024
+                    or self.ray_client_server_port > 65535):
+                raise ValueError("ray_client_server_port must be an integer "
+                                 "between 1024 and 65535.")
 
         if self.resources is not None:
             assert "CPU" not in self.resources, (

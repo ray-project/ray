@@ -5,7 +5,7 @@ from ray.util import metrics
 import time
 
 ray.init(address="auto")
-client = serve.start()
+serve.start()
 
 
 class MyBackendClass:
@@ -23,10 +23,10 @@ class MyBackendClass:
             self.my_counter.inc()
 
 
-client.create_backend("my_backend", MyBackendClass)
-client.create_endpoint("my_endpoint", backend="my_backend")
+serve.create_backend("my_backend", MyBackendClass)
+serve.create_endpoint("my_endpoint", backend="my_backend")
 
-handle = client.get_handle("my_endpoint")
+handle = serve.get_handle("my_endpoint")
 while (True):
     ray.get(handle.remote(excellent=True))
     time.sleep(1)

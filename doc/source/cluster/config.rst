@@ -182,7 +182,7 @@ Node Docker
 
     :ref:`image <cluster-configuration-image>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
-    :ref:`run_options <cluster-configuration-run-options>`:
+    :ref:`worker_run_options <cluster-configuration-worker-run-options>`:
         - str
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
@@ -658,6 +658,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
+If ``--shm-size=<>`` is manually added to ``run_options``, this is *automatically* set to ``True``, meaning that Ray will defer to the user-provided value.
 
 * **Required:** No
 * **Importance:** Low

@@ -32,15 +32,28 @@ DOCKER_HUB_DESCRIPTION = {
 PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
 
 
-def _release_build():
+def _get_branch():
     branch = (os.environ.get("TRAVIS_BRANCH")
               or os.environ.get("BUILDKITE_BRANCH"))
     if not branch:
         print("Branch not found!")
         print(os.environ)
         print("Environment is above ^^")
+    return branch
+
+
+def _release_build():
+    branch = _get_branch()
+    if branch is None:
         return False
     return branch != "master" and branch.startswith("releases")
+
+
+def _valid_branch():
+    branch = _get_branch()
+    if branch is None:
+        return False
+    return branch == "master" or _release_build()
 
 
 def _get_curr_dir():
@@ -217,6 +230,10 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         DOCKER_CLIENT.api.login(username=username, password=password)
 
     def docker_push(image, tag):
+        # Do not tag release builds because they are no longer up to
+        # date after the branch cut.
+        if "nightly" in tag and _release_build():
+            return
         if merge_build:
             print(f"PUSHING: {image}:{tag}, result:")
             # This docker API is janky. Without "stream=True" it returns a
@@ -263,11 +280,9 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
 
             for arch_tag in ["-cpu", "-gpu", ""]:
                 full_arch_tag = f"nightly{py_version}{arch_tag}"
-                # Do not tag release builds because they are no longer up to
-                # date after the branch cut.
-                if not _release_build():
-                    # Tag and push rayproject/<image>:nightly<arch_tag>
-                    docker_push(full_image, full_arch_tag)
+
+                # Tag and push rayproject/<image>:nightly<py_tag><arch_tag>
+                docker_push(full_image, full_arch_tag)
 
                 # Ex: specific_tag == "1.0.1" or "<sha>" or "<date>"
                 specific_tag = get_new_tag(
@@ -286,6 +301,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
                         tag=non_python_specific_tag)
+                    # Tag and push rayproject/<image>:<sha/date><arch_tag>
                     docker_push(full_image, non_python_specific_tag)
 
                     non_python_nightly_tag = full_arch_tag.replace("-py37", "")
@@ -293,6 +309,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                         image=f"{full_image}:{full_arch_tag}",
                         repository=full_image,
                         tag=non_python_nightly_tag)
+                    # Tag and push rayproject/<image>:nightly<arch_tag>
                     docker_push(full_image, non_python_nightly_tag)
 
 
@@ -384,7 +401,11 @@ if __name__ == "__main__":
         build_ray_ml()
 
         if build_type in {MERGE, PR}:  # Skipping push on buildkite
-            push_and_tag_images(base_images_built, build_type == MERGE)
+            is_merge = build_type == MERGE
+            valid_branch = _valid_branch()
+            if (not valid_branch) and is_merge:
+                print(f"Invalid Branch found: {_get_branch()}")
+            push_and_tag_images(base_images_built, valid_branch and is_merge)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)

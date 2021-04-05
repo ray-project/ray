@@ -268,7 +268,11 @@ class FunctionActorManager:
         )
         try:
             module = importlib.import_module(module_name)
-            function = getattr(module, function_name)._function
+            parts = [part for part in function_name.split(".") if part]
+            object = module
+            for part in parts:
+                object = getattr(object, part)
+            function = object._function
             self._function_execution_info[job_id][function_id] = (
                 FunctionExecutionInfo(
                     function=function,
@@ -278,7 +282,8 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception as e:
             raise RuntimeError(f"Function {function_descriptor} failed "
-                               "to be loaded from local code. "
+                               "to be loaded from local code.\n"
+                               f"sys.path: {sys.path}, "
                                f"Error message: {str(e)}")
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
@@ -356,7 +361,8 @@ class FunctionActorManager:
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": actor_creation_function_descriptor.class_name,
+            "class_name": actor_creation_function_descriptor.class_name.split(
+                ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
@@ -443,14 +449,18 @@ class FunctionActorManager:
             actor_creation_function_descriptor.class_name)
         try:
             module = importlib.import_module(module_name)
-            actor_class = getattr(module, class_name)
-            if isinstance(actor_class, ray.actor.ActorClass):
-                return actor_class.__ray_metadata__.modified_class
+            parts = [part for part in class_name.split(".") if part]
+            object = module
+            for part in parts:
+                object = getattr(object, part)
+            if isinstance(object, ray.actor.ActorClass):
+                return object.__ray_metadata__.modified_class
             else:
-                return actor_class
+                return object
         except Exception as e:
             raise RuntimeError(
-                f"Actor {class_name} failed to be imported from local code."
+                f"Actor {class_name} failed to be imported from local code.\n"
+                f"sys.path: {sys.path}, "
                 f"Error Message: {str(e)}")
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):

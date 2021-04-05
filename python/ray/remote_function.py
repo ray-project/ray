@@ -11,8 +11,8 @@ from ray.util.placement_group import (
     check_placement_group_index,
     get_current_placement_group,
 )
-from ray._private.utils import get_conda_env_dir
 import ray._private.signature
+import ray._private.runtime_env as runtime_support
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -262,12 +262,9 @@ class RemoteFunction:
             accelerator_type)
 
         if runtime_env:
-            conda_env = runtime_env.get("conda_env")
-            if conda_env is not None:
-                conda_env_dir = get_conda_env_dir(conda_env)
-                if override_environment_variables is None:
-                    override_environment_variables = {}
-                override_environment_variables.update(PYTHONHOME=conda_env_dir)
+            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = parsed.to_worker_env_vars(
+                override_environment_variables)
 
         def invocation(args, kwargs):
             if self._is_cross_language:

@@ -19,8 +19,8 @@ There are three kinds of actors that are created to make up a Serve instance:
 
 - Controller: A global actor unique to each Serve instance that manages
   the control plane. The Controller is responsible for creating, updating, and
-  destroying other actors. Serve API calls like :mod:`client.create_backend <ray.serve.api.Client.create_backend>`,
-  :mod:`client.create_endpoint <ray.serve.api.Client.create_endpoint>` make remote calls to the Controller.
+  destroying other actors. Serve API calls like :mod:`create_backend <ray.serve.api.create_backend>`,
+  :mod:`create_endpoint <ray.serve.api.create_endpoint>` make remote calls to the Controller.
 - Router: There is one router per node. Each router is a `Uvicorn <https://www.uvicorn.org/>`_ HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.

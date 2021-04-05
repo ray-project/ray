@@ -2,7 +2,7 @@ import pytest
 import sys
 
 import ray
-import ray._private.cluster_utils
+import ray.cluster_utils
 import ray.test_utils
 
 

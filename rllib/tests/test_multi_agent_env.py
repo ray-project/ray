@@ -377,7 +377,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
-            policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda agent_id: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
