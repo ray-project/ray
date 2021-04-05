@@ -180,7 +180,7 @@ class HTTPProxy:
         await self.router(scope, receive, send)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class HTTPProxyActor:
     def __init__(self,
                  host: str,

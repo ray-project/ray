@@ -21,8 +21,10 @@ def ray_cluster():
 
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
-    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=1)
     cluster.connect()
+    # By default, Serve controller and proxy actors use 0 CPUs,
+    # so initially there should only be room for 1 replica.
 
     @serve.deployment("D", version="1", num_replicas=1)
     def D(*args):
@@ -44,12 +46,16 @@ def test_scale_up(ray_cluster):
     pids1 = get_pids(1)
 
     goal_ref = D.options(num_replicas=3).deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+
+    # Check that a new replica has not started in 1.0 seconds.  This
+    # doesn't guarantee that a new replica won't ever be started, but
+    # 1.0 seconds is a reasonable upper bound on replica startup time.
+    assert not client._wait_for_goal(goal_ref, timeout=1.0)
     assert get_pids(1) == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    assert not client._wait_for_goal(goal_ref, timeout=1.0)
     pids2 = get_pids(2)
     assert pids1.issubset(pids2)
 
