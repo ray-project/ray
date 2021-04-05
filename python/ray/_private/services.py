@@ -127,7 +127,7 @@ def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
         retry += 1
     if retry > 100:
         raise ValueError("Failed to find a new port from the range "
-                         f"{lower_bound}-{upper_bound}. Blacklist: {denylist}")
+                         f"{lower_bound}-{upper_bound}. Denylist: {denylist}")
     return port
 
 
