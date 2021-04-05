@@ -116,8 +116,7 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable,
-                             method: _nameable):
+def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
