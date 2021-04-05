@@ -15,6 +15,7 @@ from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
+from ray.serve.config import HTTPOptions
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
 
@@ -119,6 +120,30 @@ def test_connect(detached, ray_shutdown):
     serve.create_endpoint("endpoint", backend="connect_in_backend")
     ray.get(serve.get_handle("endpoint").remote())
     assert "backend-ception" in serve.list_backends().keys()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.parametrize("controller_cpu", [True, False])
+@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
+def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
+    cluster = ray_cluster
+    num_cluster_cpus = 8
+    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
+
+    ray.init(head_node.address)
+    wait_for_condition(
+        lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
+
+    num_cpus_used = int(controller_cpu) + num_proxy_cpus
+
+    serve.start(
+        dedicated_cpu=controller_cpu,
+        http_options=HTTPOptions(num_cpus=num_proxy_cpus))
+    available_cpus = num_cluster_cpus - num_cpus_used
+    wait_for_condition(
+        lambda: (ray.available_resources().get("CPU") == available_cpus))
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -304,7 +329,7 @@ def test_http_head_only(ray_cluster):
         r["CPU"]
         for r in ray.state.state._available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {2, 4}
+    assert cpu_per_nodes == {4, 4}
 
 
 if __name__ == "__main__":
