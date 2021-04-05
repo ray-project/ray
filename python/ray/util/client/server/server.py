@@ -76,11 +76,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # runtime env is compatible.
         if current_job_config and set(job_config.runtime_env.uris) != set(
                 current_job_config.runtime_env.uris):
-            raise grpc.RpcError(
-                "Runtime environment doesn't match "
+            return ray_client_pb2.InitResponse(
+                ok=False,
+                msg="Runtime environment doesn't match "
                 f"request one {job_config.runtime_env.uris} "
                 f"current one {current_job_config.runtime_env.uris}")
-        return ray_client_pb2.InitResponse()
+        return ray_client_pb2.InitResponse(ok=True)
 
     def PrepRuntimeEnv(self, request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:

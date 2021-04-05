@@ -74,15 +74,17 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 }
 
 void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
-                              std::function<void()> object_store_full_callback) {
+                              std::function<void()> object_store_full_callback,
+                              ray::AddObjectCallback add_object_callback,
+                              ray::DeleteObjectCallback delete_object_callback) {
   SetThreadName("store.io");
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
   {
     absl::MutexLock lock(&store_runner_mutex_);
-    store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
-                                 socket_name_,
-                                 RayConfig::instance().object_store_full_delay_ms(),
-                                 spill_objects_callback, object_store_full_callback));
+    store_.reset(new PlasmaStore(
+        main_service_, plasma_directory_, hugepages_enabled_, socket_name_,
+        RayConfig::instance().object_store_full_delay_ms(), spill_objects_callback,
+        object_store_full_callback, add_object_callback, delete_object_callback));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single
