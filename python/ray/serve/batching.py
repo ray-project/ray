@@ -174,9 +174,9 @@ def batch(max_batch_size: int = 10,
 def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     """Converts a function to asynchronously handle batches.
 
-    The function can be a standalone function or a class method, and must
-    take a list of objects as its sole argument and return a list of the
-    same length.
+    The function can be a standalone function or a class method. In both
+    cases, the function must be `async def` and take a list of objects as
+    its sole argument and return a list of the same length as a result.
 
     When invoked, the caller passes a single object. These will be batched
     and executed asynchronously once there is a batch of `max_batch_size`
