@@ -35,6 +35,7 @@ RUN_RAYLET_PROFILER = False
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
+AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
@@ -1831,7 +1832,7 @@ def start_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "monitor.py")
+    monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",

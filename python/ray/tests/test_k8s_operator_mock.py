@@ -10,7 +10,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
 from ray.ray_operator.operator import RayCluster
 from ray.ray_operator.operator_utils import cr_to_config
-from ray.autoscaler._private.kubernetes.node_provider import\
+from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 """

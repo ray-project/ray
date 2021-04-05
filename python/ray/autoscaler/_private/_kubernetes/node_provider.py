@@ -5,9 +5,9 @@ from uuid import uuid4
 from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
-from ray.autoscaler._private.kubernetes import core_api, log_prefix, \
+from ray.autoscaler._private._kubernetes import core_api, log_prefix, \
     extensions_beta_api
-from ray.autoscaler._private.kubernetes.config import bootstrap_kubernetes, \
+from ray.autoscaler._private._kubernetes.config import bootstrap_kubernetes, \
     fillout_resources_kubernetes
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
@@ -152,7 +152,14 @@ class KubernetesNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         logger.info(log_prefix + "calling delete_namespaced_pod")
-        core_api().delete_namespaced_pod(node_id, self.namespace)
+        try:
+            core_api().delete_namespaced_pod(node_id, self.namespace)
+        except ApiException as e:
+            if e.status == 404:
+                logger.warning(log_prefix + f"Tried to delete pod {node_id},"
+                               " but the pod was not found (404).")
+            else:
+                raise
         try:
             core_api().delete_namespaced_service(node_id, self.namespace)
         except ApiException:

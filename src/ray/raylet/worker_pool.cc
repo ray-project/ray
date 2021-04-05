@@ -566,7 +566,7 @@ void WorkerPool::PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) 
 
 void WorkerPool::PopUtilWorker(
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
-  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+  PopIOWorkerInternal(rpc::WorkerType::UTIL_WORKER, callback);
 }
 
 void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
@@ -1107,6 +1107,8 @@ std::string WorkerPool::DebugString() const {
            << entry.second.spill_io_worker_state.pending_io_tasks.size();
     result << "\n- num object restore queued: "
            << entry.second.restore_io_worker_state.pending_io_tasks.size();
+    result << "\n- num util functions queued: "
+           << entry.second.util_io_worker_state.pending_io_tasks.size();
   }
   result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
@@ -1116,11 +1118,17 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     const rpc::WorkerType &worker_type, WorkerPool::State &state) const {
   RAY_CHECK(worker_type != rpc::WorkerType::WORKER)
       << worker_type << " type cannot be used to retrieve io_worker_state";
-  if (worker_type == rpc::WorkerType::SPILL_WORKER) {
+  switch (worker_type) {
+  case rpc::WorkerType::SPILL_WORKER:
     return state.spill_io_worker_state;
-  } else {
+  case rpc::WorkerType::RESTORE_WORKER:
     return state.restore_io_worker_state;
+  case rpc::WorkerType::UTIL_WORKER:
+    return state.util_io_worker_state;
+  default:
+    RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }
+  UNREACHABLE;
 }
 
 }  // namespace raylet
