@@ -154,7 +154,6 @@ class Replica:
         self.training_operator.load_parameters(checkpoint)
 
 
-
 class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
     def __init__(self,

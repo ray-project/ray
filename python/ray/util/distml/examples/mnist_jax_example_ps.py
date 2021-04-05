@@ -85,7 +85,8 @@ class CifarTrainingOperator(JAXTrainingOperator):
         train_loader = Dataloader(train_images, train_labels, batch_size=128, shuffle=True)
         test_loader = Dataloader(test_images, test_labels, batch_size=128)
         
-        self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
+        self.register(model=[opt_state, init_fun, predict_fun], optimizer=[opt_init, opt_update, get_params], criterion=lambda logits, targets:-jnp.sum(logits * targets))
+        # self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
@@ -109,7 +110,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=2,
+        default=3,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,6"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4,6"
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
@@ -140,8 +141,8 @@ if __name__ == "__main__":
 
     trainer1 = ParameterServerStrategy(
         training_operator_cls=CifarTrainingOperator,
-        world_size=2,
-        num_workers=1,
+        world_size=3,
+        num_workers=2,
         num_ps=1,
         operator_config={
             "lr": 0.1,

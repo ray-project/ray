@@ -190,7 +190,7 @@ def make_sst2_dataloader(batch_size=128):
 
 
 if __name__ == "__main__":
-    # train_dataloader, _, _ = make_sst_dataloader()
+    # train_dataloader, _, _ = make_sst5_dataloader()
     # for input, target in train_dataloader:
     #     print(input.shape, target.shape)
 
@@ -198,26 +198,3 @@ if __name__ == "__main__":
     for input, target in train_dataloader:
         print(input.shape, target.shape)
     # train_data, dev_data, test_data = read_sst5(DATASET_DIR)
-
-    # print(train_data.keys()) # Index(['truth', 'text'], dtype='object')
-    # # print(train_dataset["text"].tolist())
-
-
-    # TextProcessor()
-
-    # train_loader = Dataloader(data_train, labels_train, batch_size=batch_size)
-    # test_loader = Dataloader(data_test, labels_test, batch_size=batch_size)
-
-
-    # labels = list(set(datasets["train"][LABEL_COL].tolist()))
-    # label2int = {label: i for i, label in enumerate(labels)}
-    # tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case=False)
-    # clf_token = tokenizer.vocab['[CLS]']  # classifier token
-    # pad_token = tokenizer.vocab['[PAD]']  # pad token
-    # proc = TextProcessor(tokenizer, label2int, clf_token, pad_token, max_length=MAX_LENGTH)
-
-    # train_dl = proc.create_dataloader(datasets["train"], batch_size=32)
-    # valid_dl = proc.create_dataloader(datasets["dev"], batch_size=32)
-    # test_dl = proc.create_dataloader(datasets["test"], batch_size=32)
-
-    # print(len(train_dl), len(valid_dl), len(test_dl))

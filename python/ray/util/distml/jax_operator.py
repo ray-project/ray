@@ -6,20 +6,20 @@ import jax.numpy as jnp
 from jax.lib import xla_client
 from jax.tree_util import tree_flatten, tree_unflatten, tree_structure
 from jax._src.util import unzip2
-
-
+from jax.experimental.optimizers import Optimizer
 
 from ray.util.distml.base_operator import TrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
 
 jax2tf_available = True
-# try:
-# from jax.experimental import jax2tf
-import tensorflow as tf
-from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
-# except:
-    # print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
-    # jax2tf_available = False
+try:
+    import tensorflow as tf
+    from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
+except:
+    print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
+    jax2tf_available = False
+
+
 class JAXTrainingOperator(TrainingOperator):
 
     def __init__(self, operator_config):
@@ -56,11 +56,13 @@ class JAXTrainingOperator(TrainingOperator):
             
     def _register_model(self, model):
         self.opt_state = model[0]
-        self.get_params = model[1]
+        self.init_fun = model[1]
         self.predict_fun = model[2]
 
     def _register_optimizer(self, optimizer):
-        self.opt_update = optimizer
+        self.opt_init = optimizer[0]
+        self.opt_update = optimizer[1]
+        self.get_params = optimizer[2]
 
     def register_data(self, *, train_loader=None, validation_loader=None):
         self.train_loader = train_loader
@@ -69,6 +71,7 @@ class JAXTrainingOperator(TrainingOperator):
     def register_input_signatures(self, *, input_shape):
         if not isinstance(input_shape, list):
             input_shape = [input_shape]
+
         input_signatures = [
             # The first one will be the serving signature
             tf.TensorSpec(s, tf.float32)
@@ -89,31 +92,6 @@ class JAXTrainingOperator(TrainingOperator):
         for batch in self.validation_loader:
             yield batch
 
-    # def train_epoch(self, iterator, info):
-    #     if not self.train_dataloader:
-    #         raise RuntimeError("Train dataloader hasn't been set.")
-
-    #     for idx, batch in enumerate(self.train_dataloader):
-    #         self.train_step(batch)
-
-    #     params = self.get_params(self.opt_state)
-        
-    #     return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
-
-    # def train_step(self, batch):
-    #     gradient = self.derive_updates(batch, opt_state, loss_fn)     
-        
-    #     flatten_gradient, _ = tree_flatten(gradient)
-    #     # <=allreduce strategy=>
-    #     #for g in ftree:
-    #     #    if not len(g):
-    #     #        continue
-    #     #    cp_g = cp.fromDlpack(self.get_jax_dlpack(g))
-    #     #    col.allreduce(cp_g, group_name="default")
-    #     #    cp_g/=self.world_size
-     
-    #     self.apply_updates(gradient)
-
     def derive_updates(self, batch):
         return self._calculate_gradient(self.opt_state, batch)
         
@@ -127,9 +105,11 @@ class JAXTrainingOperator(TrainingOperator):
         for g in flatten_grads:
             if not len(g):
                continue
-            yield cp.fromDlpack(self.get_jax_dlpack(g))
-            # col.allreduce(cp_g, group_name="default")
-            # cp_g/=self.world_size
+            yield jax2cupy(g)
+            cp_g/=self.world_size
+
+    def jax2cupy(self, x):
+        return cp.fromDlpack(self.get_jax_dlpack(x))
 
     def _calculate_gradient(self, opt_state, batch):
         params = self.get_params(opt_state)
@@ -180,7 +160,6 @@ class JAXTrainingOperator(TrainingOperator):
             "samples_num": samples_num
         }
 
-
     def save_parameters(self, checkpoint):
         # save model
         if jax2tf_available:
@@ -212,6 +191,8 @@ class JAXTrainingOperator(TrainingOperator):
         
         if cpu:
             flatten_params = list(map(np.asarray, flatten_params))
+        else:
+            flatten_params = list(map(jax2cupy, flatten_params))
         return flatten_params
 
     def get_named_parameters(self, cpu):
@@ -233,24 +214,18 @@ class JAXTrainingOperator(TrainingOperator):
 
         new_states = params, *states[1:]
         new_states_flat, subtrees2 = unzip2(map(tree_flatten, states))
-        # print("1",tree)
-        # print("1",subtrees, len(subtrees))
 
-        # tree_params = tree_unflatten(self.tree, params)
-        # # # opt_state store flatten params
-
-        # tree_params_subflat, subtrees = map(tree_flatten, tree_params)
-        # # # If we want to set param, we need to sync the subtree.
-        # # state_flat2, subtrees2 = unzip2(map(tree_flatten, tree_params_subflat))
-        # print("2",subtrees2, len(subtrees2))
         for idx, (subtree, subtree2) in enumerate(zip(subtrees, subtrees2)):
             if subtree2 != subtree:
                 msg = ("optimizer update function produced an output structure that "
                         "did not match its input structure: input {} and output {}.")
-                print(idx)
                 raise TypeError(msg.format(subtree, subtree2))
 
-        self.opt_state = new_states_flat, tree, subtrees
+        self.opt_state = Optimizer(new_states_flat, tree, subtrees)
+
+    def reset_optimizer_for_params(self, params):
+        opt_init, opt_update, get_params
+        self.opt_state = self.opt_init(params)
 
     # some operation for this ml system.
     def ones(self, shape, cpu=True):
