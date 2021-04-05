@@ -820,6 +820,8 @@ def shutdown(_exiting_interpreter=False):
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "gcs_client"):
+        del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         del global_worker.core_worker
 
