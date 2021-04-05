@@ -406,3 +406,7 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(uint64_t, publish_batch_size, 5000)
+
+/// The time where the subscriber connection is timed out in milliseconds.
+/// This is for the pubsub module.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
