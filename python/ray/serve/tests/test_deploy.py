@@ -15,9 +15,7 @@ from ray.serve.utils import get_random_letters
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_deploy(serve_instance, use_handle):
-    name = "test"
-
-    @serve.deployment(name, version="1")
+    @serve.deployment(version="1")
     def d(*args):
         return f"1|{os.getpid()}"
 
@@ -25,7 +23,7 @@ def test_deploy(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(d.get_handle().remote())
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get("http://localhost:8000/d").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -45,7 +43,7 @@ def test_deploy(serve_instance, use_handle):
     assert val3 == "1"
     assert pid3 != pid2
 
-    @serve.deployment(name, version="2")
+    @serve.deployment(version="2")
     def d(*args):
         return f"2|{os.getpid()}"
 
@@ -63,11 +61,30 @@ def test_deploy(serve_instance, use_handle):
     assert pid5 != pid4
 
 
+def test_empty_decorator(serve_instance):
+    @serve.deployment
+    def func(*args):
+        return "hi"
+
+    @serve.deployment
+    class Class:
+        def ping(self, *args):
+            return "pong"
+
+    func._name = "func"
+    Class._name = "Class"
+    func.deploy()
+    Class.deploy()
+
+    assert ray.get(func.get_handle().remote()) == "hi"
+    assert ray.get(Class.get_handle().ping.remote()) == "pong"
+
+
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_deploy_no_version(serve_instance, use_handle):
     name = "test"
 
-    @serve.deployment(name)
+    @serve.deployment(name=name)
     def v1(*args):
         return f"1|{os.getpid()}"
 
@@ -83,7 +100,7 @@ def test_deploy_no_version(serve_instance, use_handle):
     val1, pid1 = call()
     assert val1 == "1"
 
-    @serve.deployment(name)
+    @serve.deployment(name=name)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -112,9 +129,7 @@ def test_deploy_no_version(serve_instance, use_handle):
 
 @pytest.mark.parametrize("use_handle", [True, False])
 def test_config_change(serve_instance, use_handle):
-    name = "test"
-
-    @serve.deployment(name, version="1")
+    @serve.deployment(version="1")
     class D:
         def __init__(self):
             self.ret = "1"
@@ -129,7 +144,7 @@ def test_config_change(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(D.get_handle().remote())
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get("http://localhost:8000/D").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -347,7 +362,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     # Tests redeploying with a new version and lower num_replicas.
     name = "test"
 
-    @serve.deployment(name, version="1", num_replicas=4)
+    @serve.deployment(name=name, version="1", num_replicas=4)
     def v1(request):
         return f"1|{os.getpid()}"
 
@@ -388,7 +403,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
-    @serve.deployment(name, version="2", num_replicas=2)
+    @serve.deployment(name=name, version="2", num_replicas=2)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -403,7 +418,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     # Tests redeploying with a new version and higher num_replicas.
     name = "test"
 
-    @serve.deployment(name, version="1", num_replicas=2)
+    @serve.deployment(name=name, version="1", num_replicas=2)
     def v1(request):
         return f"1|{os.getpid()}"
 
@@ -444,7 +459,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
-    @serve.deployment(name, version="2", num_replicas=4)
+    @serve.deployment(name=name, version="2", num_replicas=4)
     def v2(*args):
         return f"2|{os.getpid()}"
 
@@ -482,15 +497,13 @@ def test_deploy_handle_validation(serve_instance):
 
 
 def test_init_args(serve_instance):
-    name = "test"
-
     with pytest.raises(TypeError):
 
-        @serve.deployment(name, init_args=[1, 2, 3])
+        @serve.deployment(init_args=[1, 2, 3])
         class BadInitArgs:
             pass
 
-    @serve.deployment(name, init_args=(1, 2, 3))
+    @serve.deployment(init_args=(1, 2, 3))
     class D:
         def __init__(self, *args):
             self._args = args
@@ -539,13 +552,13 @@ def test_init_args(serve_instance):
 def test_input_validation():
     name = "test"
 
-    @serve.deployment(name)
+    @serve.deployment(name=name)
     class Base:
         pass
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(name, version=1)
+        @serve.deployment(name=name, version=1)
         class BadVersion:
             pass
 
@@ -554,7 +567,7 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(name, num_replicas="hi")
+        @serve.deployment(num_replicas="hi")
         class BadNumReplicas:
             pass
 
@@ -563,7 +576,7 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(name, num_replicas=0)
+        @serve.deployment(num_replicas=0)
         class ZeroNumReplicas:
             pass
 
@@ -572,7 +585,7 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(name, num_replicas=-1)
+        @serve.deployment(num_replicas=-1)
         class NegativeNumReplicas:
             pass
 
@@ -581,7 +594,7 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(name, init_args=[1, 2, 3])
+        @serve.deployment(init_args=[1, 2, 3])
         class BadInitArgs:
             pass
 
@@ -590,7 +603,7 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(name, ray_actor_options=[1, 2, 3])
+        @serve.deployment(ray_actor_options=[1, 2, 3])
         class BadActorOpts:
             pass
 
@@ -599,7 +612,7 @@ def test_input_validation():
 
     with pytest.raises(ValidationError):
 
-        @serve.deployment(name, max_concurrent_queries="hi")
+        @serve.deployment(max_concurrent_queries="hi")
         class BadMaxQueries:
             pass
 
@@ -608,7 +621,7 @@ def test_input_validation():
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(name, max_concurrent_queries=0)
+        @serve.deployment(max_concurrent_queries=0)
         class ZeroMaxQueries:
             pass
 
@@ -617,7 +630,7 @@ def test_input_validation():
 
     with pytest.raises(ValueError):
 
-        @serve.deployment(name, max_concurrent_queries=-1)
+        @serve.deployment(max_concurrent_queries=-1)
         class NegativeMaxQueries:
             pass
 
@@ -627,14 +640,12 @@ def test_input_validation():
 
 class TestGetDeployment:
     def test_basic_get(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name, version="1")
+        @serve.deployment(version="1")
         def d(*args):
             return "1", os.getpid()
 
         with pytest.raises(KeyError):
-            serve.get_deployment(name)
+            serve.get_deployment("d")
 
         d.deploy()
         val1, pid1 = ray.get(d.get_handle().remote())
@@ -642,32 +653,28 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = serve.get_deployment("d")
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 == pid1
 
     def test_get_after_delete(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name, version="1")
+        @serve.deployment(version="1")
         def d(*args):
             return "1", os.getpid()
 
         d.deploy()
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = serve.get_deployment("d")
         d2.delete()
         del d2
 
         with pytest.raises(KeyError):
-            serve.get_deployment(name)
+            serve.get_deployment("d")
 
     def test_deploy_new_version(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name, version="1")
+        @serve.deployment(version="1")
         def d(*args):
             return "1", os.getpid()
 
@@ -677,16 +684,14 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = serve.get_deployment("d")
         d2.options(version="2").deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
     def test_deploy_empty_version(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name)
+        @serve.deployment
         def d(*args):
             return "1", os.getpid()
 
@@ -696,16 +701,14 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = serve.get_deployment("d")
         d2.deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
     def test_init_args(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name)
+        @serve.deployment
         class D:
             def __init__(self, val):
                 self._val = val
@@ -719,27 +722,25 @@ class TestGetDeployment:
 
         del D
 
-        D2 = serve.get_deployment(name)
+        D2 = serve.get_deployment("D")
         D2.deploy()
         val2, pid2 = ray.get(D2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-        D2 = serve.get_deployment(name)
+        D2 = serve.get_deployment("D")
         D2.deploy("2")
         val3, pid3 = ray.get(D2.get_handle().remote())
         assert val3 == "2"
         assert pid3 != pid2
 
     def test_scale_replicas(self, serve_instance):
-        name = "test"
-
-        @serve.deployment(name)
+        @serve.deployment
         def d(*args):
             return os.getpid()
 
         def check_num_replicas(num):
-            handle = serve.get_deployment(name).get_handle()
+            handle = serve.get_deployment("d").get_handle()
             assert len(set(ray.get(
                 [handle.remote() for _ in range(50)]))) == num
 
@@ -747,7 +748,7 @@ class TestGetDeployment:
         check_num_replicas(1)
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = serve.get_deployment("d")
         d2.options(num_replicas=2).deploy()
         check_num_replicas(2)
 
