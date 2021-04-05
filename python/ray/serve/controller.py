@@ -262,33 +262,19 @@ class ServeController:
             self.kv_store.delete(CHECKPOINT_KEY)
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig,
-                     version: Optional[str]) -> Optional[GoalId]:
-        # By default the path prefix is the deployment name.
-        if replica_config.path_prefix is None:
-            replica_config.path_prefix = f"/{name}"
-            # Backend config should be synchronized so the backend worker
-            # is aware of it.
-            backend_config.internal_metadata.path_prefix = f"/{name}"
-        else:
-            if ("{" in replica_config.path_prefix
-                    or "}" in replica_config.path_prefix):
-                raise ValueError(
-                    "Wildcard routes are not supported for deployment paths. "
-                    "Please use @serve.ingress with FastAPI instead.")
-
+                     replica_config: ReplicaConfig, version: Optional[str],
+                     http_prefix: Optional[str]) -> Optional[GoalId]:
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            path_prefix = replica_config.path_prefix
-            if path_prefix.endswith("/"):
-                path_prefix = path_prefix[:-1]
-            http_route = path_prefix + WILDCARD_PATH_SUFFIX
+            if http_prefix.endswith("/"):
+                http_prefix = http_prefix[:-1]
+            http_route = http_prefix + WILDCARD_PATH_SUFFIX
             http_methods = ALL_HTTP_METHODS
         else:
-            http_route = replica_config.path_prefix
+            http_route = http_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
             http_methods = ["GET", "POST"]
 

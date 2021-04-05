@@ -19,6 +19,12 @@ from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
 
+def _strip_wildcard_suffix(path):
+    if path.endswith(WILDCARD_PATH_SUFFIX):
+        path = path[:-len(WILDCARD_PATH_SUFFIX)]
+    return path
+
+
 class ServeStarletteEndpoint:
     """Wraps the given Serve endpoint in a Starlette endpoint.
 
@@ -33,8 +39,9 @@ class ServeStarletteEndpoint:
         app = starlette.applications.Starlette(routes=[route])
     """
 
-    def __init__(self, endpoint_tag: EndpointTag):
+    def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
         self.endpoint_tag = endpoint_tag
+        self.path_prefix = path_prefix
         self.handle = serve.get_handle(
             self.endpoint_tag, sync=False, missing_ok=True)
 
@@ -42,6 +49,12 @@ class ServeStarletteEndpoint:
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
+
+        # Modify the path and root path so that reverse lookups and redirection
+        # work as expected. We do this here instead of in replicas so it can be
+        # changed without restarting the replicas.
+        scope["path"] = scope["path"].replace(self.path_prefix, "", 1)
+        scope["root_path"] = self.path_prefix
 
         object_ref = await self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
@@ -114,9 +127,11 @@ class HTTPProxy:
         # prefix matching (Starlette evaluates the routes in order).
         routes = [
             starlette.routing.Route(
-                route, ServeStarletteEndpoint(endpoint_tag), methods=methods)
-            for route, (endpoint_tag, methods) in sorted(
-                route_table.items(), key=lambda x: len(x[0]), reverse=True)
+                route,
+                ServeStarletteEndpoint(endpoint_tag,
+                                       _strip_wildcard_suffix(route)),
+                methods=methods) for route, (endpoint_tag, methods) in sorted(
+                    route_table.items(), key=lambda x: len(x[0]), reverse=True)
             if not self._is_headless(route)
         ]
 
@@ -138,12 +153,10 @@ class HTTPProxy:
         # TODO(edoakes): once we deprecate the old ingress support, we could
         # just add the wildcard when we add routes to the Router instead of in
         # the route table.
-        stripped = {}
-        for path, (endpoint, methods) in self.route_table.items():
-            if path.endswith(WILDCARD_PATH_SUFFIX):
-                path = path[:-len(WILDCARD_PATH_SUFFIX)]
-            stripped[path] = (endpoint, methods)
-        return starlette.responses.JSONResponse(stripped)
+        return starlette.responses.JSONResponse({
+            _strip_wildcard_suffix(path): (endpoint, methods)
+            for path, (endpoint, methods) in self.route_table.items()
+        })
 
     def _is_headless(self, route: str):
         """Returns True if `route` corresponds to a headless endpoint."""

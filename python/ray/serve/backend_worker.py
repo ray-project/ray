@@ -273,16 +273,6 @@ class RayServeReplica:
             # TODO(simon): Split this section out when invoke_batch is removed.
             if self.config.internal_metadata.is_asgi_app:
                 request: Request = arg
-                scope = request.scope
-                root_path = self.config.internal_metadata.path_prefix
-
-                # The incoming scope["path"] contains prefixed path and it
-                # won't be stripped by FastAPI.
-                request.scope["path"] = scope["path"].replace(root_path, "", 1)
-                # root_path is used such that the reverse look up and
-                # redirection works.
-                request.scope["root_path"] = root_path
-
                 sender = ASGIHTTPSender()
                 await self.callable._serve_asgi_app(
                     request.scope,
