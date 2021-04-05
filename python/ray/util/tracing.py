@@ -24,14 +24,15 @@ logger = logging.getLogger(__name__)
 try:
     from opentelemetry import context, trace
     from opentelemetry.context.context import Context
-    from opentelemetry.util.types import Attributes
+    # from opentelemetry.util.types import Attributes
     from opentelemetry import propagators
     from opentelemetry.trace.propagation.textmap import DictGetter
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
-        logger.warning(
-            "Install opentelemetry with 'pip install opentelemetry-api' and"
-            "'pip install opentelemetry-sdk' to enable tracing.")
+        raise Exception(
+            "Install opentelemetry with "
+            "'pip install opentelemetry-api==1.0.0rc1' and "
+            "'pip install opentelemetry-sdk==1.0.0rc1' to enable tracing.")
 
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = None
@@ -54,13 +55,13 @@ class DictPropagator:
         propagators.inject(dict.__setitem__, context_dict)
         return context_dict
 
-    def extract(context_dict: Dict[Any, Any]) -> Context:
+    def extract(context_dict: Dict[Any, Any]):
         """Given a trace context, extract as a Context."""
         return cast(Context, propagators.extract(DictGetter(), context_dict))
 
 
 @contextmanager
-def use_context(parent_context: Context) -> Generator[None, None, None]:
+def use_context(parent_context) -> Generator[None, None, None]:
     """Uses the Ray trace context for the span."""
     new_context = parent_context if parent_context is not None else Context()
     token = context.attach(new_context)
@@ -70,8 +71,8 @@ def use_context(parent_context: Context) -> Generator[None, None, None]:
         context.detach(token)
 
 
-def _function_hydrate_span_args(func: Callable[..., Any]) -> Attributes:
-    """Get the attributes of the function that will be reported as attributes
+def _function_hydrate_span_args(func: Callable[..., Any]):
+    """Get the Attributes of the function that will be reported as attributes
     in the trace."""
     runtime_context = get_runtime_context().get()
 
@@ -116,8 +117,8 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
 
 
 def _actor_hydrate_span_args(class_: _nameable,
-                             method: _nameable) -> Attributes:
-    """Get the attributes of the actor that will be reported as attributes
+                             method: _nameable):
+    """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
         class_ = class_.__name__
@@ -215,9 +216,7 @@ def _inject_tracing_into_function(function):
 
         tracer = trace.get_tracer(__name__)
 
-        assert (
-            _ray_trace_ctx is not None,  # noqa: F631
-            f"Missing ray_trace_ctx!: {args}, {kwargs}")
+        assert _ray_trace_ctx is not None, f"Missing ray_trace_ctx!: {args}, {kwargs}"
 
         function_name = function.__module__ + "." + function.__name__
 
@@ -311,6 +310,10 @@ def _inject_tracing_into_class(_cls):
     """Given a class that will be made into an actor,
     inject tracing into all of the methods."""
 
+    # If tracing feature flag is not on, perform a no-op
+    if not is_tracing_enabled():
+        return _cls
+
     def span_wrapper(method: Callable[..., Any]) -> Any:
         def _resume_span(
                 self: Any,
@@ -384,10 +387,6 @@ def _inject_tracing_into_class(_cls):
                     return await method(self, *_args, **_kwargs)
 
         return _resume_span
-
-    # If tracing feature flag is not on, perform a no-op
-    if not is_tracing_enabled():
-        return _cls
 
     methods = inspect.getmembers(_cls, is_function_or_method)
     for name, method in methods:
