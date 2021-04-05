@@ -215,13 +215,13 @@ const NodeInfo: React.FC<{}> = () => {
   // If a Ray node is running in a K8s pod, it marks available disk as 1 byte.
   // (See ReporterAgent._get_disk_usage() in reporter_agent.py)
   // Check if there are any nodes with realistic disk total:
-  const showDisk =
-    nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
+  const showDisk = nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
 
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,
-  ) => (showGPUs || (feature.id !== "gpu" && feature.id !== "gram")) &&
-       (showDisk || (feature.id !== "disk"));
+  ) =>
+    (showGPUs || (feature.id !== "gpu" && feature.id !== "gram")) &&
+    (showDisk || feature.id !== "disk");
   const filteredFeatures = nodeInfoFeatures.filter(filterPredicate);
   const filteredHeaders = nodeInfoHeaders.filter(filterPredicate);
 
