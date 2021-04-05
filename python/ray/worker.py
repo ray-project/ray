@@ -1234,10 +1234,10 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
-        job_config = [job_config] if job_config else \
+        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
-        working_dir = runtime_env.ensure_runtime_env_setup(job_config)
+        working_dir = runtime_env.ensure_runtime_env_setup(uris)
         if working_dir:
             os.chdir(working_dir)
 
@@ -1278,16 +1278,19 @@ def connect(node,
             worker.logger_thread.start()
 
     if mode == SCRIPT_MODE:
-        # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. Note that this
-        # assumes that the directory structures on the machines in the clusters
-        # are the same.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        current_directory = os.path.abspath(os.path.curdir)
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, current_directory))
+        # In client mode, if we use runtime env, then it'll be taken care of
+        # automatically.
+        if not job_config.client_job and job_config.get_runtime_env_uris():
+            # Add the directory containing the script that is running to the Python
+            # paths of the workers. Also add the current directory. Note that this
+            # assumes that the directory structures on the machines in the clusters
+            # are the same.
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            current_directory = os.path.abspath(os.path.curdir)
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, current_directory))
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used
