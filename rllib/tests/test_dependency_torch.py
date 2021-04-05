@@ -17,7 +17,7 @@ if __name__ == "__main__":
             "framework": "tf",
             "num_workers": 0
         })
-    trainer.train()
+    #trainer.train()
 
     assert "torch" not in sys.modules, "Torch should not be imported"
 
