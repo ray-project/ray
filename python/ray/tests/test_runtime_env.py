@@ -67,7 +67,7 @@ sleep(10)
 """
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
         path = Path(tmp_dir)
