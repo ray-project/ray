@@ -174,11 +174,11 @@ def batch(func: F) -> G:
 # "Decorator factory" use case (called with arguments).
 @overload
 def batch(max_batch_size: int = 10,
-          batch_wait_timeout_s: float = 0.1) -> Callable[[F], G]:
+          batch_wait_timeout_s: float = 0.0) -> Callable[[F], G]:
     pass
 
 
-def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.1):
+def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method, and must

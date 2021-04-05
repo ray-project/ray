@@ -64,13 +64,16 @@ struct GuardedGlobalStats {
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
 class instrumented_io_context : public boost::asio::io_context {
  public:
+  /// Initializes the global stats struct after calling the base contructor.
+  instrumented_io_context() : global_stats_(std::make_shared<GuardedGlobalStats>()) {}
+
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string &name = "UNKNOWN")
+  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
       LOCKS_EXCLUDED(mutex_);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
@@ -103,7 +106,7 @@ class instrumented_io_context : public boost::asio::io_context {
 
  private:
   /// Global stats, across all handlers.
-  GuardedGlobalStats global_stats_;
+  std::shared_ptr<GuardedGlobalStats> global_stats_;
 
   /// Table of per-handler post stats.
   /// We use a std::shared_ptr value in order to ensure pointer stability.

@@ -19,33 +19,44 @@
 #include <iostream>
 #include <utility>
 
-/// C++11 helper for generalized lambda capture.
-template <typename T, typename F>
-class capture_impl {
-  T x;
-  F f;
+namespace {
 
- public:
-  capture_impl(T &&x, F &&f) : x{std::forward<T>(x)}, f{std::forward<F>(f)} {}
-
-  template <typename... Ts>
-  auto operator()(Ts &&... args) -> decltype(f(x, std::forward<Ts>(args)...)) {
-    return f(x, std::forward<Ts>(args)...);
-  }
-
-  template <typename... Ts>
-  auto operator()(Ts &&... args) const -> decltype(f(x, std::forward<Ts>(args)...)) {
-    return f(x, std::forward<Ts>(args)...);
-  }
-};
-
-template <typename T, typename F>
-capture_impl<T, F> capture(T &&x, F &&f) {
-  return capture_impl<T, F>(std::forward<T>(x), std::forward<F>(f));
+/// A helper for creating a snapshot view of the global stats.
+/// This acquires a reader lock on the provided global stats, and creates a
+/// lockless copy of the stats.
+GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
+  absl::MutexLock lock(&(stats->mutex));
+  return GlobalStats(stats->stats);
 }
 
+/// A helper for creating a snapshot view of the stats for a handler.
+/// This acquires a lock on the provided guarded handler stats, and creates a
+/// lockless copy of the stats.
+HandlerStats to_handler_stats_view(std::shared_ptr<GuardedHandlerStats> stats) {
+  absl::MutexLock lock(&(stats->mutex));
+  return HandlerStats(stats->stats);
+}
+
+/// A helper for converting a duration into a human readable string, such as "5.346 ms".
+std::string to_human_readable(double duration) {
+  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
+  size_t idx = std::min(to_unit.size() - 1,
+                        static_cast<size_t>(std::log(duration) / std::log(1000)));
+  double new_duration = duration / std::pow(1000, idx);
+  std::stringstream result;
+  result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
+  return result.str();
+}
+
+/// A helper for converting a duration into a human readable string, such as "5.346 ms".
+std::string to_human_readable(int64_t duration) {
+  return to_human_readable(static_cast<double>(duration));
+}
+
+}  // namespace
+
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string &name) {
+                                   const std::string name) {
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
   }
@@ -80,63 +91,49 @@ void instrumented_io_context::post(std::function<void()> handler,
   int64_t start = absl::GetCurrentTimeNanos();
   // References are only invalidated upon deletion of the corresponding item from the
   // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to these
-  // stats from multiple threads without acquiring a table-level readers lock in the
-  // callback.
-  auto &stats = it->second;
-  // TODO(Clark): Use generalized lambda capture to move `handler` into the lambda once
-  // we move to C++14.
-  auto wrapped_handler = capture(
-      std::move(handler), [this, name, start, stats](std::function<void()> handler) {
-        int64_t start_execution = absl::GetCurrentTimeNanos();
-        // Execute actual handler.
-        handler();
-        int64_t end_execution = absl::GetCurrentTimeNanos();
-        // Update queue and execution time stats.
-        const auto queue_time_ns = start_execution - start;
-        const auto execution_time_ns = end_execution - start_execution;
-        // Update handler-specific stats.
-        {
-          absl::MutexLock lock(&(stats->mutex));
-          // Handler-specific execution stats.
-          stats->stats.cum_execution_time += execution_time_ns;
-          // Handler-specific current count.
-          stats->stats.curr_count--;
-        }
-        // Update global stats.
-        {
-          absl::MutexLock lock(&(global_stats_.mutex));
-          // Global queue stats.
-          global_stats_.stats.cum_queue_time += queue_time_ns;
-          if (global_stats_.stats.min_queue_time > queue_time_ns) {
-            global_stats_.stats.min_queue_time = queue_time_ns;
-          }
-          if (global_stats_.stats.max_queue_time < queue_time_ns) {
-            global_stats_.stats.max_queue_time = queue_time_ns;
-          }
-        }
-      });
-  boost::asio::io_context::post(std::move(wrapped_handler));
-}
-
-/// A helper for creating a snapshot view of the global stats.
-/// This acquires a reader lock on the provided global stats, and creates a
-/// lockless copy of the stats.
-inline GlobalStats to_global_stats_view(const GuardedGlobalStats &stats) {
-  absl::MutexLock lock(&(stats.mutex));
-  return GlobalStats(stats.stats);
+  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
+  // handler stats it->second from multiple threads without acquiring a table-level
+  // readers lock in the callback.
+  // NOTE: We capture the handler stats and global stats shared pointers by value,
+  // ensuring that the reference count will be incremented and that the underlying
+  // structs won't be deallocated until all such handlers finish executing. This allows
+  // the handlers to execute without segfaulting even if the thread that constructed the
+  // io_context object exits without joining the handler threads (which can happen in a
+  // hard exit).
+  boost::asio::io_context::post([handler = std::move(handler), stats = it->second,
+                                 global_stats = global_stats_, name, start]() {
+    int64_t start_execution = absl::GetCurrentTimeNanos();
+    // Execute actual handler.
+    handler();
+    int64_t end_execution = absl::GetCurrentTimeNanos();
+    // Update queue and execution time stats.
+    const auto queue_time_ns = start_execution - start;
+    const auto execution_time_ns = end_execution - start_execution;
+    // Update handler-specific stats.
+    {
+      absl::MutexLock lock(&(stats->mutex));
+      // Handler-specific execution stats.
+      stats->stats.cum_execution_time += execution_time_ns;
+      // Handler-specific current count.
+      stats->stats.curr_count--;
+    }
+    // Update global stats.
+    {
+      absl::MutexLock lock(&(global_stats->mutex));
+      // Global queue stats.
+      global_stats->stats.cum_queue_time += queue_time_ns;
+      if (global_stats->stats.min_queue_time > queue_time_ns) {
+        global_stats->stats.min_queue_time = queue_time_ns;
+      }
+      if (global_stats->stats.max_queue_time < queue_time_ns) {
+        global_stats->stats.max_queue_time = queue_time_ns;
+      }
+    }
+  });
 }
 
 GlobalStats instrumented_io_context::get_global_stats() const {
   return to_global_stats_view(global_stats_);
-}
-
-/// A helper for creating a snapshot view of the stats for a handler.
-/// This acquires a reader lock on the provided guarded handler stats, and creates a
-/// lockless copy of the stats.
-inline HandlerStats to_handler_stats_view(const GuardedHandlerStats &stats) {
-  absl::MutexLock lock(&(stats.mutex));
-  return HandlerStats(stats.stats);
 }
 
 absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
@@ -146,7 +143,7 @@ absl::optional<HandlerStats> instrumented_io_context::get_handler_stats(
   if (it == post_handler_stats_.end()) {
     return {};
   }
-  return to_handler_stats_view(*it->second);
+  return to_handler_stats_view(it->second);
 }
 
 std::vector<std::pair<std::string, HandlerStats>>
@@ -158,23 +155,9 @@ instrumented_io_context::get_handler_stats() const {
   std::transform(
       post_handler_stats_.begin(), post_handler_stats_.end(), std::back_inserter(stats),
       [](const std::pair<std::string, std::shared_ptr<GuardedHandlerStats>> &p) {
-        return std::make_pair(p.first, to_handler_stats_view(*p.second));
+        return std::make_pair(p.first, to_handler_stats_view(p.second));
       });
   return stats;
-}
-
-inline std::string to_human_readable(double duration) {
-  static const std::array<std::string, 4> to_unit{{"ns", "us", "ms", "s"}};
-  size_t idx = std::min(to_unit.size() - 1,
-                        static_cast<size_t>(std::log(duration) / std::log(1000)));
-  double new_duration = duration / std::pow(1000, idx);
-  std::stringstream result;
-  result << std::fixed << std::setprecision(3) << new_duration << " " << to_unit[idx];
-  return result.str();
-}
-
-inline std::string to_human_readable(int64_t duration) {
-  return to_human_readable(static_cast<double>(duration));
 }
 
 std::string instrumented_io_context::StatsString() const {

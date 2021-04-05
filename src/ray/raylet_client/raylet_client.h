@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -233,7 +234,9 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
-  ray::Status Disconnect();
+  ray::Status Disconnect(
+      rpc::WorkerExitType exit_type,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
@@ -349,15 +352,6 @@ class RayletClient : public RayletClientInterface {
   void RequestObjectSpillage(
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
-
-  /// Ask the raylet to restore the object of a given id.
-  /// \param object_id Object id that the remote raylet needs to restore.
-  /// \param object_url Object URL where the object is spilled.
-  /// \param spilled_node_id Node id of a node where the object is spilled.
-  void RestoreSpilledObject(
-      const ObjectID &object_id, const std::string &object_url,
-      const NodeID &spilled_node_id,
-      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(

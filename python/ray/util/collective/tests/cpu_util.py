@@ -10,7 +10,7 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-@ray.remote(num_cpus=2)
+@ray.remote(num_cpus=1)
 class Worker:
     def __init__(self):
         self.buffer = None

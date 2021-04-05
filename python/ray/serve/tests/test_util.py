@@ -69,8 +69,10 @@ async def test_future_chaining():
 
 
 def test_import_attr():
-    assert import_attr("ray.serve.Client") == ray.serve.api.Client
-    assert import_attr("ray.serve.api.Client") == ray.serve.api.Client
+    assert (import_attr("ray.serve.BackendConfig") ==
+            ray.serve.config.BackendConfig)
+    assert (import_attr("ray.serve.config.BackendConfig") ==
+            ray.serve.config.BackendConfig)
 
     policy_cls = import_attr("ray.serve.controller.TrafficPolicy")
     assert policy_cls == ray.serve.controller.TrafficPolicy

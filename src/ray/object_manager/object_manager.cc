@@ -22,47 +22,73 @@
 
 namespace asio = boost::asio;
 
-namespace object_manager_protocol = ray::object_manager::protocol;
-
 namespace ray {
 
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      SpillObjectsCallback spill_objects_callback,
-                                     std::function<void()> object_store_full_callback) {
-  if (config.object_store_memory > 0) {
-    plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
-        config.store_socket_name, config.object_store_memory, config.huge_pages,
-        config.plasma_directory));
-    // Initialize object store.
-    store_thread_ =
-        std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
-                    spill_objects_callback, object_store_full_callback);
-    // Sleep for sometime until the store is working. This can suppress some
-    // connection warnings.
-    std::this_thread::sleep_for(std::chrono::microseconds(500));
-  }
+                                     std::function<void()> object_store_full_callback,
+                                     AddObjectCallback add_object_callback,
+                                     DeleteObjectCallback delete_object_callback) {
+  plasma::plasma_store_runner.reset(
+      new plasma::PlasmaStoreRunner(config.store_socket_name, config.object_store_memory,
+                                    config.huge_pages, config.plasma_directory));
+  // Initialize object store.
+  store_thread_ =
+      std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
+                  spill_objects_callback, object_store_full_callback, add_object_callback,
+                  delete_object_callback);
+  // Sleep for sometime until the store is working. This can suppress some
+  // connection warnings.
+  std::this_thread::sleep_for(std::chrono::microseconds(500));
 }
 
 ObjectStoreRunner::~ObjectStoreRunner() {
-  if (plasma::plasma_store_runner != nullptr) {
-    plasma::plasma_store_runner->Stop();
-    store_thread_.join();
-    plasma::plasma_store_runner.reset();
-  }
+  plasma::plasma_store_runner->Stop();
+  store_thread_.join();
+  plasma::plasma_store_runner.reset();
 }
 
-ObjectManager::ObjectManager(instrumented_io_context &main_service,
-                             const NodeID &self_node_id,
-                             const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                             RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback,
-                             std::function<void()> object_store_full_callback)
+ObjectManager::ObjectManager(
+    instrumented_io_context &main_service, const NodeID &self_node_id,
+    const ObjectManagerConfig &config,
+    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<std::string(const ObjectID &)> get_spilled_object_url,
+    SpillObjectsCallback spill_objects_callback,
+    std::function<void()> object_store_full_callback,
+    AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
-      object_store_internal_(config, spill_objects_callback, object_store_full_callback),
+      object_store_internal_(
+          config, spill_objects_callback, object_store_full_callback,
+          /*add_object_callback=*/
+          [this, add_object_callback =
+                     std::move(add_object_callback)](const ObjectInfo &object_info) {
+            main_service_->post(
+                [this, object_info,
+                 add_object_callback = std::move(add_object_callback)]() {
+                  HandleObjectAdded(object_info);
+                  if (add_object_callback) {
+                    add_object_callback(object_info);
+                  }
+                },
+                "ObjectManager.ObjectAdded");
+          },
+          /*delete_object_callback=*/
+          [this, delete_object_callback =
+                     std::move(delete_object_callback)](const ObjectID &object_id) {
+            main_service_->post(
+                [this, object_id,
+                 delete_object_callback = std::move(delete_object_callback)]() {
+                  HandleObjectDeleted(object_id);
+                  if (delete_object_callback) {
+                    delete_object_callback(object_id);
+                  }
+                },
+                "ObjectManager.ObjectDeleted");
+          }),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
@@ -70,6 +96,7 @@ ObjectManager::ObjectManager(instrumented_io_context &main_service,
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
+      get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
@@ -79,14 +106,6 @@ ObjectManager::ObjectManager(instrumented_io_context &main_service,
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
   pull_retry_timer_.async_wait([this](const boost::system::error_code &e) { Tick(e); });
-
-  if (plasma::plasma_store_runner) {
-    store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);
-    plasma::plasma_store_runner->SetNotificationListener(store_notification_);
-  } else {
-    store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
-        main_service, config_.store_socket_name);
-  }
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
     return local_objects_.count(object_id) != 0;
@@ -118,18 +137,6 @@ ObjectManager::ObjectManager(instrumented_io_context &main_service,
 
         static_cast<void>(spill_objects_callback());
       }));
-
-  store_notification_->SubscribeObjAdded(
-      [this](const object_manager::protocol::ObjectInfoT &object_info) {
-        HandleObjectAdded(object_info);
-      });
-  store_notification_->SubscribeObjDeleted([this](const ObjectID &oid) {
-    NotifyDirectoryObjectDeleted(oid);
-    // Ask the pull manager to fetch this object again as soon as possible, if
-    // it was needed by an active pull request.
-    pull_manager_->ResetRetryTimer(oid);
-  });
-
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
 }
@@ -171,10 +178,9 @@ void ObjectManager::StopRpcService() {
   object_manager_server_.Shutdown();
 }
 
-void ObjectManager::HandleObjectAdded(
-    const object_manager::protocol::ObjectInfoT &object_info) {
+void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   // Notify the object directory that the object has been added to this node.
-  ObjectID object_id = ObjectID::FromBinary(object_info.object_id);
+  const ObjectID &object_id = object_info.object_id;
   RAY_LOG(DEBUG) << "Object added " << object_id;
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
@@ -199,7 +205,7 @@ void ObjectManager::HandleObjectAdded(
   }
 }
 
-void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
+void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
   auto object_info = it->second.object_info;
@@ -208,18 +214,10 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
   ray::Status status =
       object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
-}
 
-ray::Status ObjectManager::SubscribeObjAdded(
-    std::function<void(const object_manager::protocol::ObjectInfoT &)> callback) {
-  store_notification_->SubscribeObjAdded(callback);
-  return ray::Status::OK();
-}
-
-ray::Status ObjectManager::SubscribeObjDeleted(
-    std::function<void(const ObjectID &)> callback) {
-  store_notification_->SubscribeObjDeleted(callback);
-  return ray::Status::OK();
+  // Ask the pull manager to fetch this object again as soon as possible, if
+  // it was needed by an active pull request.
+  pull_manager_->ResetRetryTimer(object_id);
 }
 
 uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs) {
@@ -287,7 +285,15 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
   RAY_LOG(WARNING) << "Invalid Push request ObjectID: " << object_id
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
-  RAY_CHECK(iter != unfulfilled_push_requests_.end());
+  // Under this scenario, `HandlePushTaskTimeout` can be invoked
+  // although timer cancels it.
+  // 1. wait timer is done and the task is queued.
+  // 2. While task is queued, timer->cancel() is invoked.
+  // In this case this method can be invoked although it is not timed out.
+  // https://www.boost.org/doc/libs/1_66_0/doc/html/boost_asio/reference/basic_deadline_timer/cancel/overload1.html.
+  if (iter == unfulfilled_push_requests_.end()) {
+    return;
+  }
   size_t num_erased = iter->second.erase(node_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
@@ -341,10 +347,16 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   if (local_objects_.count(object_id) == 0) {
     // Avoid setting duplicated timer for the same object and node pair.
     auto &nodes = unfulfilled_push_requests_[object_id];
+    // Issue a restore request if the object is on local disk. This is only relevant
+    // if the local filesystem storage type is being used.
+    auto object_url = get_spilled_object_url_(object_id);
+    if (!object_url.empty()) {
+      restore_spilled_object_(object_id, object_url, nullptr);
+    }
     if (nodes.count(node_id) == 0) {
       // If config_.push_timeout_ms < 0, we give an empty timer
       // and the task will be kept infinitely.
-      auto timer = std::unique_ptr<boost::asio::deadline_timer>();
+      std::unique_ptr<boost::asio::deadline_timer> timer;
       if (config_.push_timeout_ms == 0) {
         // The Push request fails directly when config_.push_timeout_ms == 0.
         RAY_LOG(WARNING) << "Invalid Push request ObjectID " << object_id
@@ -372,18 +384,17 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
   auto rpc_client = GetRpcClient(node_id);
   if (rpc_client) {
-    const object_manager::protocol::ObjectInfoT &object_info =
-        local_objects_[object_id].object_info;
+    const ObjectInfo &object_info = local_objects_[object_id].object_info;
     uint64_t data_size =
         static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
     uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
     uint64_t num_chunks = buffer_pool_.GetNumChunks(data_size);
 
     rpc::Address owner_address;
-    owner_address.set_raylet_id(object_info.owner_raylet_id);
+    owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
     owner_address.set_ip_address(object_info.owner_ip_address);
     owner_address.set_port(object_info.owner_port);
-    owner_address.set_worker_id(object_info.owner_worker_id);
+    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
     RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
                    << ", number of chunks: " << num_chunks
@@ -851,7 +862,6 @@ std::string ObjectManager::DebugString() const {
   result << "\nEvent loop stats:" << rpc_service_.StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
-  result << "\n" << store_notification_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
   result << "\n" << pull_manager_->DebugString();
   return result.str();

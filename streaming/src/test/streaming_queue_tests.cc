@@ -67,14 +67,13 @@ INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingExactlySameTest,
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 9);
-  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
-  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
-  ray::streaming::node_manager_port = std::stoi(std::string(argv[3]));
-  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[4]);
-  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[5]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[8]);
+  RAY_CHECK(argc == 8);
+  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
+  ray::streaming::node_manager_port = std::stoi(std::string(argv[2]));
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[3]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[4]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[6]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[7]);
   return RUN_ALL_TESTS();
 }
