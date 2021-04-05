@@ -101,7 +101,8 @@ bool SubscriptionIndex::AssertNoLeak() const {
   return objects_to_subscribers_.size() == 0 && subscribers_to_objects_.size() == 0;
 }
 
-bool Subscriber::Connect(LongPollConnectCallback long_polling_reply_callback) {
+bool Subscriber::ConnectToSubscriber(
+    LongPollConnectCallback long_polling_reply_callback) {
   if (long_polling_reply_callback_ == nullptr) {
     long_polling_reply_callback_ = long_polling_reply_callback;
     return true;
@@ -120,10 +121,16 @@ bool Subscriber::PublishIfPossible(bool force) {
   if (long_polling_reply_callback_ == nullptr) {
     return false;
   }
+
   if (force || mailbox_.size() > 0) {
-    long_polling_reply_callback_(mailbox_);
+    std::vector<ObjectID> mails_to_post;
+    while (mailbox_.size() > 0 && mails_to_post.size() < publish_batch_size_) {
+      // It ensures that mails are posted in the FIFO order.
+      mails_to_post.push_back(mailbox_.front());
+      mailbox_.pop_front();
+    }
+    long_polling_reply_callback_(mails_to_post);
     long_polling_reply_callback_ = nullptr;
-    mailbox_.clear();
     return true;
   }
   return false;
@@ -133,8 +140,8 @@ bool Subscriber::AssertNoLeak() const {
   return long_polling_reply_callback_ == nullptr && mailbox_.size() == 0;
 }
 
-void Publisher::Connect(const NodeID &subscriber_node_id,
-                        LongPollConnectCallback long_poll_connect_callback) {
+void Publisher::ConnectToSubscriber(const NodeID &subscriber_node_id,
+                                    LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
@@ -148,13 +155,16 @@ void Publisher::Connect(const NodeID &subscriber_node_id,
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_node_id);
   if (it == subscribers_.end()) {
-    it = subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>()).first;
+    it = subscribers_
+             .emplace(subscriber_node_id,
+                      std::make_shared<Subscriber>(publish_batch_size_))
+             .first;
   }
   auto &subscriber = it->second;
 
   // Since the long polling connection is synchronous between the client and coordinator,
   // when it connects, the connection shouldn't have existed.
-  RAY_CHECK(subscriber->Connect(std::move(long_poll_connect_callback)));
+  RAY_CHECK(subscriber->ConnectToSubscriber(std::move(long_poll_connect_callback)));
   subscriber->PublishIfPossible();
 }
 
@@ -168,7 +178,8 @@ void Publisher::RegisterSubscription(const NodeID &subscriber_node_id,
 
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_node_id) == 0) {
-    subscribers_.emplace(subscriber_node_id, std::make_shared<Subscriber>());
+    subscribers_.emplace(subscriber_node_id,
+                         std::make_shared<Subscriber>(publish_batch_size_));
   }
   subscription_index_.AddEntry(object_id, subscriber_node_id);
 }

@@ -244,6 +244,7 @@ class HTTPOptions(pydantic.BaseModel):
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    num_cpus: int = 0
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

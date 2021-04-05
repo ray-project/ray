@@ -222,6 +222,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     ray.get(signal.send.remote())
     ray.get(work_handle)
+    del monitor
 
 
 def test_wait_for_nodes(ray_start_cluster_head):

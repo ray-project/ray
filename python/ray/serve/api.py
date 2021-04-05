@@ -651,6 +651,7 @@ def start(
         http_port: int = DEFAULT_HTTP_PORT,
         http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
+        dedicated_cpu: bool = False,
 ) -> Client:
     """Initialize a serve instance.
 
@@ -675,7 +676,7 @@ def start(
               this to "0.0.0.0".
             - port(int): Port for HTTP server. Defaults to 8000.
             - middlewares(list): A list of Starlette middlewares that will be
-              applied to the HTTP servers in the cluster.
+              applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
 
@@ -684,6 +685,10 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
+            - num_cpus (int): The number of CPU cores to reserve for each
+              internal Serve HTTP proxy actor.  Defaults to 0.
+        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+          Serve controller actor.  Defaults to False.
     """
     if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
             or (len(http_middlewares) != 0)):
@@ -728,6 +733,7 @@ def start(
             host=http_host, port=http_port, middlewares=http_middlewares)
 
     controller = ServeController.options(
+        num_cpus=(1 if dedicated_cpu else 0),
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
@@ -1096,6 +1102,10 @@ def ingress(
             # the fast api routes here.
             make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
+            if not path_prefix.startswith("/"):
+                raise ValueError("path_prefix must start with '/'")
+            if "{" in path_prefix or "}" in path_prefix:
+                raise ValueError("path_prefix may not contain wildcards")
             cls._serve_path_prefix = path_prefix
 
         return cls
@@ -1105,7 +1115,7 @@ def ingress(
 
 class ServeDeployment(ABC):
     @classmethod
-    def deploy(self, *init_args) -> None:
+    def deploy(cls, *init_args) -> None:
         """Deploy this deployment.
 
         Args:
@@ -1116,17 +1126,17 @@ class ServeDeployment(ABC):
         raise NotImplementedError()
 
     @classmethod
-    def delete(self) -> None:
+    def delete(cls) -> None:
         """Delete this deployment."""
         raise NotImplementedError()
 
     @classmethod
-    def get_handle(self, sync: Optional[bool] = True
+    def get_handle(cls, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
     @classmethod
-    def options(self,
+    def options(cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
                 version: Optional[str] = None,

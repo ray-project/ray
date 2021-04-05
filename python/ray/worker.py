@@ -820,6 +820,8 @@ def shutdown(_exiting_interpreter=False):
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "gcs_client"):
+        del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         del global_worker.core_worker
 
@@ -1220,6 +1222,7 @@ def connect(node,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port)
+    worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it

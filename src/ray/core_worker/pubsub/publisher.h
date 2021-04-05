@@ -70,7 +70,9 @@ class SubscriptionIndex {
 /// Abstraction to each subscriber for the coordinator.
 class Subscriber {
  public:
-  explicit Subscriber() {}
+  explicit Subscriber(const uint64_t publish_batch_size)
+      : publish_batch_size_(publish_batch_size) {}
+
   ~Subscriber() = default;
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
@@ -78,7 +80,7 @@ class Subscriber {
   ///
   /// \param long_polling_reply_callback reply callback to the long polling request.
   /// \return True if connection is new. False if there were already connections cached.
-  bool Connect(LongPollConnectCallback long_polling_reply_callback);
+  bool ConnectToSubscriber(LongPollConnectCallback long_polling_reply_callback);
 
   /// Queue the object id to publish to the subscriber.
   ///
@@ -101,7 +103,9 @@ class Subscriber {
   /// Cached long polling reply callback.
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
   /// Queued messages to publish.
-  std::vector<ObjectID> mailbox_;
+  std::list<ObjectID> mailbox_;
+  /// The maximum number of objects to publish for each publish calls.
+  const uint64_t publish_batch_size_;
 };
 
 /// Pubsub server.
@@ -110,8 +114,9 @@ class Publisher {
   /// Pubsub coordinator constructor.
   ///
   /// \param is_node_dead A callback that returns true if the given node id is dead.
-  explicit Publisher(std::function<bool(const NodeID &)> is_node_dead)
-      : is_node_dead_(is_node_dead) {}
+  explicit Publisher(std::function<bool(const NodeID &)> is_node_dead,
+                     const uint64_t publish_batch_size)
+      : is_node_dead_(is_node_dead), publish_batch_size_(publish_batch_size) {}
 
   ~Publisher() = default;
 
@@ -119,8 +124,8 @@ class Publisher {
   // TODO(sang): Currently, we need to pass the callback for connection because we are
   // using long polling internally. This should be changed once the bidirectional grpc
   // streaming is supported.
-  void Connect(const NodeID &subscriber_node_id,
-               LongPollConnectCallback long_poll_connect_callback);
+  void ConnectToSubscriber(const NodeID &subscriber_node_id,
+                           LongPollConnectCallback long_poll_connect_callback);
 
   /// Register the subscription.
   ///
@@ -167,6 +172,9 @@ class Publisher {
 
   /// Index that stores the mapping of objects <-> subscribers.
   SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
+
+  /// The maximum number of objects to publish for each publish calls.
+  const uint64_t publish_batch_size_;
 };
 
 }  // namespace ray
