@@ -138,7 +138,7 @@ if __name__ == "__main__":
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
-    num_cpus = 4 
+    num_cpus = 12
     num_gpus = 3
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 

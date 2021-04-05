@@ -210,7 +210,8 @@ class JAXTrainingOperator(TrainingOperator):
     def set_parameters(self, params):
         if isinstance(params, dict):
             print("Warning: using named parameter to set params")
-            params = unzip(sorted(params.items(), key=lambda d: d[0]))[1]
+            # params = unzip(sorted(params.items(), key=lambda d: d[0]))[1]
+            params = list(params.values())
             print("convert param from dict to list")
 
         if not hasattr(self, "tree"):

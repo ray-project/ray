@@ -31,7 +31,6 @@ class ParameterServerStrategy(BaseTrainer):
 
         # set assignments to every worker
         self.worker_group.set_assignments(self.assignments)
-        # ray.wait([w.set_assignments.remote(self.assignments) for w in self.workers])
 
         # all workers get synced
         for i, worker in enumerate(self.worker_group.replicas):
@@ -210,7 +209,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         for k, v in params.items():
             self.params[k] = v
         
-        self.training_operator.reset_optimizer_for_params(self.params.values())
+        self.training_operator.reset_optimizer_for_params(list(self.params.values()))
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
     def get_grad_buffer(self):
@@ -244,7 +243,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
             to_recv = self.params[key]
             recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
             # recv_list.append(torch.zeros(to_recv.size()).cuda())
-        print("server: create recv_list")
+
         groupStart()
         for i in range(len(keys)):
             col.recv(recv_list[i], src_rank, self.group_name)
@@ -256,9 +255,11 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
 
         self._inc_gradients(grads)
         if self.grad_counts == self.num_workers:
-            grad_buffer_list = unzip(sorted(grad_buffer.items(), key=lambda d: d[0]))[1]
 
+            grad_buffer_list = zip(*(sorted(grad_buffer.items(), key=lambda d: d[0])))[1]
+            print("server: applying gradients")
             self.training_operator.apply_updates(grad_buffer_list)
+            print("server: applying success")
             self.grad_buffer = self.get_grad_buffer()
             self.grad_counts = 0
 
@@ -404,7 +405,7 @@ class Worker(object):
             for key in param_shard_keys:
                 to_recv = weights[key]
                 recv_list[-1].append(self.training_operator.ones(to_recv.shape, cpu=False))
-        print("worker, prepare recv_list complete")
+
         # logging.warning(f"worker {self.rank} {recv_list[0][0][0][0]}, {recv_list[0][0].size()}, {recv_list[0][1]}, {recv_list[0][1].size()}, {recv_list[0][2]}, {recv_list[0][2].size()}")
         groupStart()
         for i in range(self.num_ps):
@@ -412,9 +413,6 @@ class Worker(object):
                 # logging.warning(f"recv {i}{j} {self.name_list[i][j]}")
                 col.recv(recv_list[i][j], self.num_workers+i, self.group_name)
         groupEnd()
-        # logging.warning(f"worker {self.rank} {recv_list[0][0][0][0]}, {recv_list[0][0].size()}, {recv_list[0][1]}, {recv_list[0][1].size()}, {recv_list[0][2]}, {recv_list[0][2].size()}")
-        # time.sleep(100)
-        print("worker, recv all parameters from server")
 
         # parameter updates
         for i in range(self.num_ps):
@@ -426,7 +424,7 @@ class Worker(object):
         loss, grad = self.compute_gradients(params)
         print("worker, compute_gradient complete")
         split_grad = self.split_gradients(grad, self.assignments)
-        print("worker,  split complete")
+        print("worker, split complete")
         
         steps = 0
         groupStart()
