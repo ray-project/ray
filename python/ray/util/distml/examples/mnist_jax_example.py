@@ -58,7 +58,9 @@ class Dataloader:
 
     def __iter__(self):
         return self.synth_batches()
-        
+
+    def __len__(self):
+        return self.num_batches
         
 class CifarTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
@@ -81,10 +83,10 @@ class CifarTrainingOperator(JAXTrainingOperator):
         train_labels = train_labels[:1000]
         test_labels = test_labels[:1000]
 
-        train_loader = Dataloader(train_images, train_labels, batch_size=128, shuffle=True)
-        test_loader = Dataloader(test_images, test_labels, batch_size=128)
+        train_loader = Dataloader(train_images, train_labels, batch_size=64, shuffle=True)
+        test_loader = Dataloader(test_images, test_labels, batch_size=64)
         
-        self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
+        self.register(model=[opt_state, init_fun, predict_fun], optimizer=[opt_init, opt_update, get_params], criterion=lambda logits, targets:-jnp.sum(logits * targets))
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 

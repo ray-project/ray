@@ -59,7 +59,9 @@ class Dataloader:
 
     def __iter__(self):
         return self.synth_batches()
-        
+
+    def __len__(self):
+        return self.num_batches
         
 class CifarTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
@@ -110,7 +112,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=3,
+        default=4,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
@@ -136,14 +138,15 @@ if __name__ == "__main__":
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
-    num_cpus = 4 if args.smoke_test else None
-    ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
+    num_cpus = 4 
+    num_gpus = 3
+    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = ParameterServerStrategy(
         training_operator_cls=CifarTrainingOperator,
-        world_size=3,
+        world_size=4,
         num_workers=2,
-        num_ps=1,
+        num_ps=2,
         operator_config={
             "lr": 0.1,
            "test_mode": args.smoke_test,  # subset the data

@@ -27,6 +27,8 @@ class JAXTrainingOperator(TrainingOperator):
         self.timers = TimerCollection()
         super(JAXTrainingOperator, self).__init__(operator_config)
 
+        self.setup(**self._config)
+
     def setup(self, *args, **kwargs):
         """Function that needs to be override by users.
         
@@ -93,16 +95,19 @@ class JAXTrainingOperator(TrainingOperator):
             yield batch
 
     def derive_updates(self, batch):
-        return self._calculate_gradient(self.opt_state, batch)
+        print("derive updating")
+        loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
+        print("calculate_gradient completed")
+        return loss_val, tree_flatten(gradient)[0]
         
     def apply_updates(self, gradient):
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
 
     def updates_transform(self, updates):
-        flatten_grads = tree_flatten(updates)[0]
+        # flatten_grads = tree_flatten(updates)[0]
 
-        for g in flatten_grads:
+        for g in updates:
             if not len(g):
                continue
             yield jax2cupy(g)
@@ -113,7 +118,9 @@ class JAXTrainingOperator(TrainingOperator):
 
     def _calculate_gradient(self, opt_state, batch):
         params = self.get_params(opt_state)
+        print("get parameter success")
         loss_val, gradient = value_and_grad(self.loss_fn)(params, batch)
+        print(loss_val)
         return loss_val, gradient
 
     def get_jax_dlpack(self, tensor):
@@ -130,12 +137,12 @@ class JAXTrainingOperator(TrainingOperator):
         for batch_idx, batch in enumerate(validation_loader):
             batch_info = {"batch_idx": batch_idx}
             batch_info.update(info)
-            metrics = self.validate_batch(params, batch, batch_info)
+            metrics = self.validate_step(params, batch, batch_info)
             metric_meters.update(metrics, n=metrics.pop("samples_num", 1))
 
         return metric_meters.summary()
 
-    def validate_batch(self, params, batch, batch_info):
+    def validate_step(self, params, batch, batch_info):
         if not hasattr(self, "opt_state"):
             raise RuntimeError("model unset. Please register model in setup.")
         if not hasattr(self, "criterion"):
@@ -192,7 +199,7 @@ class JAXTrainingOperator(TrainingOperator):
         if cpu:
             flatten_params = list(map(np.asarray, flatten_params))
         else:
-            flatten_params = list(map(jax2cupy, flatten_params))
+            flatten_params = list(map(self.jax2cupy, flatten_params))
         return flatten_params
 
     def get_named_parameters(self, cpu):
@@ -201,10 +208,10 @@ class JAXTrainingOperator(TrainingOperator):
         return dict_params
 
     def set_parameters(self, params):
-        # need in place parameters in opt_state
         if isinstance(params, dict):
             print("Warning: using named parameter to set params")
-            params = list(params.values())
+            params = unzip(sorted(params.items(), key=lambda d: d[0]))[1]
+            print("convert param from dict to list")
 
         if not hasattr(self, "tree"):
             self.tree = tree_structure(self.get_params(self.opt_state)) 
@@ -217,11 +224,12 @@ class JAXTrainingOperator(TrainingOperator):
 
         for idx, (subtree, subtree2) in enumerate(zip(subtrees, subtrees2)):
             if subtree2 != subtree:
-                msg = ("optimizer update function produced an output structure that "
-                        "did not match its input structure: input {} and output {}.")
+                msg = ("input structur did not match the save params struture. "
+                       "input {} and output {}.")
                 raise TypeError(msg.format(subtree, subtree2))
 
         self.opt_state = Optimizer(new_states_flat, tree, subtrees)
+        print("worker: set opt_state")
 
     def reset_optimizer_for_params(self, params):
         opt_init, opt_update, get_params
@@ -232,14 +240,18 @@ class JAXTrainingOperator(TrainingOperator):
         if cpu:
             return np.ones(shape)
         else:
-            return jnp.ones(shape)
+            return cp.ones(shape)
 
     # some operation for this ml system.
     def zeros(self, shape, cpu=True):
         if cpu:
             return np.zeros(shape)
         else:
-            return jnp.zeros(shape)
+            return cp.zeros(shape)
 
     def numel(self, v):
         return np.size(v)
+
+    def clean_redundancy(self):
+        del self.train_loader
+        del self.validation_loader

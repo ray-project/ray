@@ -23,7 +23,7 @@ class TrainingOperator(metaclass=ABCMeta):
                  optimizers,
                  *args,
                  criterion=None,
-                 lr_schedulers,
+                 lr_schedulers=None,
                  **kwargs):
         """Register the model, optimizer, and loss with ray.distml.
 
@@ -46,10 +46,10 @@ class TrainingOperator(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    @abstractmethod
-    def train_step(self, batch):
-        """Train a step on a data batch"""
-        raise NotImplementedError()
+    # @abstractmethod
+    # def train_step(self, batch):
+    #     """Train a step on a data batch"""
+    #     raise NotImplementedError()
 
     @abstractmethod
     def derive_updates(self, *args, **kwargs):
