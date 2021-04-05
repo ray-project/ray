@@ -18,7 +18,7 @@ from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
-MAX_ACTOR_FAILURE_RETRIES = 8
+MAX_ACTOR_FAILURE_RETRIES = 10
 
 
 class ServeStarletteEndpoint:
@@ -46,7 +46,7 @@ class ServeStarletteEndpoint:
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
         retries = 0
-        backoff_time_s = 0.1
+        backoff_time_s = 0.05
         while retries < MAX_ACTOR_FAILURE_RETRIES:
             object_ref = await self.handle.options(
                 method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
