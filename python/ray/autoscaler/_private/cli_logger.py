@@ -57,7 +57,7 @@ except ModuleNotFoundError:
     warnings.warn(
         "Not all Ray CLI dependencies were found. "
         "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-        "only be usable via `pip install 'ray[full]'`. Please "
+        "only be usable via `pip install 'ray[cluster]'`. Please "
         "update your install command.", FutureWarning)
 
     # We mock Colorful to restrict the colors used for consistency
