@@ -4,6 +4,7 @@ import os
 import sys
 import pytest
 
+
 @pytest.mark.skip(reason="Upstream change make it failed.")
 def test_dependency_torch():
     # Do not import torch for testing purposes.
@@ -28,6 +29,6 @@ def test_dependency_torch():
 
     print("ok")
 
+
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-sv", __file__]))
