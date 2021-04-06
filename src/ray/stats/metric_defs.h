@@ -98,10 +98,6 @@ static Gauge ObjectDirectoryRemovedLocations(
     "have been removed from this node.",
     "removals");
 
-static Gauge NumInfeasibleTasks(
-    "num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
-
 static Histogram HeartbeatReportMs(
     "heartbeat_report_ms",
     "Heartbeat report time in raylet. If this value is high, that means there's a high "
@@ -129,6 +125,10 @@ static Sum NumSpilledTasks("internal_num_spilled_tasks",
                            "The cumulative number of lease requeusts that this raylet "
                            "has spilled to other raylets.",
                            "tasks");
+
+static Gauge NumInfeasibleTasks(
+                                "internal_num_infeasible_tasks",
+                                "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
 
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
                                  "Bandwidth of object spilling.", "MB");

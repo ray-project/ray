@@ -32,13 +32,13 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_num_infeasible_tasks",
     "ray_heartbeat_report_ms_sum",
     "ray_process_startup_time_ms_sum",
-    "ray_internal_processes_started_total",
-    "ray_internal_num_received_tasks_total",
-    "ray_internal_num_dispatched_tasks_total",
-    "ray_internal_num_spilled_tasks_total",
+    "ray_internal_num_processes_started",
+    "ray_internal_num_received_tasks",
+    "ray_internal_num_dispatched_tasks",
+    "ray_internal_num_spilled_tasks",
+    "ray_internal_num_infeasible_tasks",
     # "ray_object_spilling_bandwidth_mb",
     # "ray_object_restoration_bandwidth_mb",
     # "ray_unintentional_worker_failures_total",
@@ -132,7 +132,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         # Make sure metrics are recorded.
         for metric in _METRICS:
-            assert metric in metric_names
+            assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         # Make sure the numeric values are correct
         test_counter_sample = [
