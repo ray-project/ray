@@ -110,15 +110,13 @@ class KubernetesScaleTest(unittest.TestCase):
             command = f"kubectl -n {NAMESPACE}"\
                 " port-forward service/example-cluster-ray-head 10001:10001"
             command = command.split()
-            print(">>>Port-forwarding head service")
+            print(">>>Port-forwarding head service.")
             self.proc = subprocess.Popen(command)
             try:
                 submit_scaling_job(client_port="10001", num_tasks=15)
                 self.proc.kill()
-                self.proc.communicate()
             except Exception as e:
                 self.proc.kill()
-                self.proc.communicate()
                 raise (e)
 
             print(">>>Sleeping for a minute while workers time-out.")
@@ -129,7 +127,6 @@ class KubernetesScaleTest(unittest.TestCase):
     def __del__(self):
         try:
             self.proc.kill()
-            self.proc.communicate()
         except Exception:
             pass
 
