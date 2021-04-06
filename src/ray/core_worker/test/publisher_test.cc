@@ -32,7 +32,7 @@ class PublisherTest : public ::testing::Test {
 
   void SetUp() {
     object_status_publisher_ = std::shared_ptr<Publisher>(new Publisher(
-        /*periodic_runner=*/periodic_runner_,
+        /*periodic_runner=*/periodic_runner_.get(),
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100));
@@ -45,7 +45,7 @@ class PublisherTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::shared_ptr<Publisher> object_status_publisher_;
   std::unordered_map<ObjectID, std::unordered_set<NodeID>> subscribers_map_;
-  const uint64_t subscriber_timeout_ms_ = 300;
+  const uint64_t subscriber_timeout_ms_ = 30000;
   double current_time_;
 };
 

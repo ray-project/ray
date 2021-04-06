@@ -152,7 +152,7 @@ class Publisher {
   /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
-  explicit Publisher(std::shared_ptr<PeriodicalRunner> &periodical_runner,
+  explicit Publisher(PeriodicalRunner *periodical_runner,
                      const std::function<double()> get_time_ms,
                      const uint64_t subscriber_timeout_ms,
                      const uint64_t publish_batch_size)
@@ -228,7 +228,7 @@ class Publisher {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Periodic runner to invoke CheckDeadSubscribers.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  PeriodicalRunner *periodical_runner_;
 
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;

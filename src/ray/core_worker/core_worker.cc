@@ -347,7 +347,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      periodical_runner_(std::make_shared<PeriodicalRunner>(io_service_)),
+      periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -454,13 +454,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       });
 
   if (options_.worker_type == ray::WorkerType::WORKER) {
-    periodical_runner_->RunFnPeriodically(
+    periodical_runner_.RunFnPeriodically(
         [this] { CheckForRayletFailure(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
-  periodical_runner_->RunFnPeriodically([this] { InternalHeartbeat(); },
-                                        kInternalHeartbeatMillis);
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
@@ -563,7 +563,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                              task_manager_));
 
   object_status_publisher_ = std::make_shared<Publisher>(
-      /*periodical_runner=*/periodical_runner_,
+      /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
@@ -687,7 +687,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().asio_stats_print_interval_ms();
   if (asio_stats_print_interval_ms != -1 &&
       RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    periodical_runner_->RunFnPeriodically(
+    periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
