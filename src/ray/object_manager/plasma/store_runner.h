@@ -13,10 +13,10 @@ class PlasmaStoreRunner {
  public:
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
                     bool hugepages_enabled, std::string plasma_directory);
-  void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr,
-             std::function<void()> object_store_full_callback = nullptr,
-             ray::AddObjectCallback add_object_callback = nullptr,
-             ray::DeleteObjectCallback delete_object_callback = nullptr);
+  void Start(ray::SpillObjectsCallback spill_objects_callback,
+             std::function<void()> object_store_full_callback,
+             ray::AddObjectCallback add_object_callback,
+             ray::DeleteObjectCallback delete_object_callback);
   void Stop();
 
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
@@ -40,7 +40,7 @@ class PlasmaStoreRunner {
 };
 
 // We use a global variable for Plasma Store instance here because:
-// 1) There is only one plasma store thread in Raylet or the Plasma Store process.
+// 1) There is only one plasma store thread in Raylet.
 // 2) The thirdparty dlmalloc library cannot be contained in a local variable,
 //    so even we use a local variable for plasma store, it does not provide
 //    better isolation.

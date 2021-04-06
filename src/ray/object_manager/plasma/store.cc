@@ -871,12 +871,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     EvictObjects(objects_to_evict);
     RAY_RETURN_NOT_OK(SendEvictReply(client, num_bytes_evicted));
   } break;
-  case fb::MessageType::PlasmaRefreshLRURequest: {
-    std::vector<ObjectID> object_ids;
-    RAY_RETURN_NOT_OK(ReadRefreshLRURequest(input, input_size, &object_ids));
-    eviction_policy_.RefreshObjects(object_ids);
-    RAY_RETURN_NOT_OK(SendRefreshLRUReply(client));
-  } break;
   case fb::MessageType::PlasmaConnectRequest: {
     RAY_RETURN_NOT_OK(SendConnectReply(client, PlasmaAllocator::GetFootprintLimit()));
   } break;
