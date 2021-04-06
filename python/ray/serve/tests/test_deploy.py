@@ -543,6 +543,9 @@ def test_input_validation():
     class Base:
         pass
 
+    with pytest.raises(RuntimeError):
+        Base()
+
     with pytest.raises(TypeError):
 
         @serve.deployment(name, version=1)
@@ -626,7 +629,14 @@ def test_input_validation():
 
 
 class TestGetDeployment:
-    def test_basic_get(self, serve_instance):
+    def get_deployment(self, name, use_list):
+        if use_list:
+            return serve.list_deployments()[name]
+        else:
+            return serve.get_deployment(name)
+
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_basic_get(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name, version="1")
@@ -634,7 +644,7 @@ class TestGetDeployment:
             return "1", os.getpid()
 
         with pytest.raises(KeyError):
-            serve.get_deployment(name)
+            self.get_deployment(name, use_list)
 
         d.deploy()
         val1, pid1 = ray.get(d.get_handle().remote())
@@ -642,12 +652,13 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = self.get_deployment(name, use_list)
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 == pid1
 
-    def test_get_after_delete(self, serve_instance):
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_get_after_delete(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name, version="1")
@@ -657,14 +668,15 @@ class TestGetDeployment:
         d.deploy()
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = self.get_deployment(name, use_list)
         d2.delete()
         del d2
 
         with pytest.raises(KeyError):
-            serve.get_deployment(name)
+            self.get_deployment(name, use_list)
 
-    def test_deploy_new_version(self, serve_instance):
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_deploy_new_version(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name, version="1")
@@ -677,13 +689,14 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = self.get_deployment(name, use_list)
         d2.options(version="2").deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-    def test_deploy_empty_version(self, serve_instance):
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_deploy_empty_version(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name)
@@ -696,13 +709,14 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = self.get_deployment(name, use_list)
         d2.deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-    def test_init_args(self, serve_instance):
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_init_args(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name)
@@ -719,19 +733,20 @@ class TestGetDeployment:
 
         del D
 
-        D2 = serve.get_deployment(name)
+        D2 = self.get_deployment(name, use_list)
         D2.deploy()
         val2, pid2 = ray.get(D2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-        D2 = serve.get_deployment(name)
+        D2 = self.get_deployment(name, use_list)
         D2.deploy("2")
         val3, pid3 = ray.get(D2.get_handle().remote())
         assert val3 == "2"
         assert pid3 != pid2
 
-    def test_scale_replicas(self, serve_instance):
+    @pytest.mark.parametrize("use_list", [True, False])
+    def test_scale_replicas(self, serve_instance, use_list):
         name = "test"
 
         @serve.deployment(name)
@@ -739,7 +754,7 @@ class TestGetDeployment:
             return os.getpid()
 
         def check_num_replicas(num):
-            handle = serve.get_deployment(name).get_handle()
+            handle = self.get_deployment(name, use_list).get_handle()
             assert len(set(ray.get(
                 [handle.remote() for _ in range(50)]))) == num
 
@@ -747,9 +762,21 @@ class TestGetDeployment:
         check_num_replicas(1)
         del d
 
-        d2 = serve.get_deployment(name)
+        d2 = self.get_deployment(name, use_list)
         d2.options(num_replicas=2).deploy()
         check_num_replicas(2)
+
+
+def test_list_deployments(serve_instance):
+    assert serve.list_deployments() == {}
+
+    @serve.deployment(name="hi", num_replicas=2)
+    def d1(*args):
+        pass
+
+    d1.deploy()
+
+    assert serve.list_deployments() == {"hi": d1}
 
 
 if __name__ == "__main__":

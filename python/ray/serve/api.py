@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, ABCMeta, abstractmethod
 import asyncio
 import atexit
 import inspect
@@ -516,6 +516,10 @@ class Client:
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         return ray.get(self._controller.get_deployment_info.remote(name))
+
+    @_ensure_connected
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
@@ -1113,8 +1117,24 @@ def ingress(
     return decorator
 
 
+class ServeDeploymentMeta(ABCMeta):
+    def __eq__(self, other):
+        # XXX: edoakes this doesn't work because of internal metadata's path_prefix.
+        if self._config != other._config:
+            print(self._config)
+            print(other._config)
+        return all([
+            self._name == other._name,
+            self._version == other._version,
+            self._config == other._config,
+            self._init_args == other._init_args,
+            self._ray_actor_options == self._ray_actor_options,
+        ])
+
+
 class ServeDeployment(ABC):
     @classmethod
+    @abstractmethod
     def deploy(cls, *init_args) -> None:
         """Deploy this deployment.
 
@@ -1126,16 +1146,19 @@ class ServeDeployment(ABC):
         raise NotImplementedError()
 
     @classmethod
+    @abstractmethod
     def delete(cls) -> None:
         """Delete this deployment."""
         raise NotImplementedError()
 
     @classmethod
+    @abstractmethod
     def get_handle(cls, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
     @classmethod
+    @abstractmethod
     def options(cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
@@ -1167,13 +1190,20 @@ def make_deployment_cls(
         raise TypeError(
             "Deployment ray_actor_options must be a dict if provided.")
 
-    class Deployment(ServeDeployment):
+    if init_args is None:
+        init_args = ()
+
+    class Deployment(ServeDeployment, metaclass=ServeDeploymentMeta):
         _backend_def = backend_def
         _name = name
         _version = version
         _config = config
         _init_args = init_args
         _ray_actor_options = ray_actor_options
+
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("ServeDeployments cannot be constructed "
+                               "directly. Call `Deployment.deploy()` instead.")
 
         @classmethod
         def deploy(cls, *init_args, _blocking=True):
@@ -1329,7 +1359,8 @@ def get_deployment(name: str) -> ServeDeployment:
         ServeDeployment
     """
     try:
-        backend_info, route = _get_global_client().get_deployment_info(name)
+        backend_info, route = _get_global_client().get_deployment_info(
+            name, _internal=True)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
@@ -1340,3 +1371,24 @@ def get_deployment(name: str) -> ServeDeployment:
         version=backend_info.version,
         init_args=backend_info.replica_config.init_args,
         ray_actor_options=backend_info.replica_config.ray_actor_options)
+
+
+def list_deployments() -> Dict[str, ServeDeployment]:
+    """Returns a dictionary of all active deployments.
+
+    Dictionary maps deployment name to ServeDeployment objects.
+    """
+    infos = _get_global_client().list_deployments(_internal=True)
+
+    # TODO(edoakes): use the route here once it's a part of deployments.
+    deployments = {}
+    for name, (backend_info, route) in infos.items():
+        deployments[name] = make_deployment_cls(
+            backend_info.replica_config.backend_def,
+            name,
+            backend_info.backend_config,
+            version=backend_info.version,
+            init_args=backend_info.replica_config.init_args,
+            ray_actor_options=backend_info.replica_config.ray_actor_options)
+
+    return deployments
