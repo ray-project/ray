@@ -13,7 +13,7 @@ from ray.serve.config import BackendConfig
 
 
 def test_e2e(serve_instance):
-    @serve.deployment("api")
+    @serve.deployment(name="api")
     def function(starlette_request):
         return {"method": starlette_request.method}
 
@@ -27,7 +27,7 @@ def test_e2e(serve_instance):
 
 
 def test_starlette_response(serve_instance):
-    @serve.deployment("basic")
+    @serve.deployment(name="basic")
     def basic(_):
         return starlette.responses.Response(
             "Hello, world!", media_type="text/plain")
@@ -35,7 +35,7 @@ def test_starlette_response(serve_instance):
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
 
-    @serve.deployment("html")
+    @serve.deployment(name="html")
     def html(_):
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>")
@@ -45,7 +45,7 @@ def test_starlette_response(serve_instance):
         "http://127.0.0.1:8000/html"
     ).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
-    @serve.deployment("plain_text")
+    @serve.deployment(name="plain_text")
     def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
@@ -53,7 +53,7 @@ def test_starlette_response(serve_instance):
     assert requests.get(
         "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
-    @serve.deployment("json")
+    @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
@@ -61,7 +61,7 @@ def test_starlette_response(serve_instance):
     assert requests.get("http://127.0.0.1:8000/json").json()[
         "hello"] == "world"
 
-    @serve.deployment("redirect")
+    @serve.deployment(name="redirect")
     def redirect(_):
         return starlette.responses.RedirectResponse(
             url="http://127.0.0.1:8000/basic")
@@ -70,7 +70,7 @@ def test_starlette_response(serve_instance):
     assert requests.get(
         "http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
-    @serve.deployment("streaming")
+    @serve.deployment(name="streaming")
     def streaming(_):
         async def slow_numbers():
             for number in range(1, 4):
@@ -126,7 +126,7 @@ def test_backend_user_config(serve_instance):
 
 
 def test_call_method(serve_instance):
-    @serve.deployment("method")
+    @serve.deployment(name="method")
     class CallMethod:
         def method(self, request):
             return "hello"
@@ -146,7 +146,7 @@ def test_call_method(serve_instance):
 
 
 def test_reject_duplicate_route(serve_instance):
-    @serve.deployment("A")
+    @serve.deployment(name="A")
     @serve.ingress(path_prefix="/api")
     class A:
         pass
@@ -157,7 +157,7 @@ def test_reject_duplicate_route(serve_instance):
 
 
 def test_scaling_replicas(serve_instance):
-    @serve.deployment("counter", num_replicas=2)
+    @serve.deployment(name="counter", num_replicas=2)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -188,7 +188,7 @@ def test_scaling_replicas(serve_instance):
 
 
 def test_delete_backend(serve_instance):
-    @serve.deployment("delete")
+    @serve.deployment(name="delete")
     def function(_):
         return "hello"
 
@@ -198,7 +198,7 @@ def test_delete_backend(serve_instance):
 
     function.delete()
 
-    @serve.deployment("delete")
+    @serve.deployment(name="delete")
     def function2(_):
         return "olleh"
 
@@ -286,7 +286,7 @@ def test_list_backends(serve_instance):
 
 
 def test_starlette_request(serve_instance):
-    @serve.deployment("api")
+    @serve.deployment(name="api")
     async def echo_body(starlette_request):
         data = await starlette_request.body()
         return data

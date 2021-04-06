@@ -29,10 +29,10 @@ def test_fastapi_function(serve_instance):
 
     client.deploy("f", FastAPIApp)
 
-    resp = requests.get(f"http://localhost:8000/f/100")
+    resp = requests.get("http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
 
-    resp = requests.get(f"http://localhost:8000/f/not-number")
+    resp = requests.get("http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
     assert resp.json()["detail"][0]["type"] == "type_error.integer"
 
@@ -51,7 +51,7 @@ def test_ingress_prefix(serve_instance):
 
     client.deploy("f", App)
 
-    resp = requests.get(f"http://localhost:8000/api/100")
+    resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
 
 
@@ -77,11 +77,11 @@ def test_class_based_view(serve_instance):
             return i - self.val
 
     client.deploy("f", A)
-    resp = requests.get(f"http://localhost:8000/f/calc/41")
+    resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
-    resp = requests.post(f"http://localhost:8000/f/calc/41")
+    resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
-    resp = requests.get(f"http://localhost:8000/f/other")
+    resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
 
 
@@ -209,7 +209,7 @@ def test_fastapi_features(serve_instance):
 
     app.include_router(router)
 
-    @serve.deployment("fastapi")
+    @serve.deployment(name="fastapi")
     @serve.ingress(app)
     class Worker:
         pass
