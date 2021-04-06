@@ -1,5 +1,11 @@
 """
 Tests scaling behavior of Kubernetes operator.
+
+
+(1) Start a cluster with minWorkers = 30 and verify scale-up
+(2) Edit minWorkers to 0, verify scale-down
+(3) Submit a task requiring 14 workers using Ray client
+(4) Verify scale-up, task execution, and scale down.
 """
 import copy
 import kubernetes
@@ -22,9 +28,6 @@ def submit_scaling_job(client_port, num_tasks):
     def f(i):
         time.sleep(60)
         return i
-
-    # Wait a bit for the port-forwarding
-    time.sleep(5)
 
     print(">>>Submitting tasks with Ray client.")
     ray.util.connect(f"127.0.0.1:{client_port}")
@@ -93,7 +96,7 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Waiting for pods to join cluster.")
             wait_for_pods(32)
 
-            # Check for graceful scale-down.
+            # Check scale-down.
             print(">>>Decreasing min workers to 0.")
             example_cluster_edit = copy.deepcopy(example_cluster_config)
             # No workers required:
@@ -107,13 +110,19 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Verifying scale-down.")
             wait_for_pods(2)
 
+            # Test scale up and scale down after task submission.
             command = f"kubectl -n {NAMESPACE}"\
                 " port-forward service/example-cluster-ray-head 10001:10001"
             command = command.split()
             print(">>>Port-forwarding head service.")
             self.proc = subprocess.Popen(command)
             try:
+                # Wait a bit for the port-forwarding connection to be
+                # established.
+                time.sleep(5)
+                # Check that submission works
                 submit_scaling_job(client_port="10001", num_tasks=15)
+                # Clean up
                 self.proc.kill()
             except Exception as e:
                 self.proc.kill()
