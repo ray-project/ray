@@ -60,7 +60,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
   }
-  auto start_and_stats = Enqueue(name);
+  auto start_and_stats = RecordStart(name);
   // References are only invalidated upon deletion of the corresponding item from the
   // table, which we won't do until this io_context is deleted. Provided that
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
@@ -75,19 +75,19 @@ void instrumented_io_context::post(std::function<void()> handler,
   boost::asio::io_context::post(
       [handler = std::move(handler), stats = start_and_stats.second,
        global_stats = global_stats_, name, start = start_and_stats.first]() {
-        Instrument(std::move(handler), stats, global_stats, start);
+        RecordExecution(std::move(handler), stats, global_stats, start);
       });
 }
 
-std::pair<int64_t, std::shared_ptr<GuardedHandlerStats>> instrumented_io_context::Enqueue(
-    const std::string name) {
+std::pair<int64_t, std::shared_ptr<GuardedHandlerStats>>
+instrumented_io_context::RecordStart(const std::string name) {
   auto stats = GetOrCreate(name);
-  auto enqueue_time = Enqueue(stats);
+  auto enqueue_time = RecordStart(stats);
   return std::make_pair<int64_t, std::shared_ptr<GuardedHandlerStats>>(
       std::move(enqueue_time), std::move(stats));
 }
 
-int64_t instrumented_io_context::Enqueue(std::shared_ptr<GuardedHandlerStats> stats) {
+int64_t instrumented_io_context::RecordStart(std::shared_ptr<GuardedHandlerStats> stats) {
   {
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.cum_count++;
@@ -96,17 +96,17 @@ int64_t instrumented_io_context::Enqueue(std::shared_ptr<GuardedHandlerStats> st
   return absl::GetCurrentTimeNanos();
 }
 
-std::shared_ptr<GuardedHandlerStats> instrumented_io_context::Instrument(
+std::shared_ptr<GuardedHandlerStats> instrumented_io_context::RecordExecution(
     std::function<void()> fn, const std::string name) {
   auto stats = GetOrCreate(name);
-  Instrument(std::move(fn), stats, global_stats_);
+  RecordExecution(std::move(fn), stats, global_stats_);
   return stats;
 }
 
-void instrumented_io_context::Instrument(std::function<void()> fn,
-                                         std::shared_ptr<GuardedHandlerStats> stats,
-                                         std::shared_ptr<GuardedGlobalStats> global_stats,
-                                         absl::optional<int64_t> enqueue_time) {
+void instrumented_io_context::RecordExecution(
+    std::function<void()> fn, std::shared_ptr<GuardedHandlerStats> stats,
+    std::shared_ptr<GuardedGlobalStats> global_stats,
+    absl::optional<int64_t> enqueue_time) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Execute actual handler.
   fn();
@@ -122,7 +122,7 @@ void instrumented_io_context::Instrument(std::function<void()> fn,
       // Handler-specific current count.
       stats->stats.curr_count--;
     } else {
-      // Only increment the cumulative count if there was never an Enqueue() call.
+      // Only increment the cumulative count if there was never a RecordStart() call.
       stats->stats.cum_count++;
     }
   }
