@@ -41,8 +41,8 @@ class PublisherTest : public ::testing::Test {
 
   void TearDown() { subscribers_map_.clear(); }
 
-  std::shared_ptr<PeriodicalRunner> periodic_runner_;
   instrumented_io_context io_service_;
+  std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> object_status_publisher_;
   std::unordered_map<ObjectID, std::unordered_set<NodeID>> subscribers_map_;
   const uint64_t subscriber_timeout_ms_ = 30000;
