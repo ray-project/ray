@@ -25,14 +25,15 @@ PULL_POLICY_ENV = "KUBERNETES_OPERATOR_TEST_PULL_POLICY"
 PULL_POLICY = os.getenv(PULL_POLICY_ENV, "Always")
 
 RAY_PATH = os.path.abspath(
-    os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 
 def retry_until_true(f):
     # Retry 60 times with 1 second delay between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(120):
+        for _ in range(240):
             if f(*args, **kwargs):
                 return
             else:
