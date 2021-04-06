@@ -1,9 +1,7 @@
 package io.ray.performancetest;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.Ray;
 import io.ray.api.call.BaseActorCreator;
-import io.ray.api.id.UniqueId;
 import io.ray.api.runtimecontext.NodeInfo;
 import java.util.List;
 import org.slf4j.Logger;

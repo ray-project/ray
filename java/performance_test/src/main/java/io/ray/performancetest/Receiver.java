@@ -8,8 +8,7 @@ public class Receiver {
 
   private int value = 0;
 
-  public Receiver(String jobName) {
-  }
+  public Receiver(String jobName) {}
 
   public boolean ping() {
     return true;

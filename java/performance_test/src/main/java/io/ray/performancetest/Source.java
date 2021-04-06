@@ -83,9 +83,7 @@ public class Source {
           returnObjects.get(1).add(returnObject);
         } else {
           if (useDirectByteBuffer) {
-            receiver
-                .task(Receiver::byteBufferNoReturn, buffer)
-                .remote();
+            receiver.task(Receiver::byteBufferNoReturn, buffer).remote();
           } else if (argSize > 0) {
             receiver.task(Receiver::bytesNoReturn, bytes).remote();
           } else {
