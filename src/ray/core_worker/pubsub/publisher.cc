@@ -241,9 +241,11 @@ void Publisher::CheckDeadSubscribers() {
     RAY_CHECK(!(disconnected && active_connection_timed_out));
 
     if (disconnected) {
+      RAY_LOG(ERROR) << "sang 1";
       UnregisterSubscriberInternal(subscriber_id);
     } else if (active_connection_timed_out) {
       // Refresh the long polling connection. The subscriber will send it again.
+      RAY_LOG(ERROR) << "sang 2";
       subscriber->PublishIfPossible(/*force*/ true);
     }
   }
