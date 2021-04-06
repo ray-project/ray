@@ -26,8 +26,12 @@
 
 namespace ray {
 
+namespace pubsub {
+
 using SubscriberID = UniqueID;
 using LongPollConnectCallback = std::function<void(const std::vector<ObjectID> &)>;
+
+namespace pub_internal {
 
 /// Index for object ids and node ids of subscribers.
 class SubscriptionIndex {
@@ -55,15 +59,13 @@ class SubscriptionIndex {
   /// Return true if the object id exists in the index.
   bool HasObjectId(const ObjectID &object_id) const;
 
+  /// Returns true if object id or subscriber id exists in the index.
+  bool HasSubscriber(const SubscriberID &subscriber_id) const;
+
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool AssertNoLeak() const;
 
  private:
-  FRIEND_TEST(PublisherTest, TestSubscriptionIndexErase);
-  FRIEND_TEST(PublisherTest, TestSubscriptionIndexEraseSubscriber);
-
-  /// Returns true if object id or subscriber id exists in the index.
-  bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
   /// Mapping from objects -> subscribers.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<SubscriberID>>
@@ -133,6 +135,8 @@ class Subscriber {
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
 };
+
+}  // namespace pub_internal
 
 /// Protocol detail
 ///
@@ -243,14 +247,16 @@ class Publisher {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::shared_ptr<Subscriber>> subscribers_
+  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::Subscriber>> subscribers_
       GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of objects <-> subscribers.
-  SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
+  pub_internal::SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const uint64_t publish_batch_size_;
 };
+
+}  // namespace pubsub 
 
 }  // namespace ray
