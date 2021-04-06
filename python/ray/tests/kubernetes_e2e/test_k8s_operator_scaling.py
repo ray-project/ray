@@ -136,6 +136,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
     def __del__(self):
         # To be safer, kill again:
+        # (does not raise an error if the process has already been killed)
         self.proc.kill()
 
 
