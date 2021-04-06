@@ -19,7 +19,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 
 #include "src/ray/protobuf/common.pb.h"
@@ -73,7 +73,7 @@ class SubscriptionIndex {
       subscribers_to_objects_;
 };
 
-/// Abstraction to each subscriber for the coordinator.
+/// Abstraction to each subscriber.
 class Subscriber {
  public:
   explicit Subscriber(const std::function<double()> &get_time_ms,
@@ -110,7 +110,7 @@ class Subscriber {
   bool AssertNoLeak() const;
 
   /// Return true if the subscriber is disconnected (if the subscriber is dead).
-  /// The subscriber is considered as dead if there was no long polling connection for
+  /// The subscriber is considered to be dead if there was no long polling connection for
   /// the timeout.
   bool IsDisconnected() const;
 
@@ -119,12 +119,14 @@ class Subscriber {
 
  private:
   /// Cached long polling reply callback.
+  /// It is cached whenever new long polling is coming from the subscriber.
+  /// It becomes a nullptr whenever the long polling request is replied.
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
   /// Queued messages to publish.
   std::list<ObjectID> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
-  /// The time in which the connection is considered as timeout.
+  /// The time in which the connection is considered as timed out.
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
   const uint64_t publish_batch_size_;
@@ -132,25 +134,42 @@ class Subscriber {
   double last_connection_update_time_ms_;
 };
 
-/// Pubsub server.
+/// Protocol detail
+///
+/// - Subscriber always send a long polling connection as long as there are subscribed
+/// entries from the publisher.
+/// - Publisher caches the long polling request and reply whenever there are published
+/// messages.
+/// - Publishes messages are batched in order to avoid gRPC message limit.
+/// - Look at CheckDeadSubscribers for failure handling mechanism.
+///
 class Publisher {
  public:
   /// Pubsub coordinator constructor.
   ///
-  /// \param is_node_dead A callback that returns true if the given node id is dead.
-  explicit Publisher(const std::function<double()> get_time_ms,
+  /// \param periodical_runner Periodic runner
+  /// \param get_time_ms A callback to get the current time in milliseconds.
+  /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
+  /// Check out CheckDeadSubscribers for more details.
+  /// \param publish_batch_size The batch size of published messages.
+  explicit Publisher(std::shared_ptr<PeriodicalRunner> &periodical_runner,
+                     const std::function<double()> get_time_ms,
                      const uint64_t subscriber_timeout_ms,
                      const uint64_t publish_batch_size)
-      : get_time_ms_(get_time_ms),
+      : periodical_runner_(periodical_runner),
+        get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
-        publish_batch_size_(publish_batch_size) {}
+        publish_batch_size_(publish_batch_size) {
+    periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
+                                          subscriber_timeout_ms);
+  }
 
   ~Publisher() = default;
 
   ///
-  // TODO(sang): Currently, we need to pass the callback for connection because we are
-  // using long polling internally. This should be changed once the bidirectional grpc
-  // streaming is supported.
+  /// TODO(sang): Currently, we need to pass the callback for connection because we are
+  /// using long polling internally. This should be changed once the bidirectional grpc
+  /// streaming is supported.
   void ConnectToSubscriber(const SubscriberID &subscriber_id,
                            LongPollConnectCallback long_poll_connect_callback);
 
@@ -185,17 +204,20 @@ class Publisher {
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
   /// metadata that can happen by subscriber failures. It is how it works;
+  ///
   /// - If there's no new long polling connection for the timeout, it refreshes the long
   /// polling connection.
-  ///   If the subscriber is dead, there will be no new long polling connection coming in
-  ///   again.
-  /// - If there's no long polling connection for another timeout at all, it treats the
+  /// - If the subscriber is dead, there will be no new long polling connection coming in
+  /// again. Otherwise, the long polling connection will be reestablished by the
+  /// subscriber.
+  /// - If there's no long polling connection for another timeout, it treats the
   /// subscriber as dead.
+  ///
   /// TODO(sang): Currently, it iterates all subscribers periodically. This can be
   /// inefficient in some scenarios.
-  ///             For example, think about we have a driver with 100K subscribers (it can
-  ///             happen due to reference counting). We might want to optimize this by
-  ///             having a timer per subscriber.
+  /// For example, think about we have a driver with 100K subscribers (it can
+  /// happen due to reference counting). We might want to optimize this by
+  /// having a timer per subscriber.
   void CheckDeadSubscribers();
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
@@ -204,6 +226,9 @@ class Publisher {
  private:
   bool UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Periodic runner to invoke CheckDeadSubscribers.
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;

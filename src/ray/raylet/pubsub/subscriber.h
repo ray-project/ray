@@ -63,6 +63,14 @@ class SubscriberInterface {
 };
 
 /// The pubsub client implementation.
+///
+/// Protocol details:
+///
+/// - Publisher keeps refreshing the long polling connection every subscriber_timeout_ms.
+/// - Subscriber always try making reconnection as long as there are subscribed entries.
+/// - If long polling request is failed (if non-OK status is returned from the RPC),
+/// consider the publisher is dead.
+///
 class Subscriber : public SubscriberInterface {
  public:
   explicit Subscriber(const PublisherID subscriber_id,
@@ -102,6 +110,7 @@ class Subscriber : public SubscriberInterface {
 
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.
+  ///
   /// TODO(sang): Currently, we assume that unregistered objects will never be published
   /// from the pubsub server. We may want to loose the restriction once OBOD is supported
   /// by this function.

@@ -791,23 +791,6 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_CHECK(it->second.borrowers.erase(addr));
         DeleteReferenceInternal(it, nullptr);
       });
-  // SANG-TODO Instead of calling a RPC, use;
-  // subscriber->SubcribeObject(addr, object_id, WAIT_FOR_REF_REMOVED_CHANNEL, [](){
-  // RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
-  //                << addr.port << " of object " << object_id;
-  // absl::MutexLock lock(&mutex_);
-
-  // // Merge in any new borrowers that the previous borrower learned of.
-  // const ReferenceTable new_borrower_refs =
-  //     ReferenceTableFromProto(reply.borrowed_refs());
-  // MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
-
-  // // Erase the previous borrower.
-  // auto it = object_id_refs_.find(object_id);
-  // RAY_CHECK(it != object_id_refs_.end());
-  // RAY_CHECK(it->second.borrowers.erase(addr));
-  // DeleteReferenceInternal(it, nullptr);
-  // })
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
