@@ -189,6 +189,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
@@ -537,6 +538,7 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky.")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
