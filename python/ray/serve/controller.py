@@ -269,21 +269,21 @@ class ServeController:
 
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, version: Optional[str],
-                     http_prefix: Optional[str]) -> Optional[GoalId]:
-        if http_prefix is None:
-            http_prefix = f"/{name}"
+                     route_prefix: Optional[str]) -> Optional[GoalId]:
+        if route_prefix is None:
+            route_prefix = f"/{name}"
 
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
             # {wildcard:path} is used so HTTPProxy's Starlette router can match
             # arbitrary path.
-            if http_prefix.endswith("/"):
-                http_prefix = http_prefix[:-1]
-            http_route = http_prefix + WILDCARD_PATH_SUFFIX
+            if route_prefix.endswith("/"):
+                route_prefix = route_prefix[:-1]
+            http_route = route_prefix + WILDCARD_PATH_SUFFIX
             http_methods = ALL_HTTP_METHODS
         else:
-            http_route = http_prefix
+            http_route = route_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
             http_methods = ["GET", "POST"]
 

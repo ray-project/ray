@@ -460,7 +460,7 @@ class Client:
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
-               http_prefix: Optional[str] = None,
+               route_prefix: Optional[str] = None,
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -502,7 +502,7 @@ class Client:
 
         backend_config._validate_complete()
         goal_ref = self._controller.deploy.remote(
-            name, backend_config, replica_config, version, http_prefix)
+            name, backend_config, replica_config, version, route_prefix)
 
         if _blocking:
             self._wait_for_goal(goal_ref)
@@ -1140,7 +1140,7 @@ def make_deployment_cls(
         config: BackendConfig,
         version: Optional[str] = None,
         init_args: Optional[Tuple[Any]] = None,
-        http_prefix: Optional[str] = None,
+        route_prefix: Optional[str] = None,
         ray_actor_options: Optional[Dict] = None,
 ) -> ServeDeployment:
     if not callable(backend_def):
@@ -1152,15 +1152,15 @@ def make_deployment_cls(
         raise TypeError("version must be a string if provided.")
     if not (init_args is None or isinstance(init_args, tuple)):
         raise TypeError("init_args must be a tuple if provided.")
-    if http_prefix is None:
-        http_prefix = f"/{name}"
+    if route_prefix is None:
+        route_prefix = f"/{name}"
     else:
-        if not isinstance(http_prefix, str):
-            raise TypeError("http_prefix must be a string if provided.")
-        if not http_prefix.startswith("/"):
-            raise ValueError("http_prefix must start with '/'")
-        if "{" in http_prefix or "}" in http_prefix:
-            raise ValueError("http_prefix may not contain wildcards")
+        if not isinstance(route_prefix, str):
+            raise TypeError("route_prefix must be a string if provided.")
+        if not route_prefix.startswith("/"):
+            raise ValueError("route_prefix must start with '/'")
+        if "{" in route_prefix or "}" in route_prefix:
+            raise ValueError("route_prefix may not contain wildcards")
     if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
         raise TypeError("ray_actor_options must be a dict if provided.")
 
@@ -1170,7 +1170,7 @@ def make_deployment_cls(
         _version = version
         _config = config
         _init_args = init_args
-        _http_prefix = http_prefix
+        _route_prefix = route_prefix
         _ray_actor_options = ray_actor_options
 
         @classmethod
@@ -1191,7 +1191,7 @@ def make_deployment_cls(
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
                 version=cls._version,
-                http_prefix=cls._http_prefix,
+                route_prefix=cls._route_prefix,
                 _blocking=_blocking,
                 _internal=True)
 
@@ -1214,7 +1214,7 @@ def make_deployment_cls(
                 name: Optional[str] = None,
                 version: Optional[str] = None,
                 init_args: Optional[Tuple[Any]] = None,
-                http_prefix: Optional[str] = None,
+                route_prefix: Optional[str] = None,
                 num_replicas: Optional[int] = None,
                 ray_actor_options: Optional[Dict] = None,
                 user_config: Optional[Any] = None,
@@ -1241,8 +1241,8 @@ def make_deployment_cls(
             if init_args is None:
                 init_args = cls._init_args
 
-            if http_prefix is None:
-                http_prefix = cls._http_prefix
+            if route_prefix is None:
+                route_prefix = cls._route_prefix
 
             if ray_actor_options is None:
                 ray_actor_options = cls._ray_actor_options
@@ -1253,7 +1253,7 @@ def make_deployment_cls(
                 new_config,
                 version=version,
                 init_args=init_args,
-                http_prefix=http_prefix,
+                route_prefix=route_prefix,
                 ray_actor_options=ray_actor_options,
             )
 
@@ -1265,7 +1265,7 @@ def deployment(
         version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
-        http_prefix: Optional[str] = None,
+        route_prefix: Optional[str] = None,
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
@@ -1283,7 +1283,7 @@ def deployment(
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        http_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
+        route_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
             under the HTTP path prefix will be routed to this deployment.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
@@ -1324,7 +1324,7 @@ def deployment(
             config,
             version=version,
             init_args=init_args,
-            http_prefix=http_prefix,
+            route_prefix=route_prefix,
             ray_actor_options=ray_actor_options)
 
     return decorator

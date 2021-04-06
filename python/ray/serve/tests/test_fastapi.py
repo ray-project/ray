@@ -44,7 +44,7 @@ def test_ingress_prefix(serve_instance):
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(name="f", http_prefix="/api")
+    @serve.deployment(name="f", route_prefix="/api")
     @serve.ingress(app)
     class App:
         pass
