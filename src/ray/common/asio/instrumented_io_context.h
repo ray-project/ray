@@ -68,6 +68,7 @@ struct StatsHandle {
   int64_t start_time;
   std::shared_ptr<GuardedHandlerStats> handler_stats;
   std::shared_ptr<GuardedGlobalStats> global_stats;
+  bool execution_recorded = false;
 
   StatsHandle(std::string handler_name_, int64_t start_time_,
               std::shared_ptr<GuardedHandlerStats> handler_stats_,
@@ -76,6 +77,12 @@ struct StatsHandle {
         start_time(start_time_),
         handler_stats(handler_stats_),
         global_stats(global_stats_) {}
+
+  ~StatsHandle() {
+    RAY_CHECK(execution_recorded) << "Opaque stats handle for handler " << handler_name
+                                  << " returned from RecordStart() "
+                                     "must be passed to RecordExecution().";
+  }
 };
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
