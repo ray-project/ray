@@ -122,6 +122,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     ray.shutdown()
     cluster.shutdown()
 
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
