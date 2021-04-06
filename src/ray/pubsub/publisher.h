@@ -66,7 +66,6 @@ class SubscriptionIndex {
   bool AssertNoLeak() const;
 
  private:
-
   /// Mapping from objects -> subscribers.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<SubscriberID>>
       objects_to_subscribers_;
@@ -247,8 +246,8 @@ class Publisher {
   mutable absl::Mutex mutex_;
 
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::Subscriber>> subscribers_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::Subscriber>>
+      subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of objects <-> subscribers.
   pub_internal::SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
@@ -257,6 +256,6 @@ class Publisher {
   const uint64_t publish_batch_size_;
 };
 
-}  // namespace pubsub 
+}  // namespace pubsub
 
 }  // namespace ray
