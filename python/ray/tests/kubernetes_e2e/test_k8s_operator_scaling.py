@@ -72,10 +72,10 @@ class KubernetesScaleTest(unittest.TestCase):
             example_cluster_config["spec"]["maxWorkers"] = 100
             example_cluster_config["spec"]["idleTimeoutMinutes"] = 1
             worker_type = podTypes[1]
-            # Make sure we have the right one
+            # Make sure we have the right type
             assert "worker" in worker_type["name"]
             worker_type["maxWorkers"] = 100
-            # Key for the first part of the test
+            # Key for the first part of this test:
             worker_type["minWorkers"] = 30
 
             yaml.dump(example_cluster_config, example_cluster_file)
@@ -99,7 +99,7 @@ class KubernetesScaleTest(unittest.TestCase):
             # Check scale-down.
             print(">>>Decreasing min workers to 0.")
             example_cluster_edit = copy.deepcopy(example_cluster_config)
-            # No workers required:
+            # Set minWorkers to 0:
             example_cluster_edit["spec"]["podTypes"][1]["minWorkers"] = 0
             yaml.dump(example_cluster_edit, example_cluster_file)
             example_cluster_file.flush()
@@ -119,12 +119,13 @@ class KubernetesScaleTest(unittest.TestCase):
             try:
                 # Wait a bit for the port-forwarding connection to be
                 # established.
-                time.sleep(5)
-                # Check that submission works
+                time.sleep(10)
+                # Check that job submission works
                 submit_scaling_job(client_port="10001", num_tasks=15)
                 # Clean up
                 self.proc.kill()
             except Exception as e:
+                # Clean up on failure
                 self.proc.kill()
                 raise (e)
 
@@ -134,10 +135,8 @@ class KubernetesScaleTest(unittest.TestCase):
             wait_for_pods(2)
 
     def __del__(self):
-        try:
-            self.proc.kill()
-        except Exception:
-            pass
+        # To be safer, kill again:
+        self.proc.kill()
 
 
 if __name__ == "__main__":
