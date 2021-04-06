@@ -15,17 +15,44 @@
 #pragma once
 
 #include <ray/api/function_manager.h>
-#include <ray/api/remote_function_name.h>
 
 namespace ray {
 
 namespace internal {
+
+inline static std::vector<absl::string_view> GetFunctionNames(absl::string_view str) {
+  std::vector<absl::string_view> output;
+  size_t first = 0;
+
+  while (first < str.size()) {
+    auto second = str.find_first_of(",", first);
+
+    if (first != second) {
+      auto sub_str = str.substr(first, second - first);
+      if (sub_str.find_first_of('(') != absl::string_view::npos) {
+        second = str.find_first_of(")", first) + 1;
+      }
+      if (str[first] == ' ') {
+        first++;
+      }
+      output.emplace_back(str.substr(first, second - first));
+    }
+
+    if (second == absl::string_view::npos) break;
+
+    first = second + 1;
+  }
+
+  return output;
+}
+
 template <typename T, typename... U>
 inline static int RegisterRemoteFunctions(const T &t, U... u) {
   int index = 0;
+  const auto func_names = GetFunctionNames(t);
   (void)std::initializer_list<int>{
       (ray::internal::FunctionManager::Instance().RegisterRemoteFunction(
-           t[index++].data(), u),
+           func_names[index++].data(), u),
        0)...};
   return 0;
 }
@@ -41,11 +68,9 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
 
 namespace api {
 
-#define RAY_REMOTE(...)                                                                  \
-  static auto ANONYMOUS_VARIABLE(var) = ray::internal::RegisterRemoteFunctions(          \
-      std::array<absl::string_view, GET_ARG_COUNT(__VA_ARGS__)>{                         \
-          MARCO_EXPAND(MACRO_CONCAT(CON_STR, GET_ARG_COUNT(__VA_ARGS__))(__VA_ARGS__))}, \
-      __VA_ARGS__);
+#define RAY_REMOTE(...)                 \
+  static auto ANONYMOUS_VARIABLE(var) = \
+      ray::internal::RegisterRemoteFunctions(#__VA_ARGS__, __VA_ARGS__);
 
 }  // namespace api
 }  // namespace ray
