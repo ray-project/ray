@@ -264,6 +264,9 @@ class ServeController:
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, version: Optional[str],
                      http_prefix: Optional[str]) -> Optional[GoalId]:
+        if http_prefix is None:
+            http_prefix = f"/{name}"
+
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
