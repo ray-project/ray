@@ -302,7 +302,7 @@ class ServeController:
                 replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.create_endpoint(
+            self.endpoint_state.update_endpoint(
                 name,
                 http_route,
                 http_methods,

@@ -135,7 +135,7 @@ class HTTPProxy:
             tag_keys=("route", ))
 
     def _update_route_table(self, route_table: Dict[str, List[str]]):
-        logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
+        logger.debug(f"HTTP Proxy: Got updated route table: {route_table}.")
         self.route_table = route_table
 
         # Routes are sorted in order of descending length to enable longest
