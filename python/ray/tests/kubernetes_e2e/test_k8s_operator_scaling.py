@@ -109,8 +109,9 @@ class KubernetesScaleTest(unittest.TestCase):
 
             command = f"kubectl -n {NAMESPACE}"\
                 " port-forward service/example-cluster-ray-head 10001:10001"
-            print("Port-forwarding head service")
-            self.proc = subprocess.Popen(command, shell=True)
+            command = command.split()
+            print(">>>Port-forwarding head service")
+            self.proc = subprocess.Popen(command)
             try:
                 submit_scaling_job(client_port="10001", num_tasks=15)
                 self.proc.kill()
