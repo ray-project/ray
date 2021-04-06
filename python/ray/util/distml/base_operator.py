@@ -8,7 +8,7 @@ class TrainingOperator(metaclass=ABCMeta):
 
     This class is subclassed by the framework-specific operator implementations.
     Note that we must separately expose the two functions for (1) gradient derivation
-    and (1) gradient application in order for Ray collective backend to take over.
+    and (2) gradient application in order for Ray collective backend to take over.
     The specific training logic bundled with frameworks (JAX, PyTorch) should be implemented
     in the subclasses of this class.
 

@@ -4,6 +4,7 @@ import ray.util.collective as col
 import numpy as np
 
 import cupy as cp
+import ray.util.distml.util as util
 from cupy.cuda.nccl import groupStart, groupEnd
 
 import logging
@@ -18,7 +19,7 @@ class ParameterServerStrategy(BaseTrainer):
         self.assignments = None
 
         self.num_cpus_per_server = 1
-        self.num_gpus_per_server = 0.5
+        self.num_gpus_per_server = 1
 
         super(ParameterServerStrategy, self).__init__(*args, **kwargs)
 
@@ -33,15 +34,15 @@ class ParameterServerStrategy(BaseTrainer):
         self.worker_group.set_assignments(self.assignments)
 
         # all workers get synced
-        for i, worker in enumerate(self.worker_group.replicas):
+        for i, worker in enumerate(self.worker_group.actors):
             if i != 0:
                 ray.wait([worker.set_parameters.remote(init_weights_id)])
 
         # now spawn parameter server actors
         shard_ids = self.worker_group.split_parameters(self.assignments)
 
-        for i, server in enumerate(self.server_group.replicas):
-            this_shard_id = self.worker_group.replicas[0].index_shard.remote(shard_ids, i)
+        for i, server in enumerate(self.server_group.actors):
+            this_shard_id = self.worker_group.actors[0].index_shard.remote(shard_ids, i)
             ray.wait([server.set_params.remote(this_shard_id)])
 
     def _start_workers(self, world_size):
@@ -122,7 +123,7 @@ class ParameterServerStrategy(BaseTrainer):
 
     def _round_robin_sharding(self):
         """Generate the assignment of variable to servers."""
-        parameter_distribution = ray.get(self.worker_group.replicas[0].params_distribution.remote())
+        parameter_distribution = ray.get(self.worker_group.actors[0].params_distribution.remote())
         assignments = [0 for _ in parameter_distribution]
         loads = [0 for _ in range(self.num_ps)]
         for i, var_size in enumerate(parameter_distribution):
@@ -148,21 +149,21 @@ class ParameterServerStrategy(BaseTrainer):
         loss_vals = []
         rets = []
 
-        for worker_idx, worker in enumerate(self.worker_group.replicas):
-            for server_idx, server in enumerate(self.server_group.replicas):
+        for worker_idx, worker in enumerate(self.worker_group.actors):
+            for server_idx, server in enumerate(self.server_group.actors):
                 # every server sends its shard to the worker
                 server.send_parameters.remote(worker_idx)
             # the worker receives shards from ps, compute loss, gradients
             # and sends these gradients to every server
             loss_val = worker.compute.remote()
             loss_vals.append(loss_val)
+        ray.get(loss_vals)
 
-        for worker_idx, worker in enumerate(self.worker_group.replicas):
-            for server in self.server_group.replicas:
+        for worker_idx, worker in enumerate(self.worker_group.actors):
+            for server in self.server_group.actors:
                 rets.append(server.update.remote(worker_idx))
-
-        ray.get(rets)
-        return ray.get(loss_vals)
+        
+        return ray.get(rets)
 
 
 class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
@@ -172,7 +173,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         self.training_operator_cls = training_operator_cls
         self.operator_config = operator_config
 
-        self.grad_counts = 0
+        self.grad_counts = None
         self.params = dict()
 
     def setup_operator(self):
@@ -186,7 +187,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         self.group_name = group_name
         self.group_size = num_ps + num_workers
         # self.name_list = [[] for i in range(num_ps)]
-
+        self._init_grad_counts()
         # the last num_ps processes are servers.
         col.init_collective_group(num_ps + num_workers, rank,
                                   backend=backend, group_name=group_name)
@@ -194,10 +195,10 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
     def test_connection(self):
         # hand shake with server?
         for i in range(self.num_workers):
-            recv = cp.zeros((1,))
+            recv = util.zeros((1,), cpu=False)
             col.recv(recv, i, self.group_name)
         for i in range(self.num_workers):
-            recv = cp.zeros((1,))
+            recv = util.zeros((1,), cpu=False)
             col.send(recv, i, self.group_name)
         return
 
@@ -208,25 +209,29 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         # params should in GPU when calling this function.
         for k, v in params.items():
             self.params[k] = v
-        
+        print(list(self.params.keys()))
         self.training_operator.reset_optimizer_for_params(list(self.params.values()))
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
     def get_grad_buffer(self):
-        grad_buffer = {n:cp.zeros_like(p) for n, p in self.params.items()}
+        grad_buffer = {n:util.zeros_like(p, cpu=False) for n, p in self.params.items()}
         return grad_buffer
 
     def _inc_gradients(self, gradients):
         # We store the gradient in buffer, and apply it once when all worker graidients are collected. 
         # gradients should be a stitched dict
+        print("server: collecting gradients")
         if not hasattr(self, "grad_buffer"):
             self.grad_buffer = self.get_grad_buffer()
 
         for name, p in self.get_params().items():
             if gradients[name] is not None:
                 self.grad_buffer[name] += gradients[name]
-        self.grad_counts += 1
+        print("collecting gradients success")
 
+    def _init_grad_counts(self):
+        self.grad_counts = [0] * self.num_workers
+        
     def send_parameters(self, dst_rank):
         """ Send this param shard to the destination worker """
         groupStart()
@@ -241,32 +246,37 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         recv_list = []
         for key in keys:
             to_recv = self.params[key]
-            recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
-            # recv_list.append(torch.zeros(to_recv.size()).cuda())
+            recv_list.append(util.zeros(to_recv.shape, cpu=False))
 
+        steps = 0
         groupStart()
         for i in range(len(keys)):
             col.recv(recv_list[i], src_rank, self.group_name)
+            steps += 1
         groupEnd()
-        print("server: recv complete")
+        print(f"server: recv complete, steps {steps}")
 
         for i in range(len(keys)):
             grads[keys[i]] = recv_list[i]
+        print("server: grads set")
 
         self._inc_gradients(grads)
-        if self.grad_counts == self.num_workers:
-
-            grad_buffer_list = zip(*(sorted(grad_buffer.items(), key=lambda d: d[0])))[1]
+        if not self.grad_counts[src_rank]:
+            self.grad_counts[src_rank] = 1
+        else:
+            raise RuntimeError(f"This worker {src_rank} send gradients again.")
+        if sum(self.grad_counts) == self.num_workers:
+            grad_buffer_list = list(self.grad_buffer.values())
             print("server: applying gradients")
             self.training_operator.apply_updates(grad_buffer_list)
-            print("server: applying success")
+            print("server: applying gradients success")
             self.grad_buffer = self.get_grad_buffer()
-            self.grad_counts = 0
-
+            self._init_grad_counts()
         return True
 
     def clean_redundancy(self):
         self.training_operator.clean_redundancy()
+
 
 class Worker(object):
     def __init__(self, 
@@ -298,10 +308,10 @@ class Worker(object):
     def test_connection(self):
         # hand shake with server?
         for i in range(self.num_ps):
-            send = cp.ones((1,))
+            send = util.ones((1,), cpu=False)
             col.send(send, self.num_workers + i, self.group_name)
         for i in range(self.num_ps):
-            send = cp.ones((1,))
+            send = util.ones((1,), cpu=False)
             col.recv(send, self.num_workers + i, self.group_name)
         return
 
@@ -336,7 +346,7 @@ class Worker(object):
     def updates_transform(self, updates):
         return self.training_operator.updates_transform(updates)
 
-    def compute_gradients(self, params):
+    def compute_gradients(self, params, named=True):
         self.set_parameters(params)
         try:
             batch = next(self.iterator)
@@ -345,7 +355,13 @@ class Worker(object):
                 "iterator has ran out. Please use `start_iteration` to update iterator")
         # different from original core ps. 
         # Here derive_updates return loss_val and graident in order.
-        return self.training_operator.derive_updates(batch)
+
+        loss_val, grads = self.training_operator.derive_updates_v2(batch)
+        
+        if named and isinstance(grads, list):
+            grads_dict = {"{idx}":g for idx, g in enumerate(grads)}
+
+        return loss_val, grads_dict
 
     def split_gradients(self, grad, assignments):
         # assuming messages are gradients or parameters
@@ -404,7 +420,7 @@ class Worker(object):
             param_shard_keys = self.name_list[i]
             for key in param_shard_keys:
                 to_recv = weights[key]
-                recv_list[-1].append(self.training_operator.ones(to_recv.shape, cpu=False))
+                recv_list[-1].append(util.ones(to_recv.shape, cpu=False))
 
         # logging.warning(f"worker {self.rank} {recv_list[0][0][0][0]}, {recv_list[0][0].size()}, {recv_list[0][1]}, {recv_list[0][1].size()}, {recv_list[0][2]}, {recv_list[0][2].size()}")
         groupStart()
@@ -422,11 +438,13 @@ class Worker(object):
         print("worker, prepare keys for parameter")
 
         loss, grad = self.compute_gradients(params)
+        print(loss)
         print("worker, compute_gradient complete")
         split_grad = self.split_gradients(grad, self.assignments)
         print("worker, split complete")
         
         steps = 0
+
         groupStart()
         for i in range(self.num_ps):
             this_shard = self.index_shard(split_grad, i)
@@ -455,74 +473,74 @@ class DataParallelGroup:
         self.num_ps = self._dist_params["num_ps"]
         self.num_workers = self._dist_params["num_workers"]
 
-        self._distributed_replicas = None
+        self._distributed_actors = None
 
     def _setup_collective_group(self, num_replicas):
         if self._dist_params["strategy"] == "ps":
             num_ps = self._dist_params["num_ps"]
             num_workers = self._dist_params["num_workers"]
             is_server = self.is_server
-            rets = [replica.setup_collective_group.remote(rank=i+is_server*num_workers, num_workers=num_workers, num_ps=num_ps, backend="nccl")
-                    for i, replica in enumerate(self._distributed_replicas)]
+            rets = [actor.setup_collective_group.remote(rank=i+is_server*num_workers, num_workers=num_workers, num_ps=num_ps, backend="nccl")
+                    for i, actor in enumerate(self._distributed_actors)]
         else:  # this can be extend for allreduce.
             raise RuntimeError("Unrecognized strategy.")
         return rets
 
     def setup_operator(self):
-        setups = [replica.setup_operator.remote()
-                for i, replica in enumerate(self._distributed_replicas)]
+        setups = [actor.setup_operator.remote()
+                for i, actor in enumerate(self._distributed_actors)]
         return setups
 
-    def start_actors(self, num_replicas):
+    def start_actors(self, num_actors):
         if self.is_server:
             # make an actor
-            RemoteReplica = ray.remote(num_cpus=self._num_cpus_per_actor,
+            RemoteActor = ray.remote(num_cpus=self._num_cpus_per_actor,
                                        num_gpus=self._num_gpus_per_actor)(PS)
         else:
-            RemoteReplica = ray.remote(num_cpus=self._num_cpus_per_actor,
+            RemoteActor = ray.remote(num_cpus=self._num_cpus_per_actor,
                                        num_gpus=self._num_gpus_per_actor)(Worker)
 
-        self._distributed_replicas = [
-            RemoteReplica.remote(**self._params)
-            for _ in range(num_replicas)
+        self._distributed_actors = [
+            RemoteActor.remote(**self._params)
+            for _ in range(num_actors)
         ]
 
         # setup the rank and group in each replica
         ray.get(self._setup_collective_group(
-            len(self._distributed_replicas)))
+            len(self._distributed_actors)))
 
     def test_connection(self):
         rets = [replica.test_connection.remote() 
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
         return rets
 
     def set_assignments(self, assignments):
         rets = [replica.set_assignments.remote(assignments) 
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
         return rets
 
     def start_iteration(self):
         rets = [replica.start_iteration.remote() 
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
 
     def get_iteration_len(self):
-        return ray.get([self.replicas[0].get_iteration_len.remote()])[0]
+        return ray.get([self.actors[0].get_iteration_len.remote()])[0]
 
     def train(self, max_retries=1, info={}):
         rets = [replica.train.remote()
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 
     def validate(self, info={}):
         rets = [replica.validate.remote(info)
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 
     def shutdown(self, force=False):
         rets = [replica.shutdown.remote()
-                for _, replica in enumerate(self.replicas)]
+                for _, replica in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 
@@ -530,36 +548,36 @@ class DataParallelGroup:
         pass
 
     @property
-    def replicas(self):
-        return self._distributed_replicas
+    def actors(self):
+        return self._distributed_actors
 
     def save_parameters(self, checkpoint):
-        rets = [self.replicas[0].save_parameters.remote(checkpoint)]
+        rets = [self.actors[0].save_parameters.remote(checkpoint)]
         ray.get(rets)
 
     def load_parameters(self, checkpoint):
-        rets = [replica.load_parameters.remote(checkpoint)
-                for _, replica in enumerate(self.replicas)]
+        rets = [actor.load_parameters.remote(checkpoint)
+                for _, actor in enumerate(self.actors)]
         ray.get(rets)
 
     def set_parameters(self, params):
-        rets = [replica.set_parameters.remote(params)
-                for _, replica in enumerate(self.replicas)]
+        rets = [actor.set_parameters.remote(params)
+                for _, actor in enumerate(self.actors)]
         ray.get(rets)
         
     def get_parameters(self, cpu=False):
-        ret = self.replicas[0].get_parameters.remote(cpu)
+        ret = self.actors[0].get_parameters.remote(cpu)
         return ray.get([ret])[0]
 
     def get_named_parameters(self, cpu=False):
-        ret = self.replicas[0].get_named_parameters.remote(cpu)
+        ret = self.actors[0].get_named_parameters.remote(cpu)
         return ray.get([ret])[0]
 
     def split_parameters(self, assignments):
-        ret = self.replicas[0].split_parameters.remote(assignments)
+        ret = self.actors[0].split_parameters.remote(assignments)
         return ray.get([ret])[0]
 
     def clean_redundancy(self):
-        rets = [replica.clean_redundancy.remote()
-                for _, replica in enumerate(self.replicas)]
+        rets = [actor.clean_redundancy.remote()
+                for _, actor in enumerate(self.actors)]
         ray.get(rets)

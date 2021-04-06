@@ -10,7 +10,6 @@ from ray.util.distml.jax_operator import JAXTrainingOperator
 from ray.util.distml.allreduce_strategy import AllReduceStrategy
 from ray.util.distml.ps_strategy import ParameterServerStrategy
 
-from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE, override
 
 import numpy as np
@@ -21,7 +20,7 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101
+from jax_util.resnet import ResNet18, ResNet50, ResNet101, ResNetToy, MLP
 from jax_util.datasets import mnist
 
 def initialization_hook():
@@ -69,9 +68,12 @@ class CifarTrainingOperator(JAXTrainingOperator):
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, kwargs["batch_size"])
         lr=0.01
-        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        init_fun, predict_fun = ResNetToy(kwargs["num_classes"])
+        # init_fun, predict_fun = MLP(kwargs["num_classes"])
+        
         _, init_params = init_fun(rng_key, input_shape)
-            
+        
         opt_init, opt_update, get_params = optimizers.adam(lr)
         opt_state = opt_init(init_params)
         
@@ -134,19 +136,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4,6"
-    os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
 
     args, _ = parser.parse_known_args()
     num_cpus = 12
-    num_gpus = 3
+    num_gpus = 2
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = ParameterServerStrategy(
         training_operator_cls=CifarTrainingOperator,
-        world_size=4,
-        num_workers=2,
-        num_ps=2,
+        world_size=2,
+        num_workers=1,
+        num_ps=1,
         operator_config={
             "lr": 0.1,
            "test_mode": args.smoke_test,  # subset the data

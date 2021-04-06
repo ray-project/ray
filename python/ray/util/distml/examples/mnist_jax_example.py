@@ -9,7 +9,6 @@ import ray
 from ray.util.distml.jax_operator import JAXTrainingOperator
 from ray.util.distml.allreduce_strategy import AllReduceStrategy
 
-from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE, override
 
 import numpy as np
@@ -20,7 +19,7 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101
+from jax_util.resnet import ResNet18, ResNet50, ResNet101, MLP 
 from jax_util.datasets import mnist
 
 def initialization_hook():
@@ -132,7 +131,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,6"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()

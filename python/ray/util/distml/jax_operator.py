@@ -49,9 +49,17 @@ class JAXTrainingOperator(TrainingOperator):
         
         pass
 
-    def register(self, *, model, optimizer, criterion, jit_mode=False):
+    def register(self, 
+                 *,
+                 model, 
+                 optimizer, 
+                 criterion, 
+                 lr_schedulers=None, 
+                 jit_mode=False):
         """Register a few critical information about the model to operator."""
         self.criterion = criterion
+        if lr_schedulers:
+            self.lr_schedulers = lr_schedulers
         
         self._register_model(model)
         self._register_optimizer(optimizer)
@@ -95,11 +103,15 @@ class JAXTrainingOperator(TrainingOperator):
             yield batch
 
     def derive_updates(self, batch):
-        print("derive updating")
+        print("Operator: derive updating")
         loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
-        print("calculate_gradient completed")
+        print("Operator: calculate_gradient completed")
         return loss_val, tree_flatten(gradient)[0]
         
+    def derive_updates_v2(self, batch):
+        loss_val, gradient = self.derive_updates(batch)
+        return loss_val, list(map(self.jax2cupy, gradient))
+
     def apply_updates(self, gradient):
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
@@ -118,9 +130,9 @@ class JAXTrainingOperator(TrainingOperator):
 
     def _calculate_gradient(self, opt_state, batch):
         params = self.get_params(opt_state)
-        print("get parameter success")
+        print("operator: get parameter success")
         loss_val, gradient = value_and_grad(self.loss_fn)(params, batch)
-        print(loss_val)
+        print("operator: compute gradient success")
         return loss_val, gradient
 
     def get_jax_dlpack(self, tensor):
@@ -133,6 +145,28 @@ class JAXTrainingOperator(TrainingOperator):
         params = self.get_params(self.opt_state)
         validation_loader = self.validation_loader
         metric_meters = AverageMeterCollection()
+
+
+        if self.use_tqdm and self.world_rank == 0:
+            desc = ""
+            if info is not None and "epoch_idx" in info:
+                if "num_epochs" in info:
+                    desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
+                else:
+                    desc = f"{info['epoch_idx'] + 1}e"
+
+            # TODO: Implement len for Dataset?
+            total = info[NUM_STEPS]
+            if total is None:
+                if hasattr(iterator, "__len__"):
+                    total = len(iterator)
+
+            _progress_bar = tqdm(
+                total=total, desc=desc, unit="batch", leave=False)
+
+        _progress_bar = tqdm(
+            total=total, desc=desc, unit="batch", leave=False)
+
 
         for batch_idx, batch in enumerate(validation_loader):
             batch_info = {"batch_idx": batch_idx}
@@ -209,10 +243,10 @@ class JAXTrainingOperator(TrainingOperator):
 
     def set_parameters(self, params):
         if isinstance(params, dict):
-            print("Warning: using named parameter to set params")
+            # print("Warning: using named parameter to set params")
             # params = unzip(sorted(params.items(), key=lambda d: d[0]))[1]
             params = list(params.values())
-            print("convert param from dict to list")
+            print("operator: convert param from dict to list")
 
         if not hasattr(self, "tree"):
             self.tree = tree_structure(self.get_params(self.opt_state)) 
