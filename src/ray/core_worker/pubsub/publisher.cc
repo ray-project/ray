@@ -233,7 +233,6 @@ bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) 
 void Publisher::CheckDeadSubscribers() {
   absl::MutexLock lock(&mutex_);
   for (const auto &it : subscribers_) {
-    const auto &subscriber_id = it.first;
     const auto &subscriber = it.second;
 
     auto disconnected = subscriber->IsDisconnected();
@@ -241,6 +240,7 @@ void Publisher::CheckDeadSubscribers() {
     RAY_CHECK(!(disconnected && active_connection_timed_out));
 
     if (disconnected) {
+      const auto &subscriber_id = it.first;
       UnregisterSubscriberInternal(subscriber_id);
     } else if (active_connection_timed_out) {
       // Refresh the long polling connection. The subscriber will send it again.

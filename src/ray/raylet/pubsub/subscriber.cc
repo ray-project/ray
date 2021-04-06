@@ -20,10 +20,6 @@ void Subscriber::SubcribeObject(
     const rpc::Address &publisher_address, const ObjectID &object_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
-  rpc::Address subscriber_address;
-  subscriber_address.set_raylet_id(subscriber_id_.Binary());
-  subscriber_address.set_ip_address(subscriber_address_);
-  subscriber_address.set_port(subscriber_port_);
   // Make a long polling connection if we never made the one with this publisher for
   // pubsub operations.
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
@@ -32,6 +28,10 @@ void Subscriber::SubcribeObject(
     subscription_it =
         subscription_map_.emplace(publisher_id, SubscriptionInfo(publisher_address))
             .first;
+    rpc::Address subscriber_address;
+    subscriber_address.set_raylet_id(subscriber_id_.Binary());
+    subscriber_address.set_ip_address(subscriber_address_);
+    subscriber_address.set_port(subscriber_port_);
     MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
   }
   RAY_CHECK(subscription_it != subscription_map_.end());

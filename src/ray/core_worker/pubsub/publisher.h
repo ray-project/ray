@@ -147,8 +147,10 @@ class Publisher {
  public:
   /// Pubsub coordinator constructor.
   ///
-  /// \param periodical_runner Periodic runner
-  /// \param get_time_ms A callback to get the current time in milliseconds.
+  /// \param periodical_runner Periodic runner. Used to periodically run
+  /// CheckDeadSubscribers.
+  /// \param get_time_ms A callback to get the current time in
+  /// milliseconds.
   /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
   /// Check out CheckDeadSubscribers for more details.
   /// \param publish_batch_size The batch size of published messages.
