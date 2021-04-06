@@ -8,7 +8,7 @@ import pytest
 import requests
 
 import ray
-from ray.test_utils import SignalActor
+from ray.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from ray.serve.utils import get_random_letters
 
@@ -777,6 +777,44 @@ def test_list_deployments(serve_instance):
     d1.deploy()
 
     assert serve.list_deployments() == {"hi": d1}
+
+
+def test_deploy_change_route_prefix(serve_instance):
+    name = "test"
+
+    @serve.deployment(name, version="1", route_prefix="/old")
+    def d(*args):
+        return f"1|{os.getpid()}"
+
+    def call(route):
+        ret = requests.get(f"http://localhost:8000/{route}").text
+        return ret.split("|")[0], ret.split("|")[1]
+
+    d.deploy()
+    val1, pid1 = call("old")
+    assert val1 == "1"
+
+    # Check that the old route is gone and the response from the new route
+    # has the same value and PID (replica wasn't restarted).
+    def check_switched():
+        try:
+            print(call("old"))
+            return False
+        except Exception:
+            print("failed")
+            pass
+
+        try:
+            val2, pid2 = call("new")
+        except Exception:
+            return False
+
+        assert val2 == "1"
+        assert pid2 == pid1
+        return True
+
+    d.options(route_prefix="/new").deploy()
+    wait_for_condition(check_switched)
 
 
 if __name__ == "__main__":
