@@ -22,6 +22,7 @@ def request_with_retries(endpoint, timeout=30):
             time.sleep(0.1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_controller_failure(serve_instance):
     def function(_):
         return "hello1"
@@ -107,9 +108,14 @@ def test_http_proxy_failure(serve_instance):
     serve.create_backend("proxy_failure:v2", function)
     serve.set_traffic("proxy_failure", {"proxy_failure:v2": 1.0})
 
-    for _ in range(10):
-        response = request_with_retries("/proxy_failure", timeout=30)
-        assert response.text == "hello2"
+    def check_new():
+        for _ in range(10):
+            response = request_with_retries("/proxy_failure", timeout=30)
+            if response.text != "hello2":
+                return False
+        return True
+
+    wait_for_condition(check_new)
 
 
 def _get_worker_handles(backend):

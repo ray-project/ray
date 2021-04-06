@@ -12,7 +12,7 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private.kubernetes.node_provider import\
+from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
