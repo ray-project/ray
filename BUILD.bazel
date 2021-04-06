@@ -476,7 +476,7 @@ cc_binary(
     ],
 )
 
-# worker server and client.
+# Ray native pubsub module.
 cc_library(
     name = "pubsub_lib",
     srcs = glob([
