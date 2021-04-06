@@ -157,7 +157,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                     lambda spec: 10 + int(90 * random.random())),
                 "height": tune.sample_from(
                     lambda spec: int(100 * random.random())),
-        })
+            })
 
         # check if it's loaded correctly
         last_checkpoint = new_ea.get_last_checkpoint()
@@ -177,7 +177,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
                     lambda spec: 10 + int(90 * random.random())),
                 "height": tune.sample_from(
                     lambda spec: int(100 * random.random())),
-        })
+            })
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
