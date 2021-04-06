@@ -127,8 +127,8 @@ static Sum NumSpilledTasks("internal_num_spilled_tasks",
                            "tasks");
 
 static Gauge NumInfeasibleTasks(
-                                "internal_num_infeasible_tasks",
-                                "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+    "internal_num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
 
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
                                  "Bandwidth of object spilling.", "MB");

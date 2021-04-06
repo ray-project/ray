@@ -896,7 +896,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
       StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                          task_spec.JobId());
     }
-}
+  }
 }
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
