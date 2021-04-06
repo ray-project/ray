@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # How long to wait for a node to start, in seconds
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+    os.path.dirname(os.path.abspath(__file__)), "_kubernetes/kubectl-rsync.sh")
 MAX_HOME_RETRIES = 3
 HOME_RETRY_DELAY_S = 5
 
