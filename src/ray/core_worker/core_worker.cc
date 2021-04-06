@@ -210,7 +210,8 @@ void CoreWorkerProcess::InitializeSystemConfig() {
     std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
                                              &io_service](int64_t num_attempts) {
       raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
-          const Status &status, const rpc::GetSystemConfigReply &reply) {
+                                        const Status &status,
+                                        const rpc::GetSystemConfigReply &reply) {
         RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
                        << num_attempts;
         if (!status.ok()) {
@@ -352,6 +353,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
+  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -581,11 +584,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_));
-  auto report_locality_data_callback = [this](
-      const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
-      uint64_t object_size) {
-    reference_counter_->ReportLocalityData(object_id, locations, object_size);
-  };
+  auto report_locality_data_callback =
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
+             uint64_t object_size) {
+        reference_counter_->ReportLocalityData(object_id, locations, object_size);
+      };
   future_resolver_.reset(new FutureResolver(memory_store_,
                                             std::move(report_locality_data_callback),
                                             core_worker_client_pool_, rpc_address_));
@@ -1270,8 +1273,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                               plasma_object_ids, ready);
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids, std::min(static_cast<int>(plasma_object_ids.size()),
-                                      num_objects - static_cast<int>(ready.size())),
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
           timeout_ms, worker_context_, &ready));
     }
   }
@@ -2204,7 +2208,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [ this, request, reply, callback = std::move(send_reply_callback) ] {
+        [this, request, reply, callback = std::move(send_reply_callback)] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
@@ -2410,9 +2414,9 @@ void CoreWorker::HandleGetObjectLocationsOwner(
   }
   auto object_id = ObjectID::FromBinary(request.object_id());
   const auto &callback = [object_id, reply, send_reply_callback](
-      const absl::flat_hash_set<NodeID> &locations, int64_t object_size,
-      const std::string &spilled_url, const NodeID &spilled_node_id,
-      int64_t current_version) {
+                             const absl::flat_hash_set<NodeID> &locations,
+                             int64_t object_size, const std::string &spilled_url,
+                             const NodeID &spilled_node_id, int64_t current_version) {
     RAY_LOG(DEBUG) << "Replying to HandleGetObjectLocationsOwner for " << object_id
                    << " with location update version " << current_version << ", "
                    << locations.size() << " locations, spilled url: " << spilled_url
