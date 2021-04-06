@@ -169,8 +169,8 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
   if (it == subscribers_.end()) {
     it = subscribers_
              .emplace(subscriber_id,
-                      std::make_shared<pub_internal::Subscriber>(get_time_ms_, subscriber_timeout_ms_,
-                                                   publish_batch_size_))
+                      std::make_shared<pub_internal::Subscriber>(
+                          get_time_ms_, subscriber_timeout_ms_, publish_batch_size_))
              .first;
   }
   auto &subscriber = it->second;
@@ -187,9 +187,9 @@ void Publisher::RegisterSubscription(const SubscriberID &subscriber_id,
 
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_id) == 0) {
-    subscribers_.emplace(
-        subscriber_id, std::make_shared<pub_internal::Subscriber>(get_time_ms_, subscriber_timeout_ms_,
-                                                    publish_batch_size_));
+    subscribers_.emplace(subscriber_id,
+                         std::make_shared<pub_internal::Subscriber>(
+                             get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
   subscription_index_.AddEntry(object_id, subscriber_id);
 }
