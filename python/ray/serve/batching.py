@@ -183,6 +183,7 @@ def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
     Example:
+
     >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5)
         async def handle_batch(batch: List[str]):
             return [s.lower() for s in batch]
