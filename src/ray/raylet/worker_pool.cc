@@ -77,7 +77,9 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-  // A no-op so the metric is 0 but exists.
+  // We need to record so that the metric exists. This way, we report that 0
+  // processes have started before a task runs on the node (as opposed to the
+  // metric not existing at all).
   stats::NumWorkersStarted.Record(0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
