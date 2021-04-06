@@ -84,7 +84,8 @@ class will allow you to load a model using its MLflow `Model URI`:
           self.model = mlflow.pyfunc.load_model(model_uri=model_uri)
 
       async def __call__(self, request):
-          df = await request.body() # pandas DataFrame
+          csv_text = await request.body() # The body contains just raw csv text.
+          df = pd.read_csv(csv_text)
           return self.model.predict(df)
 
 A Serve backend can then be created to serve the model as follows:
