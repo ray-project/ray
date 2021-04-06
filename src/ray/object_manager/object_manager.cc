@@ -206,9 +206,11 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   pull_manager_->ResetRetryTimer(object_id);
 }
 
-uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs) {
+uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                             bool is_worker_request) {
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto request_id = pull_manager_->Pull(object_refs, &objects_to_locate);
+  auto request_id =
+      pull_manager_->Pull(object_refs, &objects_to_locate, is_worker_request);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,

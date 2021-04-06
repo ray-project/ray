@@ -34,7 +34,10 @@ class PullManagerTestWithCapacity {
             [this]() { num_object_store_full_calls_++; }) {}
 
   void AssertNoLeaks() {
-    ASSERT_TRUE(pull_manager_.pull_request_bundles_.empty());
+    ASSERT_TRUE(pull_manager_.worker_request_bundles_.empty());
+    ASSERT_TRUE(pull_manager_.task_argument_bundles_.empty());
+    ASSERT_EQ(pull_manager_.highest_worker_req_id_being_pulled_, 0);
+    ASSERT_EQ(pull_manager_.highest_task_req_id_being_pulled_, 0);
     ASSERT_TRUE(pull_manager_.object_pull_requests_.empty());
     absl::MutexLock lock(&pull_manager_.active_objects_mu_);
     ASSERT_TRUE(pull_manager_.active_object_pull_requests_.empty());
@@ -95,7 +98,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   auto oid = ObjectRefsToIds(refs)[0];
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -132,7 +135,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObjectRemote) {
   rpc::Address addr1;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -187,7 +190,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObjectLocal) {
   rpc::Address addr1;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -236,7 +239,7 @@ TEST_F(PullManagerTest, TestLoadBalancingRestorationRequest) {
   rpc::Address addr1;
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  pull_manager_.Pull(refs, &objects_to_locate);
+  pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
@@ -262,7 +265,7 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   rpc::Address addr1;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -292,7 +295,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   rpc::Address addr1;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
 
   std::unordered_set<NodeID> client_ids;
@@ -341,7 +344,7 @@ TEST_F(PullManagerTest, TestBasic) {
   auto oids = ObjectRefsToIds(refs);
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
   std::unordered_set<NodeID> client_ids;
@@ -393,11 +396,11 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   auto oids = ObjectRefsToIds(refs);
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id1 = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id1 = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
   objects_to_locate.clear();
-  auto req_id2 = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id2 = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_TRUE(objects_to_locate.empty());
 
   std::unordered_set<NodeID> client_ids;
@@ -458,7 +461,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   size_t object_size = 2;
   AssertNumActiveRequestsEquals(0);
   std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+  auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
   std::unordered_set<NodeID> client_ids;
@@ -532,7 +535,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
     auto refs = CreateObjectRefs(num_oids_per_request);
     auto oids = ObjectRefsToIds(refs);
     std::vector<rpc::ObjectReference> objects_to_locate;
-    auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
+    auto req_id = pull_manager_.Pull(refs, &objects_to_locate, false);
     ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
     bundles.push_back(oids);
@@ -597,7 +600,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
     std::vector<int64_t> req_ids;
     for (auto &ref : refs) {
       std::vector<rpc::ObjectReference> objects_to_locate;
-      auto req_id = pull_manager_.Pull({ref}, &objects_to_locate);
+      auto req_id = pull_manager_.Pull({ref}, &objects_to_locate, false);
       req_ids.push_back(req_id);
     }
     for (size_t i = 0; i < object_sizes.size(); i++) {
