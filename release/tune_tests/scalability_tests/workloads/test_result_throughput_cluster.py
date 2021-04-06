@@ -1,7 +1,7 @@
 """Result throughput on a cluster
 
 In this run, we will start 1000 trials concurrently that report often
-(10 results per second). We thus measure the amount of overhead incurred when
+(1 result/2 seconds). We thus measure the amount of overhead incurred when
 dealing with a large number of results from distributed trials.
 
 Cluster: cluster_16x64.yaml
@@ -27,7 +27,7 @@ def main():
     ray.init(address="auto")
 
     num_samples = 1000
-    results_per_second = 10
+    results_per_second = 0.5
     trial_length_s = 100
 
     max_runtime = 120
