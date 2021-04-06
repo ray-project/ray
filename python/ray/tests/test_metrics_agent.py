@@ -132,7 +132,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
         # Make sure metrics are recorded.
         for metric in _METRICS:
-            assert metric in metric_names, f"metric {metric} not in {metric_names}"
+            assert metric in metric_names, \
+                f"metric {metric} not in {metric_names}"
 
         # Make sure the numeric values are correct
         test_counter_sample = [
