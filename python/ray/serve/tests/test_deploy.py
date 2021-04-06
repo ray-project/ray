@@ -71,8 +71,8 @@ def test_empty_decorator(serve_instance):
         def ping(self, *args):
             return "pong"
 
-    func._name = "func"
-    Class._name = "Class"
+    assert func._name == "func"
+    assert Class._name == "Class"
     func.deploy()
     Class.deploy()
 
