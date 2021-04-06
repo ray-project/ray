@@ -8,7 +8,7 @@ import starlette.routing
 
 import ray
 from ray import serve
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve.common import EndpointTag
 from ray.serve.constants import WILDCARD_PATH_SUFFIX
 from ray.serve.long_poll import LongPollNamespace
@@ -17,6 +17,8 @@ from ray.serve.utils import logger
 from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
+
+MAX_ACTOR_FAILURE_RETRIES = 10
 
 
 def _strip_wildcard_suffix(path):
@@ -55,16 +57,29 @@ class ServeStarletteEndpoint:
         # changed without restarting the replicas.
         scope["path"] = scope["path"].replace(self.path_prefix, "", 1)
         scope["root_path"] = self.path_prefix
-
-        object_ref = await self.handle.options(
+        starlette_request = build_starlette_request(scope, http_body_bytes)
+        handle = self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
                                     DEFAULT.VALUE),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
             http_method=scope["method"].upper(),
-            http_headers=headers).remote(
-                build_starlette_request(scope, http_body_bytes))
+            http_headers=headers)
 
-        result = await object_ref
+        retries = 0
+        backoff_time_s = 0.05
+        while retries < MAX_ACTOR_FAILURE_RETRIES:
+            object_ref = await handle.remote(starlette_request)
+            try:
+                result = await object_ref
+                break
+            except RayActorError:
+                logger.warning(
+                    "Request failed due to actor failure. There are "
+                    f"{MAX_ACTOR_FAILURE_RETRIES - retries} retries "
+                    "remaining.")
+                await asyncio.sleep(backoff_time_s)
+                backoff_time_s *= 2
+                retries += 1
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)

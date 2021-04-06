@@ -111,6 +111,10 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
 
+        async def run_forever(self):
+            while True:
+                await asyncio.sleep(10000)
+
     if isinstance(backend_def, str):
         RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
             backend_def)
