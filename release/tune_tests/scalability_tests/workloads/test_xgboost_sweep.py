@@ -56,7 +56,7 @@ def main():
     num_samples = 32
     num_actors_per_sample = 32
 
-    max_runtime = 2600
+    max_runtime = 3500
 
     config = {
         "tree_method": "approx",
