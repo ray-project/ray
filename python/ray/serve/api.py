@@ -1,4 +1,4 @@
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 import asyncio
 import atexit
 import inspect
@@ -1105,23 +1105,6 @@ def ingress(app: Union["FastAPI", "APIRouter"], ):
     return decorator
 
 
-class ServeDeploymentMeta(ABCMeta):
-    def __eq__(self, other):
-        return all([
-            self.name == other.name,
-            self.version == other.version,
-            self.config == other.config,
-            self.init_args == other.init_args,
-            self.route_prefix == other.route_prefix,
-            self.ray_actor_options == self.ray_actor_options,
-        ])
-
-    def __str__(self):
-        return (f"ServeDeployment(name={self.name},"
-                f"version={self.version},"
-                f"route_prefix={self.route_prefix})")
-
-
 class ServeDeployment(ABC):
     @classmethod
     @abstractmethod
@@ -1193,7 +1176,7 @@ def make_deployment_cls(
     if _init_args is None:
         _init_args = ()
 
-    class Deployment(ServeDeployment, metaclass=ServeDeploymentMeta):
+    class Deployment(ServeDeployment):
         backend_def = _backend_def
         name = _name
         version = _version
@@ -1289,6 +1272,26 @@ def make_deployment_cls(
                 _route_prefix=route_prefix,
                 _ray_actor_options=ray_actor_options,
             )
+
+    def __eq__(self, other):
+        return all([
+            self.name == other.name,
+            self.version == other.version,
+            self.config == other.config,
+            self.init_args == other.init_args,
+            self.route_prefix == other.route_prefix,
+            self.ray_actor_options == self.ray_actor_options,
+        ])
+
+    def __str__(self):
+        return (f"ServeDeployment(name={self.name},"
+                f"version={self.version},"
+                f"route_prefix={self.route_prefix})")
+
+    # NOTE(edoakes): we should be using a metaclass for this, but unfortunately
+    # that causes errors in cloudpickle.
+    Deployment.__eq__ = __eq__
+    Deployment.__str__ = __str__
 
     return Deployment
 
