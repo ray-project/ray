@@ -35,9 +35,8 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     timers_.push_back(timer);
     if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-      DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), *timer,
-                          io_service_.get_guarded_handler_stats(name),
-                          io_service_.get_guarded_global_stats());
+      DoRunFnPeriodicallyInstrumented(fn, boost::posix_time::milliseconds(period_ms),
+                                      *timer, name);
     } else {
       DoRunFnPeriodically(fn, boost::posix_time::milliseconds(period_ms), *timer);
     }
@@ -60,19 +59,19 @@ void PeriodicalRunner::DoRunFnPeriodically(std::function<void()> fn,
   });
 }
 
-void PeriodicalRunner::DoRunFnPeriodically(
+void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     std::function<void()> fn, boost::posix_time::milliseconds period,
-    boost::asio::deadline_timer &timer,
-    std::shared_ptr<GuardedHandlerStats> handler_stats,
-    std::shared_ptr<GuardedGlobalStats> global_stats,
-    absl::optional<int64_t> enqueue_time) {
+    boost::asio::deadline_timer &timer, const std::string name) {
   fn();
   timer.expires_from_now(period);
-  enqueue_time = io_service_.RecordStart(handler_stats);
-  timer.async_wait([this, fn, period, &timer, handler_stats, global_stats,
-                    enqueue_time](const boost::system::error_code &error) {
+  // NOTE: We add the timer period to the enqueue time in order only measure the time in
+  // which the handler was elgible to execute on the event loop but was queued by the
+  // event loop.
+  auto stats_handle = io_service_.RecordStart(name, period.total_nanoseconds());
+  timer.async_wait([this, fn, period, &timer, stats_handle = std::move(stats_handle),
+                    name](const boost::system::error_code &error) {
     io_service_.RecordExecution(
-        [this, fn, error, period, &timer, handler_stats, global_stats, enqueue_time]() {
+        [this, fn, error, period, &timer, name]() {
           if (error == boost::asio::error::operation_aborted) {
             // `operation_aborted` is set when `timer` is canceled or destroyed.
             // The Monitor lifetime may be short than the object who use it. (e.g.
@@ -80,14 +79,9 @@ void PeriodicalRunner::DoRunFnPeriodically(
             return;
           }
           RAY_CHECK(!error) << error.message();
-          RAY_CHECK(enqueue_time.has_value());
-          // NOTE: We add the timer period to the enqueue time in order only measure the
-          // time in which the handler was elgible to execute on the event loop but was
-          // queued by the event loop.
-          DoRunFnPeriodically(fn, period, timer, handler_stats, global_stats,
-                              enqueue_time.value() + period.total_nanoseconds());
+          DoRunFnPeriodicallyInstrumented(fn, period, timer, name);
         },
-        handler_stats, global_stats, enqueue_time);
+        std::move(stats_handle));
   });
 }
 

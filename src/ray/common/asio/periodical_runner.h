@@ -39,12 +39,10 @@ class PeriodicalRunner {
                            boost::posix_time::milliseconds period,
                            boost::asio::deadline_timer &timer);
 
-  void DoRunFnPeriodically(std::function<void()> fn,
-                           boost::posix_time::milliseconds period,
-                           boost::asio::deadline_timer &timer,
-                           std::shared_ptr<GuardedHandlerStats> handler_stats,
-                           std::shared_ptr<GuardedGlobalStats> global_stats,
-                           absl::optional<int64_t> enqueue_time = absl::nullopt);
+  void DoRunFnPeriodicallyInstrumented(std::function<void()> fn,
+                                       boost::posix_time::milliseconds period,
+                                       boost::asio::deadline_timer &timer,
+                                       const std::string name);
 
   instrumented_io_context &io_service_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_;

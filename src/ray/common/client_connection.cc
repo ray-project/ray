@@ -110,19 +110,15 @@ void ServerConnection::WriteBufferAsync(
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto enqueue_time_and_stats =
+    auto stats_handle =
         io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
-    auto global_stats = io_context.get_guarded_global_stats();
     boost::asio::async_write(
         socket_, buffer,
-        [handler, enqueue_time = enqueue_time_and_stats.first,
-         stats = enqueue_time_and_stats.second, global_stats,
-         &io_context](const boost::system::error_code &ec, size_t bytes_transferred) {
+        [handler, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
           io_context.RecordExecution(
-              [handler, ec, enqueue_time, stats, global_stats]() {
-                handler(boost_to_ray_status(ec));
-              },
-              stats, global_stats, enqueue_time);
+              [handler, ec]() { handler(boost_to_ray_status(ec)); },
+              std::move(stats_handle));
         });
   } else {
     boost::asio::async_write(
@@ -162,19 +158,15 @@ void ServerConnection::ReadBufferAsync(
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto enqueue_time_and_stats =
+    auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
-    auto global_stats = io_context.get_guarded_global_stats();
     boost::asio::async_read(
         socket_, buffer,
-        [handler, enqueue_time = enqueue_time_and_stats.first,
-         stats = enqueue_time_and_stats.second, global_stats,
-         &io_context](const boost::system::error_code &ec, size_t bytes_transferred) {
+        [handler, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
           io_context.RecordExecution(
-              [handler, ec, enqueue_time, stats, global_stats]() {
-                handler(boost_to_ray_status(ec));
-              },
-              stats, global_stats, enqueue_time);
+              [handler, ec]() { handler(boost_to_ray_status(ec)); },
+              std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(
@@ -298,17 +290,15 @@ void ServerConnection::DoAsyncWrites() {
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto enqueue_time_and_stats =
+    auto stats_handle =
         io_context.RecordStart("ClientConnection.async_write.DoAsyncWrites");
-    auto global_stats = io_context.get_guarded_global_stats();
     boost::asio::async_write(
         socket_, message_buffers,
         [this, this_ptr, num_messages, call_handlers,
-         enqueue_time = enqueue_time_and_stats.first,
-         stats = enqueue_time_and_stats.second, global_stats = std::move(global_stats),
+         stats_handle = std::move(stats_handle),
          &io_context](const boost::system::error_code &error, size_t bytes_transferred) {
           io_context.RecordExecution(
-              [this, this_ptr, num_messages, call_handlers, error, bytes_transferred]() {
+              [this, this_ptr, num_messages, call_handlers, error]() {
                 ray::Status status = boost_to_ray_status(error);
                 if (error.value() == boost::system::errc::errc_t::broken_pipe) {
                   RAY_LOG(ERROR) << "Broken Pipe happened during calling "
@@ -324,7 +314,7 @@ void ServerConnection::DoAsyncWrites() {
                 }
                 call_handlers(status, num_messages);
               },
-              stats, global_stats, enqueue_time);
+              std::move(stats_handle));
         });
   } else {
     boost::asio::async_write(
@@ -392,16 +382,14 @@ void ClientConnection::ProcessMessages() {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    auto enqueue_time_and_stats =
+    auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
-    auto global_stats = io_context.get_guarded_global_stats();
     boost::asio::async_read(
         ServerConnection::socket_, header,
-        [this, this_ptr, enqueue_time = enqueue_time_and_stats.first,
-         stats = enqueue_time_and_stats.second, global_stats,
-         &io_context](const boost::system::error_code &ec, size_t bytes_transferred) {
+        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
           io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessageHeader(ec); },
-                                     stats, global_stats, enqueue_time);
+                                     std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_, header,
@@ -435,16 +423,14 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    auto enqueue_time_and_stats =
+    auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
-    auto global_stats = io_context.get_guarded_global_stats();
     boost::asio::async_read(
         ServerConnection::socket_, boost::asio::buffer(read_message_),
-        [this, this_ptr, enqueue_time = enqueue_time_and_stats.first,
-         stats = enqueue_time_and_stats.second, global_stats,
-         &io_context](const boost::system::error_code &ec, size_t bytes_transferred) {
+        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
           io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
-                                     stats, global_stats, enqueue_time);
+                                     std::move(stats_handle));
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_, boost::asio::buffer(read_message_),
