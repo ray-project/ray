@@ -43,6 +43,10 @@ class MockReplicaActorWrapper:
         self.force_stopped_counter = 0
         # Will be cleaned up when `cleanup()` is called.
         self.cleaned_up = False
+        # Will be set when `check_health()` is called.
+        self.health_check_called = False
+        # Returned by the health check.
+        self.healthy = True
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -53,6 +57,9 @@ class MockReplicaActorWrapper:
 
     def set_done_stopping(self):
         self.done_stopping = True
+
+    def set_unhealthy(self):
+        self.healthy = False
 
     def start(self, backend_info: BackendInfo):
         self.started = True
@@ -78,6 +85,10 @@ class MockReplicaActorWrapper:
 
     def cleanup(self):
         self.cleaned_up = True
+
+    def check_health(self):
+        self.health_check_called = True
+        return self.healthy
 
 
 def backend_info(version: Optional[str] = None,
@@ -1329,6 +1340,64 @@ def test_new_version_and_scale_up(mock_backend_state):
 
     backend_state.update()
     assert goal_manager.check_complete(goal_2)
+
+
+def test_health_check(mock_backend_state):
+    backend_state, timer, goal_manager = mock_backend_state
+
+    assert len(backend_state._replicas) == 0
+
+    b_info_1 = backend_info(num_replicas=2, version="1")
+    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    assert not goal_manager.check_complete(goal_1)
+
+    for replica in backend_state._replicas[TEST_TAG].get():
+        replica._actor.set_ready()
+        # Health check shouldn't be called until it's ready.
+        assert not replica._actor.health_check_called
+
+    # Check that the new replicas have started.
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+
+    backend_state.update()
+    assert goal_manager.check_complete(goal_1)
+
+    backend_state.update()
+    for replica in backend_state._replicas[TEST_TAG].get():
+        # Health check shouldn't be called until it's ready.
+        assert replica._actor.health_check_called
+
+    # Mark one replica unhealthy. It should be stopped.
+    backend_state._replicas[TEST_TAG].get()[0]._actor.set_unhealthy()
+    backend_state.update()
+    check_counts(
+        backend_state,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)])
+
+    replica = backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STOPPING])[0]
+    replica._actor.set_done_stopping()
+
+    backend_state.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+
+    backend_state.update()
+    check_counts(
+        backend_state,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 1)])
+
+    replica = backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STARTING])[0]
+    replica._actor.set_ready()
+
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
 
 
 if __name__ == "__main__":
