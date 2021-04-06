@@ -335,11 +335,6 @@ class Client:
                 strings to values for the following supported options:
                 - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will
-                be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas
-                will wait for a full batch of requests before
-                processing a partial batch.
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
@@ -394,11 +389,6 @@ class Client:
                 mapping strings to values for the following supported options:
                 - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will
-                be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas
-                will wait for a full batch of requests before processing a
-                partial batch.
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
@@ -433,9 +423,7 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(
-            accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+        metadata = BackendMetadata()
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -447,7 +435,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         self._wait_for_goal(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
@@ -484,11 +471,7 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(
-            accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking,
-            is_asgi_app=replica_config.is_asgi_app,
-        )
+        metadata = BackendMetadata(is_asgi_app=replica_config.is_asgi_app)
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -500,7 +483,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         goal_ref = self._controller.deploy.remote(
             name, backend_config, replica_config, version, route_prefix)
 
@@ -870,11 +852,6 @@ def update_backend_config(
             strings to values for the following supported options:
             - "num_replicas": number of processes to start up that
             will handle requests to this backend.
-            - "max_batch_size": the maximum number of requests that will
-            be processed in one batch by this backend.
-            - "batch_wait_timeout": time in seconds that backend replicas
-            will wait for a full batch of requests before
-            processing a partial batch.
             - "max_concurrent_queries": the maximum number of queries
             that will be sent to a replica of this backend
             without receiving a response.
@@ -920,11 +897,6 @@ def create_backend(
             mapping strings to values for the following supported options:
             - "num_replicas": number of processes to start up that
             will handle requests to this backend.
-            - "max_batch_size": the maximum number of requests that will
-            be processed in one batch by this backend.
-            - "batch_wait_timeout": time in seconds that backend replicas
-            will wait for a full batch of requests before processing a
-            partial batch.
             - "max_concurrent_queries": the maximum number of queries that
             will be sent to a replica of this backend without receiving a
             response.
@@ -1043,32 +1015,6 @@ def get_replica_context() -> ReplicaContext:
                                 "may only be called from within a "
                                 "Ray Serve backend.")
     return _INTERNAL_REPLICA_CONTEXT
-
-
-def accept_batch(f: Callable) -> Callable:
-    """Annotation to mark that a serving function accepts batches of requests.
-
-    In order to accept batches of requests as input, the implementation must
-    handle a list of requests being passed in rather than just a single
-    request.
-
-    This must be set on any backend implementation that will have
-    max_batch_size set to greater than 1.
-
-    Example:
-
-    >>> @serve.accept_batch
-        def serving_func(requests):
-            assert isinstance(requests, list)
-            ...
-
-    >>> class ServingActor:
-            @serve.accept_batch
-            def __call__(self, requests):
-                assert isinstance(requests, list)
-    """
-    f._serve_accept_batch = True
-    return f
 
 
 def ingress(app: Union["FastAPI", "APIRouter"], ):
