@@ -90,7 +90,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
             # Check that autoscaling respects minWorkers by waiting for
             # 32 pods in the namespace.
-            print(">>>Waiting for pods to join clusters.")
+            print(">>>Waiting for pods to join cluster.")
             wait_for_pods(32)
 
             # Check for graceful scale-down.
@@ -113,9 +113,11 @@ class KubernetesScaleTest(unittest.TestCase):
             self.proc = subprocess.Popen(command, shell=True)
             try:
                 submit_scaling_job(client_port="10001", num_tasks=15)
-                self.proc.terminate()
+                self.proc.kill()
+                self.proc.communicate()
             except Exception as e:
-                self.proc.terminate()
+                self.proc.kill()
+                self.proc.communicate()
                 raise (e)
 
             print(">>>Sleeping for a minute while workers time-out.")
@@ -125,7 +127,8 @@ class KubernetesScaleTest(unittest.TestCase):
 
     def __del__(self):
         try:
-            self.proc.terminate()
+            self.proc.kill()
+            self.proc.communicate()
         except Exception:
             pass
 
