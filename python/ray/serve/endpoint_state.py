@@ -72,7 +72,7 @@ class EndpointState:
         if route is None:
             route = endpoint
 
-        if route in self._routes and self._routes[route][1] != endpoint:
+        if route in self._routes and self._routes[route][0] != endpoint:
             raise ValueError(f"route_prefix {route} is already registered.")
 
         if python_methods is None:

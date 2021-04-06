@@ -1108,13 +1108,18 @@ def ingress(app: Union["FastAPI", "APIRouter"], ):
 class ServeDeploymentMeta(ABCMeta):
     def __eq__(self, other):
         return all([
-            self._name == other._name,
-            self._version == other._version,
-            self._config == other._config,
-            self._init_args == other._init_args,
-            self._route_prefix == other._route_prefix,
-            self._ray_actor_options == self._ray_actor_options,
+            self.name == other.name,
+            self.version == other.version,
+            self.config == other.config,
+            self.init_args == other.init_args,
+            self.route_prefix == other.route_prefix,
+            self.ray_actor_options == self.ray_actor_options,
         ])
+
+    def __str__(self):
+        return (f"ServeDeployment(name={self.name},"
+                f"version={self.version},"
+                f"route_prefix={self.route_prefix})")
 
 
 class ServeDeployment(ABC):
@@ -1155,46 +1160,47 @@ class ServeDeployment(ABC):
 
 
 def make_deployment_cls(
-        backend_def: Callable,
-        name: str,
-        config: BackendConfig,
-        version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        route_prefix: Optional[str] = None,
-        ray_actor_options: Optional[Dict] = None,
+        _backend_def: Callable,
+        _name: str,
+        _config: BackendConfig,
+        _version: Optional[str] = None,
+        _init_args: Optional[Tuple[Any]] = None,
+        _route_prefix: Optional[str] = None,
+        _ray_actor_options: Optional[Dict] = None,
 ) -> ServeDeployment:
-    if not callable(backend_def):
+    if not callable(_backend_def):
         raise TypeError(
             "@serve.deployment must be called on a class or function.")
-    if not isinstance(name, str):
+    if not isinstance(_name, str):
         raise TypeError("name must be a string.")
-    if not (version is None or isinstance(version, str)):
+    if not (_version is None or isinstance(_version, str)):
         raise TypeError("version must be a string if provided.")
-    if not (init_args is None or isinstance(init_args, tuple)):
+    if not (_init_args is None or isinstance(_init_args, tuple)):
         raise TypeError("init_args must be a tuple if provided.")
-    if route_prefix is None:
-        route_prefix = f"/{name}"
+    if _route_prefix is None:
+        _route_prefix = f"/{_name}"
     else:
-        if not isinstance(route_prefix, str):
+        if not isinstance(_route_prefix, str):
             raise TypeError("route_prefix must be a string if provided.")
-        if not route_prefix.startswith("/"):
+        if not _route_prefix.startswith("/"):
             raise ValueError("route_prefix must start with '/'")
-        if "{" in route_prefix or "}" in route_prefix:
+        if "{" in _route_prefix or "}" in _route_prefix:
             raise ValueError("route_prefix may not contain wildcards")
-    if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
+    if not (_ray_actor_options is None
+            or isinstance(_ray_actor_options, dict)):
         raise TypeError("ray_actor_options must be a dict if provided.")
 
-    if init_args is None:
-        init_args = ()
+    if _init_args is None:
+        _init_args = ()
 
     class Deployment(ServeDeployment, metaclass=ServeDeploymentMeta):
-        _backend_def = backend_def
-        _name = name
-        _version = version
-        _config = config
-        _init_args = init_args
-        _route_prefix = route_prefix
-        _ray_actor_options = ray_actor_options
+        backend_def = _backend_def
+        name = _name
+        version = _version
+        config = _config
+        init_args = _init_args
+        route_prefix = _route_prefix
+        ray_actor_options = _ray_actor_options
 
         def __init__(self, *args, **kwargs):
             raise RuntimeError("ServeDeployments cannot be constructed "
@@ -1208,31 +1214,31 @@ def make_deployment_cls(
                 *init_args (optional): args to pass to the class __init__
                     method. Not valid if this deployment wraps a function.
             """
-            if len(init_args) == 0 and cls._init_args is not None:
-                init_args = cls._init_args
+            if len(init_args) == 0 and cls.init_args is not None:
+                init_args = cls.init_args
 
             return _get_global_client().deploy(
-                cls._name,
-                cls._backend_def,
+                cls.name,
+                cls.backend_def,
                 *init_args,
-                ray_actor_options=cls._ray_actor_options,
-                config=cls._config,
-                version=cls._version,
-                route_prefix=cls._route_prefix,
+                ray_actor_options=cls.ray_actor_options,
+                config=cls.config,
+                version=cls.version,
+                route_prefix=cls.route_prefix,
                 _blocking=_blocking,
                 _internal=True)
 
         @classmethod
         def delete(cls):
             """Delete this deployment."""
-            return _get_global_client().delete_deployment(cls._name)
+            return _get_global_client().delete_deployment(cls.name)
 
         @classmethod
         def get_handle(cls, sync: Optional[bool] = True
                        ) -> Union[RayServeHandle, RayServeSyncHandle]:
             """Get a ServeHandle to this deployment."""
             return _get_global_client().get_handle(
-                cls._name, missing_ok=True, sync=sync, _internal=True)
+                cls.name, missing_ok=True, sync=sync, _internal=True)
 
         @classmethod
         def options(
@@ -1248,7 +1254,7 @@ def make_deployment_cls(
                 max_concurrent_queries: Optional[int] = None,
         ) -> "Deployment":
             """Return a new deployment with the specified options set."""
-            new_config = config.copy()
+            new_config = cls.config.copy()
             if num_replicas is not None:
                 new_config.num_replicas = num_replicas
             if user_config is not None:
@@ -1257,31 +1263,31 @@ def make_deployment_cls(
                 new_config.max_concurrent_queries = max_concurrent_queries
 
             if backend_def is None:
-                backend_def = cls._backend_def
+                backend_def = cls.backend_def
 
             if name is None:
-                name = cls._name
+                name = cls.name
 
             if version is None:
-                version = cls._version
+                version = cls.version
 
             if init_args is None:
-                init_args = cls._init_args
+                init_args = cls.init_args
 
             if route_prefix is None:
-                route_prefix = cls._route_prefix
+                route_prefix = cls.route_prefix
 
             if ray_actor_options is None:
-                ray_actor_options = cls._ray_actor_options
+                ray_actor_options = cls.ray_actor_options
 
             return make_deployment_cls(
                 backend_def,
                 name,
                 new_config,
-                version=version,
-                init_args=init_args,
-                route_prefix=route_prefix,
-                ray_actor_options=ray_actor_options,
+                _version=version,
+                _init_args=init_args,
+                _route_prefix=route_prefix,
+                _ray_actor_options=ray_actor_options,
             )
 
     return Deployment
@@ -1349,10 +1355,10 @@ def deployment(
             backend_def,
             name,
             config,
-            version=version,
-            init_args=init_args,
-            route_prefix=route_prefix,
-            ray_actor_options=ray_actor_options)
+            _version=version,
+            _init_args=init_args,
+            _route_prefix=route_prefix,
+            _ray_actor_options=ray_actor_options)
 
     return decorator
 
@@ -1377,10 +1383,10 @@ def get_deployment(name: str) -> ServeDeployment:
         backend_info.replica_config.backend_def,
         name,
         backend_info.backend_config,
-        version=backend_info.version,
-        init_args=backend_info.replica_config.init_args,
-        route_prefix=route_prefix,
-        ray_actor_options=backend_info.replica_config.ray_actor_options)
+        _version=backend_info.version,
+        _init_args=backend_info.replica_config.init_args,
+        _route_prefix=route_prefix,
+        _ray_actor_options=backend_info.replica_config.ray_actor_options)
 
 
 def list_deployments() -> Dict[str, ServeDeployment]:
@@ -1390,16 +1396,15 @@ def list_deployments() -> Dict[str, ServeDeployment]:
     """
     infos = _get_global_client().list_deployments(_internal=True)
 
-    # TODO(edoakes): use the route here once it's a part of deployments.
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
         deployments[name] = make_deployment_cls(
             backend_info.replica_config.backend_def,
             name,
             backend_info.backend_config,
-            version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
-            route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options)
+            _version=backend_info.version,
+            _init_args=backend_info.replica_config.init_args,
+            _route_prefix=route_prefix,
+            _ray_actor_options=backend_info.replica_config.ray_actor_options)
 
     return deployments
