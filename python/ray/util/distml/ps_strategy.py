@@ -162,7 +162,6 @@ class ParameterServerStrategy(BaseTrainer):
         for worker_idx, worker in enumerate(self.worker_group.actors):
             for server in self.server_group.actors:
                 rets.append(server.update.remote(worker_idx))
-        
         return ray.get(rets)
 
 
@@ -186,7 +185,6 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         self.num_workers = num_workers
         self.group_name = group_name
         self.group_size = num_ps + num_workers
-        # self.name_list = [[] for i in range(num_ps)]
         self._init_grad_counts()
         # the last num_ps processes are servers.
         col.init_collective_group(num_ps + num_workers, rank,
@@ -209,7 +207,7 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         # params should in GPU when calling this function.
         for k, v in params.items():
             self.params[k] = v
-        print(list(self.params.keys()))
+        print(list(self.params.values()))
         self.training_operator.reset_optimizer_for_params(list(self.params.values()))
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
@@ -220,7 +218,6 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
     def _inc_gradients(self, gradients):
         # We store the gradient in buffer, and apply it once when all worker graidients are collected. 
         # gradients should be a stitched dict
-        print("server: collecting gradients")
         if not hasattr(self, "grad_buffer"):
             self.grad_buffer = self.get_grad_buffer()
 
@@ -234,10 +231,10 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         
     def send_parameters(self, dst_rank):
         """ Send this param shard to the destination worker """
-        groupStart()
+        # groupStart()
         for name, v in self.params.items():
             col.send(v, dst_rank, self.group_name)
-        groupEnd()
+        # groupEnd()
 
     def update(self, src_rank):
         """Receive gradients and update"""
@@ -249,11 +246,9 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
             recv_list.append(util.zeros(to_recv.shape, cpu=False))
 
         steps = 0
-        groupStart()
         for i in range(len(keys)):
             col.recv(recv_list[i], src_rank, self.group_name)
             steps += 1
-        groupEnd()
         print(f"server: recv complete, steps {steps}")
 
         for i in range(len(keys)):
@@ -268,6 +263,11 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         if sum(self.grad_counts) == self.num_workers:
             grad_buffer_list = list(self.grad_buffer.values())
             print("server: applying gradients")
+
+            # print(grad_buffer_list)
+            # list[cupy] => list[operator_tensor]
+            grad_buffer_list = self.training_operator.to_operator_tensor(grad_buffer_list)
+
             self.training_operator.apply_updates(grad_buffer_list)
             print("server: applying gradients success")
             self.grad_buffer = self.get_grad_buffer()
@@ -359,7 +359,7 @@ class Worker(object):
         loss_val, grads = self.training_operator.derive_updates_v2(batch)
         
         if named and isinstance(grads, list):
-            grads_dict = {"{idx}":g for idx, g in enumerate(grads)}
+            grads_dict = {f"{idx}":g for idx, g in enumerate(grads)}
 
         return loss_val, grads_dict
 
@@ -422,37 +422,26 @@ class Worker(object):
                 to_recv = weights[key]
                 recv_list[-1].append(util.ones(to_recv.shape, cpu=False))
 
-        # logging.warning(f"worker {self.rank} {recv_list[0][0][0][0]}, {recv_list[0][0].size()}, {recv_list[0][1]}, {recv_list[0][1].size()}, {recv_list[0][2]}, {recv_list[0][2].size()}")
-        groupStart()
         for i in range(self.num_ps):
             for j in range(len(self.name_list[i])):
-                # logging.warning(f"recv {i}{j} {self.name_list[i][j]}")
                 col.recv(recv_list[i][j], self.num_workers+i, self.group_name)
-        groupEnd()
 
         # parameter updates
         for i in range(self.num_ps):
             param_shard_keys = self.name_list[i]
             for j in range(len(param_shard_keys)):
                 params[param_shard_keys[j]] = recv_list[i][j]
-        print("worker, prepare keys for parameter")
+        # print("worker, prepare keys for parameter")
 
         loss, grad = self.compute_gradients(params)
         print(loss)
-        print("worker, compute_gradient complete")
         split_grad = self.split_gradients(grad, self.assignments)
-        print("worker, split complete")
-        
         steps = 0
-
-        groupStart()
         for i in range(self.num_ps):
             this_shard = self.index_shard(split_grad, i)
             for _, v in this_shard.items():
                 col.send(v, self.num_workers+i, self.group_name)
-                print(f"worker, send {steps}")
                 steps+=1
-        groupEnd()
         print("worker, send gradient")
         return loss
 

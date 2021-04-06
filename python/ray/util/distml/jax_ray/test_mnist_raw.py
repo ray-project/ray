@@ -10,7 +10,7 @@ import numpy.random as npr
 
 import jax
 from jax import jit, grad, random, dlpack
-from jax.tree_util import tree_flatten
+from jax.tree_util import tree_flatten, tree_unflatten
 from jax.experimental import optimizers
 import jax.numpy as jnp
 import datasets
@@ -104,6 +104,9 @@ class Worker:
             params = self.get_params(opt_state)
             gradient = grad(self.loss)(params, batch)
 
+            gradient_flat, tree  = tree_flatten(gradient)
+            gradient = tree_unflatten(tree, gradient_flat)
+
             return self.opt_update(i, gradient, opt_state)
 
         self.update = update # jax.jit(update)
@@ -160,7 +163,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "4"
     enable_jit = False
 
     train_images, train_labels, test_images, test_labels = datasets.mnist()

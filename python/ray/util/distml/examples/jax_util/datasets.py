@@ -24,6 +24,7 @@ import urllib.request
 from jax.api import F
 
 import numpy as np
+import numpy.random as npr
 import pickle
 
 
