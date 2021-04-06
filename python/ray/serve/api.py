@@ -721,10 +721,6 @@ def start(
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
-        try:
-            ray.get_actor(controller_name)
-        except ValueError:
-            pass
     else:
         controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
                                             get_random_letters())
