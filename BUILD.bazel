@@ -489,12 +489,12 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":worker_rpc",
         ":ray_common",
-        "@com_google_absl//absl/container:flat_hash_set",
+        ":worker_rpc",
+        "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "//src/ray/protobuf:common_cc_proto"
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization"
     ],
 )
 
@@ -568,10 +568,10 @@ cc_library(
         ":agent_manager_rpc",
         ":gcs",
         ":node_manager_fbs",
-        ":pubsub_lib",
         ":node_manager_rpc",
         ":object_manager",
         ":plasma_client",
+        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":service_based_gcs_client_lib",
