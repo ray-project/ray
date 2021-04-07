@@ -71,8 +71,8 @@ def test_empty_decorator(serve_instance):
         def ping(self, *args):
             return "pong"
 
-    assert func._name == "func"
-    assert Class._name == "Class"
+    assert func.name == "func"
+    assert Class.name == "Class"
     func.deploy()
     Class.deploy()
 
@@ -554,6 +554,9 @@ def test_input_validation():
     class Base:
         pass
 
+    with pytest.raises(RuntimeError):
+        Base()
+
     with pytest.raises(TypeError):
 
         @serve.deployment(name=name, version=1)
@@ -637,13 +640,22 @@ def test_input_validation():
 
 
 class TestGetDeployment:
-    def test_basic_get(self, serve_instance):
-        @serve.deployment(version="1")
+    def get_deployment(self, name, use_list_api):
+        if use_list_api:
+            return serve.list_deployments()[name]
+        else:
+            return serve.get_deployment(name)
+
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_basic_get(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
         with pytest.raises(KeyError):
-            serve.get_deployment("d")
+            self.get_deployment(name, use_list_api)
 
         d.deploy()
         val1, pid1 = ray.get(d.get_handle().remote())
@@ -651,28 +663,34 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment("d")
+        d2 = self.get_deployment(name, use_list_api)
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 == pid1
 
-    def test_get_after_delete(self, serve_instance):
-        @serve.deployment(version="1")
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_get_after_delete(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
         d.deploy()
         del d
 
-        d2 = serve.get_deployment("d")
+        d2 = self.get_deployment(name, use_list_api)
         d2.delete()
         del d2
 
         with pytest.raises(KeyError):
-            serve.get_deployment("d")
+            self.get_deployment(name, use_list_api)
 
-    def test_deploy_new_version(self, serve_instance):
-        @serve.deployment(version="1")
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_deploy_new_version(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
@@ -682,14 +700,17 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment("d")
+        d2 = self.get_deployment(name, use_list_api)
         d2.options(version="2").deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-    def test_deploy_empty_version(self, serve_instance):
-        @serve.deployment
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_deploy_empty_version(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name)
         def d(*args):
             return "1", os.getpid()
 
@@ -699,14 +720,17 @@ class TestGetDeployment:
 
         del d
 
-        d2 = serve.get_deployment("d")
+        d2 = self.get_deployment(name, use_list_api)
         d2.deploy()
         val2, pid2 = ray.get(d2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-    def test_init_args(self, serve_instance):
-        @serve.deployment
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_init_args(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name)
         class D:
             def __init__(self, val):
                 self._val = val
@@ -720,25 +744,28 @@ class TestGetDeployment:
 
         del D
 
-        D2 = serve.get_deployment("D")
+        D2 = self.get_deployment(name, use_list_api)
         D2.deploy()
         val2, pid2 = ray.get(D2.get_handle().remote())
         assert val2 == "1"
         assert pid2 != pid1
 
-        D2 = serve.get_deployment("D")
+        D2 = self.get_deployment(name, use_list_api)
         D2.deploy("2")
         val3, pid3 = ray.get(D2.get_handle().remote())
         assert val3 == "2"
         assert pid3 != pid2
 
-    def test_scale_replicas(self, serve_instance):
-        @serve.deployment
+    @pytest.mark.parametrize("use_list_api", [True, False])
+    def test_scale_replicas(self, serve_instance, use_list_api):
+        name = "test"
+
+        @serve.deployment(name=name)
         def d(*args):
             return os.getpid()
 
         def check_num_replicas(num):
-            handle = serve.get_deployment("d").get_handle()
+            handle = self.get_deployment(name, use_list_api).get_handle()
             assert len(set(ray.get(
                 [handle.remote() for _ in range(50)]))) == num
 
@@ -746,15 +773,27 @@ class TestGetDeployment:
         check_num_replicas(1)
         del d
 
-        d2 = serve.get_deployment("d")
+        d2 = self.get_deployment(name, use_list_api)
         d2.options(num_replicas=2).deploy()
         check_num_replicas(2)
+
+
+def test_list_deployments(serve_instance):
+    assert serve.list_deployments() == {}
+
+    @serve.deployment(name="hi", num_replicas=2)
+    def d1(*args):
+        pass
+
+    d1.deploy()
+
+    assert serve.list_deployments() == {"hi": d1}
 
 
 def test_deploy_change_route_prefix(serve_instance):
     name = "test"
 
-    @serve.deployment(name, version="1", route_prefix="/old")
+    @serve.deployment(name=name, version="1", route_prefix="/old")
     def d(*args):
         return f"1|{os.getpid()}"
 
