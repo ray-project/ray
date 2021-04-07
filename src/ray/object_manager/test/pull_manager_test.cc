@@ -56,7 +56,8 @@ class PullManagerTestWithCapacity {
   std::unordered_map<ObjectID, int> num_abort_calls_;
 };
 
-class PullManagerTest : public PullManagerTestWithCapacity, public ::testing::TestWithParam<bool> {
+class PullManagerTest : public PullManagerTestWithCapacity,
+                        public ::testing::TestWithParam<bool> {
  public:
   PullManagerTest() : PullManagerTestWithCapacity(1) {}
 
@@ -661,11 +662,13 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // First submit two task args requests that can be pulled at the same time.
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto refs = CreateObjectRefs(1);
-  auto task_req_id1 = pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/false);
+  auto task_req_id1 =
+      pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/false);
   task_oids.push_back(ObjectRefsToIds(refs)[0]);
 
   refs = CreateObjectRefs(1);
-  auto task_req_id2 = pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/false);
+  auto task_req_id2 =
+      pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/false);
   task_oids.push_back(ObjectRefsToIds(refs)[0]);
 
   std::unordered_set<NodeID> client_ids;
@@ -682,7 +685,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 
   // A worker request comes in.
   refs = CreateObjectRefs(1);
-  auto worker_req_id1 = pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/true);
+  auto worker_req_id1 =
+      pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/true);
   worker_oids.push_back(ObjectRefsToIds(refs)[0]);
   // Nothing has changed yet because the size information for the worker's
   // request is not available.
@@ -702,7 +706,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // Another worker request comes in. It takes priority over the task requests
   // once its size is available.
   refs = CreateObjectRefs(1);
-  auto worker_req_id2 = pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/true);
+  auto worker_req_id2 =
+      pull_manager_.Pull(refs, &objects_to_locate, /*is_worker_request=*/true);
   worker_oids.push_back(ObjectRefsToIds(refs)[0]);
   AssertNumActiveRequestsEquals(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(worker_oids[0]));
@@ -747,13 +752,11 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   AssertNoLeaks();
 }
 
-INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests,
-                         PullManagerTest,
-                         testing::Values(true, false));
+INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests, PullManagerTest,
+                        testing::Values(true, false));
 
-INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests,
-                         PullManagerWithAdmissionControlTest,
-                         testing::Values(true, false));
+INSTANTIATE_TEST_CASE_P(WorkerOrTaskRequests, PullManagerWithAdmissionControlTest,
+                        testing::Values(true, false));
 }  // namespace ray
 
 int main(int argc, char **argv) {
