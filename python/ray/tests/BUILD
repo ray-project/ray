@@ -104,6 +104,7 @@ py_test_module_list(
     "test_monitor.py",
     "test_node_manager.py",
     "test_numba.py",
+    "test_pydantic_serialization.py",
     "test_queue.py",
     "test_ray_debugger.py",
     "test_ray_init.py",
