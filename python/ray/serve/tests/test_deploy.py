@@ -652,7 +652,7 @@ class TestGetDeployment:
     def test_basic_get(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name, version="1")
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
@@ -674,7 +674,7 @@ class TestGetDeployment:
     def test_get_after_delete(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name, version="1")
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
@@ -692,7 +692,7 @@ class TestGetDeployment:
     def test_deploy_new_version(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name, version="1")
+        @serve.deployment(name=name, version="1")
         def d(*args):
             return "1", os.getpid()
 
@@ -712,7 +712,7 @@ class TestGetDeployment:
     def test_deploy_empty_version(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name)
+        @serve.deployment(name=name)
         def d(*args):
             return "1", os.getpid()
 
@@ -732,7 +732,7 @@ class TestGetDeployment:
     def test_init_args(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name)
+        @serve.deployment(name=name)
         class D:
             def __init__(self, val):
                 self._val = val
@@ -762,7 +762,7 @@ class TestGetDeployment:
     def test_scale_replicas(self, serve_instance, use_list_api):
         name = "test"
 
-        @serve.deployment(name)
+        @serve.deployment(name=name)
         def d(*args):
             return os.getpid()
 
@@ -795,7 +795,7 @@ def test_list_deployments(serve_instance):
 def test_deploy_change_route_prefix(serve_instance):
     name = "test"
 
-    @serve.deployment(name, version="1", route_prefix="/old")
+    @serve.deployment(name=name, version="1", route_prefix="/old")
     def d(*args):
         return f"1|{os.getpid()}"
 
