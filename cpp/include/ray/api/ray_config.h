@@ -32,7 +32,16 @@ class RayConfig {
 
   std::string session_dir = "";
 
+  bool use_ray_remote = false;
+
   static std::shared_ptr<RayConfig> GetInstance();
+
+  void SetRedisAddress(const std::string address) {
+    auto pos = address.find(':');
+    RAY_CHECK(pos != std::string::npos);
+    redis_ip = address.substr(0, pos);
+    redis_port = std::stoi(address.substr(pos + 1, address.length()));
+  }
 
  private:
   static std::shared_ptr<RayConfig> config_;

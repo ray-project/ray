@@ -4,7 +4,6 @@ import io.ray.streaming.runtime.transfer.channel.OffsetInfo;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
-
 public class BarrierMessage extends ChannelMessage {
 
   private final ByteBuffer data;
@@ -12,8 +11,12 @@ public class BarrierMessage extends ChannelMessage {
   private final Map<String, OffsetInfo> inputOffsets;
 
   public BarrierMessage(
-      long msgId, long timestamp, String channelId,
-      ByteBuffer data, long checkpointId, Map<String, OffsetInfo> inputOffsets) {
+      long msgId,
+      long timestamp,
+      String channelId,
+      ByteBuffer data,
+      long checkpointId,
+      Map<String, OffsetInfo> inputOffsets) {
     super(msgId, timestamp, channelId);
     this.data = data;
     this.checkpointId = checkpointId;

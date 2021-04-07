@@ -26,6 +26,8 @@ Installation
 
     To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
 
+    Note: To run your Ray Java application, you need to install Ray Python with `pip install -U ray` first. (For Ray Java snapshot versions, install nightly Ray Python wheels.) The versions of Ray Java and Ray Python must match.
+
 Starting Ray
 ------------
 
@@ -92,8 +94,8 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
 
       @ray.remote
       def slow_function():
-        time.sleep(10)
-        return 1
+          time.sleep(10)
+          return 1
 
       # Invocations of Ray remote functions happen in parallel.
       # All computation is performed in the background, driven by Ray's internal event loop.
@@ -290,6 +292,13 @@ Cancelling tasks
       obj_ref = blocking_operation.remote()
       ray.cancel(obj_ref)
 
+      from ray.exceptions import TaskCancelledError
+
+      try:
+          ray.get(obj_ref)
+      except TaskCancelledError:
+          print("Object reference was cancelled.")
+
   .. group-tab:: Java
 
     Task cancellation hasn't been implemented in Java yet.
@@ -354,7 +363,7 @@ If the current node's object store does not contain the object, the object is do
       from ray.exceptions import GetTimeoutError
 
       @ray.remote
-      def long_running_function()
+      def long_running_function():
           time.sleep(8)
 
       obj_ref = long_running_function.remote()
@@ -394,21 +403,11 @@ works as follows.
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
 
-Object Eviction
+Object Spilling
 ---------------
 
-When the object store gets full, objects will be evicted to make room for new objects.
-This happens in approximate LRU (least recently used) order. To avoid objects from
-being evicted, you can call ``get`` and store their values instead. Numpy array
-objects cannot be evicted while they are mapped in any Python process. You can also
-configure `memory limits <memory-management.html>`__ to control object store usage by
-actors.
-
-.. note::
-
-    Objects created with ``put`` are pinned in memory while a Python/Java reference
-    to the object ref returned by the put exists. This only applies to the specific
-    ref returned by put, not refs in general or copies of that refs.
+When the object store gets full, objects will be `spilled to disk <memory-management.html#object-spilling>`__.
+This feature is available in Ray 1.3+.
 
 Remote Classes (Actors)
 -----------------------
@@ -490,7 +489,7 @@ value.
 
     # Call the actor.
     obj_ref = counter.increment.remote()
-    ray.get(obj_ref) == 1
+    assert ray.get(obj_ref) == 1
 
   .. code-tab:: java
 

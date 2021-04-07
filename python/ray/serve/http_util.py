@@ -1,73 +1,48 @@
-import io
+import asyncio
+from dataclasses import dataclass
 import json
+from typing import Any, Callable, Dict, Tuple
 
-import flask
+import starlette.requests
+
+from ray.serve.exceptions import RayServeException
 
 
-def build_flask_request(asgi_scope_dict, request_body):
-    """Build and return a flask request from ASGI payload
+@dataclass
+class HTTPRequestWrapper:
+    scope: Dict[Any, Any]
+    body: bytes
 
-    This function is indented to be used immediately before task invocation
-    happen.
+
+def build_starlette_request(scope, serialized_body: bytes):
+    """Build and return a Starlette Request from ASGI payload.
+
+    This function is intended to be used immediately before task invocation
+    happens.
     """
-    wsgi_environ = build_wsgi_environ(asgi_scope_dict, request_body)
-    return flask.Request(wsgi_environ)
 
+    # Simulates receiving HTTP body from TCP socket.  In reality, the body has
+    # already been streamed in chunks and stored in serialized_body.
+    received = False
 
-def build_wsgi_environ(scope, body):
-    """
-    Builds a scope and request body into a WSGI environ object.
+    async def mock_receive():
+        nonlocal received
 
-    This code snippet is taken from https://github.com/django/asgiref/blob
-    /36c3e8dc70bf38fe2db87ac20b514f21aaf5ea9d/asgiref/wsgi.py#L52
+        # If the request has already been received, starlette will keep polling
+        # for HTTP disconnect. We will pause forever. The coroutine should be
+        # cancelled by starlette after the response has been sent.
+        if received:
+            block_forever = asyncio.Event()
+            await block_forever.wait()
 
-    WSGI specification can be found at
-    https://www.python.org/dev/peps/pep-0333/
+        received = True
+        return {
+            "body": serialized_body,
+            "type": "http.request",
+            "more_body": False
+        }
 
-    This function helps translate ASGI scope and body into a flask request.
-    """
-    environ = {
-        "REQUEST_METHOD": scope["method"],
-        "SCRIPT_NAME": scope.get("root_path", ""),
-        "PATH_INFO": scope["path"],
-        "QUERY_STRING": scope["query_string"].decode("ascii"),
-        "SERVER_PROTOCOL": "HTTP/{}".format(scope["http_version"]),
-        "wsgi.version": (1, 0),
-        "wsgi.url_scheme": scope.get("scheme", "http"),
-        "wsgi.input": body,
-        "wsgi.errors": io.BytesIO(),
-        "wsgi.multithread": True,
-        "wsgi.multiprocess": True,
-        "wsgi.run_once": False,
-    }
-
-    # Get server name and port - required in WSGI, not in ASGI
-    environ["SERVER_NAME"] = scope["server"][0]
-    environ["SERVER_PORT"] = str(scope["server"][1])
-    environ["REMOTE_ADDR"] = scope["client"][0]
-
-    # Transforms headers into environ entries.
-    for name, value in scope.get("headers", []):
-        # name, values are both bytes, we need to decode them to string
-        name = name.decode("latin1")
-        value = value.decode("latin1")
-
-        # Handle name correction to conform to WSGI spec
-        # https://www.python.org/dev/peps/pep-0333/#environ-variables
-        if name == "content-length":
-            corrected_name = "CONTENT_LENGTH"
-        elif name == "content-type":
-            corrected_name = "CONTENT_TYPE"
-        else:
-            corrected_name = "HTTP_%s" % name.upper().replace("-", "_")
-
-        # If the header value repeated,
-        # we will just concatenate it to the field.
-        if corrected_name in environ:
-            value = environ[corrected_name] + "," + value
-
-        environ[corrected_name] = value
-    return environ
+    return starlette.requests.Request(scope, mock_receive)
 
 
 class Response:
@@ -114,7 +89,7 @@ class Response:
         elif content_type == "json":
             self.raw_headers.append([b"content-type", b"application/json"])
         else:
-            raise ValueError("Invalid content type {}".foramt(content_type))
+            raise ValueError("Invalid content type {}".format(content_type))
 
     async def send(self, scope, receive, send):
         await send({
@@ -123,3 +98,44 @@ class Response:
             "headers": self.raw_headers,
         })
         await send({"type": "http.response.body", "body": self.body})
+
+
+def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
+    """Given ASGI app, return two async callables (on_startup, on_shutdown)
+
+    Detail spec at
+    https://asgi.readthedocs.io/en/latest/specs/lifespan.html
+    """
+    scope = {"type": "lifespan"}
+
+    class LifespanHandler:
+        def __init__(self, lifespan_type):
+            assert lifespan_type in {"startup", "shutdown"}
+            self.lifespan_type = lifespan_type
+
+        async def receive(self):
+            return {"type": f"lifespan.{self.lifespan_type}"}
+
+        async def send(self, msg):
+            # We are not doing a strict equality check here because sometimes
+            # starlette will output shutdown.complete on startup lifecycle
+            # event!
+            # https://github.com/encode/starlette/blob/5ee04ef9b1bc11dc14d299e6c855c9a3f7d5ff16/starlette/routing.py#L557 # noqa
+            if msg["type"].endswith(".complete"):
+                return
+            elif msg["type"].endswith(".failed"):
+                raise RayServeException(
+                    f"Failed to run {self.lifespan_type} events for asgi app. "
+                    f"Error: {msg.get('message', '')}")
+            else:
+                raise ValueError(f"Unknown ASGI type {msg}")
+
+    async def startup():
+        handler = LifespanHandler("startup")
+        await app(scope, handler.receive, handler.send)
+
+    async def shutdown():
+        handler = LifespanHandler("shutdown")
+        await app(scope, handler.receive, handler.send)
+
+    return startup, shutdown

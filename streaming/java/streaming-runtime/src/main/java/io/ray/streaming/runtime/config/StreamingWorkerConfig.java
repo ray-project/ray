@@ -7,9 +7,7 @@ import org.aeonbits.owner.ConfigFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Streaming job worker specified config.
- */
+/** Streaming job worker specified config. */
 public class StreamingWorkerConfig extends StreamingGlobalConfig {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingWorkerConfig.class);
@@ -33,5 +31,4 @@ public class StreamingWorkerConfig extends StreamingGlobalConfig {
     }
     return result;
   }
-
 }

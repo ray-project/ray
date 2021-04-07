@@ -17,6 +17,10 @@ from ray.tune.suggest import BasicVariantGenerator
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         _register_all()  # re-register the evicted objects
 
     def tearDown(self):
@@ -102,7 +106,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.PENDING)
-
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.PENDING)
@@ -257,6 +260,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testChangeResources(self):
         """Checks that resource requirements can be changed on fly."""
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
         ray.init(num_cpus=2)
 
         class ChangingScheduler(FIFOScheduler):
@@ -264,7 +268,7 @@ class TrialRunnerTest(unittest.TestCase):
                 if result["training_iteration"] == 1:
                     executor = trial_runner.trial_executor
                     executor.stop_trial(trial)
-                    trial.update_resources(2, 0)
+                    trial.update_resources(dict(cpu=2, gpu=0))
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE
 
@@ -282,13 +286,16 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 1)
-        self.assertRaises(ValueError, lambda: trials[0].update_resources(2, 0))
+        self.assertRaises(
+            ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0)))
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
 
     def testQueueFilling(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=4)
 
         def f1(config):

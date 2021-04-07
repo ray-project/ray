@@ -20,5 +20,4 @@ public interface RichFunction extends Function {
    * Tear-down method for the user function which called after the last call to the user function.
    */
   void close();
-
 }

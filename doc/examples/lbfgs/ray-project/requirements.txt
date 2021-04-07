@@ -1,1 +1,1 @@
-ray[debug,rllib]
+ray[rllib]

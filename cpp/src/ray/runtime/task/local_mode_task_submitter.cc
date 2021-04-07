@@ -32,7 +32,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   auto exec_func_offset =
       (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset));
+      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset),
+      invocation.fptr.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -44,7 +45,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true);
+                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();

@@ -1,6 +1,6 @@
 import logging
 import pickle
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -8,8 +8,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import optuna as ot
@@ -23,6 +22,7 @@ from ray.tune.suggest import Searcher
 logger = logging.getLogger(__name__)
 
 
+# Deprecate: 1.5
 class _Param:
     def __getattr__(self, item):
         def _inner(*args, **kwargs):
@@ -62,6 +62,11 @@ class OptunaSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
 
@@ -73,7 +78,7 @@ class OptunaSearch(Searcher):
 
         config = {
             "a": tune.uniform(6, 8)
-            "b": tune.uniform(10, 20)
+            "b": tune.loguniform(1e-4, 1e-2)
         }
 
         optuna_search = OptunaSearch(
@@ -87,14 +92,15 @@ class OptunaSearch(Searcher):
 
     .. code-block:: python
 
-        from ray.tune.suggest.optuna import OptunaSearch, param
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
 
-        space = [
-            param.suggest_uniform("a", 6, 8),
-            param.suggest_uniform("b", 10, 20)
-        ]
+        config = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
 
-        algo = OptunaSearch(
+        optuna_search = OptunaSearch(
             space,
             metric="loss",
             mode="min")
@@ -109,6 +115,7 @@ class OptunaSearch(Searcher):
                  space: Optional[Union[Dict, List[Tuple]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional[BaseSampler] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
@@ -123,19 +130,29 @@ class OptunaSearch(Searcher):
             if domain_vars or grid_vars:
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                        par="space", cls=type(self).__name__))
                 space = self.convert_search_space(space)
+            else:
+                # Flatten to support nested dicts
+                space = flatten_dict(space, "/")
+
+        # Deprecate: 1.5
+        if isinstance(space, list):
+            logger.warning(
+                "Passing lists of `param.suggest_*()` calls to OptunaSearch "
+                "as a search space is deprecated and will be removed in "
+                "a future release of Ray. Please pass a dict mapping "
+                "to `optuna.distributions` objects instead.")
 
         self._space = space
+
+        self._points_to_evaluate = points_to_evaluate or []
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
         assert isinstance(self._sampler, BaseSampler), \
             "You can only pass an instance of `optuna.samplers.BaseSampler` " \
             "as a sampler to `OptunaSearcher`."
-
-        self._pruner = ot.pruners.NopPruner()
-        self._storage = ot.storages.InMemoryStorage()
 
         self._ot_trials = {}
         self._ot_study = None
@@ -147,13 +164,19 @@ class OptunaSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
+        pruner = ot.pruners.NopPruner()
+        storage = ot.storages.InMemoryStorage()
+
         self._ot_study = ot.study.create_study(
-            storage=self._storage,
+            storage=storage,
             sampler=self._sampler,
-            pruner=self._pruner,
+            pruner=pruner,
             study_name=self._study_name,
             direction="minimize" if mode == "min" else "maximize",
             load_if_exists=True)
+
+        for point in self._points_to_evaluate:
+            self._ot_study.enqueue_trial(point)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
@@ -181,19 +204,28 @@ class OptunaSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if trial_id not in self._ot_trials:
-            ot_trial_id = self._storage.create_new_trial(
-                self._ot_study._study_id)
-            self._ot_trials[trial_id] = ot.trial.Trial(self._ot_study,
-                                                       ot_trial_id)
-        ot_trial = self._ot_trials[trial_id]
+        if isinstance(self._space, list):
+            # Keep for backwards compatibility
+            # Deprecate: 1.5
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask()
 
-        # getattr will fetch the trial.suggest_ function on Optuna trials
-        params = {
-            args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                ot_trial, fn)(*args, **kwargs)
-            for (fn, args, kwargs) in self._space
-        }
+            ot_trial = self._ot_trials[trial_id]
+
+            # getattr will fetch the trial.suggest_ function on Optuna trials
+            params = {
+                args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                    ot_trial, fn)(*args, **kwargs)
+                for (fn, args, kwargs) in self._space
+            }
+        else:
+            # Use Optuna ask interface (since version 2.6.0)
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask(
+                    fixed_distributions=self._space)
+            ot_trial = self._ot_trials[trial_id]
+            params = ot_trial.params
+
         return unflatten_dict(params)
 
     def on_trial_result(self, trial_id: str, result: Dict):
@@ -207,38 +239,42 @@ class OptunaSearch(Searcher):
                           result: Optional[Dict] = None,
                           error: bool = False):
         ot_trial = self._ot_trials[trial_id]
-        ot_trial_id = ot_trial._trial_id
-        self._storage.set_trial_value(ot_trial_id, result.get(
-            self.metric, None))
-        self._storage.set_trial_state(ot_trial_id,
-                                      ot.trial.TrialState.COMPLETE)
+
+        val = result.get(self.metric, None) if result else None
+        try:
+            self._ot_study.tell(ot_trial, val)
+        except ValueError as exc:
+            logger.warning(exc)  # E.g. if NaN was reported
 
     def save(self, checkpoint_path: str):
-        save_object = (self._storage, self._pruner, self._sampler,
-                       self._ot_trials, self._ot_study)
+        save_object = (self._sampler, self._ot_trials, self._ot_study,
+                       self._points_to_evaluate)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        self._storage, self._pruner, self._sampler, \
-            self._ot_trials, self._ot_study = save_object
+        self._sampler, self._ot_trials, self._ot_study, \
+            self._points_to_evaluate = save_object
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> List[Tuple]:
-        spec = flatten_dict(spec, prevent_delimiter=True)
+    def convert_search_space(spec: Dict) -> Dict[str, Any]:
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
-            return []
+            return {}
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to an Optuna search space.")
 
-        def resolve_value(par: str, domain: Domain) -> Tuple:
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
+
+        def resolve_value(domain: Domain) -> ot.distributions.BaseDistribution:
             quantize = None
 
             sampler = domain.get_sampler()
@@ -252,28 +288,27 @@ class OptunaSearch(Searcher):
                         logger.warning(
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization.")
-                    return param.suggest_loguniform(par, domain.lower,
-                                                    domain.upper)
+                    return ot.distributions.LogUniformDistribution(
+                        domain.lower, domain.upper)
+
                 elif isinstance(sampler, Uniform):
                     if quantize:
-                        return param.suggest_discrete_uniform(
-                            par, domain.lower, domain.upper, quantize)
-                    return param.suggest_uniform(par, domain.lower,
-                                                 domain.upper)
+                        return ot.distributions.DiscreteUniformDistribution(
+                            domain.lower, domain.upper, quantize)
+                    return ot.distributions.UniformDistribution(
+                        domain.lower, domain.upper)
+
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    if quantize:
-                        logger.warning(
-                            "Optuna does not support both quantization and "
-                            "sampling from LogUniform. Dropped quantization.")
-                    return param.suggest_int(
-                        par, domain.lower, domain.upper, log=True)
+                    return ot.distributions.IntLogUniformDistribution(
+                        domain.lower, domain.upper, step=quantize or 1)
                 elif isinstance(sampler, Uniform):
-                    return param.suggest_int(
-                        par, domain.lower, domain.upper, step=quantize or 1)
+                    return ot.distributions.IntUniformDistribution(
+                        domain.lower, domain.upper, step=quantize or 1)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return param.suggest_categorical(par, domain.categories)
+                    return ot.distributions.CategoricalDistribution(
+                        domain.categories)
 
             raise ValueError(
                 "Optuna search does not support parameters of type "
@@ -282,9 +317,9 @@ class OptunaSearch(Searcher):
                     type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
-        values = [
-            resolve_value("/".join(path), domain)
+        values = {
+            "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
-        ]
+        }
 
         return values

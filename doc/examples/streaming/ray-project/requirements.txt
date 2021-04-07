@@ -1,2 +1,2 @@
-ray[debug]
+ray
 wikipedia

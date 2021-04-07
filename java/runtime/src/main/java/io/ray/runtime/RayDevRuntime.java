@@ -8,6 +8,7 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -35,14 +36,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
-    taskSubmitter = new LocalModeTaskSubmitter(this, taskExecutor,
-        (LocalModeObjectStore) objectStore);
-    ((LocalModeObjectStore) objectStore).addObjectPutCallback(
-        objectId -> {
-          if (taskSubmitter != null) {
-            ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId);
-          }
-        });
+    taskSubmitter =
+        new LocalModeTaskSubmitter(this, taskExecutor, (LocalModeObjectStore) objectStore);
+    ((LocalModeObjectStore) objectStore)
+        .addObjectPutCallback(
+            objectId -> {
+              if (taskSubmitter != null) {
+                ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId);
+              }
+            });
   }
 
   @Override
@@ -57,7 +59,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
       taskSubmitter = null;
     }
     taskExecutor = null;
-    RayConfig.reset();
   }
 
   @Override
@@ -73,41 +74,48 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
-    return (Optional<T>) ((LocalModeTaskSubmitter)taskSubmitter).getActor(name, global);
+    return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name, global);
   }
 
   @Override
   public Object getAsyncContext() {
-    return null;
+    return new AsyncContext(((LocalModeWorkerContext) workerContext).getCurrentTask());
   }
 
   @Override
   public void setAsyncContext(Object asyncContext) {
-    Preconditions.checkArgument(asyncContext == null);
+    Preconditions.checkNotNull(asyncContext);
+    TaskSpec task = ((AsyncContext) asyncContext).task;
+    ((LocalModeWorkerContext) workerContext).setCurrentTask(task);
     super.setAsyncContext(asyncContext);
   }
 
   @Override
-  public PlacementGroup getPlacementGroup(
-      PlacementGroupId id) {
-    //@TODO(clay4444): We need a LocalGcsClient before implements this.
+  public PlacementGroup getPlacementGroup(PlacementGroupId id) {
+    // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
-      "Ray doesn't support placement group operations in local mode.");
+        "Ray doesn't support placement group operations in local mode.");
   }
 
   @Override
   public List<PlacementGroup> getAllPlacementGroups() {
-    //@TODO(clay4444): We need a LocalGcsClient before implements this.
+    // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
-      "Ray doesn't support placement group operations in local mode.");
+        "Ray doesn't support placement group operations in local mode.");
   }
 
   @Override
-  public void exitActor() {
-
-  }
+  public void exitActor() {}
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
+  }
+
+  private static class AsyncContext {
+    private TaskSpec task;
+
+    private AsyncContext(TaskSpec task) {
+      this.task = task;
+    }
   }
 }

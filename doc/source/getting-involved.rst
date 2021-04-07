@@ -6,7 +6,9 @@ Getting Involved / Contributing
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning.
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray! The community is extremely active in helping people succeed in building their ray applications.
+.. tip:: Ask questions on `our forum <https://discuss.ray.io/>`_! The
+  community is extremely active in helping people succeed in building their
+  Ray applications.
 
 You can join (and Star!) us on `on GitHub`_.
 
@@ -43,13 +45,12 @@ Submitting and Merging a Contribution
 
 There are a couple steps to merge a contribution.
 
-1. First rebase your development branch on the most recent version of master.
+1. First merge the most recent version of master into your development branch.
 
    .. code:: bash
 
      git remote add upstream https://github.com/ray-project/ray.git
-     git fetch upstream
-     git rebase upstream/master
+     git pull upstream master
 
 2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
@@ -124,6 +125,8 @@ Alternatively, you can also run one specific C++ test. You can use:
 Lint and Formatting
 ~~~~~~~~~~~~~~~~~~~
 
+.. note:: Python 3.7 is recommended. You will run into flake8 `issues <https://github.com/ray-project/ray/pull/11588>`_ with Python 3.8.
+
 We also have tests for code formatting and linting that need to pass before merge.
 Install ``yapf==0.23, flake8, flake8-quotes``.
 
@@ -139,7 +142,7 @@ You can run the following locally:
 
 .. code-block:: shell
 
-    ray/scripts/format.sh
+    ./ci/travis/format.sh
 
 An output like the following indicates failure:
 
@@ -178,7 +181,6 @@ scripts. Some of the examples include:
 
 * Raylet integration tests commands:
     * ``bazel test //:core_worker_test``
-    * ``src/ray/test/run_object_manager_tests.sh``
 
 * Bazel test command:
     * ``bazel test --build_tests_only //:all``

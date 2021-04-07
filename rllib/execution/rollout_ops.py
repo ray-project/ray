@@ -7,9 +7,9 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, LEARNER_INFO, \
-    SAMPLE_TIMER, GRAD_WAIT_TIMER, _check_sample_batch_type, \
-    _get_shared_metrics
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, GRAD_WAIT_TIMER, \
+    _check_sample_batch_type, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.sgd import standardized
@@ -60,6 +60,11 @@ def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
     def report_timesteps(batch):
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+        if isinstance(batch, MultiAgentBatch):
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
+                batch.agent_steps()
+        else:
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
     if not workers.remote_workers():
@@ -141,13 +146,15 @@ class ConcatBatches:
 
     Examples:
         >>> rollouts = ParallelRollouts(...)
-        >>> rollouts = rollouts.combine(ConcatBatches(min_batch_size=10000))
+        >>> rollouts = rollouts.combine(ConcatBatches(
+        ...    min_batch_size=10000, count_steps_by="env_steps"))
         >>> print(next(rollouts).count)
         10000
     """
 
-    def __init__(self, min_batch_size: int):
+    def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
         self.min_batch_size = min_batch_size
+        self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
         self.batch_start_time = None
@@ -159,7 +166,15 @@ class ConcatBatches:
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
         self.buffer.append(batch)
-        self.count += batch.count
+
+        if self.count_steps_by == "env_steps":
+            self.count += batch.count
+        else:
+            assert isinstance(batch, MultiAgentBatch), \
+                "`count_steps_by=agent_steps` only allowed in multi-agent " \
+                "environments!"
+            self.count += batch.agent_steps()
+
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:
                 logger.info("Collected more training samples than expected "

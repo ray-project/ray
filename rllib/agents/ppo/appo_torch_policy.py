@@ -10,7 +10,6 @@ import numpy as np
 import logging
 from typing import Type
 
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
@@ -23,12 +22,12 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
     TorchDistributionWrapper, TorchCategorical
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
-    sequence_mask
+from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
+    global_norm, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -322,8 +321,9 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-AsyncPPOTorchPolicy = build_torch_policy(
+AsyncPPOTorchPolicy = build_policy_class(
     name="AsyncPPOTorchPolicy",
+    framework="torch",
     loss_fn=appo_surrogate_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,

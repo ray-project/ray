@@ -23,9 +23,7 @@ import io.ray.streaming.state.keystate.state.ListState;
 import io.ray.streaming.state.keystate.state.impl.OperatorStateImpl;
 import io.ray.streaming.state.keystate.state.proxy.ListStateStoreManagerProxy;
 
-/**
- * OperatorState manager for getting split or union list state.
- */
+/** OperatorState manager for getting split or union list state. */
 public class OperatorStateBackend extends AbstractKeyStateBackend {
 
   public OperatorStateBackend(AbstractStateBackend backend) {
@@ -42,9 +40,7 @@ public class OperatorStateBackend extends AbstractKeyStateBackend {
     return new ListStateStoreManagerProxy<>(this, stateDescriptor);
   }
 
-  /**
-   * get spitted List for different operator instance.
-   */
+  /** get spitted List for different operator instance. */
   public <T> ListState<T> getSplitListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (listManagerProxyHashMap.containsKey(desc)) {
@@ -58,9 +54,7 @@ public class OperatorStateBackend extends AbstractKeyStateBackend {
     }
   }
 
-  /**
-   * get a union List for different operator instance.
-   */
+  /** get a union List for different operator instance. */
   public <T> ListState<T> getUnionListState(ListStateDescriptor<T> stateDescriptor) {
     String desc = stateDescriptor.getIdentify();
     if (listManagerProxyHashMap.containsKey(desc)) {

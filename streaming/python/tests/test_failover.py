@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import time
 from typing import List
 
@@ -8,7 +9,8 @@ from ray.streaming import StreamingContext
 
 def test_word_count():
     try:
-        ray.init(_load_code_from_local=True)
+        ray.init(
+            job_config=ray.job_config.JobConfig(code_search_path=sys.path))
         # time.sleep(10) # for gdb to attach
         ctx = StreamingContext.Builder() \
             .option("streaming.context-backend.type", "local_file") \

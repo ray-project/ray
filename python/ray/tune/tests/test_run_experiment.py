@@ -13,6 +13,9 @@ from ray.tune.trial import Trial, ExportFormat
 
 
 class RunExperimentTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects

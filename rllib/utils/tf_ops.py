@@ -92,7 +92,7 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
     variable is clipped to `clip_val`
     """
     # Accidentally passing values < 0.0 will break all gradients.
-    assert clip_val > 0.0, clip_val
+    assert clip_val is None or clip_val > 0.0, clip_val
 
     if tf.executing_eagerly():
         tape = optimizer.tape
@@ -102,10 +102,8 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10.0):
         grads_and_vars = optimizer.compute_gradients(
             objective, var_list=var_list)
 
-    for i, (grad, var) in enumerate(grads_and_vars):
-        if grad is not None:
-            grads_and_vars[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return grads_and_vars
+    return [(tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
+            for (g, v) in grads_and_vars if g is not None]
 
 
 def make_tf_callable(session_or_none, dynamic_shape=False):
@@ -132,7 +130,10 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         assert session_or_none is not None
 
     def make_wrapper(fn):
-        if session_or_none:
+        # Static-graph mode: Create placeholders and make a session call each
+        # time the wrapped function is called. Return this session call's
+        # outputs.
+        if session_or_none is not None:
             args_placeholders = []
             kwargs_placeholders = {}
             symbolic_out = [None]
@@ -183,6 +184,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                 return ret
 
             return call
+        # Eager mode (call function as is).
         else:
             return fn
 

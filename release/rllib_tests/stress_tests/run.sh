@@ -42,14 +42,14 @@ echo "commit: $commit"
 echo "branch: $ray_branch"
 echo "workload: ignored"
 
-wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp36-cp36m-manylinux2014_x86_64.whl"
+wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp37-cp37m-manylinux2014_x86_64.whl"
 
 conda uninstall -y terminado
-source activate tensorflow_p36 && pip install -U pip
-source activate tensorflow_p36 && pip install -U "$wheel"
-source activate tensorflow_p36 && pip install "ray[rllib]" "ray[debug]"
-source activate tensorflow_p36 && pip install boto3==1.4.8 cython==0.29.0
-source activate tensorflow_p36
+pip install -U pip
+pip install -U "$wheel"
+pip install "ray[rllib]" "ray"
+pip install terminado
+pip install boto3==1.4.8 cython==0.29.0
 
 python3 wait_cluster.py
 

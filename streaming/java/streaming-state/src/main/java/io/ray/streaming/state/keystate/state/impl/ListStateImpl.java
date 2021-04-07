@@ -24,9 +24,7 @@ import io.ray.streaming.state.keystate.state.ListState;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * ListState implementation.
- */
+/** ListState implementation. */
 public class ListStateImpl<V> implements ListState<V> {
 
   private final StateHelper<List<V>> helper;

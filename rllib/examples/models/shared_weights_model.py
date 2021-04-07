@@ -11,10 +11,6 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 TF2_GLOBAL_SHARED_LAYER = None
-if tf:
-    # The global, shared layer to be used by both models.
-    TF2_GLOBAL_SHARED_LAYER = tf.keras.layers.Dense(
-        units=64, activation=tf.nn.relu, name="fc1")
 
 
 class TF2SharedWeightsModel(TFModelV2):
@@ -32,6 +28,12 @@ class TF2SharedWeightsModel(TFModelV2):
         super().__init__(observation_space, action_space, num_outputs,
                          model_config, name)
 
+        global TF2_GLOBAL_SHARED_LAYER
+        # The global, shared layer to be used by both models.
+        if TF2_GLOBAL_SHARED_LAYER is None:
+            TF2_GLOBAL_SHARED_LAYER = tf.keras.layers.Dense(
+                units=64, activation=tf.nn.relu, name="fc1")
+
         inputs = tf.keras.layers.Input(observation_space.shape)
         last_layer = TF2_GLOBAL_SHARED_LAYER(inputs)
         output = tf.keras.layers.Dense(
@@ -39,7 +41,6 @@ class TF2SharedWeightsModel(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -80,7 +81,6 @@ class SharedWeightsModel1(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -114,7 +114,6 @@ class SharedWeightsModel2(TFModelV2):
         vf = tf.keras.layers.Dense(
             units=1, activation=None, name="value_out")(last_layer)
         self.base_model = tf.keras.models.Model(inputs, [output, vf])
-        self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):

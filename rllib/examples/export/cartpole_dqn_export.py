@@ -3,7 +3,7 @@
 import os
 import ray
 
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -12,7 +12,7 @@ ray.init(num_cpus=10)
 
 
 def train_and_export(algo_name, num_steps, model_dir, ckpt_dir, prefix):
-    cls = get_agent_class(algo_name)
+    cls = get_trainer_class(algo_name)
     alg = cls(config={}, env="CartPole-v0")
     for _ in range(num_steps):
         alg.train()
@@ -54,8 +54,10 @@ def restore_checkpoint(export_dir, prefix):
 
 if __name__ == "__main__":
     algo = "DQN"
-    model_dir = os.path.join(ray.utils.get_user_temp_dir(), "model_export_dir")
-    ckpt_dir = os.path.join(ray.utils.get_user_temp_dir(), "ckpt_export_dir")
+    model_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
+                             "model_export_dir")
+    ckpt_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
+                            "ckpt_export_dir")
     prefix = "model.ckpt"
     num_steps = 3
     train_and_export(algo, num_steps, model_dir, ckpt_dir, prefix)

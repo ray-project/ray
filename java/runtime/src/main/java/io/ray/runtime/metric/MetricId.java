@@ -5,10 +5,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * MetricId represents a metric with a given type, name and tags.
- * If two metrics have the same type and name but different tags(including key and value), they have
- * a different MetricId. And in this way, {@link MetricRegistry} can register two metrics with same
- * name but different tags.
+ * MetricId represents a metric with a given type, name and tags. If two metrics have the same type
+ * and name but different tags(including key and value), they have a different MetricId. And in this
+ * way, {@link MetricRegistry} can register two metrics with same name but different tags.
  */
 public class MetricId {
 
@@ -31,9 +30,9 @@ public class MetricId {
       return false;
     }
     MetricId metricId = (MetricId) o;
-    return type == metricId.type &&
-        Objects.equals(name, metricId.name) &&
-        Objects.equals(tags, metricId.tags);
+    return type == metricId.type
+        && Objects.equals(name, metricId.name)
+        && Objects.equals(tags, metricId.tags);
   }
 
   @Override

@@ -20,24 +20,30 @@ public class MicroBenchmarks {
     }
     final long duration = System.nanoTime() - start;
     LOGGER.info(
-        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms," +
-            " average duration {} ns.",
-        name, numRepeats, duration / 1_000_000, duration / numRepeats);
+        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms,"
+            + " average duration {} ns.",
+        name,
+        numRepeats,
+        duration / 1_000_000,
+        duration / numRepeats);
   }
 
   /**
    * Benchmark task submission.
    *
-   * Note, this benchmark is supposed to measure the elapased time in Java worker, we should disable
-   * submitting tasks to raylet in `raylet_client.cc` before running this benchmark.
+   * <p>Note, this benchmark is supposed to measure the elapased time in Java worker, we should
+   * disable submitting tasks to raylet in `raylet_client.cc` before running this benchmark.
    */
   public static void benchmarkTaskSubmission() {
     final int numRepeats = 1_000_000;
     Ray.init();
     try {
-      time(() -> {
-        Ray.task(MicroBenchmarks::simpleFunction).remote();
-      }, numRepeats, "task submission");
+      time(
+          () -> {
+            Ray.task(MicroBenchmarks::simpleFunction).remote();
+          },
+          numRepeats,
+          "task submission");
     } finally {
       Ray.shutdown();
     }

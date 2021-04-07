@@ -3,7 +3,7 @@
 Using Weights & Biases with Tune
 ================================
 
-`Weights & Biases <https://www.wandb.com/>`_ (Wandb) is a tool for experiment
+`Weights & Biases <https://www.wandb.ai/>`_ (Wandb) is a tool for experiment
 tracking, model optimizaton, and dataset versioning. It is very popular
 in the machine learning and data science community for its superb visualization
 tools.
@@ -12,7 +12,7 @@ tools.
   :height: 80px
   :alt: Weights & Biases
   :align: center
-  :target: https://www.wandb.com/
+  :target: https://www.wandb.ai/
 
 Ray Tune currently offers two lightweight integrations for Weights & Biases.
 One is the :ref:`WandbLoggerCallback <tune-wandb-logger>`, which automatically logs

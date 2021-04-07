@@ -1,238 +1,216 @@
 import asyncio
+import logging
 import traceback
 import inspect
-from collections.abc import Iterable
-from itertools import groupby
-from typing import Union, List, Any, Callable, Type
+from typing import Union, Any, Callable, Type, Optional
 import time
+
+import starlette.responses
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
-from ray.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async
 
-from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
-                             unpack_future)
+from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
+                             import_attr)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollerAsyncClient
-from ray.serve.router import Query
-from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
-                                 BACKEND_RECONFIGURE_METHOD)
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.router import Query, RequestMetadata
+from ray.serve.constants import (
+    BACKEND_RECONFIGURE_METHOD,
+    DEFAULT_LATENCY_BUCKET_MS,
+)
+from ray.serve.http_util import make_startup_shutdown_hooks
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
 
 
-class BatchQueue:
-    def __init__(self, max_batch_size: int, timeout_s: float) -> None:
-        self.queue = asyncio.Queue()
-        self.full_batch_event = asyncio.Event()
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
+def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
+    """Creates a replica class wrapping the provided function or class.
 
-    def set_config(self, max_batch_size: int, timeout_s: float) -> None:
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
-
-    def put(self, request: Query) -> None:
-        self.queue.put_nowait(request)
-        # Signal when the full batch is ready. The event will be reset
-        # in wait_for_batch.
-        if self.queue.qsize() == self.max_batch_size:
-            self.full_batch_event.set()
-
-    def qsize(self) -> int:
-        return self.queue.qsize()
-
-    async def wait_for_batch(self) -> List[Query]:
-        """Wait for batch respecting self.max_batch_size and self.timeout_s.
-
-        Returns a batch of up to self.max_batch_size items, waiting for up
-        to self.timeout_s for a full batch. After the timeout, returns as many
-        items as are ready.
-
-        Always returns a batch with at least one item - will block
-        indefinitely until an item comes in.
-        """
-        curr_timeout = self.timeout_s
-        batch = []
-        while len(batch) == 0:
-            loop_start = time.time()
-
-            # If the timeout is 0, wait for any item to be available on the
-            # queue.
-            if curr_timeout == 0:
-                batch.append(await self.queue.get())
-            # If the timeout is nonzero, wait for either the timeout to occur
-            # or the max batch size to be ready.
-            else:
-                try:
-                    await asyncio.wait_for(self.full_batch_event.wait(),
-                                           curr_timeout)
-                except asyncio.TimeoutError:
-                    pass
-
-            # Pull up to the max_batch_size requests off the queue.
-            while len(batch) < self.max_batch_size and not self.queue.empty():
-                batch.append(self.queue.get_nowait())
-
-            # Reset the event if there are fewer than max_batch_size requests
-            # in the queue.
-            if (self.queue.qsize() < self.max_batch_size
-                    and self.full_batch_event.is_set()):
-                self.full_batch_event.clear()
-
-            # Adjust the timeout based on the time spent in this iteration.
-            curr_timeout = max(0, curr_timeout - (time.time() - loop_start))
-
-        return batch
-
-
-def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
-    """Creates a replica class wrapping the provided function or class."""
-
-    if inspect.isfunction(func_or_class):
-        is_function = True
-    elif inspect.isclass(func_or_class):
-        is_function = False
-    else:
-        assert False, "func_or_class must be function or class."
+    This approach is picked over inheritance to avoid conflict between user
+    provided class and the RayServeReplica class.
+    """
+    backend_def = backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
-        def __init__(self, backend_tag, replica_tag, init_args,
-                     backend_config: BackendConfig, controller_name: str):
-            # Set the controller name so that serve.connect() will connect to
-            # the instance that this backend is running in.
-            ray.serve.api._set_internal_controller_name(controller_name)
-            if is_function:
-                _callable = func_or_class
+        async def __init__(self, backend_tag, replica_tag, init_args,
+                           backend_config: BackendConfig,
+                           controller_name: str):
+            if isinstance(backend_def, str):
+                backend = import_attr(backend_def)
             else:
-                _callable = func_or_class(*init_args)
+                backend = backend_def
+
+            if inspect.isfunction(backend):
+                is_function = True
+            elif inspect.isclass(backend):
+                is_function = False
+            else:
+                assert False, ("backend_def must be function, class, or "
+                               "corresponding import path.")
+
+            # Set the controller name so that serve.connect() in the user's
+            # backend code will connect to the instance that this backend is
+            # running in.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=None)
+            if is_function:
+                _callable = backend
+            else:
+                _callable = backend(*init_args)
+            # Setting the context again to update the servable_object.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag,
+                replica_tag,
+                controller_name,
+                servable_object=_callable)
+
+            self.shutdown_hook: Optional[Callable] = None
+            if backend_config.internal_metadata.is_asgi_app:
+                app = _callable._serve_asgi_app
+                startup_hook, self.shutdown_hook = make_startup_shutdown_hooks(
+                    app)
+                await startup_hook()
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
-            self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
-                                           backend_config, is_function,
-                                           controller_handle)
+            self.backend = RayServeReplica(_callable, backend_config,
+                                           is_function, controller_handle)
 
-        async def handle_request(self, request):
-            return await self.backend.handle_request(request)
+        def __del__(self):
+            if hasattr(self, "shutdown_hook") and self.shutdown_hook:
+                asyncio.get_event_loop().run_until_complete(
+                    self.shutdown_hook())
+
+        @ray.method(num_returns=2)
+        async def handle_request(
+                self,
+                request_metadata: RequestMetadata,
+                *request_args,
+                **request_kwargs,
+        ):
+            # Directly receive input because it might contain an ObjectRef.
+            query = Query(request_args, request_kwargs, request_metadata)
+            return await self.backend.handle_request(query)
 
         def ready(self):
             pass
 
-    RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
-        func_or_class.__name__)
+        async def drain_pending_queries(self):
+            return await self.backend.drain_pending_queries()
+
+        async def run_forever(self):
+            while True:
+                await asyncio.sleep(10000)
+
+    if isinstance(backend_def, str):
+        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
+            backend_def)
+    else:
+        RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
+            backend_def.__name__)
     return RayServeWrappedReplica
 
 
-def wrap_to_ray_error(exception: Exception) -> RayTaskError:
+def wrap_to_ray_error(function_name: str,
+                      exception: Exception) -> RayTaskError:
     """Utility method to wrap exceptions in user code."""
 
     try:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
-
-
-def ensure_async(func: Callable) -> Callable:
-    return sync_to_async(func)
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
-                 backend_config: BackendConfig, is_function: bool,
-                 controller_handle: ActorHandle) -> None:
-        self.backend_tag = backend_tag
-        self.replica_tag = replica_tag
+    def __init__(self, _callable: Callable, backend_config: BackendConfig,
+                 is_function: bool, controller_handle: ActorHandle) -> None:
+        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
+        self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function
 
         self.config = backend_config
-        self.batch_queue = BatchQueue(self.config.max_batch_size or 1,
-                                      self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
         self.num_ongoing_requests = 0
 
-        self.request_counter = metrics.Count(
-            "backend_request_counter",
-            description=("Number of queries that have been "
-                         "processed in this replica"),
+        self.request_counter = metrics.Counter(
+            "serve_backend_request_counter",
+            description=("The number of queries that have been "
+                         "processed in this replica."),
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollerAsyncClient(controller_handle, {
-            "backend_configs": self._update_backend_configs,
-        })
+        self.loop = asyncio.get_event_loop()
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (LongPollNamespace.BACKEND_CONFIGS, self.backend_tag): self.
+                _update_backend_configs,
+            },
+            call_in_event_loop=self.loop,
+        )
 
-        self.error_counter = metrics.Count(
-            "backend_error_counter",
-            description=("Number of exceptions that have "
-                         "occurred in the backend"),
+        self.error_counter = metrics.Counter(
+            "serve_backend_error_counter",
+            description=("The number of exceptions that have "
+                         "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.restart_counter = metrics.Count(
-            "backend_replica_starts",
-            description=("The number of time this replica "
+        self.restart_counter = metrics.Counter(
+            "serve_backend_replica_starts",
+            description=("The number of times this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.restart_counter.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
-        })
-
-        self.queuing_latency_tracker = metrics.Histogram(
-            "backend_queuing_latency_ms",
-            description=(
-                "The latency for queries waiting in the replica's queue "
-                "waiting to be processed or batched."),
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag"))
-        self.queuing_latency_tracker.set_default_tags({
-            "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
-            "backend_processing_latency_ms",
-            description="The latency for queries to be processed",
+            "serve_backend_processing_latency_ms",
+            description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag", "batch_size"))
+            tag_keys=("backend", "replica"))
         self.processing_latency_tracker.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
-        })
-
-        self.num_queued_items = metrics.Gauge(
-            "replica_queued_queries",
-            description=("Current number of queries queued in the "
-                         "the backend replicas"),
-            tag_keys=("backend", "replica_tag"))
-        self.num_queued_items.set_default_tags({
-            "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
-            "replica_processing_queries",
-            description="Current number of queries being processed",
-            tag_keys=("backend", "replica_tag"))
+            "serve_replica_processing_queries",
+            description="The current number of queries being processed.",
+            tag_keys=("backend", "replica"))
         self.num_processing_items.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
-        self.restart_counter.record(1)
+        self.restart_counter.inc()
 
-        asyncio.get_event_loop().create_task(self.main_loop())
+        ray_logger = logging.getLogger("ray")
+        for handler in ray_logger.handlers:
+            handler.setFormatter(
+                logging.Formatter(
+                    handler.formatter._fmt +
+                    f" component=serve backend={self.backend_tag} "
+                    f"replica={self.replica_tag}"))
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
@@ -245,129 +223,65 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
+    async def ensure_serializable_response(self, response: Any) -> Any:
+        if isinstance(response, starlette.responses.StreamingResponse):
+
+            async def mock_receive():
+                # This is called in a tight loop in response() just to check
+                # for an http disconnect.  So rather than return immediately
+                # we should suspend execution to avoid wasting CPU cycles.
+                never_set_event = asyncio.Event()
+                await never_set_event.wait()
+
+            sender = ASGIHTTPSender()
+            await response(scope=None, receive=mock_receive, send=sender)
+            return sender.build_starlette_response()
+        return response
+
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = ensure_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
+        method_to_call = None
         try:
-            result = await method_to_call(arg)
-            self.request_counter.record(1)
+            # TODO(simon): Split this section out when invoke_batch is removed.
+            if self.config.internal_metadata.is_asgi_app:
+                request: Request = arg
+                sender = ASGIHTTPSender()
+                await self.callable._serve_asgi_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                result = sender.build_starlette_response()
+            else:
+                method_to_call = sync_to_async(
+                    self.get_runner_method(request_item))
+                result = await method_to_call(arg)
+            result = await self.ensure_serializable_response(result)
+            self.request_counter.inc()
         except Exception as e:
             import os
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
-            result = wrap_to_ray_error(e)
-            self.error_counter.record(1)
+            function_name = "unknown"
+            if method_to_call is not None:
+                function_name = method_to_call.__name__
+            result = wrap_to_ray_error(function_name, e)
+            self.error_counter.inc()
 
         latency_ms = (time.time() - start) * 1000
-        self.processing_latency_tracker.record(
-            latency_ms, tags={"batch_size": "1"})
+        self.processing_latency_tracker.observe(latency_ms)
 
         return result
-
-    async def invoke_batch(self, request_item_list: List[Query]) -> List[Any]:
-        args = []
-        call_methods = set()
-        batch_size = len(request_item_list)
-
-        # Construct the batch of requests
-        for item in request_item_list:
-            logger.debug("Replica {} started executing request {}".format(
-                self.replica_tag, item.metadata.request_id))
-            args.append(parse_request_item(item))
-            call_methods.add(self.get_runner_method(item))
-
-        timing_start = time.time()
-        try:
-            if len(call_methods) != 1:
-                raise RayServeException(
-                    f"Queries contain mixed calling methods: {call_methods}. "
-                    "Please only send the same type of requests in batching "
-                    "mode.")
-
-            self.request_counter.record(batch_size)
-
-            call_method = ensure_async(call_methods.pop())
-            result_list = await call_method(args)
-
-            if not isinstance(result_list, Iterable) or isinstance(
-                    result_list, (dict, set)):
-                error_message = ("RayServe expects an ordered iterable object "
-                                 "but the replica returned a {}".format(
-                                     type(result_list)))
-                raise RayServeException(error_message)
-
-            # Normalize the result into a list type. This operation is fast
-            # in Python because it doesn't copy anything.
-            result_list = list(result_list)
-
-            if (len(result_list) != batch_size):
-                error_message = ("Worker doesn't preserve batch size. The "
-                                 "input has length {} but the returned list "
-                                 "has length {}. Please return a list of "
-                                 "results with length equal to the batch size"
-                                 ".".format(batch_size, len(result_list)))
-                raise RayServeException(error_message)
-        except Exception as e:
-            wrapped_exception = wrap_to_ray_error(e)
-            self.error_counter.record(1)
-            result_list = [wrapped_exception for _ in range(batch_size)]
-
-        latency_ms = (time.time() - timing_start) * 1000
-        self.processing_latency_tracker.record(
-            latency_ms, tags={"batch_size": str(batch_size)})
-
-        return result_list
-
-    async def main_loop(self) -> None:
-        while True:
-            # NOTE(simon): There's an issue when user updated batch size and
-            # batch wait timeout during the execution, these values will not be
-            # updated until after the current iteration.
-            batch = await self.batch_queue.wait_for_batch()
-
-            # Record metrics
-            self.num_queued_items.record(self.batch_queue.qsize())
-            self.num_processing_items.record(self.num_ongoing_requests -
-                                             self.batch_queue.qsize())
-            for query in batch:
-                queuing_time = (time.time() - query.tick_enter_replica) * 1000
-                self.queuing_latency_tracker.record(queuing_time)
-
-            all_evaluated_futures = []
-
-            if not self.config.internal_metadata.accepts_batches:
-                query = batch[0]
-                evaluated = asyncio.ensure_future(self.invoke_single(query))
-                all_evaluated_futures = [evaluated]
-                chain_future(evaluated, query.async_future)
-            else:
-                get_call_method = (
-                    lambda query: query.metadata.call_method  # noqa: E731
-                )
-                sorted_batch = sorted(batch, key=get_call_method)
-                for _, group in groupby(sorted_batch, key=get_call_method):
-                    group = list(group)
-                    evaluated = asyncio.ensure_future(self.invoke_batch(group))
-                    all_evaluated_futures.append(evaluated)
-                    result_futures = [q.async_future for q in group]
-                    chain_future(
-                        unpack_future(evaluated, len(group)), result_futures)
-
-            if self.config.internal_metadata.is_blocking:
-                # We use asyncio.wait here so if the result is exception,
-                # it will not be raised.
-                await asyncio.wait(all_evaluated_futures)
 
     def reconfigure(self, user_config) -> None:
         if user_config:
             if self.is_function:
                 raise ValueError(
-                    "argument func_or_class must be a class to use user_config"
-                )
+                    "backend_def must be a class to use user_config")
             elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
                 raise RayServeException("user_config specified but backend " +
                                         self.backend_tag + " missing " +
@@ -376,34 +290,43 @@ class RayServeReplica:
                                          BACKEND_RECONFIGURE_METHOD)
             reconfigure_method(user_config)
 
-    async def _update_backend_configs(self, backend_configs):
-        # TODO(ilr) remove this loop when we poll per key
-        for backend_tag, config in backend_configs.items():
-            if backend_tag == self.backend_tag:
-                self._update_config(config)
-
-    def _update_config(self, new_config: BackendConfig) -> None:
+    def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
-        self.batch_queue.set_config(self.config.max_batch_size or 1,
-                                    self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
-    async def handle_request(self,
-                             request: Union[Query, bytes]) -> asyncio.Future:
-        if isinstance(request, bytes):
-            request = Query.ray_deserialize(request)
-
+    async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
             self.replica_tag, request.metadata.request_id))
-        request.async_future = asyncio.get_event_loop().create_future()
-        self.num_ongoing_requests += 1
 
-        self.batch_queue.put(request)
-        result = await request.async_future
+        self.num_ongoing_requests += 1
+        self.num_processing_items.set(self.num_ongoing_requests)
+        result = await self.invoke_single(request)
+        self.num_ongoing_requests -= 1
         request_time_ms = (time.time() - request.tick_enter_replica) * 1000
         logger.debug("Replica {} finished request {} in {:.2f}ms".format(
             self.replica_tag, request.metadata.request_id, request_time_ms))
 
-        self.num_ongoing_requests -= 1
-        return result
+        # Returns a small object for router to track request status.
+        return b"", result
+
+    async def drain_pending_queries(self):
+        """Perform graceful shutdown.
+
+        Trigger a graceful shutdown protocol that will wait for all the queued
+        tasks to be completed and return to the controller.
+        """
+        sleep_time = self.config.experimental_graceful_shutdown_wait_loop_s
+        while True:
+            # Sleep first because we want to make sure all the routers receive
+            # the notification to remove this replica first.
+            await asyncio.sleep(sleep_time)
+            if self.num_ongoing_requests == 0:
+                break
+            else:
+                logger.info(
+                    f"Waiting for an additional {sleep_time}s to shut down "
+                    f"because there are {self.num_ongoing_requests}"
+                    "ongoing requests.")
+
+        ray.actor.exit_actor()

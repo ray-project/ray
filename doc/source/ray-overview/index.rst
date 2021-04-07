@@ -196,7 +196,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install ray[rllib]
 
 .. code-block:: python
 

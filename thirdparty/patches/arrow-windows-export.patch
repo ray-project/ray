@@ -1,8 +1,0 @@
-diff --git cpp/src/arrow/util/logging.cc cpp/src/arrow/util/logging.cc
---- cpp/src/arrow/util/logging.cc
-+++ cpp/src/arrow/util/logging.cc
-@@ -87,1 +87,3 @@
-+#if !defined(_WIN32) || defined(ARROW_STATIC) || defined(ARROW_EXPORTING) || !defined(ARROW_EXPORT)
- ArrowLogLevel ArrowLog::severity_threshold_ = ArrowLogLevel::ARROW_INFO;
-+#endif
--- 

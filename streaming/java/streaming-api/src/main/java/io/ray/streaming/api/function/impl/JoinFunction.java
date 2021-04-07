@@ -13,5 +13,4 @@ import io.ray.streaming.api.function.Function;
 public interface JoinFunction<T, O, R> extends Function {
 
   R join(T left, O right);
-
 }

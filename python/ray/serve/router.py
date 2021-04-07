@@ -1,15 +1,17 @@
 import asyncio
 import itertools
-from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, DefaultDict, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
+
+from ray.actor import ActorHandle
+from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
+from ray.serve.config import BackendConfig
+from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
+from ray.serve.utils import compute_iterable_delta, logger
+from ray.serve.exceptions import RayServeException
 
 import ray
-from ray.actor import ActorHandle
-from ray.serve.context import TaskContext
-from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.long_poll import LongPollerAsyncClient
-from ray.serve.utils import logger
 from ray.util import metrics
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
@@ -19,7 +21,6 @@ REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 class RequestMetadata:
     request_id: str
     endpoint: str
-    request_context: TaskContext
 
     call_method: str = "__call__"
     shard_key: Optional[str] = None
@@ -38,22 +39,23 @@ class RequestMetadata:
 class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
-    context: TaskContext
     metadata: RequestMetadata
-
-    # Fields used by backend worker to perform timing measurement.
-    tick_enter_replica: Optional[float] = None
 
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self):
+    def __init__(
+            self,
+            controller_handle,
+            backend_tag,
+            event_loop: asyncio.AbstractEventLoop,
+    ):
+        self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
         # and the replica handles come from different long poll keys.
         self.max_concurrent_queries: int = 8
         self.in_flight_queries: Dict[ActorHandle, set] = dict()
-
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -63,41 +65,57 @@ class ReplicaSet:
         self.replica_iterator = itertools.cycle(self.in_flight_queries.keys())
 
         # Used to unblock this replica set waiting for free replicas. A newly
-        # added replica or updated max_concurrenty_queries value means the
+        # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event()
+        self.config_updated_event = asyncio.Event(loop=event_loop)
+        self.num_queued_queries = 0
+        self.num_queued_queries_gauge = metrics.Gauge(
+            "serve_backend_queued_queries",
+            description=(
+                "The current number of queries to this backend waiting"
+                " to be assigned to a replica."),
+            tag_keys=("backend", "endpoint"))
+        self.num_queued_queries_gauge.set_default_tags({
+            "backend": self.backend_tag
+        })
 
-    def set_max_concurrent_queries(self, new_value):
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
+                set_max_concurrent_queries,
+                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
+                update_worker_replicas,
+            },
+            call_in_event_loop=event_loop,
+        )
+
+    def set_max_concurrent_queries(self, backend_config: BackendConfig):
+        new_value: int = backend_config.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(
-                f"ReplicaSet: chaging max_concurrent_queries to {new_value}")
+                f"ReplicaSet: changing max_concurrent_queries to {new_value}")
             self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
-        current_replica_set = set(self.in_flight_queries.keys())
-        updated_replica_set = set(worker_replicas)
+        added, removed, _ = compute_iterable_delta(
+            self.in_flight_queries.keys(), worker_replicas)
 
-        added = updated_replica_set - current_replica_set
         for new_replica_handle in added:
             self.in_flight_queries[new_replica_handle] = set()
 
-        removed = current_replica_set - updated_replica_set
         for removed_replica_handle in removed:
-            # NOTE(simon): Do we warn if there are still inflight queries?
-            # The current approach is no because the queries objectrefs are
-            # just used to perform backpressure. Caller should decide what to
-            # do with the object refs.
+            # Delete it directly because shutdown is processed by controller.
             del self.in_flight_queries[removed_replica_handle]
 
-        # State changed, reset the round robin iterator
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
-        """Try to assign query to a replica, return the object ref is succeeded
+        """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
         for _ in range(len(self.in_flight_queries.keys())):
@@ -106,10 +124,14 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
-            logger.debug(f"Replica set assigned {query} to {replica}")
-            ref = replica.handle_request.remote(query)
-            self.in_flight_queries[replica].add(ref)
-            return ref
+
+            logger.debug(f"Assigned query {query.metadata.request_id} "
+                         f"to replica {replica}.")
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.handle_request.remote(
+                query.metadata, *query.args, **query.kwargs)
+            self.in_flight_queries[replica].add(tracker_ref)
+            return user_ref
         return None
 
     @property
@@ -126,14 +148,18 @@ class ReplicaSet:
 
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
-
         This method will keep track of the in flight queries for each replicas
         and only send a query to available replicas (determined by the backend
         max_concurrent_quries value.)
         """
+        endpoint = query.metadata.endpoint
+        self.num_queued_queries += 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries, tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug(f"Failed to assign a replica for query {query}")
+            logger.debug("Failed to assign a replica for "
+                         f"query {query.metadata.request_id}")
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
             num_finished = self._drain_completed_object_refs()
@@ -141,7 +167,7 @@ class ReplicaSet:
             # config to be updated.
             if num_finished == 0:
                 logger.debug(
-                    f"All replicas are busy, waiting for a free replica.")
+                    "All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED)
@@ -149,60 +175,68 @@ class ReplicaSet:
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
-            assigned_ref = await self.assign_replica(query)
+            assigned_ref = self._try_assign_replica(query)
+        self.num_queued_queries -= 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries, tags={"endpoint": endpoint})
         return assigned_ref
 
 
 class Router:
-    def __init__(self, controller_handle: ActorHandle):
+    def __init__(
+            self,
+            controller_handle: ActorHandle,
+            endpoint_tag: EndpointTag,
+            loop: asyncio.BaseEventLoop = None,
+    ):
         """Router process incoming queries: choose backend, and assign replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.
         """
         self.controller = controller_handle
-
-        self.endpoint_policies: Dict[str, EndpointPolicy] = dict()
-        self.backend_replicas: Dict[str, ReplicaSet] = defaultdict(ReplicaSet)
-
-        self._pending_endpoints: DefaultDict[str, asyncio.Event] = defaultdict(
-            asyncio.Event)
+        self.endpoint_tag = endpoint_tag
+        self.endpoint_policy: Optional[EndpointPolicy] = None
+        self.backend_replicas: Dict[BackendTag, ReplicaSet] = dict()
+        self._pending_endpoint_registered = asyncio.Event(loop=loop)
+        self._loop = loop or asyncio.get_event_loop()
 
         # -- Metrics Registration -- #
-        self.num_router_requests = metrics.Count(
-            "num_router_requests",
-            description="Number of requests processed by the router.",
+        self.num_router_requests = metrics.Counter(
+            "serve_num_router_requests",
+            description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
 
-    async def setup_in_async_loop(self):
-        # NOTE(simon): Instead of performing initialization in __init__,
-        # We separated the init of LongPollerAsyncClient to this method because
-        # __init__ might be called in sync context. LongPollerAsyncClient
-        # requires async context.
-        self.long_pull_client = LongPollerAsyncClient(
-            self.controller, {
-                "traffic_policies": self._update_traffic_policies,
-                "worker_handles": self._update_worker_handles,
-                "backend_configs": self._update_backend_configs,
-            })
+        self.long_poll_client = LongPollClient(
+            self.controller,
+            {
+                (LongPollNamespace.TRAFFIC_POLICIES, endpoint_tag): self.
+                _update_traffic_policy,
+            },
+            call_in_event_loop=self._loop,
+        )
 
-    async def _update_traffic_policies(self, traffic_policies):
-        for endpoint, traffic_policy in traffic_policies.items():
-            self.endpoint_policies[endpoint] = RandomEndpointPolicy(
-                traffic_policy)
-            if endpoint in self._pending_endpoints:
-                event = self._pending_endpoints.pop(endpoint)
-                event.set()
+    def _update_traffic_policy(self, traffic_policy: TrafficPolicy):
+        self.endpoint_policy = RandomEndpointPolicy(traffic_policy)
 
-    async def _update_worker_handles(self, worker_handles):
-        for backend_tag, replica_handles in worker_handles.items():
-            self.backend_replicas[backend_tag].update_worker_replicas(
-                replica_handles)
+        backend_tags = traffic_policy.backend_tags
+        added, removed, _ = compute_iterable_delta(
+            self.backend_replicas.keys(),
+            backend_tags,
+        )
+        for tag in added:
+            self._get_or_create_replica_set(tag)
+        for tag in removed:
+            del self.backend_replicas[tag]
 
-    async def _update_backend_configs(self, backend_configs):
-        for backend_tag, config in backend_configs.items():
-            self.backend_replicas[backend_tag].set_max_concurrent_queries(
-                config.max_concurrent_queries)
+        if not self._pending_endpoint_registered.is_set():
+            self._pending_endpoint_registered.set()
+
+    def _get_or_create_replica_set(self, tag):
+        if tag not in self.backend_replicas:
+            self.backend_replicas[tag] = ReplicaSet(self.controller, tag,
+                                                    self._loop)
+        return self.backend_replicas[tag]
 
     async def assign_request(
             self,
@@ -215,24 +249,30 @@ class Router:
         query = Query(
             args=list(request_args),
             kwargs=request_kwargs,
-            context=request_meta.request_context,
             metadata=request_meta,
         )
 
-        if endpoint not in self.endpoint_policies:
-            logger.info(
-                f"Endpoint {endpoint} doesn't exist, waiting for registration."
-            )
-            await self._pending_endpoints[endpoint].wait()
+        if not self._pending_endpoint_registered.is_set():
+            # This can happen when the router is created but the endpoint
+            # information hasn't been retrieved via long-poll yet.
+            try:
+                await asyncio.wait_for(
+                    self._pending_endpoint_registered.wait(),
+                    timeout=5,
+                )
+            except asyncio.TimeoutError:
+                raise RayServeException(
+                    f"Endpoint {endpoint} doesn't exist after 5s timeout. "
+                    "Marking the query failed.")
 
-        endpoint_policy = self.endpoint_policies[endpoint]
-        chosen_backend, *shadow_backends = endpoint_policy.assign(query)
+        chosen_backend, *shadow_backends = self.endpoint_policy.assign(query)
 
-        result_ref = await self.backend_replicas[chosen_backend
-                                                 ].assign_replica(query)
+        result_ref = await self._get_or_create_replica_set(
+            chosen_backend).assign_replica(query)
         for backend in shadow_backends:
-            await self.backend_replicas[backend].assign_replica(query)
+            (await self._get_or_create_replica_set(backend)
+             .assign_replica(query))
 
-        self.num_router_requests.record(1, tags={"endpoint": endpoint})
+        self.num_router_requests.inc(tags={"endpoint": endpoint})
 
         return result_ref

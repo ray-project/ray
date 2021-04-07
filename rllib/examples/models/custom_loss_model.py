@@ -29,7 +29,6 @@ class CustomLossModel(TFModelV2):
             num_outputs,
             model_config,
             name="fcnet")
-        self.register_variables(self.fcnet.variables())
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):

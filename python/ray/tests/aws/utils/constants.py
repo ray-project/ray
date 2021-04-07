@@ -50,6 +50,19 @@ DEFAULT_SUBNET = {
     "VpcId": "vpc-0000000",
 }
 
+
+def subnet_in_vpc(vpc_num):
+    """Returns a copy of DEFAULT_SUBNET whose VpcId ends with the digits
+    of vpc_num."""
+    subnet = copy.copy(DEFAULT_SUBNET)
+    subnet["VpcId"] = f"vpc-{vpc_num:07d}"
+    return subnet
+
+
+A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS = [
+    subnet_in_vpc(vpc_num) for vpc_num in range(1, 1000)
+] + [DEFAULT_SUBNET]
+
 # Secondary EC2 subnet to expose to tests as required.
 AUX_SUBNET = {
     "AvailabilityZone": "us-west-2a",

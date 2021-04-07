@@ -10,7 +10,8 @@ else
     basedir="rllib/examples/serving"  # In bazel.
 fi
 
-(python $basedir/cartpole_server.py --run=PPO 2>&1 | grep -v 200) &
+# Do not attempt to restore from checkpoint; leads to errors on travis.
+(python $basedir/cartpole_server.py --run=PPO --no-restore 2>&1 | grep -v 200) &
 pid=$!
 
 echo "Waiting for server to start"

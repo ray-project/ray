@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -52,6 +53,8 @@ class WorkerInterface {
   virtual const std::string IpAddress() const = 0;
   /// Connect this worker's gRPC client.
   virtual void Connect(int port) = 0;
+  /// Testing-only
+  virtual void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) = 0;
   virtual int Port() const = 0;
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
@@ -60,8 +63,6 @@ class WorkerInterface {
   virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  virtual void AssignJobId(const JobID &job_id) = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -100,12 +101,6 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) = 0;
-
-  virtual std::vector<double> &GetBorrowedCPUInstances() = 0;
-
-  virtual void ClearBorrowedCPUInstances() = 0;
-
   virtual Task &GetAssignedTask() = 0;
 
   virtual void SetAssignedTask(const Task &assigned_task) = 0;
@@ -143,6 +138,8 @@ class Worker : public WorkerInterface {
   const std::string IpAddress() const;
   /// Connect this worker's gRPC client.
   void Connect(int port);
+  /// Testing-only
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
   int Port() const;
   int AssignedPort() const;
   void SetAssignedPort(int port);
@@ -151,8 +148,6 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -199,14 +194,6 @@ class Worker : public WorkerInterface {
   };
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
-
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  };
-
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
-
-  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
 
   Task &GetAssignedTask() { return assigned_task_; };
 
@@ -264,7 +251,7 @@ class Worker : public WorkerInterface {
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
-  std::unique_ptr<rpc::CoreWorkerClient> rpc_client_;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
@@ -277,14 +264,6 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// CPUs borrowed by the worker. This happens in the following scenario:
-  /// 1) Worker A is blocked, so it donates its CPUs back to the node.
-  /// 2) Other workers are scheduled and are allocated some of the CPUs donated by A.
-  /// 3) Task A is unblocked, but it cannot get all CPUs back. At this point,
-  /// the node is oversubscribed. borrowed_cpu_instances_ represents the number
-  /// of CPUs this node is oversubscribed by.
-  /// TODO (Ion): Investigate a more intuitive alternative to track these Cpus.
-  std::vector<double> borrowed_cpu_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
 };

@@ -2,7 +2,7 @@ cartpole-dqn:
     env: CartPole-v0
     run: DQN
     stop:
-        episode_reward_mean: 150
+        episode_reward_mean: 100
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

@@ -3,6 +3,7 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -145,16 +146,14 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # Use the new "trajectory view API" to collect samples and produce
-    # model- and policy inputs.
-    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
         logger.warning(
             "Setting use_state_preprocessor=True since a custom model "
@@ -170,6 +169,11 @@ def validate_config(config):
                 "ParameterNoise Exploration requires `batch_mode` to be "
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
+
+    if config["simple_optimizer"] != DEPRECATED_VALUE or \
+            config["simple_optimizer"] is False:
+        logger.warning("`simple_optimizer` must be True (or unset) for DDPG!")
+        config["simple_optimizer"] = True
 
 
 def get_policy_class(config):

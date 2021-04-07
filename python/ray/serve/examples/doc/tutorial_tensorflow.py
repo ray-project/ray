@@ -51,10 +51,10 @@ class TFMnistModel:
         self.model_path = model_path
         self.model = tf.keras.models.load_model(model_path)
 
-    def __call__(self, flask_request):
+    async def __call__(self, starlette_request):
         # Step 1: transform HTTP request -> tensorflow input
         # Here we define the request schema to be a json array.
-        input_array = np.array(flask_request.json["array"])
+        input_array = np.array((await starlette_request.json())["array"])
         reshaped_array = input_array.reshape((1, 28, 28))
 
         # Step 2: tensorflow input -> tensorflow output
@@ -71,9 +71,9 @@ class TFMnistModel:
 
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
-client = serve.start()
-client.create_backend("tf:v1", TFMnistModel, TRAINED_MODEL_PATH)
-client.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
+serve.start()
+serve.create_backend("tf:v1", TFMnistModel, TRAINED_MODEL_PATH)
+serve.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
 # __doc_deploy_end__
 
 # __doc_query_begin__

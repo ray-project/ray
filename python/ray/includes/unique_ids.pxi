@@ -9,7 +9,6 @@ See https://github.com/ray-project/ray/issues/3721.
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
     CActorClassID,
     CActorID,
     CNodeID,
@@ -24,7 +23,7 @@ from ray.includes.unique_ids cimport (
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -32,7 +31,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -303,16 +302,6 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ActorCheckpointID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.FromBinary(<c_string>id)
-
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
-
-
 cdef class FunctionID(UniqueID):
 
     def __init__(self, id):
@@ -373,7 +362,6 @@ cdef class PlacementGroupID(BaseID):
         return self.data.Hash()
 
 _ID_TYPES = [
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
     NodeID,

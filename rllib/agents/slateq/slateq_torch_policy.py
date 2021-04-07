@@ -11,8 +11,8 @@ from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDistributionWrapper)
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (ModelConfigDict, TensorType,
                                     TrainerConfigDict)
@@ -403,8 +403,9 @@ def postprocess_fn_add_next_actions_for_sarsa(policy: Policy,
     return batch
 
 
-SlateQTorchPolicy = build_torch_policy(
+SlateQTorchPolicy = build_policy_class(
     name="SlateQTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.slateq.slateq.DEFAULT_CONFIG,
 
     # build model, loss functions, and optimizers

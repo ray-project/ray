@@ -1,0 +1,37 @@
+# Bazel development build for C++ API.
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+
+load("//bazel:ray.bzl", "COPTS")
+
+cc_binary(
+    name = "example",
+    srcs = glob([
+        "*.cc",
+    ]),
+    args = [
+        "--dynamic-library-path $(location example.so)",
+    ],
+    copts = COPTS,
+    data = [
+        "example.so",
+        "//cpp:ray_cpp_pkg",
+    ],
+    linkstatic = True,
+    deps = [
+        "//cpp:ray_api",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)
+
+cc_binary(
+    name = "example.so",
+    srcs = glob([
+        "*.cc",
+    ]),
+    copts = COPTS,
+    linkstatic = True,
+    deps = [
+        "//cpp:ray_api",
+        "@com_github_gflags_gflags//:gflags",
+    ],
+)

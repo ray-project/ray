@@ -132,10 +132,10 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
   RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
-  RAY_LOG(INFO) << "There is not enough space to create this object, so evicting "
-                << objects_to_evict->size() << " objects to free up " << num_bytes_evicted
-                << " bytes. The number of bytes in use (before "
-                << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+  RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
+                 << objects_to_evict->size() << " objects to free up "
+                 << num_bytes_evicted << " bytes. The number of bytes in use (before "
+                 << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
   return required_space - num_bytes_evicted;
 }
 
@@ -155,15 +155,6 @@ void EvictionPolicy::EndObjectAccess(const ObjectID &object_id) {
 void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
   // If the object is in the LRU cache, remove it.
   cache_.Remove(object_id);
-}
-
-void EvictionPolicy::RefreshObjects(const std::vector<ObjectID> &object_ids) {
-  for (const auto &object_id : object_ids) {
-    int64_t size = cache_.Remove(object_id);
-    if (size != -1) {
-      cache_.Add(object_id, size);
-    }
-  }
 }
 
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -x 
+set -x
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
@@ -34,7 +34,7 @@ esac
   missing_symlinks=()
   while read -r mode _ _ path; do
     if [ "${mode}" = 120000 ]; then
-      test -L "${path}" || missing_symlinks+=("${paths}")
+      test -L "${path}" || missing_symlinks+=("${path}")
     fi
   done
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
@@ -114,6 +114,12 @@ if [ "${CI-}" = true ]; then
     fi
     cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
+EOF
+  elif [ -n "${BUILDKITE-}" ]; then
+    echo "Using buildkite secret store to communicate with cache address"
+
+    cat <<EOF >> ~/.bazelrc
+build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
 EOF
   else
     echo "Using remote build cache in read-only mode." 1>&2

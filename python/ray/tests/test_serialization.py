@@ -8,6 +8,7 @@ import sys
 import weakref
 
 import numpy as np
+from numpy import log
 import pytest
 
 import ray
@@ -331,6 +332,36 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
     assert repr_orig == repr_ser
 
 
+def test_inspect_serialization(enable_pickle_debug):
+    import threading
+    from ray.cloudpickle import dumps_debug
+
+    lock = threading.Lock()
+
+    with pytest.raises(TypeError):
+        dumps_debug(lock)
+
+    def test_func():
+        print(lock)
+
+    with pytest.raises(TypeError):
+        dumps_debug(test_func)
+
+    class test_class:
+        def test(self):
+            self.lock = lock
+
+    from ray.util.check_serialize import inspect_serializability
+    results = inspect_serializability(lock)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_func)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_class)
+    assert list(results[1])[0].obj == lock, results
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -566,6 +597,41 @@ def test_buffer_alignment(ray_start_shared_local_modes):
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
+
+
+def test_custom_serializer(ray_start_shared_local_modes):
+    import threading
+
+    class A:
+        def __init__(self, x):
+            self.x = x
+            self.lock = threading.Lock()
+
+    def custom_serializer(a):
+        return a.x
+
+    def custom_deserializer(x):
+        return A(x)
+
+    ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+    ray.get(ray.put(A(1)))
+
+    ray.util.deregister_serializer(A)
+    with pytest.raises(Exception):
+        ray.get(ray.put(A(1)))
+
+    # deregister again takes no effects
+    ray.util.deregister_serializer(A)
+
+
+def test_numpy_ufunc(ray_start_shared_local_modes):
+    @ray.remote
+    def f():
+        # add reference to the numpy ufunc
+        log
+
+    ray.get(f.remote())
 
 
 if __name__ == "__main__":

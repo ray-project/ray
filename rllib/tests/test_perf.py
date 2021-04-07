@@ -4,7 +4,7 @@ import unittest
 
 import ray
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.tests.test_rollout_worker import MockPolicy
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 
 
 class TestPerf(unittest.TestCase):

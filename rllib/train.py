@@ -8,11 +8,18 @@ import yaml
 import ray
 from ray.cluster_utils import Cluster
 from ray.tune.config_parser import make_parser
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
 
 # Try to import both backends for flag checking/warnings.
 tf1, tf, tfv = try_import_tf()
@@ -53,8 +60,7 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--local-mode",
         action="store_true",
-        help="Whether to run ray with `local_mode=True`. "
-        "Only if --ray-num-nodes is not used.")
+        help="Run ray in local mode for easier debugging.")
     parser.add_argument(
         "--ray-num-cpus",
         default=None,
@@ -184,10 +190,10 @@ def run(args, parser):
 
         if args.v:
             exp["config"]["log_level"] = "INFO"
-            verbose = 2
+            verbose = 3  # Print details on trial result
         if args.vv:
             exp["config"]["log_level"] = "DEBUG"
-            verbose = 3
+            verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
         cluster = Cluster()
@@ -206,12 +212,19 @@ def run(args, parser):
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode)
 
+    if IS_NOTEBOOK:
+        progress_reporter = JupyterNotebookReporter(
+            overwrite=verbose >= 3, print_intermediate_tables=verbose >= 1)
+    else:
+        progress_reporter = CLIReporter(print_intermediate_tables=verbose >= 1)
+
     run_experiments(
         experiments,
         scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
         queue_trials=args.queue_trials,
         verbose=verbose,
+        progress_reporter=progress_reporter,
         concurrent=True)
 
     ray.shutdown()

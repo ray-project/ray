@@ -75,7 +75,7 @@ def normalize(data, wrt):
         which can be specified.
     """
     return (data - np.min(wrt, axis=0)) / (
-        np.max(wrt, axis=0) - np.min(wrt, axis=0))
+        np.max(wrt, axis=0) - np.min(wrt, axis=0) + 1e-8)
 
 
 def standardize(data):

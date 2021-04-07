@@ -15,7 +15,7 @@ from ray import tune
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
@@ -76,7 +76,7 @@ def training_workflow(config, reporter):
 
     for _ in range(config["num_iters"]):
         # Broadcast weights to the policy evaluation workers
-        weights = ray.put({"default_policy": policy.get_weights()})
+        weights = ray.put({DEFAULT_POLICY_ID: policy.get_weights()})
         for w in workers:
             w.set_weights.remote(weights)
 

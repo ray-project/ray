@@ -55,7 +55,7 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <ref-automatic-cluster>`. Save the below cluster configuration (``tune-default.yaml``):
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-cloud>`. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -130,7 +130,7 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 Syncing
 -------
 
-Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <ref-automatic-cluster>`.
+Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>`.
 By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.SyncConfig`` by providing either a function or a string.
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
@@ -290,7 +290,7 @@ Upon a second run, this will restore the entire experiment state from ``~/path/t
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <ref-automatic-cluster>` to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <cluster-cloud>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 

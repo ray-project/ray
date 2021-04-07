@@ -33,8 +33,7 @@ public abstract class InputStreamTask extends StreamTask {
   }
 
   @Override
-  protected void init() {
-  }
+  protected void init() {}
 
   @Override
   public void run() {
@@ -71,7 +70,9 @@ public abstract class InputStreamTask extends StreamTask {
           queueBarrier.getData().get(barrierData);
           RemoteCall.Barrier barrierPb = RemoteCall.Barrier.parseFrom(barrierData);
           final long checkpointId = barrierPb.getId();
-          LOG.info("Start to do checkpoint {}, worker name is {}.", checkpointId,
+          LOG.info(
+              "Start to do checkpoint {}, worker name is {}.",
+              checkpointId,
               jobWorker.getWorkerContext().getWorkerName());
 
           final Map<String, OffsetInfo> inputPoints = queueBarrier.getInputOffsets();
@@ -80,8 +81,8 @@ public abstract class InputStreamTask extends StreamTask {
         }
       }
     } catch (Throwable throwable) {
-      if (throwable instanceof ChannelInterruptException ||
-          ExceptionUtils.getRootCause(throwable) instanceof ChannelInterruptException) {
+      if (throwable instanceof ChannelInterruptException
+          || ExceptionUtils.getRootCause(throwable) instanceof ChannelInterruptException) {
         LOG.info("queue has stopped.");
       } else {
         // error occurred, need to rollback
@@ -95,8 +96,6 @@ public abstract class InputStreamTask extends StreamTask {
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("processor", processor)
-        .toString();
+    return MoreObjects.toStringHelper(this).add("processor", processor).toString();
   }
 }

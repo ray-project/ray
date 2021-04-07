@@ -13,14 +13,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Represents a stream of data whose transformations will be executed in python.
- */
+/** Represents a stream of data whose transformations will be executed in python. */
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
-  protected PythonDataStream(
-      StreamingContext streamingContext,
-      PythonOperator pythonOperator) {
+  protected PythonDataStream(StreamingContext streamingContext, PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
@@ -36,9 +32,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   public PythonDataStream(
-      PythonDataStream input,
-      PythonOperator pythonOperator,
-      Partition<Object> partition) {
+      PythonDataStream input, PythonOperator pythonOperator, Partition<Object> partition) {
     super(input, pythonOperator, partition);
   }
 
@@ -150,7 +144,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a key-by function to this stream.
    *
-   * @param func the  python keyFunction.
+   * @param func the python keyFunction.
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(PythonFunction func) {
@@ -186,8 +180,9 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
-      throw new RuntimeException("Partition related methods can't be called on a " +
-          "python stream if parent stream is a java stream.");
+      throw new RuntimeException(
+          "Partition related methods can't be called on a "
+              + "python stream if parent stream is a java stream.");
     }
   }
 
@@ -204,5 +199,4 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   public Language getLanguage() {
     return Language.PYTHON;
   }
-
 }

@@ -230,6 +230,17 @@ def to_list(value):
 class DictSpyModel(TFModelV2):
     capture_index = 0
 
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super().__init__(obs_space, action_space, None, model_config, name)
+        # Will only feed in sensors->pos.
+        input_ = tf.keras.layers.Input(
+            shape=self.obs_space.original_space["sensors"]["position"].shape)
+
+        self.num_outputs = num_outputs or 64
+        out = tf.keras.layers.Dense(self.num_outputs)(input_)
+        self._main_layer = tf.keras.models.Model([input_], [out])
+
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, front_cam, task):
             # TF runs this function in an isolated context, so we have to use
@@ -251,13 +262,25 @@ class DictSpyModel(TFModelV2):
             stateful=True)
 
         with tf1.control_dependencies([spy_fn]):
-            output = tf1.layers.dense(input_dict["obs"]["sensors"]["position"],
-                                      self.num_outputs)
+            output = self._main_layer(
+                [input_dict["obs"]["sensors"]["position"]])
+
         return output, []
 
 
 class TupleSpyModel(TFModelV2):
     capture_index = 0
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
+        super().__init__(obs_space, action_space, None, model_config, name)
+        # Will only feed in 0th index of observation Tuple space.
+        input_ = tf.keras.layers.Input(
+            shape=self.obs_space.original_space[0].shape)
+
+        self.num_outputs = num_outputs or 64
+        out = tf.keras.layers.Dense(self.num_outputs)(input_)
+        self._main_layer = tf.keras.models.Model([input_], [out])
 
     def forward(self, input_dict, state, seq_lens):
         def spy(pos, cam, task):
@@ -310,7 +333,7 @@ class NestedSpacesTest(unittest.TestCase):
     def test_invalid_model2(self):
         ModelCatalog.register_custom_model("invalid2", InvalidModel2)
         self.assertRaisesRegexp(
-            ValueError, "Expected output shape of",
+            ValueError, "State output is not a list",
             lambda: PGTrainer(
                 env="CartPole-v0", config={
                     "model": {

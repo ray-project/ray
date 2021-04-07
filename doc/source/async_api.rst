@@ -162,3 +162,28 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
 
 
 Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
+
+AsyncIO for Remote Tasks
+------------------------
+
+We don't support asyncio for remote tasks. The following snippet will fail:
+
+.. code-block:: python
+
+    @ray.remote
+    async def f():
+        pass
+
+Instead, you can wrap the ``async`` function with a wrapper to run the task synchronously:
+
+.. code-block:: python
+
+    async def f():
+        pass
+
+    @ray.remote
+    def wrapper():
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(f())
+    
+    

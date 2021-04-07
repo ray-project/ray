@@ -88,7 +88,7 @@ const makeGroupedTableContents = (
     );
     return (
       <NodeRowGroup
-        key={node.ip}
+        key={node.raylet.nodeId}
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
@@ -139,7 +139,12 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const nodesSelector = (state: StoreState) => state.dashboard?.nodeInfo?.clients;
+// Dead node payloads don't contain the full information needed to render
+// so we filter them out here.
+const liveNodesSelector = (state: StoreState) =>
+  state.dashboard?.nodeInfo?.clients.filter(
+    (node) => node.raylet.state === "ALIVE",
+  );
 
 type DialogState = {
   nodeIp: string;
@@ -170,7 +175,7 @@ const NodeInfo: React.FC<{}> = () => {
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
-  const nodes = useSelector(nodesSelector);
+  const nodes = useSelector(liveNodesSelector);
   if (!nodes) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }
@@ -204,9 +209,19 @@ const NodeInfo: React.FC<{}> = () => {
   // Show GPU features only if there is at least one GPU in cluster.
   const showGPUs =
     nodes.map((n) => n.gpus).filter((gpus) => gpus.length !== 0).length !== 0;
+
+  // Don't show disk on Kubernetes. K8s node disk usage should be monitored
+  // elsewhere.
+  // If a Ray node is running in a K8s pod, it marks available disk as 1 byte.
+  // (See ReporterAgent._get_disk_usage() in reporter_agent.py)
+  // Check if there are any nodes with realistic disk total:
+  const showDisk = nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
+
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,
-  ) => showGPUs || (feature.id !== "gpu" && feature.id !== "gram");
+  ) =>
+    (showGPUs || (feature.id !== "gpu" && feature.id !== "gram")) &&
+    (showDisk || feature.id !== "disk");
   const filteredFeatures = nodeInfoFeatures.filter(filterPredicate);
   const filteredHeaders = nodeInfoHeaders.filter(filterPredicate);
 

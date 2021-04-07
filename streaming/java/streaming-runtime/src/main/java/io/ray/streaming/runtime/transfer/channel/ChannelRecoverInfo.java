@@ -8,12 +8,10 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 public class ChannelRecoverInfo implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(ChannelRecoverInfo.class);
   public Map<String, ChannelCreationStatus> queueCreationStatusMap;
-
 
   public ChannelRecoverInfo(Map<String, ChannelCreationStatus> queueCreationStatusMap) {
     this.queueCreationStatusMap = queueCreationStatusMap;
@@ -21,19 +19,18 @@ public class ChannelRecoverInfo implements Serializable {
 
   public Set<String> getDataLostQueues() {
     Set<String> dataLostQueues = new HashSet<>();
-    queueCreationStatusMap.forEach((q, status) -> {
-      if (status.equals(ChannelCreationStatus.DataLost)) {
-        dataLostQueues.add(q);
-      }
-    });
+    queueCreationStatusMap.forEach(
+        (q, status) -> {
+          if (status.equals(ChannelCreationStatus.DataLost)) {
+            dataLostQueues.add(q);
+          }
+        });
     return dataLostQueues;
   }
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("dataLostQueues", getDataLostQueues())
-        .toString();
+    return MoreObjects.toStringHelper(this).add("dataLostQueues", getDataLostQueues()).toString();
   }
 
   public enum ChannelCreationStatus {

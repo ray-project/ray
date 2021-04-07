@@ -3,9 +3,7 @@ package io.ray.streaming.runtime.config;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * Streaming config including general, master and worker part.
- */
+/** Streaming config including general, master and worker part. */
 public class StreamingConfig implements Serializable {
 
   public StreamingMasterConfig masterConfig;
@@ -21,5 +19,4 @@ public class StreamingConfig implements Serializable {
     wholeConfigMap.putAll(workerConfigTemplate.configMap);
     return wholeConfigMap;
   }
-
 }

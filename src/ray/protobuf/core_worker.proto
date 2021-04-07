@@ -132,6 +132,15 @@ message GetObjectStatusRequest {
   bytes object_id = 2;
 }
 
+message RayObject {
+  // Data of the object.
+  bytes data = 1;
+  // Metadata of the object.
+  bytes metadata = 2;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated bytes nested_inlined_ids = 3;
+}
+
 message GetObjectStatusReply {
   enum ObjectStatus {
     CREATED = 0;
@@ -139,6 +148,13 @@ message GetObjectStatusReply {
     FREED = 2;
   }
   ObjectStatus status = 1;
+  // The Ray object: either a concrete value, an in-Plasma indicator, or an
+  // exception.
+  RayObject object = 2;
+  // This object's locations.
+  repeated bytes node_ids = 3;
+  // The size of the object in bytes.
+  uint64 object_size = 4;
 }
 
 message WaitForActorOutOfScopeRequest {
@@ -151,20 +167,32 @@ message WaitForActorOutOfScopeRequest {
 message WaitForActorOutOfScopeReply {
 }
 
-message WaitForObjectEvictionRequest {
+message SubscribeForObjectEvictionRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
   // ObjectID of the pinned object.
   bytes object_id = 2;
+  // Address of the subscriber.
+  Address subscriber_address = 3;
 }
 
-message WaitForObjectEvictionReply {
+message SubscribeForObjectEvictionReply {
+}
+
+message PubsubLongPollingRequest {
+  /// The address of the subscriber that sends a long polling request.
+  Address subscriber_address = 1;
+}
+
+message PubsubLongPollingReply {
+  /// The object ids that are published.
+  repeated bytes object_ids = 1;
 }
 
 message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message AddObjectLocationOwnerReply {
@@ -173,7 +201,7 @@ message AddObjectLocationOwnerReply {
 message RemoveObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message RemoveObjectLocationOwnerReply {
@@ -182,10 +210,25 @@ message RemoveObjectLocationOwnerReply {
 message GetObjectLocationsOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
+  // The version of the last location update. Only updates more recent than this version
+  // will be returned. -1 indicates that the current location data should
+  // always be returned.
+  int64 last_version = 3;
 }
 
 message GetObjectLocationsOwnerReply {
-  repeated bytes client_ids = 1;
+  // The IDs of the nodes that this object appeared on or was evicted by.
+  repeated bytes node_ids = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The version of the returned location updates.
+  int64 current_version = 5;
 }
 
 message KillActorRequest {
@@ -299,6 +342,9 @@ message PlasmaObjectReadyReply {
 message SpillObjectsRequest {
   // The IDs of objects to be spilled.
   repeated bytes object_ids_to_spill = 1;
+  // The owner addresses of the objects to be spilled. Must be in the same order as
+  // object_ids_to_spill.
+  repeated Address owner_addresses = 2;
 }
 
 message SpillObjectsReply {
@@ -315,12 +361,47 @@ message RestoreSpilledObjectsRequest {
 }
 
 message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
+}
+
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {
+}
+
+message AddSpilledUrlRequest {
+  // Object that was spilled.
+  bytes object_id = 1;
+  // For objects that have been spilled to external storage, the URL from which
+  // they can be retrieved.
+  string spilled_url = 2;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 3;
+  // The size of the object in bytes.
+  int64 size = 4;
+}
+
+message AddSpilledUrlReply {
 }
 
 message ExitRequest {
 }
 
 message ExitReply {
+  /// Whether or not exit succeeds. If the core worker owns any object, the request fails.
+  bool success = 1;
+}
+
+message RunOnUtilWorkerRequest {
+  string request = 1;
+  repeated string args = 2;
+}
+
+message RunOnUtilWorkerReply {
 }
 
 service CoreWorkerService {
@@ -338,8 +419,12 @@ service CoreWorkerService {
       returns (WaitForActorOutOfScopeReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicates that the raylet should unpin the object.
-  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
-      returns (WaitForObjectEvictionReply);
+  rpc SubscribeForObjectEviction(SubscribeForObjectEvictionRequest)
+      returns (SubscribeForObjectEvictionReply);
+  /// The long polling request sent to the core worker for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   // Add object location to the ownership-based object directory.
   rpc AddObjectLocationOwner(AddObjectLocationOwnerRequest)
       returns (AddObjectLocationOwnerReply);
@@ -366,8 +451,16 @@ service CoreWorkerService {
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
+  // Add spilled URL, spilled node ID, and update object size for owned object.
+  // Caller: raylet; callee: owner worker.
+  rpc AddSpilledUrl(AddSpilledUrlRequest) returns (AddSpilledUrlReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Run a request on io worker
+  rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
 }

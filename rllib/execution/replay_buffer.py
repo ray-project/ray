@@ -3,13 +3,15 @@ import logging
 import numpy as np
 import platform
 import random
-from typing import List
+from typing import List, Dict
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
 import psutil  # noqa E402
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.policy.rnn_sequencing import \
+    timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
     DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -64,14 +66,15 @@ class ReplayBuffer:
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._storage)
 
     @DeveloperAPI
-    def add(self, item: SampleBatchType, weight: float):
+    def add(self, item: SampleBatchType, weight: float) -> None:
         warn_replay_buffer_size(
             item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
+
         self._num_timesteps_added += item.count
         self._num_timesteps_added_wrap += item.count
 
@@ -116,7 +119,7 @@ class ReplayBuffer:
         return self._encode_sample(idxes)
 
     @DeveloperAPI
-    def stats(self, debug=False):
+    def stats(self, debug=False) -> dict:
         data = {
             "added_count": self._num_timesteps_added,
             "sampled_count": self._num_timesteps_sampled,
@@ -156,7 +159,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._prio_change_stats = WindowStat("reprio", 1000)
 
     @DeveloperAPI
-    def add(self, item: SampleBatchType, weight: float):
+    def add(self, item: SampleBatchType, weight: float) -> None:
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(item, weight)
         if weight is None:
@@ -164,7 +167,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum[idx] = weight**self._alpha
         self._it_min[idx] = weight**self._alpha
 
-    def _sample_proportional(self, num_items: int):
+    def _sample_proportional(self, num_items: int) -> List[int]:
         res = []
         for _ in range(num_items):
             # TODO(szymon): should we ensure no repeats?
@@ -200,22 +203,28 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * len(self._storage))**(-beta)
             count = self._storage[idx].count
-            weights.extend([weight / max_weight] * count)
-            batch_indexes.extend([idx] * count)
+            # If zero-padded, count will not be the actual batch size of the
+            # data.
+            if isinstance(self._storage[idx], SampleBatch) and \
+                    self._storage[idx].zero_padded:
+                actual_size = self._storage[idx].max_seq_len
+            else:
+                actual_size = count
+            weights.extend([weight / max_weight] * actual_size)
+            batch_indexes.extend([idx] * actual_size)
             self._num_timesteps_sampled += count
         batch = self._encode_sample(idxes)
 
         # Note: prioritization is not supported in lockstep replay mode.
         if isinstance(batch, SampleBatch):
-            assert len(weights) == batch.count
-            assert len(batch_indexes) == batch.count
             batch["weights"] = np.array(weights)
             batch["batch_indexes"] = np.array(batch_indexes)
 
         return batch
 
     @DeveloperAPI
-    def update_priorities(self, idxes, priorities):
+    def update_priorities(self, idxes: List[int],
+                          priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
         sets priority of transition at index idxes[i] in buffer
@@ -242,7 +251,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
 
     @DeveloperAPI
-    def stats(self, debug=False):
+    def stats(self, debug: bool = False) -> Dict:
         parent = ReplayBuffer.stats(self, debug)
         if debug:
             parent.update(self._prio_change_stats.stats())
@@ -254,21 +263,58 @@ _local_replay_buffer = None
 
 
 class LocalReplayBuffer(ParallelIteratorWorker):
-    """A replay buffer shard.
+    """A replay buffer shard storing data for all policies (in multiagent setup).
 
-    Ray actors are single-threaded, so for scalability multiple replay actors
+    Ray actors are single-threaded, so for scalability, multiple replay actors
     may be created to increase parallelism."""
 
     def __init__(self,
-                 num_shards=1,
-                 learning_starts=1000,
-                 buffer_size=10000,
-                 replay_batch_size=1,
-                 prioritized_replay_alpha=0.6,
-                 prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6,
-                 replay_mode="independent",
-                 replay_sequence_length=1):
+                 num_shards: int = 1,
+                 learning_starts: int = 1000,
+                 buffer_size: int = 10000,
+                 replay_batch_size: int = 1,
+                 prioritized_replay_alpha: float = 0.6,
+                 prioritized_replay_beta: float = 0.4,
+                 prioritized_replay_eps: float = 1e-6,
+                 replay_mode: str = "independent",
+                 replay_sequence_length: int = 1,
+                 replay_burn_in: int = 0,
+                 replay_zero_init_states: bool = True):
+        """Initializes a LocalReplayBuffer instance.
+
+        Args:
+            num_shards (int): The number of buffer shards that exist in total
+                (including this one).
+            learning_starts (int): Number of timesteps after which a call to
+                `replay()` will yield samples (before that, `replay()` will
+                return None).
+            buffer_size (int): The size of the buffer. Note that when
+                `replay_sequence_length` > 1, this is the number of sequences
+                (not single timesteps) stored.
+            replay_batch_size (int): The batch size to be sampled (in
+                timesteps). Note that if `replay_sequence_length` > 1,
+                `self.replay_batch_size` will be set to the number of
+                sequences sampled (B).
+            prioritized_replay_alpha (float): Alpha parameter for a prioritized
+                replay buffer.
+            prioritized_replay_beta (float): Beta parameter for a prioritized
+                replay buffer.
+            prioritized_replay_eps (float): Epsilon parameter for a prioritized
+                replay buffer.
+            replay_mode (str): One of "independent" or "lockstep". Determined,
+                whether in the multiagent case, sampling is done across all
+                agents/policies equally.
+            replay_sequence_length (int): The sequence length (T) of a single
+                sample. If > 1, we will sample B x T from this buffer.
+            replay_burn_in (int): The burn-in length in case
+                `replay_sequence_length` > 0. This is the number of timesteps
+                each sequence overlaps with the previous one to generate a
+                better internal state (=state after the burn-in), instead of
+                starting from 0.0 each RNN rollout.
+            replay_zero_init_states (bool): Whether the initial states in the
+                buffer (if replay_sequence_length > 0) are alwayas 0.0 or
+                should be updated with the previous train_batch state outputs.
+        """
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
@@ -276,6 +322,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         self.prioritized_replay_eps = prioritized_replay_eps
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
+        self.replay_burn_in = replay_burn_in
+        self.replay_zero_init_states = replay_zero_init_states
 
         if replay_sequence_length > 1:
             self.replay_batch_size = int(
@@ -318,31 +366,46 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         global _local_replay_buffer
         return _local_replay_buffer
 
-    def get_host(self):
+    def get_host(self) -> str:
         return platform.node()
 
-    def add_batch(self, batch):
+    def add_batch(self, batch: SampleBatchType) -> None:
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
         # Handle everything as if multiagent
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
         with self.add_batch_timer:
+            # Lockstep mode: Store under _ALL_POLICIES key (we will always
+            # only sample from all policies at the same time).
             if self.replay_mode == "lockstep":
                 # Note that prioritization is not supported in this mode.
                 for s in batch.timeslices(self.replay_sequence_length):
                     self.replay_buffers[_ALL_POLICIES].add(s, weight=None)
             else:
-                for policy_id, b in batch.policy_batches.items():
-                    for s in b.timeslices(self.replay_sequence_length):
-                        if "weights" in s:
-                            weight = np.mean(s["weights"])
+                for policy_id, sample_batch in batch.policy_batches.items():
+                    if self.replay_sequence_length == 1:
+                        timeslices = sample_batch.timeslices(1)
+                    else:
+                        timeslices = timeslice_along_seq_lens_with_overlap(
+                            sample_batch=sample_batch,
+                            zero_pad_max_seq_len=self.replay_sequence_length,
+                            pre_overlap=self.replay_burn_in,
+                            zero_init_states=self.replay_zero_init_states,
+                        )
+                    for time_slice in timeslices:
+                        # If SampleBatch has prio-replay weights, average
+                        # over these to use as a weight for the entire
+                        # sequence.
+                        if "weights" in time_slice:
+                            weight = np.mean(time_slice["weights"])
                         else:
                             weight = None
-                        self.replay_buffers[policy_id].add(s, weight=weight)
+                        self.replay_buffers[policy_id].add(
+                            time_slice, weight=weight)
         self.num_added += batch.count
 
-    def replay(self):
+    def replay(self) -> SampleBatchType:
         if self._fake_batch:
             fake_batch = SampleBatch(self._fake_batch)
             return MultiAgentBatch({
@@ -353,6 +416,8 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             return None
 
         with self.replay_timer:
+            # Lockstep mode: Sample from all policies at the same time an
+            # equal amount of steps.
             if self.replay_mode == "lockstep":
                 return self.replay_buffers[_ALL_POLICIES].sample(
                     self.replay_batch_size, beta=self.prioritized_replay_beta)
@@ -364,7 +429,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                         beta=self.prioritized_replay_beta)
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
-    def update_priorities(self, prio_dict):
+    def update_priorities(self, prio_dict: Dict) -> None:
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
                 new_priorities = (
@@ -372,7 +437,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 self.replay_buffers[policy_id].update_priorities(
                     batch_indexes, new_priorities)
 
-    def stats(self, debug=False):
+    def stats(self, debug: bool = False) -> Dict:
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),

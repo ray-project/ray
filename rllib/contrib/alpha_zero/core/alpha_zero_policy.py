@@ -38,15 +38,27 @@ class AlphaZeroPolicy(TorchPolicy):
                         episodes=None,
                         **kwargs):
 
+        input_dict = {"obs": obs_batch}
+        if prev_action_batch:
+            input_dict["prev_actions"] = prev_action_batch
+        if prev_reward_batch:
+            input_dict["prev_rewards"] = prev_reward_batch
+
+        return self.compute_actions_from_input_dict(
+            input_dict=input_dict,
+            episodes=episodes,
+            state_batches=state_batches,
+        )
+
+    @override(Policy)
+    def compute_actions_from_input_dict(self,
+                                        input_dict,
+                                        explore=None,
+                                        timestep=None,
+                                        episodes=None,
+                                        **kwargs):
         with torch.no_grad():
-            input_dict = {"obs": obs_batch}
-            if prev_action_batch:
-                input_dict["prev_actions"] = prev_action_batch
-            if prev_reward_batch:
-                input_dict["prev_rewards"] = prev_reward_batch
-
             actions = []
-
             for i, episode in enumerate(episodes):
                 if episode.length == 0:
                     # if first time step of episode, get initial env state
@@ -89,7 +101,7 @@ class AlphaZeroPolicy(TorchPolicy):
                     episode.user_data["mcts_policies"].append(mcts_policy)
 
             return np.array(actions), [], self.extra_action_out(
-                input_dict, state_batches, self.model, None)
+                input_dict, kwargs.get("state_batches", []), self.model, None)
 
     @override(Policy)
     def postprocess_trajectory(self,

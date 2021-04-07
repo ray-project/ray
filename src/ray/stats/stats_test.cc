@@ -116,6 +116,38 @@ TEST_F(StatsTest, InitializationTest) {
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
 }
 
+TEST(Metric, MultiThreadMetricRegisterViewTest) {
+  ray::stats::Shutdown();
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+  ray::stats::Init({}, MetricsAgentPort, exporter);
+  std::vector<std::thread> threads;
+  const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
+  const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
+  for (int index = 0; index < 10; ++index) {
+    threads.emplace_back([tag1, tag2, index]() {
+      for (int i = 0; i < 100; i++) {
+        stats::Count random_counter(
+            "ray.random.counter" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_counter.Record(i);
+        stats::Gauge random_gauge(
+            "ray.random.gauge" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_gauge.Record(i);
+        stats::Sum random_sum(
+            "ray.random.sum" + std::to_string(index) + std::to_string(i), "", "",
+            {tag1, tag2});
+        random_sum.Record(i);
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  ray::stats::Shutdown();
+}
+
 TEST_F(StatsTest, MultiThreadedInitializationTest) {
   // Make sure stats module is thread-safe.
   // Shutdown the stats module first.

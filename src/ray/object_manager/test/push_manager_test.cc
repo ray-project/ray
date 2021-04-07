@@ -22,15 +22,15 @@ namespace ray {
 TEST(TestPushManager, TestSingleTransfer) {
   std::vector<int> results;
   results.reserve(10);
-  auto client_id = NodeID::FromRandom();
+  auto node_id = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   PushManager pm(5);
-  pm.StartPush(client_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
   ASSERT_EQ(pm.NumPushesInFlight(), 1);
   for (int i = 0; i < 10; i++) {
-    pm.OnChunkComplete(client_id, obj_id);
+    pm.OnChunkComplete(node_id, obj_id);
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
@@ -43,20 +43,20 @@ TEST(TestPushManager, TestSingleTransfer) {
 TEST(TestPushManager, TestSuppressDuplicates) {
   std::vector<int> results;
   results.reserve(10);
-  auto client_id = NodeID::FromRandom();
+  auto node_id = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   PushManager pm(5);
 
   // First send.
-  pm.StartPush(client_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
   // Duplicates are all ignored.
-  pm.StartPush(client_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
   ASSERT_EQ(pm.NumChunksInFlight(), 5);
   ASSERT_EQ(pm.NumChunksRemaining(), 10);
   ASSERT_EQ(pm.NumPushesInFlight(), 1);
   for (int i = 0; i < 10; i++) {
-    pm.StartPush(client_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
-    pm.OnChunkComplete(client_id, obj_id);
+    pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
+    pm.OnChunkComplete(node_id, obj_id);
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
@@ -66,9 +66,9 @@ TEST(TestPushManager, TestSuppressDuplicates) {
   }
 
   // Second allowed send.
-  pm.StartPush(client_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 3; });
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 3; });
   for (int i = 0; i < 10; i++) {
-    pm.OnChunkComplete(client_id, obj_id);
+    pm.OnChunkComplete(node_id, obj_id);
   }
   ASSERT_EQ(pm.NumChunksInFlight(), 0);
   ASSERT_EQ(pm.NumChunksRemaining(), 0);
@@ -83,17 +83,17 @@ TEST(TestPushManager, TestMultipleTransfers) {
   results1.reserve(10);
   std::vector<int> results2;
   results2.reserve(10);
-  auto client1 = NodeID::FromRandom();
-  auto client2 = NodeID::FromRandom();
+  auto node1 = NodeID::FromRandom();
+  auto node2 = NodeID::FromRandom();
   auto obj_id = ObjectID::FromRandom();
   int num_active1 = 0;
   int num_active2 = 0;
   PushManager pm(5);
-  pm.StartPush(client1, obj_id, 10, [&](int64_t chunk_id) {
+  pm.StartPush(node1, obj_id, 10, [&](int64_t chunk_id) {
     results1[chunk_id] = 1;
     num_active1++;
   });
-  pm.StartPush(client2, obj_id, 10, [&](int64_t chunk_id) {
+  pm.StartPush(node2, obj_id, 10, [&](int64_t chunk_id) {
     results2[chunk_id] = 2;
     num_active2++;
   });
@@ -102,10 +102,10 @@ TEST(TestPushManager, TestMultipleTransfers) {
   ASSERT_EQ(pm.NumPushesInFlight(), 2);
   for (int i = 0; i < 20; i++) {
     if (num_active1 > 0) {
-      pm.OnChunkComplete(client1, obj_id);
+      pm.OnChunkComplete(node1, obj_id);
       num_active1--;
     } else if (num_active2 > 0) {
-      pm.OnChunkComplete(client2, obj_id);
+      pm.OnChunkComplete(node2, obj_id);
       num_active2--;
     }
   }

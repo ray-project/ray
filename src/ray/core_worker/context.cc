@@ -21,13 +21,13 @@ struct WorkerThreadContext {
   WorkerThreadContext()
       : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_counter_(0) {}
 
-  int GetNextTaskIndex() { return ++task_index_; }
+  uint64_t GetNextTaskIndex() { return ++task_index_; }
 
   /// Returns the next put object index. The index starts at the number of
   /// return values for the current task in order to keep the put indices from
   /// conflicting with return object indices. 1 <= idx <= NumReturns() is reserved for
   /// return objects, while idx > NumReturns is available for put objects.
-  int GetNextPutIndex() {
+  ObjectIDIndexType GetNextPutIndex() {
     // If current_task_ is nullptr, we assume that we're in the event loop thread and
     // are executing async tasks; in this case, we're using a fake, random task ID
     // for put objects, so there's no risk of creating put object IDs that conflict with
@@ -87,11 +87,17 @@ struct WorkerThreadContext {
   std::shared_ptr<const TaskSpecification> current_task_;
 
   /// Number of tasks that have been submitted from current task.
-  int task_index_;
+  uint64_t task_index_;
+
+  static_assert(sizeof(task_index_) == TaskID::Size() - ActorID::Size(),
+                "Size of task_index_ doesn't match the unique bytes of a TaskID.");
 
   /// A running counter for the number of object puts carried out in the current task.
   /// Used to calculate the object index for put object ObjectIDs.
-  int put_counter_;
+  ObjectIDIndexType put_counter_;
+
+  static_assert(sizeof(put_counter_) == ObjectID::Size() - TaskID::Size(),
+                "Size of put_counter_ doesn't match the unique bytes of an ObjectID.");
 
   /// Placement group id that the current task belongs to.
   /// NOTE: The top level `WorkerContext` will also have placement_group_id
@@ -111,9 +117,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
                              const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
-      current_job_id_(RayConfig::instance().enable_multi_tenancy()
-                          ? job_id
-                          : (worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil())),
+      current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(true),
@@ -130,9 +134,13 @@ const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
 
-int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
+uint64_t WorkerContext::GetNextTaskIndex() {
+  return GetThreadContext().GetNextTaskIndex();
+}
 
-int WorkerContext::GetNextPutIndex() { return GetThreadContext().GetNextPutIndex(); }
+ObjectIDIndexType WorkerContext::GetNextPutIndex() {
+  return GetThreadContext().GetNextPutIndex();
+}
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
@@ -163,29 +171,17 @@ const std::unordered_map<std::string, std::string>
   return override_environment_variables_;
 }
 
-void WorkerContext::SetCurrentJobId(const JobID &job_id) {
-  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
-  current_job_id_ = job_id;
-}
-
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
+  RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_.IsNil());
-      SetCurrentJobId(task_spec.JobId());
-    }
     current_task_is_direct_call_ = true;
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_.IsNil());
-      SetCurrentJobId(task_spec.JobId());
-    }
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
@@ -196,21 +192,13 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_ == task_spec.JobId());
-    }
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
   }
 }
 
-void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
-  GetThreadContext().ResetCurrentTask();
-  if (!RayConfig::instance().enable_multi_tenancy() && task_spec.IsNormalTask()) {
-    SetCurrentJobId(JobID::Nil());
-  }
-}
+void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
@@ -251,7 +239,7 @@ bool WorkerContext::CurrentActorDetached() const { return is_detached_actor_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
-    thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
+    thread_context_ = std::make_unique<WorkerThreadContext>();
   }
 
   return *thread_context_;

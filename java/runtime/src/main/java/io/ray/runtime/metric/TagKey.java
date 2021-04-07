@@ -2,9 +2,7 @@ package io.ray.runtime.metric;
 
 import java.util.Objects;
 
-/**
- * Tagkey is mapping java object to stats tagkey object.
- */
+/** Tagkey is mapping java object to stats tagkey object. */
 public class TagKey {
 
   private String tagKey;
@@ -37,8 +35,6 @@ public class TagKey {
 
   @Override
   public String toString() {
-    return "TagKey{" +
-        ", tagKey='" + tagKey + '\'' +
-        '}';
+    return "TagKey{" + ", tagKey='" + tagKey + '\'' + '}';
   }
 }

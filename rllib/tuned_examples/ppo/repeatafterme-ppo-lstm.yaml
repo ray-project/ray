@@ -15,10 +15,10 @@ repeat-after-me-ppo-w-lstm:
         num_workers: 0
         num_envs_per_worker: 20
         num_sgd_iter: 5
-        vf_share_layers: true
         entropy_coeff: 0.00001
         model:
             use_lstm: true
             lstm_cell_size: 64
             max_seq_len: 20
             fcnet_hiddens: [64]
+            vf_share_layers: true

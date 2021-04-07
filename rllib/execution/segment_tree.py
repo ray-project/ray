@@ -1,4 +1,5 @@
 import operator
+from typing import Any, Optional
 
 
 class SegmentTree:
@@ -28,7 +29,10 @@ class SegmentTree:
     `tree[0]` accesses `internal_array[4]` in the above example.
     """
 
-    def __init__(self, capacity, operation, neutral_element=None):
+    def __init__(self,
+                 capacity: int,
+                 operation: Any,
+                 neutral_element: Optional[Any] = None):
         """Initializes a Segment Tree object.
 
         Args:
@@ -52,7 +56,7 @@ class SegmentTree:
         self.value = [self.neutral_element for _ in range(2 * capacity)]
         self.operation = operation
 
-    def reduce(self, start=0, end=None):
+    def reduce(self, start: int = 0, end: Optional[int] = None) -> Any:
         """Applies `self.operation` to subsequence of our values.
 
         Subsequence is contiguous, includes `start` and excludes `end`.
@@ -122,7 +126,7 @@ class SegmentTree:
 
         return result
 
-    def __setitem__(self, idx, val):
+    def __setitem__(self, idx: int, val: float) -> None:
         """
         Inserts/overwrites a value in/into the tree.
 
@@ -147,7 +151,7 @@ class SegmentTree:
                                              self.value[update_idx + 1])
             idx = idx >> 1  # Divide by 2 (faster than division).
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Any:
         assert 0 <= idx < self.capacity
         return self.value[idx + self.capacity]
 
@@ -155,15 +159,15 @@ class SegmentTree:
 class SumSegmentTree(SegmentTree):
     """A SegmentTree with the reduction `operation`=operator.add."""
 
-    def __init__(self, capacity):
+    def __init__(self, capacity: int):
         super(SumSegmentTree, self).__init__(
             capacity=capacity, operation=operator.add)
 
-    def sum(self, start=0, end=None):
+    def sum(self, start: int = 0, end: Optional[Any] = None) -> Any:
         """Returns the sum over a sub-segment of the tree."""
         return self.reduce(start, end)
 
-    def find_prefixsum_idx(self, prefixsum):
+    def find_prefixsum_idx(self, prefixsum: float) -> int:
         """Finds highest i, for which: sum(arr[0]+..+arr[i - i]) <= prefixsum.
 
         Args:
@@ -188,9 +192,9 @@ class SumSegmentTree(SegmentTree):
 
 
 class MinSegmentTree(SegmentTree):
-    def __init__(self, capacity):
+    def __init__(self, capacity: int):
         super(MinSegmentTree, self).__init__(capacity=capacity, operation=min)
 
-    def min(self, start=0, end=None):
+    def min(self, start: int = 0, end: Optional[Any] = None) -> Any:
         """Returns min(arr[start], ...,  arr[end])"""
         return self.reduce(start, end)

@@ -1,0 +1,59 @@
+cluster_name: ray-rllib-regression-tests
+
+min_workers: 0
+max_workers: 0
+
+docker:
+    image: anyscale/ray-ml:latest-gpu
+    container_name: ray_container
+    pull_before_run: True
+    run_options: ["--ulimit nofile=1045876"]
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: p3.16xlarge
+    ImageId: ami-0a2363a9cff180a64 # Custom ami
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 100
+
+worker_nodes:
+    InstanceType: p3.16xlarge
+    ImageId: ami-0a2363a9cff180a64 # Custom ami
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 100
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1
+    - pip install terminado
+    - pip install torch==1.6 torchvision
+    - pip install boto3==1.4.8 cython==0.29.0
+    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.1.0/f591f6c1c8fa14af6df2adfdcf3255c59dff12b1/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    - git clone https://github.com/ray-project/ray.git ray-cp
+    - pip install -r ./ray-cp/release/rllib_tests/regression_tests/requirements.txt
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - OMP_NUM_THREADS=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - OMP_NUM_THREADS=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

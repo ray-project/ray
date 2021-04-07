@@ -54,9 +54,8 @@ public class DualStateStrategyTest {
   }
 
   public void caseKV() {
-    ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-        .build("VALUE-" + currentTime,
-            String.class, defaultValue);
+    ValueStateDescriptor<String> valueStateDescriptor =
+        ValueStateDescriptor.build("VALUE-" + currentTime, String.class, defaultValue);
     valueStateDescriptor.setTableName(table);
     ValueState<String> state = this.keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -116,7 +115,7 @@ public class DualStateStrategyTest {
     this.keyStateBackend.commit(2);
     this.keyStateBackend.ackCommit(2, 2);
 
-    //do rollback, all memory data is deleted.
+    // do rollback, all memory data is deleted.
     this.keyStateBackend.rollBack(1);
     this.keyStateBackend.setCheckpointId(1);
     state.setCurrentKey(("1"));
@@ -159,9 +158,8 @@ public class DualStateStrategyTest {
   }
 
   public void caseKVGap() {
-    ValueStateDescriptor<String> valueStateDescriptor = ValueStateDescriptor
-        .build("value2-" + currentTime,
-            String.class, defaultValue);
+    ValueStateDescriptor<String> valueStateDescriptor =
+        ValueStateDescriptor.build("value2-" + currentTime, String.class, defaultValue);
     valueStateDescriptor.setTableName(table);
     ValueState<String> state = this.keyStateBackend.getValueState(valueStateDescriptor);
 
@@ -205,13 +203,11 @@ public class DualStateStrategyTest {
     this.keyStateBackend.setCheckpointId(11);
     this.keyStateBackend.rollBack(11);
     Assert.assertEquals(state.get(), "info");
-
   }
 
   public void caseKList() {
-    ListStateDescriptor<Integer> listStateDescriptor = ListStateDescriptor
-        .build("LIST-" + currentTime,
-            Integer.class);
+    ListStateDescriptor<Integer> listStateDescriptor =
+        ListStateDescriptor.build("LIST-" + currentTime, Integer.class);
     listStateDescriptor.setTableName(table);
     ListState<Integer> state = this.keyStateBackend.getListState(listStateDescriptor);
 
@@ -272,7 +268,7 @@ public class DualStateStrategyTest {
     this.keyStateBackend.commit(2);
     this.keyStateBackend.ackCommit(2, 2);
 
-    //do rollback, all memory data is deleted.
+    // do rollback, all memory data is deleted.
     this.keyStateBackend.rollBack(1);
     this.keyStateBackend.setCheckpointId(1);
     state.setCurrentKey(("1"));
@@ -312,9 +308,8 @@ public class DualStateStrategyTest {
   }
 
   public void caseKMap() {
-    MapStateDescriptor<Integer, Integer> mapStateDescriptor = MapStateDescriptor
-        .build("MAP-" + currentTime,
-            Integer.class, Integer.class);
+    MapStateDescriptor<Integer, Integer> mapStateDescriptor =
+        MapStateDescriptor.build("MAP-" + currentTime, Integer.class, Integer.class);
     mapStateDescriptor.setTableName(table);
     MapState<Integer, Integer> state = this.keyStateBackend.getMapState(mapStateDescriptor);
 
@@ -378,7 +373,7 @@ public class DualStateStrategyTest {
     this.keyStateBackend.commit(2);
     this.keyStateBackend.ackCommit(2, 2);
 
-    //do rollback, memory data is deleted.
+    // do rollback, memory data is deleted.
     this.keyStateBackend.rollBack(1);
     this.keyStateBackend.setCheckpointId(1);
     state.setCurrentKey(("1"));
@@ -428,8 +423,8 @@ public class DualStateStrategyTest {
   @Test
   public void testMem() {
     config.put(ConfigKey.STATE_BACKEND_TYPE, BackendType.MEMORY.name());
-    this.keyStateBackend = new KeyStateBackend(10, new KeyGroup(1, 3),
-        StateBackendBuilder.buildStateBackend(config));
+    this.keyStateBackend =
+        new KeyStateBackend(10, new KeyGroup(1, 3), StateBackendBuilder.buildStateBackend(config));
     caseKV();
     caseKVGap();
     caseKList();

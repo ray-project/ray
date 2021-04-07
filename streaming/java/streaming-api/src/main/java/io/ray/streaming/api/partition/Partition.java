@@ -19,5 +19,4 @@ public interface Partition<T> extends Function {
    * @return IDs of the downstream partitions that should receive the record.
    */
   int[] partition(T record, int numPartition);
-
 }

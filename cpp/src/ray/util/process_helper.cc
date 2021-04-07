@@ -27,7 +27,8 @@ static void StartRayNode(int redis_port, std::string redis_password,
                          int node_manager_port) {
   std::vector<std::string> cmdargs(
       {"ray", "start", "--head", "--port", std::to_string(redis_port), "--redis-password",
-       redis_password, "--node-manager-port", std::to_string(node_manager_port)});
+       redis_password, "--node-manager-port", std::to_string(node_manager_port),
+       "--include-dashboard", "false"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   sleep(5);
@@ -70,7 +71,12 @@ void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
   if (options.worker_type == WorkerType::DRIVER) {
-    options.job_id = JobID::FromInt(1);
+    /// TODO(Guyang Song): Get next job id from core worker by GCS client.
+    /// Random a number to avoid repeated job ids.
+    /// The repeated job ids will lead to task hang when driver connects to a existing
+    /// cluster more than once.
+    std::srand(std::time(nullptr));
+    options.job_id = JobID::FromInt(std::rand());
   }
   options.gcs_options = gcs_options;
   options.enable_logging = true;

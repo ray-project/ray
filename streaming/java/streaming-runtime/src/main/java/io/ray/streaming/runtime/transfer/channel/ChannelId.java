@@ -5,6 +5,7 @@ import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
 import com.google.common.io.BaseEncoding;
+import io.ray.api.id.ObjectId;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Random;
@@ -12,12 +13,11 @@ import java.util.Set;
 import sun.nio.ch.DirectBuffer;
 
 /**
- * ChannelID is used to identify a transfer channel between a upstream worker and downstream
- * worker.
+ * ChannelID is used to identify a transfer channel between a upstream worker and downstream worker.
  */
 public class ChannelId {
 
-  public static final int ID_LENGTH = 20;
+  public static final int ID_LENGTH = ObjectId.LENGTH;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
@@ -45,16 +45,12 @@ public class ChannelId {
 
   private static native void destroyNativeId(long nativeIdPtr);
 
-  /**
-   * @param id hex string representation of channel id
-   */
+  /** @param id hex string representation of channel id */
   public static ChannelId from(String id) {
     return from(id, ChannelId.idStrToBytes(id));
   }
 
-  /**
-   * @param idBytes bytes representation of channel id
-   */
+  /** @param idBytes bytes representation of channel id */
   public static ChannelId from(byte[] idBytes) {
     return from(idBytesToStr(idBytes), idBytes);
   }
@@ -76,9 +72,7 @@ public class ChannelId {
     return id;
   }
 
-  /**
-   * @return a random channel id string
-   */
+  /** Returns a random channel id string */
   public static String genRandomIdStr() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();
@@ -89,7 +83,7 @@ public class ChannelId {
   }
 
   /**
-   * Generate channel name, which will be 20 character
+   * Generate channel name, which will be {@link ChannelId#ID_LENGTH} character
    *
    * @param fromTaskId upstream task id
    * @param toTaskId downstream task id
@@ -97,14 +91,17 @@ public class ChannelId {
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {
     /*
-      |    Head    | Timestamp | Empty | From  |  To    |
-      | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
+      |    Head    | Timestamp | Empty | From  |  To    | padding |
+      | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |         |
     */
-    Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
-        "fromTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
-    Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
-        "toTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
-    byte[] channelName = new byte[20];
+    Preconditions.checkArgument(
+        fromTaskId < Short.MAX_VALUE,
+        "fromTaskId %s is larger than %s",
+        fromTaskId,
+        Short.MAX_VALUE);
+    Preconditions.checkArgument(
+        toTaskId < Short.MAX_VALUE, "toTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
+    byte[] channelName = new byte[ID_LENGTH];
 
     for (int i = 11; i >= 8; i--) {
       channelName[i] = (byte) (ts & 0xff);
@@ -178,6 +175,4 @@ public class ChannelId {
   public int hashCode() {
     return strId.hashCode();
   }
-
 }
-

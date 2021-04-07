@@ -8,9 +8,7 @@ import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 
-/**
- * Represents a python DataStream returned by a key-by operation.
- */
+/** Represents a python DataStream returned by a key-by operation. */
 @SuppressWarnings("unchecked")
 public class PythonKeyDataStream extends PythonDataStream implements PythonStream {
 
@@ -51,5 +49,4 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   public KeyDataStream<Object, Object> asJavaStream() {
     return new KeyDataStream(this);
   }
-
 }

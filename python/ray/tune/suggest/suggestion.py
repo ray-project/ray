@@ -265,7 +265,7 @@ class Searcher:
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
-            os.rename(
+            os.replace(
                 tmp_search_ckpt_path,
                 os.path.join(checkpoint_dir,
                              self.CKPT_FILE_TMPL.format(session_str)))
@@ -390,6 +390,12 @@ class ConcurrencyLimiter(Searcher):
 
     def set_state(self, state: Dict):
         self.__dict__.update(state)
+
+    def save(self, checkpoint_path: str):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path: str):
+        self.searcher.restore(checkpoint_path)
 
     def on_pause(self, trial_id: str):
         self.searcher.on_pause(trial_id)

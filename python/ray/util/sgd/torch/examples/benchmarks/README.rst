@@ -104,7 +104,6 @@ You can specify the number of nodes you want to use with the following configura
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers. min_workers default to 0.
     min_workers: <NUMBER_OF_NODES>  # Change this to a custom quantity
-    initial_workers:  <NUMBER_OF_NODES>  # same as above
     max_workers:  <NUMBER_OF_NODES>  # same as above
 
 You may want to install FP16 support for PyTorch with the following configuration in the YAML file:

@@ -9,12 +9,19 @@ namespace ray {
 namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
+        invocation.lib_name, "", "", invocation.fptr.function_name);
+    return RayFunction(Language::CPP, function_descriptor);
+  }
+
   auto base_addr =
       GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
   auto func_offset = (size_t)(invocation.fptr.function_pointer - base_addr);
   auto exec_func_offset = (size_t)(invocation.fptr.exec_function_pointer - base_addr);
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset));
+      invocation.lib_name, std::to_string(func_offset), std::to_string(exec_func_offset),
+      invocation.fptr.function_name);
   return RayFunction(Language::CPP, function_descriptor);
 }
 
@@ -27,7 +34,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation) {
   } else {
     core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, TaskOptions(),
                            &return_ids, 1, std::make_pair(PlacementGroupID::Nil(), -1),
-                           true);
+                           true, "");
   }
   return return_ids[0];
 }

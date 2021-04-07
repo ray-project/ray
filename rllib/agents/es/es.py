@@ -45,10 +45,6 @@ DEFAULT_CONFIG = with_common_config({
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
     },
-
-    # Use the new "trajectory view API" to collect samples and produce
-    # model- and policy inputs.
-    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -182,6 +178,8 @@ def get_policy_class(config):
 
 
 def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for ES/ARS!")
     if config["num_workers"] <= 0:
         raise ValueError("`num_workers` must be > 0 for ES!")
     if config["evaluation_config"]["num_envs_per_worker"] != 1:

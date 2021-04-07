@@ -22,10 +22,10 @@
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/store_client/store_client.h"
-#include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
 
 namespace ray {

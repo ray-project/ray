@@ -18,18 +18,12 @@
 
 package io.ray.streaming.state.backend;
 
-/**
- * Backend Types.
- */
+/** Backend Types. */
 public enum BackendType {
-  /**
-   * Saving the state values in memory
-   */
+  /** Saving the state values in memory */
   MEMORY;
 
-  /**
-   * get the enum from input string value, ignoring the case
-   */
+  /** get the enum from input string value, ignoring the case */
   public static BackendType getEnum(String value) {
     for (BackendType v : values()) {
       if (v.name().equalsIgnoreCase(value)) {

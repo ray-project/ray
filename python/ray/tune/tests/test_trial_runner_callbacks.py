@@ -62,9 +62,9 @@ class _MockTrialExecutor(RayTrialExecutor):
         self.failed_trial = None
 
     def fetch_result(self, trial):
-        return self.results.get(trial, {})
+        return [self.results.get(trial, {})]
 
-    def get_next_available_trial(self):
+    def get_next_available_trial(self, timeout=None):
         return self.next_trial or super().get_next_available_trial()
 
     def get_next_failed_trial(self):
@@ -73,6 +73,9 @@ class _MockTrialExecutor(RayTrialExecutor):
 
 class TrialRunnerCallbacks(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1"
+
+        ray.init()
         self.tmpdir = tempfile.mkdtemp()
         self.callback = TestCallback()
         self.executor = _MockTrialExecutor()

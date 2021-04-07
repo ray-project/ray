@@ -132,8 +132,6 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
                        std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
                    auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
                    RAY_CHECK(memory_store_->Put(data, object_id));
-
-                   ref_counter_->UpdateObjectPinnedAtRaylet(object_id, local_raylet_id_);
                  },
                  /*lineage_reconstruction_enabled=*/true) {}
 
@@ -149,12 +147,26 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
 };
 
 TEST_F(ObjectRecoveryManagerTest, TestNoReconstruction) {
+  // Lineage recording disabled.
   ObjectID object_id = ObjectID::FromRandom();
   ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(failed_reconstructions_.empty());
   ASSERT_TRUE(object_directory_->Flush() == 1);
   ASSERT_TRUE(failed_reconstructions_.count(object_id) == 1);
+  ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
+
+  // Borrowed object.
+  object_id = ObjectID::FromRandom();
+  ref_counter_->AddLocalReference(object_id, "");
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(failed_reconstructions_.count(object_id) == 1);
+  ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
+
+  // Ref went out of scope.
+  object_id = ObjectID::FromRandom();
+  ASSERT_FALSE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(failed_reconstructions_.count(object_id) == 0);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
 }
 
@@ -164,7 +176,7 @@ TEST_F(ObjectRecoveryManagerTest, TestPinNewCopy) {
   std::vector<rpc::Address> addresses({rpc::Address()});
   object_directory_->SetLocations(object_id, addresses);
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
   ASSERT_TRUE(raylet_client_->Flush() == 1);
   ASSERT_TRUE(failed_reconstructions_.empty());
@@ -176,7 +188,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 
   ASSERT_TRUE(failed_reconstructions_.empty());
@@ -188,24 +200,30 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSuppression) {
   ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ref_counter_->AddLocalReference(object_id, "");
 
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   // A second attempt to recover the object will not trigger any more
   // callbacks.
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  // A new copy of the object is pinned.
+  NodeID remote_node_id = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_raylet_id(remote_node_id.Binary());
+  object_directory_->SetLocations(object_id, {address});
   ASSERT_TRUE(object_directory_->Flush() == 1);
-  failed_reconstructions_.clear();
+  ASSERT_TRUE(raylet_client_->Flush() == 1);
 
-  // The object has been marked as failed. Another attempt to recover the
-  // object will not trigger any callbacks.
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  // The object has been marked as failed but it is still pinned on the new
+  // node. Another attempt to recover the object will not trigger any
+  // callbacks.
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 0);
 
   // The object is removed and can be recovered again.
-  auto objects = ref_counter_->ResetObjectsOnRemovedNode(local_raylet_id_);
+  auto objects = ref_counter_->ResetObjectsOnRemovedNode(remote_node_id);
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], object_id);
   memory_store_->Delete(objects);
-  ASSERT_TRUE(manager_.RecoverObject(object_id).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 }
 
@@ -220,7 +238,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
     object_ids.push_back(object_id);
   }
 
-  ASSERT_TRUE(manager_.RecoverObject(object_ids.back()).ok());
+  ASSERT_TRUE(manager_.RecoverObject(object_ids.back()));
   for (int i = 0; i < 3; i++) {
     RAY_LOG(INFO) << i;
     ASSERT_EQ(object_directory_->Flush(), 1);

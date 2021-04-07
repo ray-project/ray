@@ -22,9 +22,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 
-/**
- * MapState interface.
- */
+/** MapState interface. */
 public interface MapState<K, V> extends UnaryState<Map<K, V>> {
 
   /**

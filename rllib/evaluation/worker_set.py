@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
-    ShuffledInput
+    ShuffledInput, D4RLReader
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
@@ -74,12 +74,15 @@ class WorkerSet:
             self.add_workers(num_workers)
 
             # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the driver.
+            # to not be forced to create an Env on the local worker.
             if self._remote_workers:
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
                     lambda p, pid: (pid, p.observation_space, p.action_space)))
-                spaces = {e[0]: (e[1], e[2]) for e in remote_spaces}
+                spaces = {
+                    e[0]: (getattr(e[1], "original_space", e[1]), e[2])
+                    for e in remote_spaces
+                }
             else:
                 spaces = None
 
@@ -120,10 +123,6 @@ class WorkerSet:
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
-            # memory=0 is an error, but memory=None means no limits.
-            "memory": self._remote_config["memory_per_worker"] or None,
-            "object_store_memory": self.
-            _remote_config["object_store_memory_per_worker"] or None,
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
@@ -260,13 +259,16 @@ class WorkerSet:
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
+        elif "d4rl" in config["input"]:
+            env_name = config["input"].split(".")[1]
+            input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
         else:
-            input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -321,6 +323,7 @@ class WorkerSet:
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
             rollout_fragment_length=config["rollout_fragment_length"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],
@@ -336,7 +339,7 @@ class WorkerSet:
             policy_config=config,
             worker_index=worker_index,
             num_workers=num_workers,
-            monitor_path=self._logdir if config["monitor"] else None,
+            record_env=config["record_env"],
             log_dir=self._logdir,
             log_level=config["log_level"],
             callbacks=config["callbacks"],

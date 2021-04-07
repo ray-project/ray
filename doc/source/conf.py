@@ -25,7 +25,7 @@ from datetime import datetime
 import mock
 
 
-class ChildClassMock(mock.MagicMock):
+class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock
@@ -41,6 +41,7 @@ MOCK_MODULES = [
     "horovod",
     "horovod.ray",
     "kubernetes",
+    "mlflow",
     "mxnet",
     "mxnet.model",
     "psutil",
@@ -94,6 +95,9 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
+sys.modules["xgboost"] = ChildClassMock()
+sys.modules["xgboost.core"] = ChildClassMock()
+sys.modules["xgboost.callback"] = ChildClassMock()
 
 
 class SimpleClass(object):
@@ -144,6 +148,7 @@ extensions = [
     'sphinx_gallery.gen_gallery',
     'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
+    'sphinxcontrib.yt',
     'versionwarning.extension',
 ]
 
@@ -164,10 +169,10 @@ sphinx_gallery_conf = {
     "gallery_dirs": ["auto_examples", "tune/tutorials"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
+    "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
     # "backreferences_dir": "False",
     # "show_memory': False,
-    # 'min_reported_time': False
 }
 
 for i in range(len(sphinx_gallery_conf["examples_dirs"])):
@@ -180,6 +185,10 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
 
     # Copy rst files from source dir to gallery dir.
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
+        shutil.copy(f, gallery_dir)
+
+    # Copy inc files from source dir to gallery dir.
+    for f in glob.glob(os.path.join(source_dir, '*.inc')):
         shutil.copy(f, gallery_dir)
 
 # Add any paths that contain templates here, relative to this directory.
@@ -473,6 +482,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    app.add_stylesheet('css/custom.css')
+    app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

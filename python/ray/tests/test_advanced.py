@@ -10,16 +10,22 @@ import time
 import numpy as np
 import pytest
 
-import ray
 import ray.cluster_utils
 import ray.test_utils
 
+from ray.test_utils import client_test_enabled
 from ray.test_utils import RayTestTimeoutException
+
+if client_test_enabled():
+    from ray.util.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
 
 # issue https://github.com/ray-project/ray/issues/7105
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_internal_free(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -60,14 +66,14 @@ def test_multiple_waits_and_gets(shutdown_only):
         return 1
 
     @ray.remote
-    def g(l):
-        # The argument l should be a list containing one object ref.
-        ray.wait([l[0]])
+    def g(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.wait([input_list[0]])
 
     @ray.remote
-    def h(l):
-        # The argument l should be a list containing one object ref.
-        ray.get(l[0])
+    def h(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.get(input_list[0])
 
     # Make sure that multiple wait requests involving the same object ref
     # all return.
@@ -80,6 +86,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.get([h.remote([x]), h.remote([x])])
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_caching_functions_to_run(shutdown_only):
     # Test that we export functions to run on all workers before the driver
     # is connected.
@@ -125,6 +132,7 @@ def test_caching_functions_to_run(shutdown_only):
     ray.worker.global_worker.run_function_on_all_workers(f)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
@@ -152,6 +160,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
@@ -345,6 +354,8 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="grpc interaction with releasing resources")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
@@ -482,6 +493,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_wait_makes_object_local(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -507,6 +519,43 @@ def test_wait_makes_object_local(ray_start_cluster):
     ok, _ = ray.wait([x_id])
     assert len(ok) == 1
     assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+def test_future_resolution_skip_plasma(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Disable worker caching so worker leases are not reused; set object
+    # inlining size threshold and enable storing of small objects in in-memory
+    # object store so the borrowed ref is inlined.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 100 * 1024,
+            "put_small_object_in_memory_store": True,
+        },
+    )
+    cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin_head": 1})
+    def f(x):
+        return x + 1
+
+    @ray.remote(resources={"pin_worker": 1})
+    def g(x):
+        borrowed_ref = x[0]
+        f_ref = f.remote(borrowed_ref)
+        # borrowed_ref should be inlined on future resolution and shouldn't be
+        # in Plasma.
+        assert ray.worker.global_worker.core_worker.object_exists(
+            borrowed_ref, memory_store_only=True)
+        return ray.get(f_ref) * 2
+
+    one = ray.put(1)
+    g_ref = g.remote([one])
+    assert ray.get(g_ref) == 4
 
 
 if __name__ == "__main__":

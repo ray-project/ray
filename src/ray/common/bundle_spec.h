@@ -72,6 +72,11 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     on_spillback_ = callback;
   }
 
+  /// Get all placement group bundle resource labels.
+  const std::unordered_map<std::string, double> &GetFormattedResources() const {
+    return bundle_resource_labels_;
+  }
+
   /// Returns the schedule bundle callback, or nullptr.
   const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
 
@@ -82,18 +87,27 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
  private:
   void ComputeResources();
+  void ComputeBundleResourceLabels();
 
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
+  /// When a bundle is assigned on a node, we'll add the following special resources on
+  /// that node:
+  /// 1) `CPU_group_${group_id}`: this is the requested resource when the actor
+  /// or task specifies placement group without bundle id.
+  /// 2) `CPU_group_${bundle_index}_${group_id}`: this is the requested resource
+  /// when the actor or task specifies placement group with bundle id.
+  std::unordered_map<std::string, double> bundle_resource_labels_;
+
   mutable ScheduleBundleCallback on_schedule_ = nullptr;
 
   mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
 
-/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+/// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index = -1);

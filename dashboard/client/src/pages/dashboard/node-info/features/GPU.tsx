@@ -133,7 +133,7 @@ const WorkerGPUEntry: React.FC<WorkerGPUEntryProps> = ({ resourceSlot }) => {
 };
 
 const WorkerGPU: WorkerFeatureRenderFn = ({ worker }) => {
-  const workerRes = worker.coreWorkerStats[0].usedResources;
+  const workerRes = worker.coreWorkerStats[0]?.usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   let message;
   if (workerUsedGPUResources === undefined) {
@@ -161,7 +161,7 @@ const WorkerGPU: WorkerFeatureRenderFn = ({ worker }) => {
 };
 
 const workerGPUUtilization = (worker: Worker | null) => {
-  const workerRes = worker?.coreWorkerStats[0].usedResources;
+  const workerRes = worker?.coreWorkerStats[0]?.usedResources;
   const workerUsedGPUResources = workerRes?.["GPU"];
   return (
     workerUsedGPUResources &&

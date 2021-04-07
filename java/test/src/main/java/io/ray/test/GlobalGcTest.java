@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -17,12 +16,7 @@ public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.object-store.size", "140 MB");
-  }
-
-  @AfterClass
-  public void tearDown() {
-    System.clearProperty("ray.object-store.size");
+    System.setProperty("ray.head-args.0", "--object-store-memory=" + 140L * 1024 * 1024);
   }
 
   public static class LargeObjectWithCyclicRef {
@@ -57,13 +51,14 @@ public class GlobalGcTest extends BaseTest {
 
   private void testGlobalGcWhenFull(boolean withPut) {
     // Local driver.
-    WeakReference<LargeObjectWithCyclicRef> localRef = new WeakReference<>(
-        new LargeObjectWithCyclicRef());
+    WeakReference<LargeObjectWithCyclicRef> localRef =
+        new WeakReference<>(new LargeObjectWithCyclicRef());
 
     // Remote workers.
-    List<ActorHandle<GarbageHolder>> actors = IntStream
-        .range(0, 2).mapToObj(i -> Ray.actor(GarbageHolder::new).remote())
-        .collect(Collectors.toList());
+    List<ActorHandle<GarbageHolder>> actors =
+        IntStream.range(0, 2)
+            .mapToObj(i -> Ray.actor(GarbageHolder::new).remote())
+            .collect(Collectors.toList());
 
     Assert.assertNotNull(localRef.get());
     for (ActorHandle<GarbageHolder> actor : actors) {
@@ -82,8 +77,11 @@ public class GlobalGcTest extends BaseTest {
       actors.get(0).task(GarbageHolder::returnLargeObject).remote().get();
     }
 
-    TestUtils.waitForCondition(() -> localRef.get() == null && actors.stream().noneMatch(
-        a -> a.task(GarbageHolder::hasGarbage).remote().get()), 10 * 1000);
+    TestUtils.waitForCondition(
+        () ->
+            localRef.get() == null
+                && actors.stream().noneMatch(a -> a.task(GarbageHolder::hasGarbage).remote().get()),
+        10 * 1000);
   }
 
   public void testGlobalGcWhenFullWithPut() {

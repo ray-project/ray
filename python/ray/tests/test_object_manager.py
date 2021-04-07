@@ -7,9 +7,10 @@ import warnings
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
-        or ray.utils.get_system_memory() < 50 * 10**9):
+        or ray._private.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
 
@@ -31,6 +32,29 @@ def ray_start_cluster_with_resource():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+    }],
+    indirect=True)
+def test_object_transfer_during_oom(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    remote_ref = put.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(remote_ref, timeout=1)
+    del local_ref
+    ray.get(remote_ref)
 
 
 # This test is here to make sure that when we broadcast an object to a bunch of
@@ -228,6 +252,160 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
     do_transfers()
     do_transfers()
+
+
+# This is a basic test to ensure that the pull request retry timer is
+# integrated properly. To test it, we create a 2 node cluster then do the
+# following:
+# (1) Fill up the driver's object store.
+# (2) Fill up the remote node's object store.
+# (3) Try to get the remote object. This should fail due to an OOM error caused
+#     by step 1.
+# (4) Allow the local object to be evicted.
+# (5) Try to get the object again. Now the retry timer should kick in and
+#     successfuly pull the remote object.
+@pytest.mark.timeout(30)
+def test_pull_request_retry(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def put():
+        return np.zeros(64 * 2**20, dtype=np.int8)
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def driver():
+        local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
+
+        remote_ref = put.remote()
+
+        ready, _ = ray.wait([remote_ref], timeout=1)
+        assert len(ready) == 0
+
+        del local_ref
+
+        # This should always complete within 10 seconds.
+        ready, _ = ray.wait([remote_ref], timeout=20)
+        assert len(ready) > 0
+
+    # Pretend the GPU node is the driver. We do this to force the placement of
+    # the driver and `put` task on different nodes.
+    ray.get(driver.remote())
+
+
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control(shutdown_only):
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(*task_args) for task_args in args]
+    ray.get(tasks)
+
+
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control_dynamic(shutdown_only):
+    # This test is the same as test_pull_bundles_admission_control, except that
+    # the object store's capacity starts off higher and is later consumed
+    # dynamically by concurrent workers.
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can fit 2 tasks at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=2.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(i, *args):
+        print("foo", i)
+        return
+
+    @ray.remote
+    def allocate(i):
+        print("allocate", i)
+        return np.zeros(object_size, dtype=np.uint8)
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(i, *task_args) for i, task_args in enumerate(args)]
+    allocated = [allocate.remote(i) for i in range(num_objects)]
+    ray.get(tasks)
+    del allocated
+
+
+@pytest.mark.timeout(30)
+def test_max_pinned_args_memory(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=200 * 1024 * 1024,
+        _system_config={
+            "max_task_args_memory_fraction": 0.7,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=3, object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(arg):
+        time.sleep(1)
+        return np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+
+    # Each task arg takes about 30% of the remote node's memory. We should
+    # execute at most 2 at a time to make sure we have room for at least 1 task
+    # output.
+    x = np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+    ray.get([f.remote(ray.put(x)) for _ in range(3)])
+
+    @ray.remote
+    def large_arg(arg):
+        return
+
+    # Executing a task whose args are greater than the memory threshold is
+    # okay.
+    ref = np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+    ray.get(large_arg.remote(ref))
 
 
 if __name__ == "__main__":

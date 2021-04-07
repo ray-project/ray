@@ -63,5 +63,4 @@ public class ActorPressTest extends RayBenchmarkTest {
       return remoteResult;
     }
   }
-
 }

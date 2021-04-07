@@ -1,10 +1,7 @@
-import os
 import copy
 import logging
-import glob
 from typing import Dict, List, Optional, Union
 
-import ray.cloudpickle as cloudpickle
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
@@ -12,7 +9,8 @@ from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.suggestion import Searcher
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
-from ray.tune.utils import flatten_dict, merge_dicts
+from ray.tune.utils.util import (flatten_dict, merge_dicts, atomic_save,
+                                 load_newest_checkpoint)
 
 logger = logging.getLogger(__name__)
 
@@ -20,30 +18,6 @@ logger = logging.getLogger(__name__)
 def _warn_on_repeater(searcher, total_samples):
     from ray.tune.suggest.repeater import _warn_num_samples
     _warn_num_samples(searcher, total_samples)
-
-
-def _atomic_save(state: Dict, checkpoint_dir: str, file_name: str):
-    """Atomically saves the object to the checkpoint directory
-
-    This is automatically used by tune.run during a Tune job.
-    """
-    tmp_search_ckpt_path = os.path.join(checkpoint_dir,
-                                        ".tmp_search_generator_ckpt")
-    with open(tmp_search_ckpt_path, "wb") as f:
-        cloudpickle.dump(state, f)
-
-    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
-
-
-def _find_newest_ckpt(dirpath: str, pattern: str):
-    """Returns path to most recently modified checkpoint."""
-    full_paths = glob.glob(os.path.join(dirpath, pattern))
-    if not full_paths:
-        return
-    most_recent_checkpoint = max(full_paths)
-    with open(most_recent_checkpoint, "rb") as f:
-        search_alg_state = cloudpickle.load(f)
-    return search_alg_state
 
 
 class SearchGenerator(SearchAlgorithm):
@@ -174,7 +148,7 @@ class SearchGenerator(SearchAlgorithm):
 
     def has_checkpoint(self, dirpath: str):
         return bool(
-            _find_newest_ckpt(dirpath, self.CKPT_FILE_TMPL.format("*")))
+            load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
     def save_to_dir(self, dirpath: str, session_str: str):
         """Saves self + searcher to dir.
@@ -205,15 +179,18 @@ class SearchGenerator(SearchAlgorithm):
         # We save the base searcher separately for users to easily
         # separate the searcher.
         base_searcher.save_to_dir(dirpath, session_str)
-        _atomic_save(search_alg_state, dirpath,
-                     self.CKPT_FILE_TMPL.format(session_str))
+        atomic_save(
+            state=search_alg_state,
+            checkpoint_dir=dirpath,
+            file_name=self.CKPT_FILE_TMPL.format(session_str),
+            tmp_file_name=".tmp_search_generator_ckpt")
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
 
         searcher = self.searcher
-        search_alg_state = _find_newest_ckpt(dirpath,
-                                             self.CKPT_FILE_TMPL.format("*"))
+        search_alg_state = load_newest_checkpoint(
+            dirpath, self.CKPT_FILE_TMPL.format("*"))
         if not search_alg_state:
             raise RuntimeError(
                 "Unable to find checkpoint in {}.".format(dirpath))

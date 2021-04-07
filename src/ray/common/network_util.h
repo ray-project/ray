@@ -29,6 +29,7 @@
 
 #endif
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 
 using boost::asio::deadline_timer;
@@ -107,7 +108,7 @@ class AsyncClient {
     *is_timeout = true;
   }
 
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   tcp::socket socket_;
   deadline_timer timer_;
   boost::system::error_code error_code_;

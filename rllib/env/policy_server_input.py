@@ -13,7 +13,6 @@ from ray.rllib.env.policy_client import PolicyClient, \
 from ray.rllib.utils.annotations import override, PublicAPI
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")  # TODO(ekl) this is needed for cartpole_server.py
 
 
 class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):

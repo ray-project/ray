@@ -6,18 +6,14 @@ import io.ray.runtime.generated.Common.Language;
 import java.io.IOException;
 import java.io.ObjectInput;
 
-/**
- * Java implementation of actor handle for cluster mode.
- */
+/** Java implementation of actor handle for cluster mode. */
 public class NativeJavaActorHandle extends NativeActorHandle implements ActorHandle {
 
   NativeJavaActorHandle(byte[] actorId) {
     super(actorId, Language.JAVA);
   }
 
-  /**
-   * Required by FST
-   */
+  /** Required by FST. */
   public NativeJavaActorHandle() {
     super();
   }

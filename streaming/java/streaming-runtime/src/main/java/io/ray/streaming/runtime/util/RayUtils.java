@@ -9,9 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * RayUtils is the utility class to access ray runtime api.
- */
+/** RayUtils is the utility class to access ray runtime api. */
 public class RayUtils {
 
   /**
@@ -50,13 +48,18 @@ public class RayUtils {
       for (int byteIndex = 0; byteIndex < UniqueId.LENGTH; ++byteIndex) {
         nodeIdBytes[byteIndex] = String.valueOf(i).getBytes()[0];
       }
-      NodeInfo nodeInfo = new NodeInfo(new UniqueId(nodeIdBytes),
-          "localhost" + i, "localhost" + i, -1,
-          "", "",
-          true, resources);
+      NodeInfo nodeInfo =
+          new NodeInfo(
+              new UniqueId(nodeIdBytes),
+              "localhost" + i,
+              "localhost" + i,
+              -1,
+              "",
+              "",
+              true,
+              resources);
       nodeInfos.add(nodeInfo);
     }
     return nodeInfos;
   }
-
 }

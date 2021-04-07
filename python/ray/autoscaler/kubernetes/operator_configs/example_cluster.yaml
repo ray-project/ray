@@ -1,0 +1,125 @@
+apiVersion: cluster.ray.io/v1
+kind: RayCluster
+metadata:
+  name: example-cluster
+spec:
+  # The maximum number of workers nodes to launch in addition to the head node.
+  maxWorkers: 3
+  # The autoscaler will scale up the cluster faster with higher upscaling speed.
+  # E.g., if the task requires adding more nodes then autoscaler will gradually
+  # scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+  # This number should be > 0.
+  upscalingSpeed: 1.0
+  # If a node is idle for this many minutes, it will be removed.
+  idleTimeoutMinutes: 5
+  # Specify the pod type for the ray head node (as configured below).
+  headPodType: head-node
+  # Specify the allowed pod types for this ray cluster and the resources they provide.
+  podTypes:
+  - name: head-node
+    # Minimum number of Ray workers of this Pod type.
+    minWorkers: 0
+    # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
+    maxWorkers: 0
+    podConfig:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: example-cluster-ray-head-
+      spec:
+        restartPolicy: Never
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if is not a shared memory volume.
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          image: rayproject/ray:nightly
+          # Do not change this command - it keeps the pod alive until it is
+          # explicitly killed.
+          command: ["/bin/bash", "-c", "--"]
+          args: ['trap : TERM INT; sleep infinity & wait;']
+          ports:
+          - containerPort: 6379  # Redis port
+          - containerPort: 10001  # Used by Ray Client
+          - containerPort: 8265  # Used by Ray Dashboard
+
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 512Mi
+            limits:
+              # The maximum memory that this pod is allowed to use. The
+              # limit will be detected by ray and split to use 10% for
+              # redis, 30% for the shared memory object store, and the
+              # rest for application memory. If this limit is not set and
+              # the object store size is not set manually, ray will
+              # allocate a very large object store in each pod that may
+              # cause problems for other pods.
+              memory: 512Mi
+  - name: worker-node
+    # Minimum number of Ray workers of this Pod type.
+    minWorkers: 2
+    # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
+    maxWorkers: 3
+    # User-specified custom resources for use by Ray.
+    # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
+    rayResources: {"foo": 1, "bar": 1}
+    podConfig:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        # Automatically generates a name for the pod with this prefix.
+        generateName: example-cluster-ray-worker-
+      spec:
+        restartPolicy: Never
+        volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        containers:
+        - name: ray-node
+          imagePullPolicy: Always
+          image: rayproject/ray:nightly
+          command: ["/bin/bash", "-c", "--"]
+          args: ["trap : TERM INT; sleep infinity & wait;"]
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if is not a shared memory volume.
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 512Mi
+            limits:
+              # The maximum memory that this pod is allowed to use. The
+              # limit will be detected by ray and split to use 10% for
+              # redis, 30% for the shared memory object store, and the
+              # rest for application memory. If this limit is not set and
+              # the object store size is not set manually, ray will
+              # allocate a very large object store in each pod that may
+              # cause problems for other pods.
+              memory: 512Mi
+  # Commands to start Ray on the head node. You don't need to change this.
+  # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
+  headStartRayCommands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
+  # Commands to start Ray on worker nodes. You don't need to change this.
+  workerStartRayCommands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379

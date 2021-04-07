@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import time
 
 try:
     import pytest_timeout
@@ -9,11 +10,14 @@ except ImportError:
 
 import ray
 from ray.test_utils import (generate_system_config_map, get_other_nodes,
+                            kill_actor_and_wait_for_failure,
                             run_string_as_driver, wait_for_condition,
                             get_error_message)
 import ray.cluster_utils
+from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup,
+from ray.util.placement_group import (PlacementGroup, placement_group,
+                                      remove_placement_group,
                                       get_current_placement_group)
 
 
@@ -310,6 +314,7 @@ def test_remove_placement_group(ray_start_cluster):
     # Creating a placement group as soon as it is
     # created should work.
     placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
     ray.util.remove_placement_group(placement_group)
 
     def is_placement_group_removed():
@@ -322,6 +327,7 @@ def test_remove_placement_group(ray_start_cluster):
 
     # # Now let's create a placement group.
     placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
 
     # Create an actor that occupies resources.
     @ray.remote(num_cpus=2)
@@ -373,6 +379,7 @@ def test_remove_pending_placement_group(ray_start_cluster):
     # Create a placement group that cannot be scheduled now.
     placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
     ray.util.remove_placement_group(placement_group)
+
     # TODO(sang): Add state check here.
     @ray.remote(num_cpus=4)
     def f():
@@ -674,12 +681,18 @@ def test_atomic_creation(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def bothering_task():
-        import time
-        time.sleep(1)
+        time.sleep(6)
         return True
 
     # Schedule tasks to fail initial placement group creation.
     tasks = [bothering_task.remote() for _ in range(2)]
+
+    # Make sure the two common task has scheduled.
+    def tasks_scheduled():
+        return ray.available_resources()["CPU"] == 2.0
+
+    wait_for_condition(tasks_scheduled)
+
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
     pg = ray.util.placement_group(
@@ -699,7 +712,7 @@ def test_atomic_creation(ray_start_cluster):
     # Wait on the placement group now. It should be unready
     # because normal actor takes resources that are required
     # for one of bundle creation.
-    ready, unready = ray.wait([pg.ready()], timeout=0)
+    ready, unready = ray.wait([pg.ready()], timeout=0.5)
     assert len(ready) == 0
     assert len(unready) == 1
     # Wait until all tasks are done.
@@ -789,10 +802,10 @@ def test_mini_integration(ray_start_cluster):
     pg_tasks = []
     # total bundle gpu usage = bundles_per_pg * total_num_pg * per_bundle_gpus
     # Note this is half of total
-    for _ in range(total_num_pg):
+    for index in range(total_num_pg):
         pgs.append(
             ray.util.placement_group(
-                name="name",
+                name=f"name{index}",
                 strategy="PACK",
                 bundles=[{
                     "GPU": per_bundle_gpus
@@ -892,7 +905,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 1
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -915,7 +928,7 @@ def test_capture_child_actors(ray_start_cluster):
     assert len(node_id_set) == 2
 
     # Kill an actor and wait until it is killed.
-    ray.kill(a)
+    kill_actor_and_wait_for_failure(a)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
@@ -1011,6 +1024,7 @@ def test_automatic_cleanup_job(ray_start_cluster):
     # Create 3 nodes cluster.
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.wait_for_nodes()
 
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
@@ -1077,6 +1091,7 @@ def test_automatic_cleanup_detached_actors(ray_start_cluster):
     # Create 3 nodes cluster.
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=num_cpu_per_node)
+    cluster.wait_for_nodes()
 
     info = ray.init(address=cluster.address)
     available_cpus = ray.available_resources()["CPU"]
@@ -1139,7 +1154,8 @@ ray.shutdown()
         return ray.available_resources()["CPU"] == expected_num_cpus
 
     wait_for_condition(is_job_done)
-    assert assert_num_cpus(num_nodes)
+    wait_for_condition(lambda: assert_num_cpus(num_nodes))
+
     # Make sure when a child actor spawned by a detached actor
     # is killed, the placement group is removed.
     a = ray.get_actor("A")
@@ -1233,24 +1249,360 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 def test_create_placement_group_during_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=20)
+    cluster.add_node(num_cpus=200)
     cluster.wait_for_nodes()
 
     # Create placement groups during gcs server restart.
     placement_groups = []
     for i in range(0, 100):
-        placement_group = ray.util.placement_group([{
-            "CPU": 0.1
-        }, {
-            "CPU": 0.1
-        }])
+        placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
         placement_groups.append(placement_group)
 
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
 
-    for i in range(0, 10):
+    for i in range(0, 100):
         ray.get(placement_groups[i].ready())
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_placement_group_wait_api(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create placement group 1 successfully.
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group1.wait(10)
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Create placement group 2 successfully.
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group2.wait(10)
+
+    # Remove placement group 1.
+    ray.util.remove_placement_group(placement_group1)
+
+    # Wait for placement group 1 after it is removed.
+    with pytest.raises(Exception):
+        placement_group1.wait(10)
+
+
+def test_schedule_placement_groups_at_the_same_time():
+    ray.init(num_cpus=4)
+
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
+
+    wait_pgs = {pg.ready(): pg for pg in pgs}
+
+    def is_all_placement_group_removed():
+        ready, _ = ray.wait(list(wait_pgs.keys()), timeout=0.5)
+        if ready:
+            ready_pg = wait_pgs[ready[0]]
+            remove_placement_group(ready_pg)
+            del wait_pgs[ready[0]]
+
+        if len(wait_pgs) == 0:
+            return True
+        return False
+
+    wait_for_condition(is_all_placement_group_removed)
+
+    ray.shutdown()
+
+
+def test_detached_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    info = ray.init(address=cluster.address)
+
+    # Make sure detached placement group will alive when job dead.
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+pg = ray.util.placement_group(
+        [{{"CPU": 1}} for _ in range(2)],
+        strategy="STRICT_SPREAD", lifetime="detached")
+ray.get(pg.ready())
+
+@ray.remote(num_cpus=1)
+class Actor:
+    def ready(self):
+        return True
+
+for bundle_index in range(2):
+    actor = Actor.options(lifetime="detached", placement_group=pg,
+                placement_group_bundle_index=bundle_index).remote()
+    ray.get(actor.ready.remote())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    def assert_alive_num_pg(expected_num_pg):
+        alive_num_pg = 0
+        for _, placement_group_info in ray.util.placement_group_table().items(
+        ):
+            if placement_group_info["state"] == "CREATED":
+                alive_num_pg += 1
+        return alive_num_pg == expected_num_pg
+
+    def assert_alive_num_actor(expected_num_actor):
+        alive_num_actor = 0
+        for actor_info in ray.actors().values():
+            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+                alive_num_actor += 1
+        return alive_num_actor == expected_num_actor
+
+    wait_for_condition(is_job_done)
+
+    assert assert_alive_num_pg(1)
+    assert assert_alive_num_actor(2)
+
+    # Make sure detached placement group will alive when its creator which
+    # is detached actor dead.
+    # Test actors first.
+    @ray.remote(num_cpus=1)
+    class NestedActor:
+        def ready(self):
+            return True
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.actors = []
+
+        def ready(self):
+            return True
+
+        def schedule_nested_actor_with_detached_pg(self):
+            # Create placement group which is detached.
+            pg = ray.util.placement_group(
+                [{
+                    "CPU": 1
+                } for _ in range(2)],
+                strategy="STRICT_SPREAD",
+                lifetime="detached",
+                name="detached_pg")
+            ray.get(pg.ready())
+            # Schedule nested actor with the placement group.
+            for bundle_index in range(2):
+                actor = NestedActor.options(
+                    placement_group=pg,
+                    placement_group_bundle_index=bundle_index,
+                    lifetime="detached").remote()
+                ray.get(actor.ready.remote())
+                self.actors.append(actor)
+
+    a = Actor.options(lifetime="detached").remote()
+    ray.get(a.ready.remote())
+    # 1 parent actor and 2 children actor.
+    ray.get(a.schedule_nested_actor_with_detached_pg.remote())
+
+    # Kill an actor and wait until it is killed.
+    kill_actor_and_wait_for_failure(a)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
+
+    # We should have 2 alive pgs and 4 alive actors.
+    assert assert_alive_num_pg(2)
+    assert assert_alive_num_actor(4)
+
+
+def test_named_placement_group(ray_start_cluster):
+    cluster = ray_start_cluster
+    for _ in range(2):
+        cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    info = ray.init(address=cluster.address)
+    global_placement_group_name = "named_placement_group"
+
+    # Create a detached placement group with name.
+    driver_code = f"""
+import ray
+
+ray.init(address="{info["redis_address"]}")
+
+pg = ray.util.placement_group(
+        [{{"CPU": 1}} for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name="{global_placement_group_name}",
+        lifetime="detached")
+ray.get(pg.ready())
+
+ray.shutdown()
+    """
+
+    run_string_as_driver(driver_code)
+
+    # Wait until the driver is reported as dead by GCS.
+    def is_job_done():
+        jobs = ray.jobs()
+        for job in jobs:
+            if "StopTime" in job:
+                return True
+        return False
+
+    wait_for_condition(is_job_done)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+    # Get the named placement group and schedule a actor.
+    placement_group = ray.util.get_placement_group(global_placement_group_name)
+    assert placement_group is not None
+    assert placement_group.wait(5)
+    actor = Actor.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+
+    ray.get(actor.ping.remote())
+
+    # Create another placement group and make sure its creation will failed.
+    error_creation_count = 0
+    try:
+        ray.util.placement_group(
+            [{
+                "CPU": 1
+            } for _ in range(2)],
+            strategy="STRICT_SPREAD",
+            name=global_placement_group_name)
+    except RaySystemError:
+        error_creation_count += 1
+    assert error_creation_count == 1
+
+    # Remove a named placement group and make sure the second creation
+    # will successful.
+    ray.util.remove_placement_group(placement_group)
+    same_name_pg = ray.util.placement_group(
+        [{
+            "CPU": 1
+        } for _ in range(2)],
+        strategy="STRICT_SPREAD",
+        name=global_placement_group_name)
+    assert same_name_pg.wait(10)
+
+    # Get a named placement group with a name that doesn't exist
+    # and make sure it will raise ValueError correctly.
+    error_count = 0
+    try:
+        ray.util.get_placement_group("inexistent_pg")
+    except ValueError:
+        error_count = error_count + 1
+    assert error_count == 1
+
+
+def test_placement_group_synchronous_registration(ray_start_cluster):
+    cluster = ray_start_cluster
+    # One node which only has one CPU.
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Create a placement group that has two bundles and `STRICT_PACK` strategy,
+    # so, its registration will successful but scheduling failed.
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[{
+            "CPU": 1,
+        }, {
+            "CPU": 1
+        }])
+    # Make sure we can properly remove it immediately
+    # as its registration is synchronous.
+    ray.util.remove_placement_group(placement_group)
+
+    def is_placement_group_removed():
+        table = ray.util.placement_group_table(placement_group)
+        if "state" not in table:
+            return False
+        return table["state"] == "REMOVED"
+
+    wait_for_condition(is_placement_group_removed)
+
+
+def test_placement_group_gpu_set(ray_start_cluster):
+    cluster = ray_start_cluster
+    # One node which only has one CPU.
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{
+            "CPU": 1,
+            "GPU": 1
+        }, {
+            "CPU": 1,
+            "GPU": 1
+        }])
+
+    @ray.remote(num_gpus=1)
+    def get_gpus():
+        return ray.get_gpu_ids()
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+    result = ray.get(result)
+    assert result == [0]
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=1).remote()
+    result = ray.get(result)
+    assert result == [0]
+
+
+def test_placement_group_gpu_assigned(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_gpus=2)
+    ray.init(address=cluster.address)
+    gpu_ids_res = set()
+
+    @ray.remote(num_gpus=1, num_cpus=0)
+    def f():
+        import os
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    pg1 = ray.util.placement_group([{"GPU": 1}])
+    pg2 = ray.util.placement_group([{"GPU": 1}])
+
+    assert pg1.wait(10)
+    assert pg2.wait(10)
+
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg1).remote()))
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
+
+    assert len(gpu_ids_res) == 2
 
 
 if __name__ == "__main__":

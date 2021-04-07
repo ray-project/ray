@@ -37,6 +37,8 @@ using ray::Status;
 using flatbuf::MessageType;
 using flatbuf::PlasmaError;
 
+Status PlasmaErrorStatus(flatbuf::PlasmaError plasma_error);
+
 template <class T>
 bool VerifyFlatbuffer(T *object, uint8_t *data, size_t size) {
   flatbuffers::Verifier verifier(data, size);
@@ -82,20 +84,27 @@ Status ReadGetDebugStringReply(uint8_t *data, size_t size, std::string *debug_st
 
 /* Plasma Create message functions. */
 
-Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
-                         const ray::rpc::Address &owner_address, bool evict_if_full,
-                         int64_t data_size, int64_t metadata_size, int device_num);
+Status SendCreateRetryRequest(const std::shared_ptr<StoreConn> &store_conn,
+                              ObjectID object_id, uint64_t request_id);
 
-Status ReadCreateRequest(uint8_t *data, size_t size, ObjectID *object_id,
-                         NodeID *owner_raylet_id, std::string *owner_ip_address,
-                         int *owner_port, WorkerID *owner_worker_id, bool *evict_if_full,
-                         int64_t *data_size, int64_t *metadata_size, int *device_num);
+Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
+                         const ray::rpc::Address &owner_address, int64_t data_size,
+                         int64_t metadata_size, int device_num, bool try_immediately);
+
+void ReadCreateRequest(uint8_t *data, size_t size, ObjectID *object_id,
+                       NodeID *owner_raylet_id, std::string *owner_ip_address,
+                       int *owner_port, WorkerID *owner_worker_id, int64_t *data_size,
+                       int64_t *metadata_size, int *device_num);
+
+Status SendUnfinishedCreateReply(const std::shared_ptr<Client> &client,
+                                 ObjectID object_id, uint64_t retry_with_request_id);
 
 Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id,
-                       PlasmaObject *object, PlasmaError error, int64_t mmap_size);
+                       const PlasmaObject &object, PlasmaError error);
 
 Status ReadCreateReply(uint8_t *data, size_t size, ObjectID *object_id,
-                       PlasmaObject *object, MEMFD_TYPE *store_fd, int64_t *mmap_size);
+                       uint64_t *retry_with_request_id, PlasmaObject *object,
+                       MEMFD_TYPE *store_fd, int64_t *mmap_size);
 
 Status SendAbortRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id);
 
@@ -119,11 +128,11 @@ Status ReadSealReply(uint8_t *data, size_t size, ObjectID *object_id);
 /* Plasma Get message functions. */
 
 Status SendGetRequest(const std::shared_ptr<StoreConn> &store_conn,
-                      const ObjectID *object_ids, int64_t num_objects,
-                      int64_t timeout_ms);
+                      const ObjectID *object_ids, int64_t num_objects, int64_t timeout_ms,
+                      bool is_from_worker);
 
 Status ReadGetRequest(uint8_t *data, size_t size, std::vector<ObjectID> &object_ids,
-                      int64_t *timeout_ms);
+                      int64_t *timeout_ms, bool *is_from_worker);
 
 Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[],
                     std::unordered_map<ObjectID, PlasmaObject> &plasma_objects,
@@ -192,31 +201,5 @@ Status ReadEvictRequest(uint8_t *data, size_t size, int64_t *num_bytes);
 Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 
 Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes);
-
-/* Data messages. */
-
-Status SendDataRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,
-                       const char *address, int port);
-
-Status ReadDataRequest(uint8_t *data, size_t size, ObjectID *object_id, char **address,
-                       int *port);
-
-Status SendDataReply(const std::shared_ptr<Client> &client, ObjectID object_id,
-                     int64_t object_size, int64_t metadata_size);
-
-Status ReadDataReply(uint8_t *data, size_t size, ObjectID *object_id,
-                     int64_t *object_size, int64_t *metadata_size);
-
-/* Plasma refresh LRU cache functions. */
-
-Status SendRefreshLRURequest(const std::shared_ptr<StoreConn> &store_conn,
-                             const std::vector<ObjectID> &object_ids);
-
-Status ReadRefreshLRURequest(uint8_t *data, size_t size,
-                             std::vector<ObjectID> *object_ids);
-
-Status SendRefreshLRUReply(const std::shared_ptr<Client> &client);
-
-Status ReadRefreshLRUReply(uint8_t *data, size_t size);
 
 }  // namespace plasma

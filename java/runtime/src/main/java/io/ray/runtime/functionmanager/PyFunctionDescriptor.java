@@ -5,9 +5,7 @@ import io.ray.runtime.generated.Common.Language;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Represents metadata of a Python function.
- */
+/** Represents metadata of a Python function. */
 public class PyFunctionDescriptor implements FunctionDescriptor {
 
   public String moduleName;
@@ -36,9 +34,9 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
       return false;
     }
     PyFunctionDescriptor that = (PyFunctionDescriptor) o;
-    return Objects.equal(moduleName, that.moduleName) &&
-      Objects.equal(className, that.className) &&
-      Objects.equal(functionName, that.functionName);
+    return Objects.equal(moduleName, that.moduleName)
+        && Objects.equal(className, that.className)
+        && Objects.equal(functionName, that.functionName);
   }
 
   @Override
@@ -56,4 +54,3 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
     return Language.PYTHON;
   }
 }
-

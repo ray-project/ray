@@ -1,11 +1,12 @@
 import os
+import sys
 
 import ray
 from ray.streaming import StreamingContext
 
 
 def test_union_stream():
-    ray.init(_load_code_from_local=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
     ctx = StreamingContext.Builder() \
         .option("streaming.metrics.reporters", "") \
         .build()

@@ -24,9 +24,7 @@ import io.ray.streaming.state.keystate.state.MapState;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * MapState implementation.
- */
+/** MapState implementation. */
 public class MapStateImpl<K, V> implements MapState<K, V> {
 
   private final StateHelper<Map<K, V>> helper;
@@ -82,9 +80,7 @@ public class MapStateImpl<K, V> implements MapState<K, V> {
     helper.put(map);
   }
 
-  /**
-   * set current key of the state
-   */
+  /** set current key of the state */
   @Override
   public void setCurrentKey(Object currentKey) {
     helper.setCurrentKey(currentKey);

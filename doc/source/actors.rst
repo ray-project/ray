@@ -105,7 +105,7 @@ Methods of the actor can be called remotely.
 
     counter_actor = Counter.remote()
 
-    assert counter_actor.increment.remote() == 1
+    assert ray.get(counter_actor.increment.remote()) == 1
 
     @ray.remote
     class Foo(object):
@@ -174,14 +174,12 @@ have these resources (see `configuration instructions
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you
-    do not specify CPU resources, the default is 1), even if it is not executing
+    do not specify CPU resources, the default is 0), even if it is not executing
     any methods. The actor will not acquire any additional resources when
     executing methods.
   * If you do not specify any resource requirements in the actor class's remote
     decorator, then by default, the actor will not acquire any resources for its
-    lifetime, but every time it executes a method, it will need to acquire 1 CPU
-    resource.
-
+    lifetime.
 
 .. tabs::
   .. code-tab:: python

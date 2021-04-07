@@ -13,6 +13,7 @@ import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.env.policy_server_input import PolicyServerInput
+from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
@@ -23,6 +24,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="DQN")
 parser.add_argument(
     "--framework", type=str, choices=["tf", "torch"], default="tf")
+parser.add_argument(
+    "--no-restore",
+    action="store_true",
+    help="Do not restore from a previously saved checkpoint (location of "
+    "which is saved in `last_checkpoint_[algo-name].out`).")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -38,6 +44,7 @@ if __name__ == "__main__":
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
         "input_evaluation": [],
+        "callbacks": MyCallbacks,
     }
 
     if args.run == "DQN":
@@ -65,13 +72,13 @@ if __name__ == "__main__":
 
     checkpoint_path = CHECKPOINT_FILE.format(args.run)
 
-    # Attempt to restore from checkpoint if possible.
-    if os.path.exists(checkpoint_path):
+    # Attempt to restore from checkpoint, if possible.
+    if not args.no_restore and os.path.exists(checkpoint_path):
         checkpoint_path = open(checkpoint_path).read()
         print("Restoring from checkpoint path", checkpoint_path)
         trainer.restore(checkpoint_path)
 
-    # Serving and training loop
+    # Serving and training loop.
     while True:
         print(pretty_print(trainer.train()))
         checkpoint = trainer.save()

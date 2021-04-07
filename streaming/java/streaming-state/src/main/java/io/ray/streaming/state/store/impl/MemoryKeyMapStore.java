@@ -24,9 +24,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Memory Key Map Store.
- */
+/** Memory Key Map Store. */
 public class MemoryKeyMapStore<K, S, T> implements KeyMapStore<K, S, T> {
 
   private Map<K, Map<S, T>> memoryStore;
@@ -70,14 +68,10 @@ public class MemoryKeyMapStore<K, S, T> implements KeyMapStore<K, S, T> {
   }
 
   @Override
-  public void flush() throws IOException {
-
-  }
+  public void flush() throws IOException {}
 
   @Override
-  public void clearCache() {
-
-  }
+  public void clearCache() {}
 
   @Override
   public void close() throws IOException {
@@ -85,5 +79,4 @@ public class MemoryKeyMapStore<K, S, T> implements KeyMapStore<K, S, T> {
       memoryStore.clear();
     }
   }
-
 }

@@ -193,6 +193,10 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
+std::string TaskSpecification::GetDebuggerBreakpoint() const {
+  return message_->debugger_breakpoint();
+}
+
 std::unordered_map<std::string, std::string>
 TaskSpecification::OverrideEnvironmentVariables() const {
   return MapFromProtobuf(message_->override_environment_variables());

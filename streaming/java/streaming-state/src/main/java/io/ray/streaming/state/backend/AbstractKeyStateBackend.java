@@ -36,8 +36,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Transaction support primitive operations like finish, commit, ackcommit and rollback.
- * <p>
- * State value modification is not thread safe! By default, every processing thread has its own
+ *
+ * <p>State value modification is not thread safe! By default, every processing thread has its own
  * space to handle state.
  */
 public abstract class AbstractKeyStateBackend implements StateStoreManager {
@@ -52,10 +52,9 @@ public abstract class AbstractKeyStateBackend implements StateStoreManager {
   protected Map<String, MapStateStoreManagerProxy> mapManagerProxyHashMap = new HashMap<>();
   protected Set<String> descNamespace;
 
-  /**
-   * tablename, KeyValueStore key, checkpointId, content
-   */
+  /** tablename, KeyValueStore key, checkpointId, content */
   protected Map<String, KeyValueStore<String, Map<Long, byte[]>>> backStorageCache;
+
   private AbstractStateBackend backend;
 
   public AbstractKeyStateBackend(AbstractStateBackend backend) {

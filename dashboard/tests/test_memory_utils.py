@@ -7,8 +7,9 @@ from ray.new_dashboard.memory_utils import (
 NODE_ADDRESS = "127.0.0.1"
 IS_DRIVER = True
 PID = 1
-OBJECT_ID = "7wpsIhgZiBz/////AQAAyAEAAAA="
-ACTOR_ID = "fffffffffffffffff66d17ba010000c801000000"
+
+OBJECT_ID = "ZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZg=="
+ACTOR_ID = "fffffffffffffffffffffffffffffffff66d17ba010000c801000000"
 DECODED_ID = decode_object_ref_if_needed(OBJECT_ID)
 OBJECT_SIZE = 100
 

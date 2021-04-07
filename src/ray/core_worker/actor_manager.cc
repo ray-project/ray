@@ -15,7 +15,6 @@
 #include "ray/core_worker/actor_manager.h"
 
 #include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_accessor.h"
 
 namespace ray {
 
@@ -36,8 +35,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   return actor_id;
 }
 
-const std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(
-    const ActorID &actor_id) {
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end())
@@ -91,6 +89,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
+  } else {
+    RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
   }
 
   return inserted;
@@ -122,23 +122,34 @@ void ActorManager::WaitForActorOutOfScope(
 }
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
-                                                const gcs::ActorTableData &actor_data) {
-  const auto &actor_state = gcs::ActorTableData::ActorState_Name(actor_data.state());
+                                                const rpc::ActorTableData &actor_data) {
+  const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
                 << ", ip address: " << actor_data.address().ip_address()
                 << ", port: " << actor_data.address().port() << ", worker_id: "
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts();
-  if (actor_data.state() == gcs::ActorTableData::RESTARTING) {
+                << ", num_restarts: " << actor_data.num_restarts()
+                << ", has creation_task_exception="
+                << actor_data.has_creation_task_exception();
+  if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
-  } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
+  } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+    if (actor_data.has_creation_task_exception()) {
+      RAY_LOG(INFO) << "Creation task formatted exception: "
+                    << actor_data.creation_task_exception().formatted_exception_string()
+                    << ", actor_id: " << actor_id;
+      creation_task_exception =
+          std::make_shared<rpc::RayException>(actor_data.creation_task_exception());
+    }
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true,
+                                             creation_task_exception);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
-  } else if (actor_data.state() == gcs::ActorTableData::ALIVE) {
+  } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
     direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
                                           actor_data.num_restarts());
   } else {

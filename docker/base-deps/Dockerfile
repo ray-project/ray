@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04
+# The GPU option is nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
@@ -30,6 +30,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         git \
         wget \
         cmake \
+        g++ \ 
+        zlib1g-dev \
         $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
         screen \
@@ -52,12 +54,14 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         numpy==1.15.4 \
         psutil \
         blist \ 
+        atari-py \
     # blist is needed for numpy (which is re-installed when ray is installed)
+    # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
-    # We install cmake temporarily to get psutil
-    && sudo apt-get autoremove -y cmake \
+    # We install cmake temporarily to get psutil, blist & atari-py
+    && sudo apt-get autoremove -y cmake g++ zlib1g-dev \
     # Either install kubectl or remove wget 
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
@@ -69,3 +73,5 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
+
+WORKDIR $HOME

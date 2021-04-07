@@ -499,8 +499,8 @@ class StreamingWorker {
     options.node_ip_address = "127.0.0.1";
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
-    options.task_execution_callback =
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8);
+    options.task_execution_callback = std::bind(&StreamingWorker::ExecuteTask, this, _1,
+                                                _2, _3, _4, _5, _6, _7, _8, _9);
     options.ref_counting_enabled = true;
     options.num_workers = 1;
     options.metrics_agent_port = -1;
@@ -520,6 +520,7 @@ class StreamingWorker {
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
+                     const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() >= 1) << "args.size() = " << args.size();

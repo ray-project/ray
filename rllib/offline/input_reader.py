@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod
 import logging
 import numpy as np
 import threading
@@ -14,15 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class InputReader:
+class InputReader(metaclass=ABCMeta):
     """Input object for loading experiences in policy evaluation."""
 
+    @abstractmethod
     @PublicAPI
     def next(self):
-        """Return the next batch of experiences read.
+        """Returns the next batch of experiences read.
 
         Returns:
-            SampleBatch or MultiAgentBatch read.
+            Union[SampleBatch, MultiAgentBatch]: The experience read.
         """
         raise NotImplementedError
 

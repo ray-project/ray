@@ -19,8 +19,7 @@ public class ScheduleException extends RuntimeException {
   }
 
   protected ScheduleException(
-      String message, Throwable cause, boolean enableSuppression,
-      boolean writableStackTrace) {
+      String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
     super(message, cause, enableSuppression, writableStackTrace);
   }
 }

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
 
@@ -30,9 +31,8 @@ class GlobalStateAccessor {
   ///
   /// \param redis_address The address of GCS Redis.
   /// \param redis_password The password of GCS Redis.
-  /// \param is_test Whether this accessor is used for tests.
   explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password, bool is_test = false);
+                               const std::string &redis_password);
 
   ~GlobalStateAccessor();
 
@@ -93,19 +93,13 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources();
 
-  /// Get internal config from GCS Service.
+  /// Get newest resource usage of all nodes from GCS Service. Only used when light
+  /// rerouce usage report enabled.
   ///
-  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
-  /// and serialized as a string to allow multi-language support.
-  std::string GetInternalConfig();
-
-  /// Get newest heartbeat of all nodes from GCS Service. Only used when light
-  /// heartbeat enabled.
-  ///
-  /// \return node heartbeat info. To support multi-language, we serialize each
-  /// HeartbeatTableData and return the serialized string. Where used, it needs to be
+  /// \return resource usage info. To support multi-language, we serialize each
+  /// data and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetAllHeartbeat();
+  std::unique_ptr<std::string> GetAllResourceUsage();
 
   /// Get information of all actors from GCS Service.
   ///
@@ -121,14 +115,6 @@ class GlobalStateAccessor {
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
   std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
-
-  /// Get checkpoint id of an actor from GCS Service.
-  ///
-  /// \param actor_id The ID of actor to look up in the GCS Service.
-  /// \return Actor checkpoint id. To support multi-language, we serialize each
-  /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
 
   /// Get information of a worker from GCS Service.
   ///
@@ -159,14 +145,23 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllPlacementGroupInfo();
 
-  /// Get information of a placement group from GCS Service.
+  /// Get information of a placement group from GCS Service by ID.
   ///
-  /// \param placement_group The ID of placement group to look up in the GCS Service.
+  /// \param placement_group_id The ID of placement group to look up in the GCS Service.
   /// \return Placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupInfo(
       const PlacementGroupID &placement_group_id);
+
+  /// Get information of a placement group from GCS Service by name.
+  ///
+  /// \param placement_group_name The name of placement group to look up in the GCS
+  /// Service. \return Placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetPlacementGroupByName(
+      const std::string &placement_group_name);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -216,7 +211,7 @@ class GlobalStateAccessor {
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
 
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 };
 
 }  // namespace gcs

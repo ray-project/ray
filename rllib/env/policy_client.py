@@ -17,7 +17,6 @@ from ray.rllib.utils.typing import MultiAgentDict, EnvInfoDict, EnvObsType, \
     EnvActionType
 
 logger = logging.getLogger(__name__)
-logger.setLevel("INFO")  # TODO(ekl) seems to be needed for cartpole_client.py
 
 try:
     import requests  # `requests` is not part of stdlib.
@@ -269,7 +268,8 @@ class _LocalInferenceThread(threading.Thread):
                 if isinstance(samples, MultiAgentBatch):
                     logger.info(
                         "Sending batch of {} env steps ({} agent steps) to "
-                        "server.".format(samples.count, samples.total()))
+                        "server.".format(samples.env_steps(),
+                                         samples.agent_steps()))
                 else:
                     logger.info(
                         "Sending batch of {} steps back to server.".format(
