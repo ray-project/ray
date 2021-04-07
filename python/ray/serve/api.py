@@ -20,10 +20,9 @@ from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.router import RequestMetadata, Router
-from ray.serve.utils import (block_until_http_ready, format_actor_name,
-                             get_current_node_resource_key, get_random_letters,
-                             logger, make_fastapi_class_based_view,
-                             register_custom_serializers)
+from ray.serve.utils import (
+    format_actor_name, get_current_node_resource_key, get_random_letters,
+    logger, make_fastapi_class_based_view, register_custom_serializers)
 
 import ray
 
@@ -278,29 +277,6 @@ class Client:
         self._wait_for_goal(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
-
-        # Block until the route table has been propagated to all HTTP proxies.
-        if route is not None:
-
-            def check_ready(http_response):
-                return route in http_response.json()
-
-            futures = []
-            for node_id in ray.state.node_ids():
-                future = block_until_http_ready.options(
-                    num_cpus=0, resources={
-                        node_id: 0.01
-                    }).remote(
-                        "http://{}:{}/-/routes".format(self._http_config.host,
-                                                       self._http_config.port),
-                        check_ready=check_ready,
-                        timeout=HTTP_PROXY_TIMEOUT)
-                futures.append(future)
-            try:
-                ray.get(futures)
-            except ray.exceptions.RayTaskError:
-                raise TimeoutError("Route not available at HTTP proxies "
-                                   "after {HTTP_PROXY_TIMEOUT}s.")
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
