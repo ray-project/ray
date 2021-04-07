@@ -82,6 +82,8 @@ def test_http_proxy_failure(serve_instance):
     def function(_):
         return "hello1"
 
+    function.deploy()
+
     assert request_with_retries("/proxy_failure", timeout=1.0).text == "hello1"
 
     for _ in range(10):

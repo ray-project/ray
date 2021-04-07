@@ -1187,7 +1187,10 @@ def make_deployment_cls(
                 init_args = cls._init_args
 
             if route_prefix is None:
-                route_prefix = cls._route_prefix
+                if cls._route_prefix == f"/{cls._name}":
+                    route_prefix = None
+                else:
+                    route_prefix = cls._route_prefix
 
             if ray_actor_options is None:
                 ray_actor_options = cls._ray_actor_options
