@@ -1,8 +1,11 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, TYPE_CHECKING
 from ray.job_config import JobConfig
 import os
 import sys
 import logging
+if TYPE_CHECKING:
+    from ray.util.client.common import ClientActorHandle
+    from ray.util.client.common import ClientObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +152,12 @@ class RayAPIStub:
         ray_client_server.shutdown_with_server(self._server,
                                                _exiting_interpreter)
         self._server = None
+
+    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
+        return self.api.kill(actor, no_restart=no_restart)
+
+    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
+        return self.api.cancel(obj, force=force, recursive=recursive)
 
 
 ray = RayAPIStub()
