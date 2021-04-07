@@ -206,6 +206,7 @@ message GetSystemConfigReply {
 }
 
 message RequestResourceReportRequest {
+  ResourceUsageBatchData usages = 1;
 }
 
 message RequestResourceReportReply {

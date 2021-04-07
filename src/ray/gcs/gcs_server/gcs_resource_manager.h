@@ -84,6 +84,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \return The resources of all nodes in the cluster.
   const absl::flat_hash_map<NodeID, SchedulingResources> &GetClusterResources() const;
 
+  /// Get a resource usage batch for updating other nodes.
+  std::shared_ptr<rpc::ResourceUsageBatchData> GetAllResourceUsage() const;
+
   /// Handle a node registration.
   ///
   /// \param node The specified node to add.

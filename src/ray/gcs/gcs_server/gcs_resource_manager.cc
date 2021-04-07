@@ -288,6 +288,15 @@ const absl::flat_hash_map<NodeID, SchedulingResources>
   return cluster_scheduling_resources_;
 }
 
+std::shared_ptr<rpc::ResourceUsageBatchData> GcsResourceManager::GetAllResourceUsage()
+    const {
+  auto data = std::make_shared<rpc::ResourceUsageBatchData>();
+  for (const auto &pair : node_resource_usages_) {
+    data->add_batch()->CopyFrom(pair.second);
+  }
+  return data;
+}
+
 void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
                                                const ResourceSet &resources) {
   cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));

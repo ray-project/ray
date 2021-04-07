@@ -28,7 +28,8 @@ class GcsResourceReportPollerTest : public ::testing::Test {
   GcsResourceReportPollerTest()
       : current_time_(0),
         gcs_resource_report_poller_(
-            nullptr, nullptr, [](const rpc::ResourcesData &) {},
+            nullptr, [](const rpc::ResourcesData &) {},
+            [this]() { return resource_usage_batch_; },
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
@@ -54,6 +55,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
     gcs_resource_report_poller_.TryPullResourceReport();
   }
 
+  std::shared_ptr<rpc::ResourceUsageBatchData> resource_usage_batch_;
   int64_t current_time_;
   std::function<void(
       const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,

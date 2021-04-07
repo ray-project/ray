@@ -300,9 +300,16 @@ void GcsServer::InitTaskInfoHandler() {
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
-        gcs_resource_manager_, raylet_client_pool_,
+        raylet_client_pool_,
         [this](const rpc::ResourcesData &report) {
           gcs_resource_manager_->UpdateFromResourceReport(report);
+        },
+        [this]() {
+          std::promise<std::shared_ptr<rpc::ResourceUsageBatchData>> promise;
+          main_service_.post([this, &promise]() {
+            promise.set_value(gcs_resource_manager_->GetAllResourceUsage());
+          });
+          return promise.get_future().get();
         }));
 
     gcs_resource_report_poller_->Initialize(gcs_init_data);

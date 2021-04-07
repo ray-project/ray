@@ -33,9 +33,10 @@ class GcsResourceReportPoller {
 
  public:
   GcsResourceReportPoller(
-      std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       std::function<void(const rpc::ResourcesData &)> handle_resource_report,
+      std::function<std::shared_ptr<rpc::ResourceUsageBatchData>(void)>
+          get_resource_usage_batch,
       /* Default values should only be changed for testing. */
       std::function<int64_t(void)> get_current_time_milli =
           []() { return absl::GetCurrentTimeNanos() / (1000 * 1000); },
@@ -80,16 +81,15 @@ class GcsResourceReportPoller {
   const uint64_t max_concurrent_pulls_;
   // The number of ongoing pulls.
   uint64_t inflight_pulls_;
-  // The resource manager which maintains GCS's view of the cluster's resource
-  // utilization.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   // The shared, thread safe pool of raylet clients, which we use to minimize connections.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   // Handle receiving a resource report (e.g. update the resource manager).
   // This function is guaranteed to be called on the main thread. It is not necessarily
   // safe to call it from the polling thread.
   std::function<void(const rpc::ResourcesData &)> handle_resource_report_;
-
+  // A thread safe function for getting a resource report.
+  std::function<std::shared_ptr<rpc::ResourceUsageBatchData>(void)>
+      get_resource_usage_batch_;
   // Return the current time in miliseconds
   std::function<int64_t(void)> get_current_time_milli_;
   // Send the `RequestResourceReport` RPC.
