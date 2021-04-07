@@ -225,11 +225,12 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
     async def InitializeJobEnv(self, request, context):
         job_id = binary_to_hex(request.job_id)
         if job_id in self._job_table:
-            logger.info("[%s] Job environment is ready, skip initialization.",
+            logger.info("[%s] Ignored duplicated InitializeJobEnv request.",
                         job_id)
             return job_agent_pb2.InitializeJobEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
 
+        # Parse the job description from the request.
         try:
             job_description_data = json.loads(request.job_description)
             job_info = JobInfo(
@@ -256,8 +257,10 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
                 job_consts.JOB_DIR.format(
                     temp_dir=job_info.temp_dir, job_id=job_id),
                 exist_ok=True)
+            # Download the job package.
             await DownloadPackage(job_info,
                                   self._dashboard_agent.http_session).run()
+            # Start the driver.
             logger.info("[%s] Starting driver.", job_id)
             language = job_info.language
             if language == job_consts.PYTHON:
@@ -290,7 +293,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
         if job_info.driver:
             driver_pid = job_info.driver.pid
 
-        logger.info("[%s] Initialize job environment success.", job_id)
+        logger.info(
+            "[%s] Job environment initialized, "
+            "the driver (pid=%s) started.", job_id, driver_pid)
         return job_agent_pb2.InitializeJobEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
             driver_pid=driver_pid)

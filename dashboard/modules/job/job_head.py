@@ -62,6 +62,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 success=False, message=f"Failed to submit job: {ex}")
         job_id = await self._next_job_id()
 
+        # Choose a random agent to start the driver for this job.
+        # TODO(fyrestone): The InitializeJobEnv request is now only used
+        # to start the driver process. We should send InitializeJobEnv requests
+        # to all agents to initialize the job environment on all nodes.
         agent_address = random.choice(agent_addresses)
         options = (("grpc.enable_http_proxy", 0), )
         channel = aiogrpc.insecure_channel(agent_address, options=options)

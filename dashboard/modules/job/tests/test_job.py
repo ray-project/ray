@@ -17,16 +17,16 @@ from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
     wait_for_condition,
+    wait_until_succeeded_without_exception,
 )
 import pytest
 
 logger = logging.getLogger(__name__)
 
-JOB_ROOT_DIR = "/tmp/ray/job"
 TEST_PYTHON_JOB = {
     "language": job_consts.PYTHON,
-    "url": "http://xxx/yyy.zip",
-    "driverEntry": "python_file_name_without_ext",
+    "url": "{web_url}/test/file?path={path}",
+    "driverEntry": "simple_job",
 }
 
 TEST_PYTHON_JOB_CODE = """
@@ -77,17 +77,10 @@ def _gen_job_zip(job_code, driver_entry):
         return f.name
 
 
-def _gen_url(web_url, path):
-    return f"{web_url}/test/file?path={path}"
-
-
-def _get_python_job(web_url):
-    driver_entry = "simple_job"
-    path = _gen_job_zip(TEST_PYTHON_JOB_CODE, driver_entry)
-    url = _gen_url(web_url, path)
+def _prepare_job_for_test(web_url):
+    path = _gen_job_zip(TEST_PYTHON_JOB_CODE, TEST_PYTHON_JOB["driverEntry"])
     job = copy.deepcopy(TEST_PYTHON_JOB)
-    job["url"] = url
-    job["driverEntry"] = driver_entry
+    job["url"] = job["url"].format(web_url=web_url, path=path)
     return job
 
 
@@ -103,15 +96,17 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    shutil.rmtree(JOB_ROOT_DIR, ignore_errors=True)
+    job = _prepare_job_for_test(webui_url)
+    job_root_dir = os.path.join(
+        os.path.dirname(ray_start_with_dashboard["session_dir"]), "job")
+    shutil.rmtree(job_root_dir, ignore_errors=True)
 
     job_id = None
 
     def _check_running():
         nonlocal job_id
         if job_id is None:
-            resp = requests.post(
-                f"{webui_url}/jobs", json=_get_python_job(webui_url))
+            resp = requests.post(f"{webui_url}/jobs", json=job)
             resp.raise_for_status()
             result = resp.json()
             assert result["result"] is True, resp.text
@@ -142,23 +137,11 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
         assert len(job_actors) > 0
         assert len(job_workers) > 0
 
-    timeout_seconds = 30
-    start_time = time.time()
-    last_ex = None
-    while True:
-        time.sleep(5)
-        try:
-            _check_running()
-            break
-        except (AssertionError, KeyError, IndexError) as ex:
-            last_ex = ex
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                ex_stack = traceback.format_exception(
-                    type(last_ex), last_ex,
-                    last_ex.__traceback__) if last_ex else []
-                ex_stack = "".join(ex_stack)
-                raise Exception(f"Timed out while testing, {ex_stack}")
+    wait_until_succeeded_without_exception(
+        _check_running,
+        exceptions=(AssertionError, KeyError, IndexError),
+        timeout_ms=30 * 1000,
+        raise_last_ex=True)
 
 
 def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
@@ -258,7 +241,9 @@ def test_submit_job_validation(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    shutil.rmtree(JOB_ROOT_DIR, ignore_errors=True)
+    job_root_dir = os.path.join(
+        os.path.dirname(ray_start_with_dashboard["session_dir"]), "job")
+    shutil.rmtree(job_root_dir, ignore_errors=True)
 
     def _ensure_available_nodes():
         resp = requests.post(f"{webui_url}/jobs")
