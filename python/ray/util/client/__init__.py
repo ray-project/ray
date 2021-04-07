@@ -72,10 +72,20 @@ class RayAPIStub:
             self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
+            self._register_serializers()
             return conn_info
         except Exception:
             self.disconnect()
             raise
+
+    def _register_serializers(self):
+        """Register the custom serializer addons in the client side.
+        """
+        import ray.serialization_addons
+        from ray.util.client.ray_client_helpers import (
+            RayClientSerializationContext)
+        ctx = RayClientSerializationContext()
+        ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],
                         ignore_version: bool) -> None:
