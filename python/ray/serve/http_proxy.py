@@ -14,7 +14,7 @@ from ray.serve.constants import WILDCARD_PATH_SUFFIX
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
-from ray.serve.http_util import Response, build_starlette_request
+from ray.serve.http_util import HTTPRequestWrapper, Response
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
@@ -52,12 +52,18 @@ class ServeStarletteEndpoint:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
+        # scope["router"] and scope["endpoint"] contain references to a router
+        # and endpoint object, respectively, which each in turn contain a
+        # reference to the Serve client, which cannot be serialized.
+        # The solution is to delete these from scope, as they will not be used.
+        del scope["router"]
+        del scope["endpoint"]
+
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
         scope["path"] = scope["path"].replace(self.path_prefix, "", 1)
         scope["root_path"] = self.path_prefix
-        starlette_request = build_starlette_request(scope, http_body_bytes)
         handle = self.handle.options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
                                     DEFAULT.VALUE),
@@ -65,10 +71,15 @@ class ServeStarletteEndpoint:
             http_method=scope["method"].upper(),
             http_headers=headers)
 
+        # NOTE(edoakes): it's important that we defer building the starlette
+        # request until it reaches the backend replica to avoid unnecessary
+        # serialization cost, so we use a simple dataclass here.
+        request = HTTPRequestWrapper(scope, http_body_bytes)
+
         retries = 0
         backoff_time_s = 0.05
         while retries < MAX_ACTOR_FAILURE_RETRIES:
-            object_ref = await handle.remote(starlette_request)
+            object_ref = await handle.remote(request)
             try:
                 result = await object_ref
                 break
