@@ -92,7 +92,6 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::str
 
 void instrumented_io_context::RecordExecution(std::function<void()> fn,
                                               std::shared_ptr<StatsHandle> handle) {
-  handle->execution_recorded = true;
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Execute actual handler.
   fn();
