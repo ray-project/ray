@@ -165,19 +165,11 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // by canceling worker requests.
   bool worker_requests_remaining = !worker_request_bundles_.empty();
   while (worker_requests_remaining) {
-    worker_requests_remaining = ActivateNextPullBundleRequest(
-        worker_request_bundles_, &highest_worker_req_id_being_pulled_, &objects_to_pull);
-    while (num_bytes_being_pulled_ > num_bytes_available_) {
-      // Activating the last worker request put us over the available memory.
-      // Try to cancel task requests to make space.
-      if (highest_task_req_id_being_pulled_ == 0) {
-        // There are no task requests to cancel. Stop activating worker
-        // requests because we are already over capacity.
-        worker_requests_remaining = false;
-        break;
-      }
-
-      // Cancel a task request to make space.
+    while (num_bytes_being_pulled_ > num_bytes_available_ and
+           highest_task_req_id_being_pulled_ != 0) {
+      // We are over capacity and there is at least one active task request.
+      // Try to cancel a task request to make space for the next worker
+      // request.
       RAY_LOG(DEBUG) << "Deactivating task args request "
                      << highest_task_req_id_being_pulled_
                      << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -188,6 +180,15 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
       DeactivatePullBundleRequest(task_argument_bundles_, last_request_it,
                                   &highest_task_req_id_being_pulled_,
                                   &object_ids_to_cancel);
+    }
+
+    // Activate the next worker request if we have space.
+    if (num_bytes_being_pulled_ < num_bytes_available_) {
+      worker_requests_remaining = ActivateNextPullBundleRequest(
+          worker_request_bundles_, &highest_worker_req_id_being_pulled_,
+          &objects_to_pull);
+    } else {
+      break;
     }
   }
 
@@ -203,11 +204,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // While we are over capacity, deactivate requests starting from the back of
   // the task request queue.
-  while (num_bytes_being_pulled_ > num_bytes_available_) {
-    if (highest_task_req_id_being_pulled_ == 0) {
-      // No task requests are active.
-      break;
-    }
+  while (num_bytes_being_pulled_ > num_bytes_available_ &&
+         highest_task_req_id_being_pulled_ != 0) {
     RAY_LOG(DEBUG) << "Deactivating task args request "
                    << highest_task_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -222,7 +220,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
 
   // If we are still over capacity, deactivate requests starting from the back
   // of the worker request queue.
-  while (num_bytes_being_pulled_ > num_bytes_available_) {
+  while (num_bytes_being_pulled_ > num_bytes_available_ &&
+         highest_worker_req_id_being_pulled_ != 0) {
     RAY_LOG(DEBUG) << "Deactivating worker request "
                    << highest_worker_req_id_being_pulled_
                    << " num bytes being pulled: " << num_bytes_being_pulled_
@@ -234,6 +233,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                                 &highest_worker_req_id_being_pulled_,
                                 &object_ids_to_cancel);
   }
+
+  // It should always be possible to stay under the available memory by
+  // canceling all requests.
+  RAY_CHECK(num_bytes_being_pulled_ <= num_bytes_available_);
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
