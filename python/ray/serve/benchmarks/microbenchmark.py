@@ -76,10 +76,11 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
                 return await self.handle.remote()
 
         ForwardActor.deploy()
-        assert f"/api" in routes, routes
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert "/api" in routes, routes
 
     @serve.deployment(
-        deployment_name,
+        name=deployment_name,
         num_replicas=num_replicas,
         max_concurrent_queries=max_concurrent_queries)
     class Backend:
@@ -94,7 +95,6 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
                 return b"ok"
 
     Backend.deploy()
-
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert f"/{deployment_name}" in routes, routes
 
