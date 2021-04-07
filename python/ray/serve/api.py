@@ -1103,6 +1103,10 @@ class ServeDeployment:
         self.route_prefix = route_prefix
         self.ray_actor_options = ray_actor_options
 
+    def __call__(self):
+        raise RuntimeError("Deployments cannot be constructed directly. "
+                           "Use `deployment.deploy() instead.`")
+
     def deploy(self, *init_args, _blocking=True):
         """Deploy this deployment.
 
