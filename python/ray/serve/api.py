@@ -12,7 +12,7 @@ from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
 from warnings import warn
 
 from ray.actor import ActorHandle
-from ray.serve.common import EndpointTag, GoalId
+from ray.serve.common import BackendInfo, EndpointTag, GoalId
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -335,11 +335,6 @@ class Client:
                 strings to values for the following supported options:
                 - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will
-                be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas
-                will wait for a full batch of requests before
-                processing a partial batch.
                 - "max_concurrent_queries": the maximum number of queries
                 that will be sent to a replica of this backend
                 without receiving a response.
@@ -394,11 +389,6 @@ class Client:
                 mapping strings to values for the following supported options:
                 - "num_replicas": number of processes to start up that
                 will handle requests to this backend.
-                - "max_batch_size": the maximum number of requests that will
-                be processed in one batch by this backend.
-                - "batch_wait_timeout": time in seconds that backend replicas
-                will wait for a full batch of requests before processing a
-                partial batch.
                 - "max_concurrent_queries": the maximum number of queries that
                 will be sent to a replica of this backend without receiving a
                 response.
@@ -433,9 +423,7 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(
-            accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking)
+        metadata = BackendMetadata()
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -447,7 +435,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         self._wait_for_goal(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
@@ -484,8 +471,6 @@ class Client:
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
         metadata = BackendMetadata(
-            accepts_batches=replica_config.accepts_batches,
-            is_blocking=replica_config.is_blocking,
             is_asgi_app=replica_config.is_asgi_app,
             path_prefix=replica_config.path_prefix,
         )
@@ -500,7 +485,6 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        backend_config._validate_complete()
         goal_ref = self._controller.deploy.remote(name, backend_config,
                                                   replica_config, version)
 
@@ -512,6 +496,10 @@ class Client:
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
         self._wait_for_goal(self._controller.delete_deployment.remote(name))
+
+    @_ensure_connected
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+        return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
     def list_backends(self) -> Dict[str, BackendConfig]:
@@ -647,6 +635,7 @@ def start(
         http_port: int = DEFAULT_HTTP_PORT,
         http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
+        dedicated_cpu: bool = False,
 ) -> Client:
     """Initialize a serve instance.
 
@@ -671,7 +660,7 @@ def start(
               this to "0.0.0.0".
             - port(int): Port for HTTP server. Defaults to 8000.
             - middlewares(list): A list of Starlette middlewares that will be
-              applied to the HTTP servers in the cluster.
+              applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
 
@@ -680,6 +669,10 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
+            - num_cpus (int): The number of CPU cores to reserve for each
+              internal Serve HTTP proxy actor.  Defaults to 0.
+        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+          Serve controller actor.  Defaults to False.
     """
     if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
             or (len(http_middlewares) != 0)):
@@ -724,6 +717,7 @@ def start(
             host=http_host, port=http_port, middlewares=http_middlewares)
 
     controller = ServeController.options(
+        num_cpus=(1 if dedicated_cpu else 0),
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
@@ -860,11 +854,6 @@ def update_backend_config(
             strings to values for the following supported options:
             - "num_replicas": number of processes to start up that
             will handle requests to this backend.
-            - "max_batch_size": the maximum number of requests that will
-            be processed in one batch by this backend.
-            - "batch_wait_timeout": time in seconds that backend replicas
-            will wait for a full batch of requests before
-            processing a partial batch.
             - "max_concurrent_queries": the maximum number of queries
             that will be sent to a replica of this backend
             without receiving a response.
@@ -910,11 +899,6 @@ def create_backend(
             mapping strings to values for the following supported options:
             - "num_replicas": number of processes to start up that
             will handle requests to this backend.
-            - "max_batch_size": the maximum number of requests that will
-            be processed in one batch by this backend.
-            - "batch_wait_timeout": time in seconds that backend replicas
-            will wait for a full batch of requests before processing a
-            partial batch.
             - "max_concurrent_queries": the maximum number of queries that
             will be sent to a replica of this backend without receiving a
             response.
@@ -1035,32 +1019,6 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def accept_batch(f: Callable) -> Callable:
-    """Annotation to mark that a serving function accepts batches of requests.
-
-    In order to accept batches of requests as input, the implementation must
-    handle a list of requests being passed in rather than just a single
-    request.
-
-    This must be set on any backend implementation that will have
-    max_batch_size set to greater than 1.
-
-    Example:
-
-    >>> @serve.accept_batch
-        def serving_func(requests):
-            assert isinstance(requests, list)
-            ...
-
-    >>> class ServingActor:
-            @serve.accept_batch
-            def __call__(self, requests):
-                assert isinstance(requests, list)
-    """
-    f._serve_accept_batch = True
-    return f
-
-
 def ingress(
         app: Union["FastAPI", "APIRouter", None] = None,
         path_prefix: Optional[str] = None,
@@ -1092,6 +1050,10 @@ def ingress(
             # the fast api routes here.
             make_fastapi_class_based_view(app, cls)
         if path_prefix is not None:
+            if not path_prefix.startswith("/"):
+                raise ValueError("path_prefix must start with '/'")
+            if "{" in path_prefix or "}" in path_prefix:
+                raise ValueError("path_prefix may not contain wildcards")
             cls._serve_path_prefix = path_prefix
 
         return cls
@@ -1101,7 +1063,7 @@ def ingress(
 
 class ServeDeployment(ABC):
     @classmethod
-    def deploy(self, *init_args) -> None:
+    def deploy(cls, *init_args) -> None:
         """Deploy this deployment.
 
         Args:
@@ -1112,17 +1074,17 @@ class ServeDeployment(ABC):
         raise NotImplementedError()
 
     @classmethod
-    def delete(self) -> None:
+    def delete(cls) -> None:
         """Delete this deployment."""
         raise NotImplementedError()
 
     @classmethod
-    def get_handle(self, sync: Optional[bool] = True
+    def get_handle(cls, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         raise NotImplementedError()
 
     @classmethod
-    def options(self,
+    def options(cls,
                 backend_def: Optional[Callable] = None,
                 name: Optional[str] = None,
                 version: Optional[str] = None,
@@ -1162,7 +1124,7 @@ def make_deployment_cls(
         _ray_actor_options = ray_actor_options
 
         @classmethod
-        def deploy(cls, *init_args):
+        def deploy(cls, *init_args, _blocking=True):
             """Deploy this deployment.
 
             Args:
@@ -1172,18 +1134,14 @@ def make_deployment_cls(
             if len(init_args) == 0 and cls._init_args is not None:
                 init_args = cls._init_args
 
-            if cls._version is not None:
-                version = cls._version
-            else:
-                version = get_random_letters()
-
             return _get_global_client().deploy(
                 cls._name,
                 cls._backend_def,
                 *init_args,
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
-                version=version,
+                version=cls._version,
+                _blocking=_blocking,
                 _internal=True)
 
         @classmethod
@@ -1306,3 +1264,27 @@ def deployment(
             ray_actor_options=ray_actor_options)
 
     return decorator
+
+
+def get_deployment(name: str) -> ServeDeployment:
+    """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+
+    Args:
+        name(str): name of the deployment. This must have already been
+        deployed.
+
+    Returns:
+        ServeDeployment
+    """
+    try:
+        backend_info, route = _get_global_client().get_deployment_info(name)
+    except KeyError:
+        raise KeyError(f"Deployment {name} was not found. "
+                       "Did you call Deployment.deploy()?")
+    return make_deployment_cls(
+        backend_info.replica_config.backend_def,
+        name,
+        backend_info.backend_config,
+        version=backend_info.version,
+        init_args=backend_info.replica_config.init_args,
+        ray_actor_options=backend_info.replica_config.ray_actor_options)

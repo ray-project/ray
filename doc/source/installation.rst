@@ -9,7 +9,7 @@ Windows wheels are now available, but :ref:`Windows support <windows-support>` i
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/doc/dev/RELEASE_PROCESS.rst>`__.
+You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/release/RELEASE_PROCESS.rst>`__.
 
 .. code-block:: bash
 

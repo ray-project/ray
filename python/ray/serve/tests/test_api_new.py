@@ -259,16 +259,15 @@ def test_list_endpoints(serve_instance):
 
 @pytest.mark.skip("Not implemented yet")
 def test_list_backends(serve_instance):
-    @serve.accept_batch
     def f():
         pass
 
-    config1 = BackendConfig(max_batch_size=10)
+    config1 = BackendConfig(max_concurrent_queries=10)
     serve.create_backend("backend", f, config=config1)
     backends = serve.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"].max_batch_size == 10
+    assert backends["backend"].max_concurrent_queries == 10
 
     config2 = BackendConfig(num_replicas=10)
     serve.create_backend("backend2", f, config=config2)

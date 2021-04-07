@@ -243,8 +243,6 @@ cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/format/object_manager_generated.h",
-        "src/ray/object_manager/notification/object_store_notification_manager.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",
@@ -269,7 +267,6 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
@@ -609,6 +606,7 @@ cc_library(
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
+            "src/ray/core_worker/pubsub/*.cc",
             "src/ray/core_worker/transport/*.cc",
             "src/ray/rpc/worker/*.cc",
         ],
@@ -621,6 +619,7 @@ cc_library(
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
         "src/ray/core_worker/store_provider/memory_store/*.h",
+        "src/ray/core_worker/pubsub/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -743,6 +742,16 @@ cc_test(
 )
 
 cc_test(
+    name = "publisher_test",
+    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -795,6 +804,18 @@ cc_test(
 )
 
 cc_test(
+    name = "scheduling_policy_test",
+    srcs = [
+        "src/ray/raylet/scheduling/scheduling_policy_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_task_manager_test",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
@@ -810,6 +831,18 @@ cc_test(
     name = "local_object_manager_test",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subscriber_test",
+    srcs = [
+        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -1350,7 +1383,6 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
-        ":object_manager_fbs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
         ":ray_common",
@@ -1634,13 +1666,6 @@ flatbuffer_cc_library(
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "ray/raylet/format/",
-)
-
-flatbuffer_cc_library(
-    name = "object_manager_fbs",
-    srcs = ["src/ray/object_manager/format/object_manager.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/object_manager/format/",
 )
 
 pyx_library(
