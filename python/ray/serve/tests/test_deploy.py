@@ -203,6 +203,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     signal_name = f"signal-{get_random_letters()}"
     signal = SignalActor.options(name=signal_name).remote()
 
+    @serve.deployment(name=name, version="1")
     async def v1(request):
         if request.query_params["block"] == "True":
             signal = ray.get_actor(signal_name)
@@ -212,7 +213,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     def v2(*args):
         return f"2|{os.getpid()}"
 
-    client.deploy(name, v1, version="1")
+    v1.deploy()
     ref1 = call.remote(block=False)
     val1, pid1 = ray.get(ref1)
     assert val1 == "1"
@@ -223,7 +224,8 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
-    goal_ref = client.deploy(name, v2, version="2", _blocking=False)
+    v2 = v1.options(backend_def=v2, version="2")
+    goal_ref = v2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
 
     # It may take some time for the handle change to propagate and requests
@@ -316,7 +318,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    client.deploy(name, v1, version="1", config={"num_replicas": 2})
+    v1 = serve.deployment(name=name, version="1", num_replicas=2)(v1)
+    v1.deploy()
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -331,13 +334,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
-    goal_ref = client.deploy(
-        name,
-        v2,
-        version="2",
-        config={"num_replicas": 2},
-        _blocking=False,
-    )
+    v2 = v1.options(backend_def=v2, version="2")
+    goal_ref = v2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
     responses3, blocking3 = make_nonblocking_calls(
         {

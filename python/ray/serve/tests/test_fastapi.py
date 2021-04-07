@@ -16,18 +16,18 @@ from ray.serve.utils import make_fastapi_class_based_view
 
 
 def test_fastapi_function(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
+    @serve.deployment(name="f")
     @serve.ingress(app)
     class FastAPIApp:
         pass
 
-    client.deploy("f", FastAPIApp)
+    FastAPIApp.deploy()
 
     resp = requests.get("http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
@@ -38,31 +38,31 @@ def test_fastapi_function(serve_instance):
 
 
 def test_ingress_prefix(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
+    @serve.deployment
     @serve.ingress(app, path_prefix="/api")
     class App:
         pass
 
-    client.deploy("f", App)
+    App.deploy()
 
     resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
 
 
 def test_class_based_view(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/other")
     def hello():
         return "hello"
 
+    @serve.deployment(name="f")
     @serve.ingress(app)
     class A:
         def __init__(self):
@@ -76,7 +76,8 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
-    client.deploy("f", A)
+    A.deploy()
+
     resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
     resp = requests.post("http://localhost:8000/f/calc/41")

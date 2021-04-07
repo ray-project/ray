@@ -6,23 +6,20 @@ import pytest
 import ray
 from ray import serve
 from ray.test_utils import SignalActor
-from ray.serve.config import BackendConfig
 
 
 def test_serve_forceful_shutdown(serve_instance):
+    @serve.deployment
     def sleeper(_):
         while True:
             time.sleep(1000)
 
-    serve.create_backend(
-        "sleeper",
-        sleeper,
-        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
-    serve.create_endpoint("sleeper", backend="sleeper")
-    handle = serve.get_handle("sleeper")
+    sleeper._config.experimental_graceful_shutdown_timeout_s = 0.1
+    sleeper.deploy()
+
+    handle = sleeper.get_handle()
     ref = handle.remote()
-    serve.delete_endpoint("sleeper")
-    serve.delete_backend("sleeper")
+    sleeper.delete()
 
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(ref)
@@ -31,23 +28,17 @@ def test_serve_forceful_shutdown(serve_instance):
 def test_serve_graceful_shutdown(serve_instance):
     signal = SignalActor.remote()
 
-    class WaitBackend:
+    @serve.deployment(name="wait", max_concurrent_queries=10)
+    class Wait:
         async def __call__(self, request):
             signal_actor = await request.body()
             await signal_actor.wait.remote()
             return ""
 
-    serve.create_backend(
-        "wait",
-        WaitBackend,
-        config=BackendConfig(
-            # Make sure we can queue up queries in the replica side.
-            max_concurrent_queries=10,
-            experimental_graceful_shutdown_wait_loop_s=0.5,
-            experimental_graceful_shutdown_timeout_s=1000,
-        ))
-    serve.create_endpoint("wait", backend="wait")
-    handle = serve.get_handle("wait")
+    Wait._config.experimental_graceful_shutdown_wait_loop_s = 0.5
+    Wait._config.experimental_graceful_shutdown_timeout_s = 1000
+    Wait.deploy()
+    handle = Wait.get_handle()
     refs = [handle.remote(signal) for _ in range(10)]
 
     # Wait for all the queries to be enqueued
@@ -56,8 +47,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
     @ray.remote(num_cpus=0)
     def do_blocking_delete():
-        serve.delete_endpoint("wait")
-        serve.delete_backend("wait")
+        Wait.delete()
 
     # Now delete the backend. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
@@ -97,6 +87,7 @@ def test_parallel_start(serve_instance):
 
     barrier = Barrier.remote(release_on=2)
 
+    @serve.deployment(num_replicas=2)
     class LongStartingServable:
         def __init__(self):
             ray.get(barrier.wait.remote(), timeout=10)
@@ -104,12 +95,8 @@ def test_parallel_start(serve_instance):
         def __call__(self, _):
             return "Ready"
 
-    config = BackendConfig(num_replicas=2)
-    serve.create_backend("p:v0", LongStartingServable, config=config)
-    serve.create_endpoint("test-parallel", backend="p:v0")
-    handle = serve.get_handle("test-parallel")
-
-    ray.get(handle.remote(), timeout=10)
+    LongStartingServable.deploy()
+    ray.get(LongStartingServable.get_handle().remote(), timeout=10)
 
 
 if __name__ == "__main__":
