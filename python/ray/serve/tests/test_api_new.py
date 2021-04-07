@@ -9,7 +9,6 @@ import starlette.responses
 import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
-from ray.serve.config import BackendConfig
 
 
 def test_e2e(serve_instance):
@@ -211,76 +210,6 @@ def test_delete_backend(serve_instance):
             time.sleep(0.5)  # Wait for the change to propagate.
     else:
         assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
-
-
-@pytest.mark.skip("Not implemented yet")
-def test_list_endpoints(serve_instance):
-    def f():
-        pass
-
-    serve.create_backend("backend", f)
-    serve.create_backend("backend2", f)
-    serve.create_backend("backend3", f)
-    serve.create_endpoint(
-        "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
-    serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
-    serve.shadow_traffic("endpoint", "backend3", 0.5)
-
-    endpoints = serve.list_endpoints()
-    assert "endpoint" in endpoints
-    assert endpoints["endpoint"] == {
-        "route": "/api",
-        "methods": ["GET", "POST"],
-        "traffic": {
-            "backend": 1.0
-        },
-        "shadows": {
-            "backend3": 0.5
-        }
-    }
-
-    assert "endpoint2" in endpoints
-    assert endpoints["endpoint2"] == {
-        "route": None,
-        "methods": ["POST"],
-        "traffic": {
-            "backend2": 1.0
-        },
-        "shadows": {}
-    }
-
-    serve.delete_endpoint("endpoint")
-    assert "endpoint2" in serve.list_endpoints()
-
-    serve.delete_endpoint("endpoint2")
-    assert len(serve.list_endpoints()) == 0
-
-
-@pytest.mark.skip("Not implemented yet")
-def test_list_backends(serve_instance):
-    def f():
-        pass
-
-    config1 = BackendConfig(max_concurrent_queries=10)
-    serve.create_backend("backend", f, config=config1)
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend" in backends
-    assert backends["backend"].max_concurrent_queries == 10
-
-    config2 = BackendConfig(num_replicas=10)
-    serve.create_backend("backend2", f, config=config2)
-    backends = serve.list_backends()
-    assert len(backends) == 2
-    assert backends["backend2"].num_replicas == 10
-
-    serve.delete_backend("backend")
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend2" in backends
-
-    serve.delete_backend("backend2")
-    assert len(serve.list_backends()) == 0
 
 
 def test_starlette_request(serve_instance):
