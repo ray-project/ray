@@ -64,7 +64,7 @@ def test_ref_in_handle_input(serve_instance):
 
     unblock_worker_signal = SignalActor.remote()
 
-    @serve.deployment(name="ref")
+    @serve.deployment
     async def blocked_by_ref(serve_request):
         data = await serve_request.body()
         assert not isinstance(data, ray.ObjectRef)
