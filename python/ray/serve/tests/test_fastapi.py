@@ -209,7 +209,7 @@ def test_fastapi_features(serve_instance):
 
     app.include_router(router)
 
-    @serve.deployment("fastapi")
+    @serve.deployment(name="fastapi")
     @serve.ingress(app)
     class Worker:
         pass

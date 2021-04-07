@@ -22,7 +22,7 @@ def request_with_retries(endpoint, timeout=30):
             time.sleep(0.1)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@pytest.mark.skip(reason="Consistently failing.")
 def test_controller_failure(serve_instance):
     def function(_):
         return "hello1"

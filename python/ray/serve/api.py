@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Coroutine, Dict, List,
-                    Optional, Tuple, Type, Union)
+                    Optional, overload, Tuple, Type, Union)
 from warnings import warn
 
 from ray.actor import ActorHandle
@@ -697,17 +697,16 @@ def start(
 
     register_custom_serializers()
 
+    try:
+        _get_global_client()
+        logger.info("Connecting to existing Serve instance.")
+        return
+    except RayServeException:
+        pass
+
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
-        try:
-            ray.get_actor(controller_name)
-            raise RayServeException("Called serve.start(detached=True) but a "
-                                    "detached instance is already running. "
-                                    "Please use serve.connect() to connect to "
-                                    "the running instance instead.")
-        except ValueError:
-            pass
     else:
         controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
                                             get_random_letters())
@@ -1242,8 +1241,26 @@ def make_deployment_cls(
     return Deployment
 
 
+@overload
+def deployment(backend_def: Callable) -> ServeDeployment:
+    pass
+
+
+@overload
+def deployment(name: Optional[str] = None,
+               version: Optional[str] = None,
+               num_replicas: Optional[int] = None,
+               init_args: Optional[Tuple[Any]] = None,
+               ray_actor_options: Optional[Dict] = None,
+               user_config: Optional[Any] = None,
+               max_concurrent_queries: Optional[int] = None
+               ) -> Callable[[Callable], ServeDeployment]:
+    pass
+
+
 def deployment(
-        name: str,
+        _backend_def: Optional[Callable] = None,
+        name: Optional[str] = None,
         version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
@@ -1255,11 +1272,13 @@ def deployment(
     """Define a Serve deployment.
 
     Args:
-        name (str): Globally-unique name identifying this deployment.
-        version (str): Version of the deployment. This is used to indicate a
-            code change for the deployment; when it is re-deployed with a
-            version change, a rolling update of the replicas will be performed.
-            If not passed, every deployment will be treated as a new version.
+        name (Optional[str]): Globally-unique name identifying this deployment.
+            If not provided, the name of the class or function will be used.
+        version (Optional[str]): Version of the deployment. This is used to
+            indicate a code change for the deployment; when it is re-deployed
+            with a version change, a rolling update of the replicas will be
+            performed. If not provided, every deployment will be treated as a
+            new version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.
         init_args (Optional[Tuple]): Arguments to be passed to the class
@@ -1299,17 +1318,19 @@ def deployment(
     if max_concurrent_queries is not None:
         config.max_concurrent_queries = max_concurrent_queries
 
-    def decorator(backend_def):
+    def decorator(_backend_def):
         return make_deployment_cls(
-            backend_def,
-            name,
+            _backend_def,
+            name if name is not None else _backend_def.__name__,
             config,
             _version=version,
             _init_args=init_args,
             _route_prefix=route_prefix,
             _ray_actor_options=ray_actor_options)
 
-    return decorator
+    # This handles both parametrized and non-parametrized usage of the
+    # decorator. See the @serve.batch code for more details.
+    return decorator(_backend_def) if callable(_backend_def) else decorator
 
 
 def get_deployment(name: str) -> ServeDeployment:
