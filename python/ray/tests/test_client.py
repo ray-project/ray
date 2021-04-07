@@ -9,6 +9,8 @@ import _thread
 import ray.util.client.server.server as ray_client_server
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.client_mode_hook import _enable_client_hook,\
+    _explicitly_enable_client_mode
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -500,6 +502,21 @@ def test_client_gpu_ids(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get_gpu_ids() == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_gpu_ids_hook():
+    """
+    Validate that ray.get_gpu_ids is wrapped by client_mode_hook.
+    """
+    import ray
+    # These two lines ensure client mode hook will be in effect.
+    _enable_client_hook(True)
+    _explicitly_enable_client_mode()
+
+    # Ray isn't actually initialized. However, client mode is on, so we
+    # get the expected result.
+    assert ray.get_gpu_ids() == []
 
 
 if __name__ == "__main__":
