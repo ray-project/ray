@@ -142,7 +142,10 @@ class HTTPProxy:
             if time.time() - start > timeout_s:
                 raise TimeoutError(
                     f"Waited {timeout_s} for {endpoint} to propogate.")
-            if endpoint in self.route_table:
+            endpoints: List[EndpointTag] = [
+                tag for tag, _methods in self.route_table.values()
+            ]
+            if endpoint in endpoints:
                 return
             await asyncio.sleep(0.2)
 
