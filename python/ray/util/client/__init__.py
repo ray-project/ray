@@ -79,7 +79,10 @@ class RayAPIStub:
             raise
 
     def _register_serializers(self):
-        """Register the custom serializer addons in the client side.
+        """Register the custom serializer addons at the client side.
+
+        The server side should have already registered the serializers via
+        regular worker's serialization_context mechanism.
         """
         import ray.serialization_addons
         from ray.util.client.ray_client_helpers import (
