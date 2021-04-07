@@ -108,6 +108,18 @@ RAY_CONFIG(bool, scheduler_loadbalance_spillback,
            getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
                getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
 
+/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
+/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
+/// then spread via weighted (by critical resource usage).
+RAY_CONFIG(bool, scheduler_hybrid_scheduling,
+           getenv("RAY_SCHEDULER_HYBRID") == nullptr ||
+               getenv("RAY_SCHEDULER_HYBRID") != std::string("0"))
+
+RAY_CONFIG(float, scheduler_hybrid_threshold,
+           getenv("RAY_SCHEDULER_HYBRID_THRESHOLD") == nullptr
+               ? 0.5
+               : std::stof("RAY_SCHEDULER_HYBRID_THRESHOLD"))
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
@@ -264,9 +276,6 @@ RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, plasma_store_as_thread, false)
-
 /// Whether to release worker CPUs during plasma fetches.
 /// See https://github.com/ray-project/ray/issues/12912 for further discussion.
 RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
@@ -352,6 +361,9 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
+/// Maximum number of objects that can be fused into a single file.
+RAY_CONFIG(int64_t, max_fused_object_count, 2000)
+
 /// Whether to enable automatic object deletion when refs are gone out of scope.
 /// When it is true, manual (force) spilling is not available.
 /// TODO(sang): Fix it.
@@ -382,3 +394,19 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The interval of periodic asio event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires asio_event_loop_stats_collection_enabled to be true.
+RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
+
+/// Maximum amount of memory that will be used by running tasks' args.
+RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
+
+/// The maximum number of objects to publish for each publish calls.
+RAY_CONFIG(uint64_t, publish_batch_size, 5000)
+
+/// The time where the subscriber connection is timed out in milliseconds.
+/// This is for the pubsub module.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)

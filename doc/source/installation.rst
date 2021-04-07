@@ -9,7 +9,7 @@ Windows wheels are now available, but :ref:`Windows support <windows-support>` i
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/doc/dev/RELEASE_PROCESS.rst>`__.
+You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/release/RELEASE_PROCESS.rst>`__.
 
 .. code-block:: bash
 
@@ -32,27 +32,19 @@ You can install the nightly Ray wheels via the following links. These daily rele
 ===================  ===================  ======================
        Linux                MacOS         Windows (experimental)
 ===================  ===================  ======================
-`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_  `Windows Python 3.6`_
 ===================  ===================  ======================
 
-.. note::
-
-  Python 3.9 support is currently experimental.
-
-.. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
-.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_13_x86_64.whl
 .. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
 .. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
 .. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
 
-.. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-win_amd64.whl
 .. _`Windows Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-win_amd64.whl
