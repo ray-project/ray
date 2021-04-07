@@ -21,7 +21,7 @@ def test_path_validation(serve_instance):
         class D2:
             pass
 
-    @serve.deployment("test", route_prefix="/duplicate")
+    @serve.deployment(route_prefix="/duplicate")
     class D3:
         pass
 
@@ -37,7 +37,7 @@ def test_routes_endpoint(serve_instance):
     class D1:
         pass
 
-    @serve.deployment("D2", route_prefix="/hello/world")
+    @serve.deployment(route_prefix="/hello/world")
     class D2:
         pass
 
@@ -62,7 +62,7 @@ def test_routes_endpoint(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment("D3", route_prefix="/hello")
+    @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
     class D3:
         pass
@@ -78,7 +78,7 @@ def test_path_prefixing(serve_instance):
     def req(subpath):
         return requests.get(f"http://localhost:8000{subpath}").text
 
-    @serve.deployment("D1", route_prefix="/")
+    @serve.deployment(route_prefix="/")
     class D1:
         def __call__(self, *args):
             return "1"
@@ -87,7 +87,7 @@ def test_path_prefixing(serve_instance):
     assert req("/") == "1"
     assert req("/a") != "1"
 
-    @serve.deployment("D2", route_prefix="/hello")
+    @serve.deployment(route_prefix="/hello")
     class D2:
         def __call__(self, *args):
             return "2"
@@ -96,7 +96,7 @@ def test_path_prefixing(serve_instance):
     assert req("/") == "1"
     assert req("/hello") == "2"
 
-    @serve.deployment("D3", route_prefix="/hello/world")
+    @serve.deployment(route_prefix="/hello/world")
     class D3:
         def __call__(self, *args):
             return "3"
@@ -108,7 +108,7 @@ def test_path_prefixing(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment("D4", route_prefix="/hello/world/again")
+    @serve.deployment(route_prefix="/hello/world/again")
     @serve.ingress(app)
     class D4:
         @app.get("/")

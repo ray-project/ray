@@ -17,30 +17,36 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
+
 namespace ray {
 
 using ::testing::_;
 
 class PublisherTest : public ::testing::Test {
  public:
-  PublisherTest() {}
+  PublisherTest() { periodic_runner_.reset(new PeriodicalRunner(io_service_)); }
 
   ~PublisherTest() {}
 
   void SetUp() {
-    dead_nodes_.clear();
     object_status_publisher_ = std::shared_ptr<Publisher>(new Publisher(
-        [this](const NodeID &node_id) { return dead_nodes_.count(node_id) == 1; },
+        /*periodic_runner=*/periodic_runner_.get(),
+        /*get_time_ms=*/[this]() { return current_time_; },
+        /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100));
+    current_time_ = 0;
   }
 
   void TearDown() { subscribers_map_.clear(); }
 
-  void RegisterDeadNode(const NodeID &node_id) { dead_nodes_.emplace(node_id); }
-
-  std::unordered_set<NodeID> dead_nodes_;
+  instrumented_io_context io_service_;
+  std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> object_status_publisher_;
   std::unordered_map<ObjectID, std::unordered_set<NodeID>> subscribers_map_;
+  const uint64_t subscriber_timeout_ms_ = 30000;
+  double current_time_;
 };
 
 TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
@@ -196,7 +202,8 @@ TEST_F(PublisherTest, TestSubscriber) {
         }
       };
 
-  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(10);
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
   // If there's no connection, it will return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
   // Try connecting it. Should return true.
@@ -242,7 +249,8 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
       };
 
   auto max_publish_size = 5;
-  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(max_publish_size);
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, max_publish_size);
   ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
 
   std::unordered_set<ObjectID> published_objects;
@@ -270,6 +278,167 @@ TEST_F(PublisherTest, TestSubscriberBatchSize) {
   for (int i = 0; i < 10; i++) {
     ASSERT_TRUE(object_ids_published.count(oids[i]) > 0);
   }
+}
+
+TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
+  ///
+  /// Test the active connection timeout.
+  ///
+
+  auto reply_cnt = 0;
+  LongPollConnectCallback reply = [&reply_cnt](const std::vector<ObjectID> &object_ids) {
+    reply_cnt++;
+  };
+
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  // Connection is not timed out yet.
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Some time has passed, but it is not timed out yet.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Timeout is reached, and the long polling connection should've been refreshed.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_TRUE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Refresh the connection.
+  subscriber->PublishIfPossible(/*force*/ true);
+  ASSERT_EQ(reply_cnt, 1);
+
+  // New connection is established.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Some time has passed, but it is not timed out yet.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // A message is published, so the connection is refreshed.
+  auto oid = ObjectID::FromRandom();
+  subscriber->QueueMessage(oid);
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+  ASSERT_EQ(reply_cnt, 2);
+
+  // Although time has passed, since the connection was refreshed, timeout shouldn't
+  // happen.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  ASSERT_TRUE(subscriber->AssertNoLeak());
+}
+
+TEST_F(PublisherTest, TestSubscriberDisconnected) {
+  ///
+  /// Test the subscriber is considered as dead due to the disconnection timeout.
+  ///
+
+  auto reply_cnt = 0;
+  LongPollConnectCallback reply = [&reply_cnt](const std::vector<ObjectID> &object_ids) {
+    reply_cnt++;
+  };
+
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+
+  // Suppose the new connection is removed.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  subscriber->PublishIfPossible(/*force*/ true);
+  ASSERT_EQ(reply_cnt, 1);
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Some time has passed, but it is not timed out yet.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Timeout is reached. Since there was no new long polling connection, it is considered
+  // as disconnected.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_TRUE(subscriber->IsDisconnected());
+
+  // New connection is coming in.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  subscriber->PublishIfPossible(/*force*/ true);
+  ASSERT_EQ(reply_cnt, 2);
+
+  // Some time has passed, but it is not timed out yet.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Another connection is made, so it shouldn't timeout until the next timeout is
+  // reached.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  subscriber->PublishIfPossible(/*force*/ true);
+  ASSERT_EQ(reply_cnt, 3);
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // IF there's no new connection for a long time it should eventually timeout.
+  current_time_ += subscriber_timeout_ms_ / 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_TRUE(subscriber->IsDisconnected());
+
+  ASSERT_TRUE(subscriber->AssertNoLeak());
+}
+
+TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
+  ///
+  /// Test the subscriber timeout in more complicated scenario.
+  ///
+
+  auto reply_cnt = 0;
+  LongPollConnectCallback reply = [&reply_cnt](const std::vector<ObjectID> &object_ids) {
+    reply_cnt++;
+  };
+
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+
+  // Suppose the new connection is removed.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  subscriber->PublishIfPossible(/*force*/ true);
+  ASSERT_EQ(reply_cnt, 1);
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Some time has passed, and the connection is removed.
+  current_time_ += subscriber_timeout_ms_ - 1;
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
+  current_time_ += 2;
+  // Timeout shouldn't happen because the connection has been refreshed.
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Right before the timeout, connection is removed. In this case, timeout shouldn't also
+  // happen.
+  current_time_ += subscriber_timeout_ms_ - 1;
+  subscriber->PublishIfPossible(/*force*/ true);
+  current_time_ += 2;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_FALSE(subscriber->IsDisconnected());
+
+  // Timeout is reached. Since there was no connection, it should be considered
+  // disconnected.
+  current_time_ += subscriber_timeout_ms_;
+  ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
+  ASSERT_TRUE(subscriber->IsDisconnected());
+
+  ASSERT_TRUE(subscriber->AssertNoLeak());
 }
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {
@@ -423,17 +592,33 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   const auto subscriber_node_id = NodeID::FromRandom();
   const auto oid = ObjectID::FromRandom();
   object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
-  dead_nodes_.emplace(subscriber_node_id);
-  // All these ops should be no-op.
+  // This information should be cleaned up as the subscriber is dead.
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
-  // Note if the Publish function is called here, it will cause check failure. Application
-  // code must ensure publish won't be called without registration.
-  ASSERT_EQ(long_polling_connection_replied, false);
+  // Timeout is reached. The connection should've been refreshed. Since the subscriber is
+  // dead, no new connection is made.
+  current_time_ += subscriber_timeout_ms_;
+  object_status_publisher_->CheckDeadSubscribers();
+  ASSERT_EQ(long_polling_connection_replied, true);
+
+  // More time has passed, and since there was no new long polling connection, this
+  // subscriber is considered as dead.
+  current_time_ += subscriber_timeout_ms_;
+  object_status_publisher_->CheckDeadSubscribers();
 
   // Connection should be replied (removed) when the subscriber is unregistered.
   int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_FALSE(erased);
-  ASSERT_EQ(long_polling_connection_replied, true);
+  ASSERT_EQ(erased, 0);
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+
+  // New subscriber is registsered for some reason. Since there's no new long polling
+  // connection for the timeout, it should be removed.
+  long_polling_connection_replied = false;
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  current_time_ += subscriber_timeout_ms_;
+  object_status_publisher_->CheckDeadSubscribers();
+  erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
+  ASSERT_EQ(erased, 0);
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
 }
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
@@ -450,33 +635,32 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   auto oid = ObjectID::FromRandom();
   object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
   object_status_publisher_->Publish(oid);
-
-  // Node is dead before connection is made.
-  dead_nodes_.emplace(subscriber_node_id);
+  // There was no long polling connection yet.
   ASSERT_EQ(long_polling_connection_replied, false);
 
-  // Connect should reply right away to avoid memory leak.
+  // Connect should be removed eventually to avoid having a memory leak.
   object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
   ASSERT_EQ(long_polling_connection_replied, true);
-  long_polling_connection_replied = false;
+  // Nothing happens at first.
+  object_status_publisher_->CheckDeadSubscribers();
 
-  // Connection should be replied (removed) when the subscriber is unregistered.
-  auto erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
-  // Since there was no connection, long polling shouldn't have been replied.
-  ASSERT_EQ(long_polling_connection_replied, false);
-  ASSERT_TRUE(erased);
+  // After the timeout, the subscriber should be considered as dead because there was no
+  // new long polling connection.
+  current_time_ += subscriber_timeout_ms_;
+  object_status_publisher_->CheckDeadSubscribers();
+  // Make sure the registration is cleaned up.
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
 
-  ///
-  /// Test the case where there was a connection, but no registration.
-  ///
-  subscriber_node_id = NodeID::FromRandom();
-  oid = ObjectID::FromRandom();
-  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, long_polling_connect);
-  dead_nodes_.emplace(subscriber_node_id);
-  erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_EQ(long_polling_connection_replied, true);
-  // Since there was no registration, nothing was erased.
-  ASSERT_FALSE(erased);
+  /// Test the case where there's no connection coming at all when there was a
+  /// registration.
+  object_status_publisher_->RegisterSubscription(subscriber_node_id, oid);
+  object_status_publisher_->Publish(oid);
+
+  // No new long polling connection was made until timeout.
+  current_time_ += subscriber_timeout_ms_;
+  object_status_publisher_->CheckDeadSubscribers();
+  // Make sure the registration is cleaned up.
+  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
 }
 
 // Unregistration an entry.
