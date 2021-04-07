@@ -299,6 +299,21 @@ def test_starlette_request(serve_instance):
     assert resp == long_string
 
 
+def test_start_idempotent(serve_instance):
+    @serve.deployment(name="start")
+    def func(*args):
+        pass
+
+    func.deploy()
+
+    assert "start" in serve.list_backends()
+    serve.start(detached=True)
+    serve.start()
+    serve.start(detached=True)
+    serve.start()
+    assert "start" in serve.list_backends()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

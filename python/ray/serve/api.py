@@ -693,17 +693,16 @@ def start(
 
     register_custom_serializers()
 
+    try:
+        _get_global_client()
+        logger.info("Connecting to existing Serve instance.")
+        return
+    except RayServeException:
+        pass
+
     # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
-        try:
-            ray.get_actor(controller_name)
-            raise RayServeException("Called serve.start(detached=True) but a "
-                                    "detached instance is already running. "
-                                    "Please use serve.connect() to connect to "
-                                    "the running instance instead.")
-        except ValueError:
-            pass
     else:
         controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
                                             get_random_letters())
