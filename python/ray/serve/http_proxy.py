@@ -18,7 +18,7 @@ from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
-MAX_ACTOR_FAILURE_RETRIES = 10
+MAX_REPLICA_FAILURE_RETRIES = 10
 
 
 def _strip_wildcard_suffix(path):
@@ -67,15 +67,15 @@ class ServeStarletteEndpoint:
 
         retries = 0
         backoff_time_s = 0.05
-        while retries < MAX_ACTOR_FAILURE_RETRIES:
+        while retries < MAX_REPLICA_FAILURE_RETRIES:
             object_ref = await handle.remote(starlette_request)
             try:
                 result = await object_ref
                 break
             except RayActorError:
                 logger.warning(
-                    "Request failed due to actor failure. There are "
-                    f"{MAX_ACTOR_FAILURE_RETRIES - retries} retries "
+                    "Request failed due to replica failure. There are "
+                    f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                     "remaining.")
                 await asyncio.sleep(backoff_time_s)
                 backoff_time_s *= 2

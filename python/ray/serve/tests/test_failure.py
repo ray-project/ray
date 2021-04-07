@@ -168,8 +168,7 @@ def test_worker_replica_failure(serve_instance):
             return self.index
 
     counter = Counter.remote()
-    Worker.deploy(counter)
-    Worker.options(num_replicas=2).deploy()
+    Worker.options(num_replicas=2).deploy(counter)
 
     # Wait until both replicas have been started.
     responses = set()
