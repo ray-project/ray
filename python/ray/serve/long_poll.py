@@ -121,8 +121,10 @@ class LongPollClient:
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
 
-            def chained():
-                callback(update.object_snapshot)
+            # Bind the parameters because closures are late-binding.
+            # https://docs.python-guide.org/writing/gotchas/#late-binding-closures # noqa: E501
+            def chained(callback=callback, arg=update.object_snapshot):
+                callback(arg)
                 self._on_callback_completed(trigger_at=len(updates))
 
             if self.event_loop is None:
