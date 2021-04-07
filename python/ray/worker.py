@@ -395,7 +395,7 @@ class Worker:
         self.core_worker.run_task_loop()
         sys.exit(0)
 
-
+@client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
