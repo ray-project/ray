@@ -83,7 +83,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result6, 12);
 
   /// create actor and actor function remote call with args passed by value
-  ActorHandle<DummyObject> actor4 = Ray::Actor(DummyObject::FactoryCreate, 10).Remote();
+  ActorHandle<DummyObject> actor4 = Ray::Actor(DummyObject::FactoryCreate).Remote(10);
   auto r7 = actor4.Task(&DummyObject::Add).Remote(5);
   auto r8 = actor4.Task(&DummyObject::Add).Remote(1);
   auto r9 = actor4.Task(&DummyObject::Add).Remote(3);
@@ -99,7 +99,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result10, 27);
 
   /// create actor and task function remote call with args passed by reference
-  ActorHandle<DummyObject> actor5 = Ray::Actor(DummyObject::FactoryCreate, r10).Remote();
+  ActorHandle<DummyObject> actor5 = Ray::Actor(DummyObject::FactoryCreate).Remote(r10);
 
   auto r11 = actor5.Task(&DummyObject::Add).Remote(r0);
   auto r12 = actor5.Task(&DummyObject::Add).Remote(r11);
