@@ -77,6 +77,7 @@ class will allow you to load a model using its MLflow `Model URI`:
 
 .. code-block:: python
 
+  import pandas as pd
   import mlflow.pyfunc
 
   class MLflowBackend:
