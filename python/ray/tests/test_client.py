@@ -494,7 +494,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_client_num_gpus(call_ray_stop_only):
+def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
 
