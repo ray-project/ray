@@ -447,6 +447,7 @@ class Client:
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
+               route_prefix: Optional[str] = None,
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -470,10 +471,7 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(
-            is_asgi_app=replica_config.is_asgi_app,
-            path_prefix=replica_config.path_prefix,
-        )
+        metadata = BackendMetadata(is_asgi_app=replica_config.is_asgi_app)
 
         if isinstance(config, dict):
             backend_config = BackendConfig.parse_obj({
@@ -485,8 +483,8 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
-        goal_ref = self._controller.deploy.remote(name, backend_config,
-                                                  replica_config, version)
+        goal_ref = self._controller.deploy.remote(
+            name, backend_config, replica_config, version, route_prefix)
 
         if _blocking:
             self._wait_for_goal(goal_ref)
@@ -1018,17 +1016,12 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def ingress(
-        app: Union["FastAPI", "APIRouter", None] = None,
-        path_prefix: Optional[str] = None,
-):
+def ingress(app: Union["FastAPI", "APIRouter"], ):
     """Mark a FastAPI application ingress for Serve.
 
     Args:
-        app(FastAPI,APIRouter,None): the app or router object serve as ingress
+        app(FastAPI,APIRouter): the app or router object serve as ingress
             for this backend.
-        path_prefix(str,None): The path prefix for the ingress. For example,
-            `/api`. Serve uses the deployment name as path_prefix by default.
 
     Example:
     >>> app = FastAPI()
@@ -1043,17 +1036,10 @@ def ingress(
         if not inspect.isclass(cls):
             raise ValueError("@serve.ingress must be used with a class.")
 
-        if app is not None:
-            cls._serve_asgi_app = app
-            # Sometimes there are decorators on the methods. We want to fix
-            # the fast api routes here.
-            make_fastapi_class_based_view(app, cls)
-        if path_prefix is not None:
-            if not path_prefix.startswith("/"):
-                raise ValueError("path_prefix must start with '/'")
-            if "{" in path_prefix or "}" in path_prefix:
-                raise ValueError("path_prefix may not contain wildcards")
-            cls._serve_path_prefix = path_prefix
+        cls._serve_asgi_app = app
+        # Sometimes there are decorators on the methods. We want to fix
+        # the fast api routes here.
+        make_fastapi_class_based_view(app, cls)
 
         return cls
 
@@ -1099,20 +1085,29 @@ def make_deployment_cls(
         config: BackendConfig,
         version: Optional[str] = None,
         init_args: Optional[Tuple[Any]] = None,
+        route_prefix: Optional[str] = None,
         ray_actor_options: Optional[Dict] = None,
 ) -> ServeDeployment:
     if not callable(backend_def):
         raise TypeError(
             "@serve.deployment must be called on a class or function.")
     if not isinstance(name, str):
-        raise TypeError("Deployment name must be a string.")
+        raise TypeError("name must be a string.")
     if not (version is None or isinstance(version, str)):
-        raise TypeError("Deployment version must be a string if provided.")
+        raise TypeError("version must be a string if provided.")
     if not (init_args is None or isinstance(init_args, tuple)):
-        raise TypeError("Deployment init_args must be a tuple if provided.")
+        raise TypeError("init_args must be a tuple if provided.")
+    if route_prefix is None:
+        route_prefix = f"/{name}"
+    else:
+        if not isinstance(route_prefix, str):
+            raise TypeError("route_prefix must be a string if provided.")
+        if not route_prefix.startswith("/"):
+            raise ValueError("route_prefix must start with '/'")
+        if "{" in route_prefix or "}" in route_prefix:
+            raise ValueError("route_prefix may not contain wildcards")
     if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
-        raise TypeError(
-            "Deployment ray_actor_options must be a dict if provided.")
+        raise TypeError("ray_actor_options must be a dict if provided.")
 
     class Deployment(ServeDeployment):
         _backend_def = backend_def
@@ -1120,6 +1115,7 @@ def make_deployment_cls(
         _version = version
         _config = config
         _init_args = init_args
+        _route_prefix = route_prefix
         _ray_actor_options = ray_actor_options
 
         @classmethod
@@ -1140,6 +1136,7 @@ def make_deployment_cls(
                 ray_actor_options=cls._ray_actor_options,
                 config=cls._config,
                 version=cls._version,
+                route_prefix=cls._route_prefix,
                 _blocking=_blocking,
                 _internal=True)
 
@@ -1162,6 +1159,7 @@ def make_deployment_cls(
                 name: Optional[str] = None,
                 version: Optional[str] = None,
                 init_args: Optional[Tuple[Any]] = None,
+                route_prefix: Optional[str] = None,
                 num_replicas: Optional[int] = None,
                 ray_actor_options: Optional[Dict] = None,
                 user_config: Optional[Any] = None,
@@ -1188,6 +1186,9 @@ def make_deployment_cls(
             if init_args is None:
                 init_args = cls._init_args
 
+            if route_prefix is None:
+                route_prefix = cls._route_prefix
+
             if ray_actor_options is None:
                 ray_actor_options = cls._ray_actor_options
 
@@ -1197,6 +1198,7 @@ def make_deployment_cls(
                 new_config,
                 version=version,
                 init_args=init_args,
+                route_prefix=route_prefix,
                 ray_actor_options=ray_actor_options,
             )
 
@@ -1226,6 +1228,7 @@ def deployment(
         version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
+        route_prefix: Optional[str] = None,
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
@@ -1245,6 +1248,12 @@ def deployment(
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
+        route_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
+            under the HTTP path prefix will be routed to this deployment.
+            Routing is done based on longest-prefix match, so if you have
+            deployment A with a prefix of '/a' and deployment B with a prefix
+            of '/a/b', requests to '/a' go to A, requests to '/a/b' go to B,
+            requests to '/a/c' go to A, and requests to '/a/b/c' go to B.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Arguments to pass to the
@@ -1280,6 +1289,7 @@ def deployment(
             config,
             version=version,
             init_args=init_args,
+            route_prefix=route_prefix,
             ray_actor_options=ray_actor_options)
 
     # This handles both parametrized and non-parametrized usage of the

@@ -146,8 +146,7 @@ def test_call_method(serve_instance):
 
 
 def test_reject_duplicate_route(serve_instance):
-    @serve.deployment(name="A")
-    @serve.ingress(path_prefix="/api")
+    @serve.deployment(name="A", route_prefix="/api")
     class A:
         pass
 
