@@ -32,19 +32,20 @@ struct FilterArgType<ObjectRef<T>> {
   using type = T;
 };
 
-template <typename FUNCTION, typename... Args>
-absl::enable_if_t<!std::is_member_function_pointer<FUNCTION>::value> StaticCheck() {
+template <typename Function, typename... Args>
+inline absl::enable_if_t<!std::is_member_function_pointer<Function>::value>
+StaticCheck() {
   static_assert(std::is_same<std::tuple<typename FilterArgType<Args>::type...>,
-                             boost::callable_traits::args_t<FUNCTION>>::value,
+                             boost::callable_traits::args_t<Function>>::value,
                 "arguments not match");
 }
 
-template <typename FUNCTION, typename... Args>
-absl::enable_if_t<std::is_member_function_pointer<FUNCTION>::value> StaticCheck() {
-  using ActorType = boost::callable_traits::class_of_t<FUNCTION>;
+template <typename Function, typename... Args>
+inline absl::enable_if_t<std::is_member_function_pointer<Function>::value> StaticCheck() {
+  using ActorType = boost::callable_traits::class_of_t<Function>;
   static_assert(
       std::is_same<std::tuple<ActorType &, typename FilterArgType<Args>::type...>,
-                   boost::callable_traits::args_t<FUNCTION>>::value,
+                   boost::callable_traits::args_t<Function>>::value,
       "arguments not match");
 }
 

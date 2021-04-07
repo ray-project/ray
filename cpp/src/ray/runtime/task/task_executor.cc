@@ -94,9 +94,9 @@ Status TaskExecutor::ExecuteTask(
         return ray::Status::NotFound(lib_name + " not found");
       }
 
-      RAY_LOG(DEBUG) << "Get execute function ok";
+      RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
       auto result = execute_func(func_name, args_buffer, nullptr);
-      RAY_LOG(DEBUG) << "Execute function ok";
+      RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
       typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
