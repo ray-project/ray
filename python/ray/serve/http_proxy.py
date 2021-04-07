@@ -14,7 +14,7 @@ from ray.serve.constants import WILDCARD_PATH_SUFFIX
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
-from ray.serve.http_util import Response, build_starlette_request
+from ray.serve.http_util import HTTPRequestWrapper, Response
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
@@ -45,6 +45,13 @@ class ServeStarletteEndpoint:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
+        # scope["router"] and scope["endpoint"] contain references to a router
+        # and endpoint object, respectively, which each in turn contain a
+        # reference to the Serve client, which cannot be serialized.
+        # The solution is to delete these from scope, as they will not be used.
+        del scope["router"]
+        del scope["endpoint"]
+
         retries = 0
         backoff_time_s = 0.05
         while retries < MAX_ACTOR_FAILURE_RETRIES:
@@ -55,7 +62,7 @@ class ServeStarletteEndpoint:
                                       DEFAULT.VALUE),
                 http_method=scope["method"].upper(),
                 http_headers=headers).remote(
-                    build_starlette_request(scope, http_body_bytes))
+                    HTTPRequestWrapper(scope, http_body_bytes))
 
             try:
                 result = await object_ref
