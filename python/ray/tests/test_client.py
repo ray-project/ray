@@ -493,5 +493,14 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     time.sleep(3)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_num_gpus(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+        assert ray.get_gpu_ids() == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
