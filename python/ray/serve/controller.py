@@ -335,3 +335,11 @@ class ServeController:
         route = self.endpoint_state.get_endpoint_route(name)
 
         return backend_info, route
+
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all active deployments."""
+        return {
+            name: (self.backend_state.get_backend(name),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs()
+        }
