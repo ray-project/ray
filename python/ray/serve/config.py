@@ -63,7 +63,6 @@ class ReplicaConfig:
     def __init__(self, backend_def, *init_args, ray_actor_options=None):
         self.backend_def = backend_def
         self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
-        self.path_prefix = getattr(backend_def, "_serve_path_prefix", None)
         self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}
