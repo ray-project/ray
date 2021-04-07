@@ -94,9 +94,14 @@ A Serve backend can then be created to serve the model as follows:
 
   client.create_backend("my_backend", MLflowBackend, my_model_uri)
 
+.. tip:: 
+
+  The above approach will work any model registry, not just MLflow.
+  Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
+
 For an even more hands-off and seamless integration with MLflow, check out the 
 `Ray Serve MLflow deployment plugin <https://github.com/ray-project/mlflow-ray-serve>`__.  A full
-tutorial is available `here <https://github.com/mlflow/mlflow/tree/master/examples/ray_serve>`.
+tutorial is available `here <https://github.com/mlflow/mlflow/tree/master/examples/ray_serve>`__.
 
 Framework-Specific Tutorials
 ============================
