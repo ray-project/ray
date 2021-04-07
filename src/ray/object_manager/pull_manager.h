@@ -50,11 +50,14 @@ class PullManager {
   /// preceding this one, is within the capacity of the local object store.
   ///
   /// \param object_refs The bundle of objects that must be made local.
+  /// \param is_worker_req Whether this is a request from a worker executing a
+  /// task, versus the arguments of a queued task. Worker requests are
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
+  /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                std::vector<rpc::ObjectReference> *objects_to_locate, bool is_worker_req);
+                bool is_worker_req, std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
@@ -240,8 +243,10 @@ class PullManager {
   /// pulling. We always pull a contiguous prefix of the active pull requests.
   /// This means that all requests with a lower ID are either already canceled
   /// or their objects are also being pulled.
+  ///
+  /// We keep one pointer for each request queue, since we prioritize worker
+  /// requests over task argument requests.
   uint64_t highest_worker_req_id_being_pulled_ = 0;
-
   uint64_t highest_task_req_id_being_pulled_ = 0;
 
   /// The objects that this object manager has been asked to fetch from remote

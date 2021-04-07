@@ -23,8 +23,8 @@ PullManager::PullManager(
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                           std::vector<rpc::ObjectReference> *objects_to_locate,
-                           bool is_worker_request) {
+                           bool is_worker_request,
+                           std::vector<rpc::ObjectReference> *objects_to_locate) {
   Queue::iterator bundle_it;
   if (is_worker_request) {
     bundle_it =
@@ -156,30 +156,43 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
-
-  // If there are task requests being pulled and worker requests queued, try to
-  // activate all of the worker requests, even if it puts us over the number of
-  // bytes available. We do this to prioritize worker requests over task
-  // requests.
   std::vector<ObjectID> objects_to_pull;
-  if (highest_task_req_id_being_pulled_ != 0) {
-    bool requests_remaining = true;
-    while (requests_remaining) {
-      requests_remaining = ActivateNextPullBundleRequest(
-          worker_request_bundles_, &highest_worker_req_id_being_pulled_,
-          &objects_to_pull);
+  std::unordered_set<ObjectID> object_ids_to_cancel;
+  // If there are any worker requests queued, try to activate them. Since we
+  // prioritize worker requests over task requests, task requests will be
+  // canceled as necessary to make space. We may exit this block over capacity
+  // if we run out of task requests to cancel, but this will be remedied later
+  // by canceling worker requests.
+  bool worker_requests_remaining = !worker_request_bundles_.empty();
+  while (worker_requests_remaining) {
+    worker_requests_remaining = ActivateNextPullBundleRequest(
+        worker_request_bundles_, &highest_worker_req_id_being_pulled_, &objects_to_pull);
+    while (num_bytes_being_pulled_ > num_bytes_available_) {
+      // Activating the last worker request put us over the available memory.
+      // Try to cancel task requests to make space.
+      if (highest_task_req_id_being_pulled_ == 0) {
+        // There are no task requests to cancel. Stop activating worker
+        // requests because we are already over capacity.
+        worker_requests_remaining = false;
+        break;
+      }
+
+      // Cancel a task request to make space.
+      RAY_LOG(DEBUG) << "Deactivating task args request "
+                     << highest_task_req_id_being_pulled_
+                     << " num bytes being pulled: " << num_bytes_being_pulled_
+                     << " num bytes available: " << num_bytes_available_;
+      const auto last_request_it =
+          task_argument_bundles_.find(highest_task_req_id_being_pulled_);
+      RAY_CHECK(last_request_it != task_argument_bundles_.end());
+      DeactivatePullBundleRequest(task_argument_bundles_, last_request_it,
+                                  &highest_task_req_id_being_pulled_,
+                                  &object_ids_to_cancel);
     }
   }
 
-  // While we are under capacity, try to activate requests, starting with the
-  // worker request queue, then moving to the task request queue.
-  while (num_bytes_being_pulled_ < num_bytes_available_) {
-    if (!ActivateNextPullBundleRequest(worker_request_bundles_,
-                                       &highest_worker_req_id_being_pulled_,
-                                       &objects_to_pull)) {
-      break;
-    }
-  }
+  // If we still have capacity after processing worker requests, try to
+  // activate task requests.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     if (!ActivateNextPullBundleRequest(task_argument_bundles_,
                                        &highest_task_req_id_being_pulled_,
@@ -188,7 +201,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
   }
 
-  std::unordered_set<ObjectID> object_ids_to_cancel;
   // While we are over capacity, deactivate requests starting from the back of
   // the task request queue.
   while (num_bytes_being_pulled_ > num_bytes_available_) {
@@ -223,10 +235,8 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                                 &object_ids_to_cancel);
   }
 
-  // While the total bytes requested is over the available capacity, deactivate
-  // the last pull request, ordered by request ID.
+  // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
-    // Call the cancellation callback outside of the lock.
     cancel_pull_request_(obj_id);
   }
 
