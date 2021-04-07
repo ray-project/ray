@@ -41,7 +41,7 @@ def submit_scaling_job(client_port, num_tasks):
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
 
-    assert task_output == [i for i in range(num_tasks)], "Tasks did not"\
+    assert task_output == list(range(num_tasks)), "Tasks did not"\
         "complete with expected output."
 
 
