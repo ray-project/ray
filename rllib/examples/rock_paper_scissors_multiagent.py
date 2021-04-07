@@ -12,6 +12,7 @@ from gym.spaces import Discrete
 import os
 import random
 
+import ray; ray.util.connect("127.0.0.1:10001")
 from ray import tune
 from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
