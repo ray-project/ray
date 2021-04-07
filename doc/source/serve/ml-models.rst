@@ -96,7 +96,7 @@ A Serve backend can then be created to serve the model as follows:
 
 .. tip:: 
 
-  The above approach will work any model registry, not just MLflow.
+  The above approach will work for any model registry, not just MLflow.
   Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
 
 For an even more hands-off and seamless integration with MLflow, check out the 
