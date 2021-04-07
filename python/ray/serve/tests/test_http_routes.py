@@ -74,6 +74,25 @@ def test_routes_endpoint(serve_instance):
     assert routes["/hello"] == ["D3", ALL_HTTP_METHODS]
 
 
+def test_deployment_options_default_route(serve_instance):
+    @serve.deployment(name="1")
+    class D1:
+        pass
+
+    D1.deploy()
+
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 1
+    assert routes["/1"] == ["1", ["GET", "POST"]]
+
+    D1.options(name="2").deploy()
+
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 2
+    assert routes["/1"] == ["1", ["GET", "POST"]]
+    assert routes["/2"] == ["2", ["GET", "POST"]]
+
+
 def test_path_prefixing(serve_instance):
     def req(subpath):
         return requests.get(f"http://localhost:8000{subpath}").text
