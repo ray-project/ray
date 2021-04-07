@@ -115,7 +115,7 @@ def _get_worker_handles(backend):
 # Test that a worker dying unexpectedly causes it to restart and continue
 # serving requests.
 def test_worker_restart(serve_instance):
-    @serve.deployment("worker_failure")
+    @serve.deployment(name="worker_failure")
     class Worker1:
         def __call__(self, *args):
             return os.getpid()

@@ -10,14 +10,14 @@ def test_path_validation(serve_instance):
     # Path prefix must start with /.
     with pytest.raises(ValueError):
 
-        @serve.deployment("test", route_prefix="hello")
+        @serve.deployment(route_prefix="hello")
         class D1:
             pass
 
     # Wildcards not allowed with new ingress support.
     with pytest.raises(ValueError):
 
-        @serve.deployment("test", route_prefix="/{hello}")
+        @serve.deployment(route_prefix="/{hello}")
         class D2:
             pass
 
@@ -33,7 +33,7 @@ def test_path_validation(serve_instance):
 
 
 def test_routes_endpoint(serve_instance):
-    @serve.deployment("D1")
+    @serve.deployment
     class D1:
         pass
 
