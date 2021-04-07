@@ -18,11 +18,15 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
+using SubscriberID = UniqueID;
 using LongPollConnectCallback = std::function<void(const std::vector<ObjectID> &)>;
 
 /// Index for object ids and node ids of subscribers.
@@ -33,20 +37,20 @@ class SubscriptionIndex {
 
   /// Add a new entry to the index.
   /// NOTE: If the entry already exists, it raises assert failure.
-  void AddEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+  void AddEntry(const ObjectID &object_id, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
-  absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>
+  absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
   GetSubscriberIdsByObjectId(const ObjectID &object_id) const;
 
   /// Erase the subscriber from the index. Returns the number of erased subscribers.
   /// NOTE: It cannot erase subscribers that were never added.
-  bool EraseSubscriber(const NodeID &subscriber_id);
+  bool EraseSubscriber(const SubscriberID &subscriber_id);
 
   /// Erase the object id and subscriber id from the index. Return the number of erased
   /// entries.
   /// NOTE: It cannot erase subscribers that were never added.
-  bool EraseEntry(const ObjectID &object_id, const NodeID &subscriber_id);
+  bool EraseEntry(const ObjectID &object_id, const SubscriberID &subscriber_id);
 
   /// Return true if the object id exists in the index.
   bool HasObjectId(const ObjectID &object_id) const;
@@ -59,18 +63,26 @@ class SubscriptionIndex {
   FRIEND_TEST(PublisherTest, TestSubscriptionIndexEraseSubscriber);
 
   /// Returns true if object id or subscriber id exists in the index.
-  bool HasSubscriber(const NodeID &subscriber_id) const;
+  bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
   /// Mapping from objects -> subscribers.
-  absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> objects_to_subscribers_;
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<SubscriberID>>
+      objects_to_subscribers_;
   // Mapping from subscribers -> objects. Reverse index of objects_to_subscribers_.
-  absl::flat_hash_map<NodeID, absl::flat_hash_set<ObjectID>> subscribers_to_objects_;
+  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<ObjectID>>
+      subscribers_to_objects_;
 };
 
-/// Abstraction to each subscriber for the coordinator.
+/// Abstraction to each subscriber.
 class Subscriber {
  public:
-  explicit Subscriber() {}
+  explicit Subscriber(const std::function<double()> &get_time_ms,
+                      uint64_t connection_timeout_ms, const uint64_t publish_batch_size)
+      : get_time_ms_(get_time_ms),
+        connection_timeout_ms_(connection_timeout_ms),
+        publish_batch_size_(publish_batch_size),
+        last_connection_update_time_ms_(get_time_ms()) {}
+
   ~Subscriber() = default;
 
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
@@ -78,7 +90,7 @@ class Subscriber {
   ///
   /// \param long_polling_reply_callback reply callback to the long polling request.
   /// \return True if connection is new. False if there were already connections cached.
-  bool Connect(LongPollConnectCallback long_polling_reply_callback);
+  bool ConnectToSubscriber(LongPollConnectCallback long_polling_reply_callback);
 
   /// Queue the object id to publish to the subscriber.
   ///
@@ -97,36 +109,77 @@ class Subscriber {
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool AssertNoLeak() const;
 
+  /// Return true if the subscriber is disconnected (if the subscriber is dead).
+  /// The subscriber is considered to be dead if there was no long polling connection for
+  /// the timeout.
+  bool IsDisconnected() const;
+
+  /// Return true if there was no new long polling connection for a long time.
+  bool IsActiveConnectionTimedOut() const;
+
  private:
   /// Cached long polling reply callback.
+  /// It is cached whenever new long polling is coming from the subscriber.
+  /// It becomes a nullptr whenever the long polling request is replied.
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
   /// Queued messages to publish.
-  std::vector<ObjectID> mailbox_;
+  std::list<ObjectID> mailbox_;
+  /// Callback to get the current time.
+  const std::function<double()> get_time_ms_;
+  /// The time in which the connection is considered as timed out.
+  uint64_t connection_timeout_ms_;
+  /// The maximum number of objects to publish for each publish calls.
+  const uint64_t publish_batch_size_;
+  /// The last time long polling was connected in milliseconds.
+  double last_connection_update_time_ms_;
 };
 
-/// Pubsub server.
+/// Protocol detail
+///
+/// - Subscriber always send a long polling connection as long as there are subscribed
+/// entries from the publisher.
+/// - Publisher caches the long polling request and reply whenever there are published
+/// messages.
+/// - Publishes messages are batched in order to avoid gRPC message limit.
+/// - Look at CheckDeadSubscribers for failure handling mechanism.
+///
 class Publisher {
  public:
   /// Pubsub coordinator constructor.
   ///
-  /// \param is_node_dead A callback that returns true if the given node id is dead.
-  explicit Publisher(std::function<bool(const NodeID &)> is_node_dead)
-      : is_node_dead_(is_node_dead) {}
+  /// \param periodical_runner Periodic runner. Used to periodically run
+  /// CheckDeadSubscribers.
+  /// \param get_time_ms A callback to get the current time in
+  /// milliseconds.
+  /// \param subscriber_timeout_ms The subscriber timeout in milliseconds.
+  /// Check out CheckDeadSubscribers for more details.
+  /// \param publish_batch_size The batch size of published messages.
+  explicit Publisher(PeriodicalRunner *periodical_runner,
+                     const std::function<double()> get_time_ms,
+                     const uint64_t subscriber_timeout_ms,
+                     const uint64_t publish_batch_size)
+      : periodical_runner_(periodical_runner),
+        get_time_ms_(get_time_ms),
+        subscriber_timeout_ms_(subscriber_timeout_ms),
+        publish_batch_size_(publish_batch_size) {
+    periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
+                                          subscriber_timeout_ms);
+  }
 
   ~Publisher() = default;
 
   ///
-  // TODO(sang): Currently, we need to pass the callback for connection because we are
-  // using long polling internally. This should be changed once the bidirectional grpc
-  // streaming is supported.
-  void Connect(const NodeID &subscriber_node_id,
-               LongPollConnectCallback long_poll_connect_callback);
+  /// TODO(sang): Currently, we need to pass the callback for connection because we are
+  /// using long polling internally. This should be changed once the bidirectional grpc
+  /// streaming is supported.
+  void ConnectToSubscriber(const SubscriberID &subscriber_id,
+                           LongPollConnectCallback long_poll_connect_callback);
 
   /// Register the subscription.
   ///
-  /// \param subscriber_node_id The node id of the subscriber.
+  /// \param subscriber_id The node id of the subscriber.
   /// \param object_id The object id that the subscriber is subscribing to.
-  void RegisterSubscription(const NodeID &subscriber_node_id, const ObjectID &object_id);
+  void RegisterSubscription(const SubscriberID &subscriber_id, const ObjectID &object_id);
 
   /// Publish the given object id to subscribers.
   ///
@@ -137,36 +190,67 @@ class Publisher {
   /// to it anymore.
   /// TODO(sang): Currently, clients don't send a RPC to unregister themselves.
   ///
-  /// \param subscriber_node_id The node id of the subscriber to unsubscribe.
+  /// \param subscriber_id The node id of the subscriber to unsubscribe.
   /// \return True if erased. False otherwise.
-  bool UnregisterSubscriber(const NodeID &subscriber_node_id);
+  bool UnregisterSubscriber(const SubscriberID &subscriber_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
-  /// \param subscriber_node_id The node id of the subscriber.
+  /// \param subscriber_id The node id of the subscriber.
   /// \param object_id The object id of the subscriber.
   /// \return True if erased. False otherwise.
-  bool UnregisterSubscription(const NodeID &subscriber_node_id,
+  bool UnregisterSubscription(const SubscriberID &subscriber_id,
                               const ObjectID &object_id);
+
+  /// Check all subscribers, detect which subscribers are dead or its connection is timed
+  /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
+  /// metadata that can happen by subscriber failures. It is how it works;
+  ///
+  /// - If there's no new long polling connection for the timeout, it refreshes the long
+  /// polling connection.
+  /// - If the subscriber is dead, there will be no new long polling connection coming in
+  /// again. Otherwise, the long polling connection will be reestablished by the
+  /// subscriber.
+  /// - If there's no long polling connection for another timeout, it treats the
+  /// subscriber as dead.
+  ///
+  /// TODO(sang): Currently, it iterates all subscribers periodically. This can be
+  /// inefficient in some scenarios.
+  /// For example, think about we have a driver with 100K subscribers (it can
+  /// happen due to reference counting). We might want to optimize this by
+  /// having a timer per subscriber.
+  void CheckDeadSubscribers();
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool AssertNoLeak() const;
 
  private:
+  bool UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  // Periodic runner to invoke CheckDeadSubscribers.
+  PeriodicalRunner *periodical_runner_;
+
+  /// Callback to get the current time.
+  const std::function<double()> get_time_ms_;
+
+  /// The timeout where subscriber is considered as dead.
+  const uint64_t subscriber_timeout_ms_;
+
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;
 
-  /// Callback that returns true if the given node is dead.
-  std::function<bool(const NodeID &)> is_node_dead_;
-
   /// Mapping of node id -> subscribers.
-  absl::flat_hash_map<NodeID, std::shared_ptr<Subscriber>> subscribers_
+  absl::flat_hash_map<SubscriberID, std::shared_ptr<Subscriber>> subscribers_
       GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of objects <-> subscribers.
   SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
+
+  /// The maximum number of objects to publish for each publish calls.
+  const uint64_t publish_batch_size_;
 };
 
 }  // namespace ray

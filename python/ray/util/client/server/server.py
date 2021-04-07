@@ -4,7 +4,9 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
+import os
 import sys
+
 import threading
 from typing import Any
 from typing import List
@@ -76,11 +78,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # runtime env is compatible.
         if current_job_config and set(job_config.runtime_env.uris) != set(
                 current_job_config.runtime_env.uris):
-            raise grpc.RpcError(
-                "Runtime environment doesn't match "
+            return ray_client_pb2.InitResponse(
+                ok=False,
+                msg="Runtime environment doesn't match "
                 f"request one {job_config.runtime_env.uris} "
                 f"current one {current_job_config.runtime_env.uris}")
-        return ray_client_pb2.InitResponse()
+        return ray_client_pb2.InitResponse(ok=True)
 
     def PrepRuntimeEnv(self, request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
@@ -429,9 +432,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             for uri in uris:
                 try:
-                    runtime_env.fetch_package(uri)
-                    print("Adding!: ", runtime_env._get_local_path(uri))
-                    sys.path.insert(0, str(runtime_env._get_local_path(uri)))
+                    working_dir = runtime_env.fetch_package(uri)
+                    if working_dir:
+                        os.chdir(str(working_dir))
+                        sys.path.insert(0, str(working_dir))
                 except IOError:
                     missing_uris.append(uri)
         return missing_uris

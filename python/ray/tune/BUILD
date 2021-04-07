@@ -42,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cluster_searcher",
+    size = "large",
+    srcs = ["tests/test_cluster_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["flaky", "jenkins_only", "exclusive"],
+)
+
+py_test(
     name = "test_commands",
     size = "small",
     srcs = ["tests/test_commands.py"],

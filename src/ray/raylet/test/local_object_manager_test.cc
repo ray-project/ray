@@ -55,7 +55,7 @@ class MockSubscriber : public SubscriberInterface {
   }
 
   MOCK_METHOD2(UnsubscribeObject,
-               bool(const rpc::Address &owner_address, const ObjectID &object_id));
+               bool(const rpc::Address &publisher_address, const ObjectID &object_id));
 
   bool AssertNoLeak() const override { return true; }
 
@@ -64,6 +64,24 @@ class MockSubscriber : public SubscriberInterface {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
+  void SubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      const rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply> &callback)
+      override {
+    eviction_callbacks.push_back(callback);
+  }
+
+  bool ReplyObjectEviction(Status status = Status::OK()) {
+    if (eviction_callbacks.empty()) {
+      return false;
+    }
+    auto callback = eviction_callbacks.front();
+    auto reply = rpc::SubscribeForObjectEvictionReply();
+    callback(status, reply);
+    eviction_callbacks.pop_front();
+    return true;
+  }
+
   void AddSpilledUrl(
       const rpc::AddSpilledUrlRequest &request,
       const rpc::ClientCallback<rpc::AddSpilledUrlReply> &callback) override {
@@ -300,12 +318,14 @@ class LocalObjectManagerTest : public ::testing::Test {
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
+        max_fused_object_count_(15),
         manager(manager_node_id_, "address", 1234, free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
                 /*is_external_storage_type_fs=*/true,
+                /*max_fused_object_count*/ max_fused_object_count_,
                 /*on_objects_freed=*/
                 [&](const std::vector<ObjectID> &object_ids) {
                   for (const auto &object_id : object_ids) {
@@ -336,6 +356,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   MockIOWorkerPool worker_pool;
   MockObjectInfoAccessor object_table;
   NodeID manager_node_id_;
+  size_t max_fused_object_count_;
   LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;
@@ -368,6 +389,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
@@ -631,6 +654,69 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   ASSERT_FALSE(manager.SpillObjectsOfSize(0));
 }
 
+TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
+  ///
+  /// Test objects are only fused up to max_fused_object_count.
+  ///
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 1000;
+
+  for (size_t i = 0; i < max_fused_object_count_ + 5; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    std::unique_ptr<RayObject> object(
+        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+
+  // Make sure only max_fused_object_count_ objects are spilled although we requested to
+  // spill as much as total size. It is because we limit the max fused number of objects
+  // to be 10.
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < max_fused_object_count_; i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    } else {
+      ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+    }
+  }
+  if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+    ASSERT_EQ(owner_client->object_urls.size(), max_fused_object_count_);
+    for (auto &object_url : owner_client->object_urls) {
+      auto it = std::find(urls.begin(), urls.end(), object_url.second);
+      ASSERT_TRUE(it != urls.end());
+      ASSERT_EQ((*unpins)[object_url.first], 1);
+    }
+  } else {
+    ASSERT_EQ(object_table.object_urls.size(), max_fused_object_count_);
+    for (auto &object_url : object_table.object_urls) {
+      auto it = std::find(urls.begin(), urls.end(), object_url.second);
+      ASSERT_TRUE(it != urls.end());
+      ASSERT_EQ((*unpins)[object_url.first], 1);
+    }
+  }
+}
+
 TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -829,6 +915,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -878,6 +966,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
 
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -934,6 +1024,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -942,6 +1034,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   ASSERT_EQ(deleted_urls_size, 0);
 
   // The last reference is deleted.
+  ASSERT_TRUE(owner_client->ReplyObjectEviction());
+  EXPECT_CALL(*subscriber_,
+              UnsubscribeObject(_, object_ids[free_objects_batch_size - 1]));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -992,6 +1087,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   }
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // // Now, deletion queue would process only the first object. Everything else won't be
@@ -1063,6 +1160,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
 
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 

@@ -243,6 +243,8 @@ message InitRequest {
 }
 
 message InitResponse {
+  bool ok = 1;
+  string msg = 2;
 }
 
 message PrepRuntimeEnvRequest {

@@ -4,6 +4,7 @@ import logging
 import platform
 import sys
 import time
+import unittest
 
 import numpy as np
 import pytest
@@ -37,6 +38,7 @@ def attempt_to_load_balance(remote_function,
     assert attempts < num_attempts
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets
     # in a roughly equal manner.
@@ -413,6 +415,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     }).remote([f_obj])) == worker_node.unique_id
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(
         num_cpus=1,

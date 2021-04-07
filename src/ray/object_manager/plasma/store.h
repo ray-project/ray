@@ -28,8 +28,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
@@ -47,7 +45,6 @@ enum class PlasmaError;
 }  // namespace flatbuf
 
 using flatbuf::PlasmaError;
-using ray::object_manager::protocol::ObjectInfoT;
 
 struct GetRequest;
 
@@ -57,7 +54,9 @@ class PlasmaStore {
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
               bool hugepages_enabled, const std::string &socket_name,
               uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
-              std::function<void()> object_store_full_callback);
+              std::function<void()> object_store_full_callback,
+              ray::AddObjectCallback add_object_callback,
+              ray::DeleteObjectCallback delete_object_callback);
 
   ~PlasmaStore();
 
@@ -183,23 +182,6 @@ class PlasmaStore {
   /// Return the plasma object bytes that are consumed by core workers.
   int64_t GetConsumedBytes();
 
-  void SetNotificationListener(
-      const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
-    notification_listener_ = notification_listener;
-    if (notification_listener_) {
-      // Push notifications to the new subscriber about existing sealed objects.
-      for (const auto &entry : store_info_.objects) {
-        if (entry.second->state == ObjectState::PLASMA_SEALED) {
-          ObjectInfoT info;
-          info.object_id = entry.first.Binary();
-          info.data_size = entry.second->data_size;
-          info.metadata_size = entry.second->metadata_size;
-          notification_listener_->ProcessStoreAdd(info);
-        }
-      }
-    }
-  }
-
   /// Process queued requests to create an object.
   void ProcessCreateRequests();
 
@@ -228,24 +210,20 @@ class PlasmaStore {
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
 
-  void PushNotification(ObjectInfoT *object_notification);
-
-  void PushNotifications(const std::vector<ObjectInfoT> &object_notifications);
-
   void AddToClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
                             const std::shared_ptr<Client> &client);
 
   /// Remove a GetRequest and clean up the relevant data structures.
   ///
   /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(GetRequest *get_request);
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
   void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
 
-  void ReturnFromGet(GetRequest *get_req);
+  void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
@@ -277,17 +255,27 @@ class PlasmaStore {
   QuotaAwarePolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<GetRequest *>> object_get_requests_;
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
 
-  std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
   /// A callback to asynchronously spill objects when space is needed. The
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
   /// NOTE: This function should guarantee the thread-safety because the callback is
   /// shared with the main raylet thread.
-  ray::SpillObjectsCallback spill_objects_callback_;
+  const ray::SpillObjectsCallback spill_objects_callback_;
+
+  /// A callback to asynchronously notify that an object is sealed.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
+  const ray::AddObjectCallback add_object_callback_;
+
+  /// A callback to asynchronously notify that an object is deleted.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
+  const ray::DeleteObjectCallback delete_object_callback_;
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.

@@ -243,8 +243,6 @@ cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/format/object_manager_generated.h",
-        "src/ray/object_manager/notification/object_store_notification_manager.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",
@@ -269,7 +267,6 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
@@ -1386,7 +1383,6 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
-        ":object_manager_fbs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
         ":ray_common",
@@ -1670,13 +1666,6 @@ flatbuffer_cc_library(
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "ray/raylet/format/",
-)
-
-flatbuffer_cc_library(
-    name = "object_manager_fbs",
-    srcs = ["src/ray/object_manager/format/object_manager.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/object_manager/format/",
 )
 
 pyx_library(
