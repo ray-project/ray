@@ -706,4 +706,4 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
 
 if __name__ == "__main__":
     import pytest
-    sys.exit(pytest.main(["-v", "--durations=0", __file__]))
+    sys.exit(pytest.main(["-vs", "--durations=0", __file__]))
