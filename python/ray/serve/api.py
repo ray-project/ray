@@ -1300,7 +1300,7 @@ def deployment(
             response. Defaults to None (no maximum).
 
     Example:
-    >>> @serve.deployment("deployment1", version="v1")
+    >>> @serve.deployment(name="deployment1", version="v1")
         class MyDeployment:
             pass
 
