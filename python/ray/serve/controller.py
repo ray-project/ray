@@ -194,6 +194,8 @@ class ServeController:
             self.endpoint_state.create_endpoint(endpoint, route, methods,
                                                 TrafficPolicy(traffic_dict))
 
+        # TODO(simon): Use GoalID mechanism for this so client can check for
+        # goal id and http_state complete the goal id.
         await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
 
     async def delete_endpoint(self, endpoint: str) -> None:

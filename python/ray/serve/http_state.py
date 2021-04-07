@@ -107,7 +107,8 @@ class HTTPState:
         When the timeout occur in any of the http proxy, the whole method will
         re-throw the TimeoutError.
         """
-        await asyncio.gather(
+        await asyncio.gather(*[
             proxy.block_until_endpoint_exists.remote(
                 endpoint, timeout_s=timeout_s)
-            for proxy in self._proxy_actors.values())
+            for proxy in self._proxy_actors.values()
+        ])
