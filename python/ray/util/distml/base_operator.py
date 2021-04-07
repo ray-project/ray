@@ -11,8 +11,6 @@ class TrainingOperator(metaclass=ABCMeta):
     and (2) gradient application in order for Ray collective backend to take over.
     The specific training logic bundled with frameworks (JAX, PyTorch) should be implemented
     in the subclasses of this class.
-
-
     """
     def __init__(self, operator_config, *args, **kwargs):
         self._config = operator_config
@@ -46,11 +44,6 @@ class TrainingOperator(metaclass=ABCMeta):
         """
         raise NotImplementedError()
 
-    # @abstractmethod
-    # def train_step(self, batch):
-    #     """Train a step on a data batch"""
-    #     raise NotImplementedError()
-
     @abstractmethod
     def derive_updates(self, *args, **kwargs):
         """The first substep in train_step that derives the updates.
@@ -81,4 +74,13 @@ class TrainingOperator(metaclass=ABCMeta):
 
     @abstractmethod
     def load_parameters(self, checkpoint):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def yield_train_loader(self):
+        """Return a data batch from a data loader."""
+        raise NotImplementedError()
+
+    def yield_validation_loader(self):
+        """Return a data batch from a validation loader."""
         raise NotImplementedError()

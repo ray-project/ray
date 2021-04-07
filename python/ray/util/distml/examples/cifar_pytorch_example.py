@@ -11,7 +11,7 @@ import torchvision.transforms as transforms
 from tqdm import trange
 
 import ray
-from ray.util.distml.torch_operator import PyTorchTrainingOperator
+from ray.util.distml.torch_operator import TorchTrainingOperator
 from ray.util.distml.allreduce_strategy import AllReduceStrategy
 
 from ray.util.sgd.torch.resnet import ResNet18
@@ -28,8 +28,8 @@ def initialization_hook():
     # os.environ["NCCL_DEBUG"] = "INFO"
 
 
-class CifarTrainingOperator(PyTorchTrainingOperator):
-    @override(PyTorchTrainingOperator)
+class CifarTrainingOperator(TorchTrainingOperator):
+    @override(TorchTrainingOperator)
     def setup(self, config):
         # Create model.
         model = ResNet18(config)
