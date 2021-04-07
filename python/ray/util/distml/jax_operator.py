@@ -4,7 +4,8 @@ import cupy as cp
 from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
-from jax.tree_util import tree_flatten, tree_unflatten, tree_structure
+from jax.dlpack import from_dlpack
+from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, treedef_tuple
 from jax._src.util import unzip2
 from jax.experimental.optimizers import Optimizer
 
@@ -113,6 +114,9 @@ class JAXTrainingOperator(TrainingOperator):
         return loss_val, list(map(self.jax2cupy, gradient))
 
     def apply_updates(self, gradient):
+        # gradient = list(map(treedef_tuple, gradient))
+        gradient = tree_unflatten(self.opt_state[1], gradient)
+        print(gradient)
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
 
@@ -127,6 +131,11 @@ class JAXTrainingOperator(TrainingOperator):
 
     def jax2cupy(self, x):
         return cp.fromDlpack(self.get_jax_dlpack(x))
+
+    def to_operator_tensor(self, tensor):
+        if isinstance(tensor, list):
+            return list(map(lambda x:from_dlpack(x.toDlpack()), tensor))
+        return jax.from_dlpack(tensor.toDlpack())
 
     def _calculate_gradient(self, opt_state, batch):
         params = self.get_params(opt_state)
@@ -146,27 +155,25 @@ class JAXTrainingOperator(TrainingOperator):
         validation_loader = self.validation_loader
         metric_meters = AverageMeterCollection()
 
+        # if self.use_tqdm and self.world_rank == 0:
+        #     desc = ""
+        #     if info is not None and "epoch_idx" in info:
+        #         if "num_epochs" in info:
+        #             desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
+        #         else:
+        #             desc = f"{info['epoch_idx'] + 1}e"
 
-        if self.use_tqdm and self.world_rank == 0:
-            desc = ""
-            if info is not None and "epoch_idx" in info:
-                if "num_epochs" in info:
-                    desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
-                else:
-                    desc = f"{info['epoch_idx'] + 1}e"
+        #     # TODO: Implement len for Dataset?
+        #     total = info[NUM_STEPS]
+        #     if total is None:
+        #         if hasattr(iterator, "__len__"):
+        #             total = len(iterator)
 
-            # TODO: Implement len for Dataset?
-            total = info[NUM_STEPS]
-            if total is None:
-                if hasattr(iterator, "__len__"):
-                    total = len(iterator)
+        #     _progress_bar = tqdm(
+        #         total=total, desc=desc, unit="batch", leave=False)
 
-            _progress_bar = tqdm(
-                total=total, desc=desc, unit="batch", leave=False)
-
-        _progress_bar = tqdm(
-            total=total, desc=desc, unit="batch", leave=False)
-
+        # _progress_bar = tqdm(
+        #     total=total, desc=desc, unit="batch", leave=False)
 
         for batch_idx, batch in enumerate(validation_loader):
             batch_info = {"batch_idx": batch_idx}
@@ -267,22 +274,24 @@ class JAXTrainingOperator(TrainingOperator):
         print("worker: set opt_state")
 
     def reset_optimizer_for_params(self, params):
-        opt_init, opt_update, get_params
+        self.tree = tree_structure(params)
         self.opt_state = self.opt_init(params)
+        params2 = self.get_param(self.opt_state)
+        assert params == params2
 
     # some operation for this ml system.
     def ones(self, shape, cpu=True):
         if cpu:
             return np.ones(shape)
         else:
-            return cp.ones(shape)
+            return jnp.ones(shape)
 
     # some operation for this ml system.
     def zeros(self, shape, cpu=True):
         if cpu:
             return np.zeros(shape)
         else:
-            return cp.zeros(shape)
+            return jnp.zeros(shape)
 
     def numel(self, v):
         return np.size(v)

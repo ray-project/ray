@@ -1,9 +1,9 @@
 import os
 import argparse
+import functools
+from tqdm import trange
 
 from filelock import FileLock
-
-from tqdm import trange
 
 import ray
 from ray.util.distml.jax_operator import JAXTrainingOperator
@@ -20,8 +20,8 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101, ResNetToy, MLP
-from jax_util.datasets import mnist
+from jax_util.sst import make_sst5_dataloader
+from jax_util.model_transformer import transformer, create_root_context
 
 def initialization_hook():
     # Need this for avoiding a connection restart issue on AWS.
@@ -32,7 +32,7 @@ def initialization_hook():
     # print("NCCL DEBUG SET")
     # os.environ["NCCL_DEBUG"] = "INFO"
 
-class DataLoader:
+class Dataloader:
     def __init__(self, data, target, batch_size=128, shuffle=False):
         '''
         data: shape(width, height, channel, num)
@@ -65,31 +65,45 @@ class DataLoader:
 class CifarTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
     def setup(self, *args, **kwargs):
-        batch_size = kwargs["batch_size"]
         rng_key = random.PRNGKey(0)
-        # input_shape = (batch_size, 28, 28,1)
-        input_shape = (28, 28, 1, batch_size)
-        lr=0.01
-        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        init_fun, predict_fun = ResNetToy(kwargs["num_classes"])
-        # init_fun, predict_fun = MLP(kwargs["num_classes"])
-        
-        _, init_params = init_fun(rng_key, input_shape)
-        
-        opt_init, opt_update, get_params = optimizers.adam(lr)
-        opt_state = opt_init(init_params)
-        
+
+        batch_size = kwargs["batch_size"]
+        lr = kwargs["lr"]
+
+        n_ctx = 256  # length
+        n_head = 4
+        n_layer = 8
+        n_embd = 256
+        input_shape = (batch_size, n_ctx)
+
+        predict_fun = functools.partial(transformer, n_vocab=30522,
+            n_head=n_head, n_layer=n_layer, n_ctx=n_ctx, n_embd=n_embd)
+
+        def loss(cx, batch):
+            input, target = batch
+            logprobs_btq = predict_fun(cx, input[:, :-1])
+            return -jnp.sum(logprobs_btq * target)
+
         with FileLock(".ray.lock"):
-            train_images, train_labels, test_images, test_labels = mnist()
+            train_loader, val_loader, test_loader = make_sst5_dataloader(batch_size)
             
-        train_images = train_images.reshape(train_images.shape[0], 1, 28, 28)[:1000].transpose(2, 3, 1, 0)
-        test_images = test_images.reshape(test_images.shape[0], 1, 28, 28)[:1000].transpose(2, 3, 1, 0)
+        root_cx = create_root_context()
 
-        train_labels = train_labels[:1000]
-        test_labels = test_labels[:1000]
+        def init_fun():
+            batch = next(iter(train_loader))
+            loss(root_cx, batch) # Just create variables
+            root_cx.allow_new = False
+            # print_variables(root_cx)
+            init_params = root_cx.variables_list()
+            return init_params
 
-        train_loader = DataLoader(train_images, train_labels, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_images, test_labels, batch_size=batch_size)
+        opt_init, opt_update, get_params = optimizers.adam(lr)
+
+        init_params = init_fun()
+
+        opt_state = opt_init(init_params)
+    
+        self.root_cx = root_cx
         
         self.register(model=[opt_state, init_fun, predict_fun], optimizer=[opt_init, opt_update, get_params], criterion=lambda logits, targets:-jnp.sum(logits * targets))
         # self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
@@ -97,13 +111,13 @@ class CifarTrainingOperator(JAXTrainingOperator):
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
         self.register_input_signatures(input_shape=input_shape)
-        # def accuracy_batch(outputs, targets):
-        #     predicted_class = jnp.argmax(outputs, axis=-1)
-        #     target_class = jnp.argmax(targets, axis=-1)
-        #     return np.mean(list(predicted_class == target_class))
-        # self.register_metrics({"accuracy": accuracy_batch})
 
-
+    @override(JAXTrainingOperator)
+    def loss_fn(self, params, batch):
+        cx = self.root_cx.replace_with_list(params)
+        inputs, targets = batch
+        logits = self.predict_fun(cx, inputs)
+        return self.criterion(logits, targets)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
