@@ -1,7 +1,8 @@
 package io.ray.performancetest.test;
 
-/** 1-to-1 ray call, one receiving actor and one sending actor,
- *  test the throughput of the engine itself.
+/**
+ * 1-to-1 ray call, one receiving actor and one sending actor, test the throughput of the engine
+ * itself.
  */
 public class ActorPerformanceTestCase1 {
 

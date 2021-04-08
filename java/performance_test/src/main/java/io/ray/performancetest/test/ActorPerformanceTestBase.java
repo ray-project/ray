@@ -41,9 +41,7 @@ public class ActorPerformanceTestBase {
       for (int i = 0; i < layers[1]; i++) {
         int nodeIndex = layers[0] + i;
         for (int j = 0; j < actorsPerLayer[1]; j++) {
-          receivers.add(
-              Ray.actor(Receiver::new)
-                  .remote());
+          receivers.add(Ray.actor(Receiver::new).remote());
         }
       }
 
@@ -51,9 +49,7 @@ public class ActorPerformanceTestBase {
       for (int i = 0; i < layers[0]; i++) {
         int nodeIndex = i;
         for (int j = 0; j < actorsPerLayer[0]; j++) {
-          sources.add(
-              Ray.actor(Source::new, receivers)
-                  .remote());
+          sources.add(Ray.actor(Source::new, receivers).remote());
         }
       }
 
