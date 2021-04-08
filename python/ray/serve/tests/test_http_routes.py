@@ -46,19 +46,22 @@ def test_routes_endpoint(serve_instance):
 
     routes = requests.get("http://localhost:8000/-/routes").json()
 
-    assert len(routes) == 2
-    assert routes["/D1"] == ["D1", ["GET", "POST"]]
-    assert routes["/hello/world"] == ["D2", ["GET", "POST"]]
+    assert len(routes) == 2, routes
+    assert "/D1/" in routes, routes
+    assert routes["/D1/"] == ["D1", ["GET", "POST"]], routes
+    assert "/hello/world/" in routes, routes
+    assert routes["/hello/world/"] == ["D2", ["GET", "POST"]], routes
 
     D1.delete()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 1
-    assert routes["/hello/world"] == ["D2", ["GET", "POST"]]
+    assert len(routes) == 1, routes
+    assert "/hello/world/" in routes, routes
+    assert routes["/hello/world/"] == ["D2", ["GET", "POST"]], routes
 
     D2.delete()
     routes = requests.get("http://localhost:8000/-/routes").json()
-    assert len(routes) == 0
+    assert len(routes) == 0, routes
 
     app = FastAPI()
 
@@ -70,31 +73,64 @@ def test_routes_endpoint(serve_instance):
     D3.deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 1, routes
+    assert "/hello/" in routes, routes
+    assert routes["/hello/"] == ["D3", ALL_HTTP_METHODS], routes
+
+
+def test_deployment_options_default_route(serve_instance):
+    @serve.deployment(name="1")
+    class D1:
+        pass
+
+    D1.deploy()
+
+    routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
-    assert routes["/hello"] == ["D3", ALL_HTTP_METHODS]
+    assert "/1/" in routes, routes
+    assert routes["/1/"] == ["1", ["GET", "POST"]]
+
+    D1.options(name="2").deploy()
+
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert len(routes) == 2
+    assert "/1/" in routes, routes
+    assert routes["/1/"] == ["1", ["GET", "POST"]]
+    assert "/2/" in routes, routes
+    assert routes["/2/"] == ["2", ["GET", "POST"]]
 
 
 def test_path_prefixing(serve_instance):
-    def req(subpath):
-        return requests.get(f"http://localhost:8000{subpath}").text
+    def check_req(subpath, text=None, status=None):
+        r = requests.get(f"http://localhost:8000{subpath}")
+        if text is not None:
+            assert r.text == text, f"{r.text} != {text}"
+        if status is not None:
+            assert r.status_code == status, f"{r.status_code} != {status}"
 
-    @serve.deployment(route_prefix="/")
+        return r
+
+    @serve.deployment(route_prefix="/hello")
     class D1:
         def __call__(self, *args):
             return "1"
 
     D1.deploy()
-    assert req("/") == "1"
-    assert req("/a") != "1"
+    check_req("/", status=404)
+    check_req("/hello", status=404)
+    check_req("/hello/", text="1")
+    check_req("/hello/a", text="1")
 
-    @serve.deployment(route_prefix="/hello")
+    @serve.deployment(route_prefix="/")
     class D2:
         def __call__(self, *args):
             return "2"
 
     D2.deploy()
-    assert req("/") == "1"
-    assert req("/hello") == "2"
+    check_req("/hello/", text="1")
+    check_req("/hello/a", text="1")
+    check_req("/", text="2")
+    check_req("/a", text="2")
 
     @serve.deployment(route_prefix="/hello/world")
     class D3:
@@ -102,9 +138,9 @@ def test_path_prefixing(serve_instance):
             return "3"
 
     D3.deploy()
-    assert req("/") == "1"
-    assert req("/hello") == "2"
-    assert req("/hello/world") == "3"
+    check_req("/hello/", text="1")
+    check_req("/", text="2")
+    check_req("/hello/world/", text="3")
 
     app = FastAPI()
 
@@ -120,12 +156,11 @@ def test_path_prefixing(serve_instance):
             return p
 
     D4.deploy()
-    assert req("/") == "1"
-    assert req("/hello") == "2"
-    assert req("/hello/world") == "3"
-    assert req("/hello/world/again") == "4"
-    assert req("/hello/world/again/") == "4"
-    assert req("/hello/world/again/hi") == '"hi"'
+    check_req("/hello/") == "1"
+    check_req("/") == "2"
+    check_req("/hello/world/") == "3"
+    check_req("/hello/world/again/") == "4"
+    check_req("/hello/world/again/hi") == '"hi"'
 
 
 if __name__ == "__main__":

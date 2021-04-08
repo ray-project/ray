@@ -1076,21 +1076,21 @@ class ServeDeployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
-            raise TypeError("version must be a string if provided.")
+            raise TypeError("version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
-            raise TypeError("init_args must be a tuple if provided.")
-        if route_prefix is None:
-            route_prefix = f"/{name}"
-        else:
+            raise TypeError("init_args must be a tuple.")
+        if route_prefix is not None:
             if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string if provided.")
+                raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'")
+                raise ValueError("route_prefix must start with '/'.")
+            if not route_prefix.endswith("/"):
+                route_prefix += "/"
             if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards")
+                raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None
                 or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict if provided.")
+            raise TypeError("ray_actor_options must be a dict.")
 
         if init_args is None:
             init_args = ()
@@ -1203,9 +1203,13 @@ class ServeDeployment:
         ])
 
     def __str__(self):
+        if self.route_prefix is None:
+            route_prefix = f"/{self.name}/"
+        else:
+            route_prefix = self.route_prefix
         return (f"ServeDeployment(name={self.name},"
                 f"version={self.version},"
-                f"route_prefix={self.route_prefix})")
+                f"route_prefix={route_prefix})")
 
 
 @overload
@@ -1251,12 +1255,12 @@ def deployment(
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
-            under the HTTP path prefix will be routed to this deployment.
+        route_prefix (Optional[str]): Requests to paths under this HTTP path
+            prefix will be routed to this deployment. Defaults to '/{name}/'.
             Routing is done based on longest-prefix match, so if you have
-            deployment A with a prefix of '/a' and deployment B with a prefix
-            of '/a/b', requests to '/a' go to A, requests to '/a/b' go to B,
-            requests to '/a/c' go to A, and requests to '/a/b/c' go to B.
+            deployment A with a prefix of '/a/' and deployment B with a prefix
+            of '/a/b/', requests to '/a/' go to A, requests to '/a/b' go to A,
+            requests to '/a/b/' go to B, and requests to '/a/b/c' go to B.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Arguments to pass to the

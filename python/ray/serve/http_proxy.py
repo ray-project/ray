@@ -10,7 +10,6 @@ import ray
 from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve.common import EndpointTag
-from ray.serve.constants import WILDCARD_PATH_SUFFIX
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
@@ -21,12 +20,6 @@ from ray.serve.handle import DEFAULT
 MAX_ACTOR_FAILURE_RETRIES = 10
 
 
-def _strip_wildcard_suffix(path):
-    if path.endswith(WILDCARD_PATH_SUFFIX):
-        path = path[:-len(WILDCARD_PATH_SUFFIX)]
-    return path
-
-
 class ServeStarletteEndpoint:
     """Wraps the given Serve endpoint in a Starlette endpoint.
 
@@ -35,7 +28,7 @@ class ServeStarletteEndpoint:
 
     Usage:
         route = starlette.routing.Route(
-                "/api",
+                "/api/",
                 ServeStarletteEndpoint(endpoint_tag),
                 methods=methods)
         app = starlette.applications.Starlette(routes=[route])
@@ -44,6 +37,8 @@ class ServeStarletteEndpoint:
     def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
         self.endpoint_tag = endpoint_tag
         self.path_prefix = path_prefix
+        if self.path_prefix.endswith("/"):
+            self.path_prefix = self.path_prefix[:-1]
         self.handle = serve.get_handle(
             self.endpoint_tag, sync=False, missing_ok=True)
 
@@ -129,7 +124,8 @@ class HTTPProxy:
 
         controller = ray.get_actor(controller_name)
 
-        self.router = starlette.routing.Router(default=self._not_found)
+        self.router = starlette.routing.Router(
+            default=self._not_found, redirect_slashes=False)
 
         # route -> (endpoint_tag, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
@@ -147,19 +143,33 @@ class HTTPProxy:
 
     def _update_route_table(self, route_table: Dict[str, List[str]]):
         logger.debug(f"HTTP Proxy: Got updated route table: {route_table}.")
-        self.route_table = route_table
+
+        self.route_table = {}
+        for route, (endpoint_tag, methods) in route_table.items():
+            # Default case where the user did not specify a route prefix.
+            if not route.startswith("/"):
+                route = f"/{endpoint_tag}/"
+            self.route_table[route] = (endpoint_tag, methods)
 
         # Routes are sorted in order of descending length to enable longest
         # prefix matching (Starlette evaluates the routes in order).
-        routes = [
-            starlette.routing.Route(
-                route,
-                ServeStarletteEndpoint(endpoint_tag,
-                                       _strip_wildcard_suffix(route)),
-                methods=methods) for route, (endpoint_tag, methods) in sorted(
-                    route_table.items(), key=lambda x: len(x[0]), reverse=True)
-            if not self._is_headless(route)
-        ]
+        routes = []
+        for route, (endpoint_tag, methods) in sorted(
+                self.route_table.items(), key=lambda x: len(x[0]),
+                reverse=True):
+            # Use wildcard so Starlette will match on the route prefix.
+            # We only do this when the route ends with "/" to maintain existing
+            # behavior for legacy endpoints. This can be removed once those are
+            # deprecated.
+            if route.endswith("/"):
+                starlette_route = route + "{wildcard:path}"
+            else:
+                starlette_route = route
+            routes.append(
+                starlette.routing.Route(
+                    starlette_route,
+                    ServeStarletteEndpoint(endpoint_tag, route),
+                    methods=methods))
 
         routes.append(
             starlette.routing.Route("/-/routes", self._display_route_table))
@@ -175,18 +185,7 @@ class HTTPProxy:
         await response.send(scope, receive, send)
 
     async def _display_route_table(self, request):
-        # Strip out the wildcard suffix added to the routes in the controller.
-        # TODO(edoakes): once we deprecate the old ingress support, we could
-        # just add the wildcard when we add routes to the Router instead of in
-        # the route table.
-        return starlette.responses.JSONResponse({
-            _strip_wildcard_suffix(path): (endpoint, methods)
-            for path, (endpoint, methods) in self.route_table.items()
-        })
-
-    def _is_headless(self, route: str):
-        """Returns True if `route` corresponds to a headless endpoint."""
-        return not route.startswith("/")
+        return starlette.responses.JSONResponse(self.route_table)
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.

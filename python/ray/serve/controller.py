@@ -21,7 +21,6 @@ from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
     RESERVED_VERSION_TAG,
-    WILDCARD_PATH_SUFFIX,
 )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
@@ -270,20 +269,14 @@ class ServeController:
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, version: Optional[str],
                      route_prefix: Optional[str]) -> Optional[GoalId]:
-        if route_prefix is None:
-            route_prefix = f"/{name}"
+        if route_prefix is not None:
+            assert route_prefix.endswith("/")
 
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
             # with a prefixed path as well as proxy all HTTP methods.
-            # {wildcard:path} is used so HTTPProxy's Starlette router can match
-            # arbitrary path.
-            if route_prefix.endswith("/"):
-                route_prefix = route_prefix[:-1]
-            http_route = route_prefix + WILDCARD_PATH_SUFFIX
             http_methods = ALL_HTTP_METHODS
         else:
-            http_route = route_prefix
             # Generic endpoint should support a limited subset of HTTP methods.
             http_methods = ["GET", "POST"]
 
@@ -304,7 +297,7 @@ class ServeController:
             goal_id = self.backend_state.deploy_backend(name, backend_info)
             self.endpoint_state.update_endpoint(
                 name,
-                http_route,
+                route_prefix,
                 http_methods,
                 TrafficPolicy({
                     name: 1.0
