@@ -109,7 +109,6 @@ class GcsActor {
   std::string GetName() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
-
   /// Get the immutable ActorTableData of this actor.
   const rpc::ActorTableData &GetActorTableData() const;
   /// Get the mutable ActorTableData of this actor.

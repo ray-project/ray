@@ -446,7 +446,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     return;
   }
   const auto &task_id = it->second->GetCreationTaskSpecification().TaskId();
-  it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
@@ -726,7 +725,6 @@ void GcsActorManager::ReconstructActor(
           new rpc::RayException(*creation_task_exception));
     }
     mutable_actor_table_data->set_timestamp(current_sys_time_ms());
-    actor->ClearCreationTaskSpecification();
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
