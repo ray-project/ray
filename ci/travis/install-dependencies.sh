@@ -283,7 +283,7 @@ install_dependencies() {
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
       case "${OSTYPE}" in
         darwin*) pip install torch torchvision;;
-        *) pip install torch==1.8.0+cpu torchvision==0.9.0+cpu -f "${torch_url}";;
+        *) pip install torch==1.8.0+cpu torchvision==0.9.1+cpu -f "${torch_url}";;
       esac
     fi
 
@@ -338,7 +338,7 @@ install_dependencies() {
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
       case "${TORCH_VERSION-1.8}" in
-        1.8) TORCHVISION_VERSION=0.9.0;;
+        1.8) TORCHVISION_VERSION=0.9.1;;
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
