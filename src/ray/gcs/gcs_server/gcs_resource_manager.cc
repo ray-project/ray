@@ -27,8 +27,8 @@ GcsResourceManager::GcsResourceManager(
       gcs_table_storage_(gcs_table_storage) {
   if (!RayConfig::instance().pull_based_resource_reporting()) {
     periodical_runner_.RunFnPeriodically(
-                                         [this] { SendBatchedResourceUsage(); },
-                                         RayConfig::instance().raylet_report_resources_period_milliseconds());
+        [this] { SendBatchedResourceUsage(); },
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
   }
 }
 

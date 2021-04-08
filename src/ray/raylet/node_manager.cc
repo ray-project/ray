@@ -1451,7 +1451,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
-
   ResourceUsageBatchReceived(request.batch_data());
 
   auto resources_data = reply->mutable_resources();
