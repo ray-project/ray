@@ -23,7 +23,7 @@ def test_deploy(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(d.get_handle().remote())
         else:
-            ret = requests.get("http://localhost:8000/d").text
+            ret = requests.get("http://localhost:8000/d/").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -92,7 +92,7 @@ def test_deploy_no_version(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(v1.get_handle().remote())
         else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
+            ret = requests.get(f"http://localhost:8000/{name}/").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -144,7 +144,7 @@ def test_config_change(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(D.get_handle().remote())
         else:
-            ret = requests.get("http://localhost:8000/D").text
+            ret = requests.get("http://localhost:8000/D/").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -194,7 +194,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             ret = ray.get(serve.get_handle(name).remote(block=str(block)))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
+                f"http://localhost:8000/{name}/", params={
                     "block": block
                 }).text
 
@@ -274,7 +274,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             ret = ray.get(handle.remote(block=str(block)))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
+                f"http://localhost:8000/{name}/", params={
                     "block": block
                 }).text
 
@@ -373,7 +373,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             ret = ray.get(handle.remote(block=str(block)))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
+                f"http://localhost:8000/{name}/", params={
                     "block": block
                 }).text
 
@@ -429,7 +429,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             ret = ray.get(handle.remote(block=str(block)))
         else:
             ret = requests.get(
-                f"http://localhost:8000/{name}", params={
+                f"http://localhost:8000/{name}/", params={
                     "block": block
                 }).text
 
@@ -795,12 +795,12 @@ def test_list_deployments(serve_instance):
 def test_deploy_change_route_prefix(serve_instance):
     name = "test"
 
-    @serve.deployment(name=name, version="1", route_prefix="/old")
+    @serve.deployment(name=name, version="1", route_prefix="/old/")
     def d(*args):
         return f"1|{os.getpid()}"
 
     def call(route):
-        ret = requests.get(f"http://localhost:8000/{route}").text
+        ret = requests.get(f"http://localhost:8000/{route}/").text
         return ret.split("|")[0], ret.split("|")[1]
 
     d.deploy()
@@ -826,7 +826,7 @@ def test_deploy_change_route_prefix(serve_instance):
         assert pid2 == pid1
         return True
 
-    d.options(route_prefix="/new").deploy()
+    d.options(route_prefix="/new/").deploy()
     wait_for_condition(check_switched)
 
 

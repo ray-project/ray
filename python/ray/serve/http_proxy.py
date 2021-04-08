@@ -9,7 +9,7 @@ import starlette.routing
 import ray
 from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
-from ray.serve.common import EndpointTag
+from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
@@ -29,18 +29,18 @@ class ServeStarletteEndpoint:
     Usage:
         route = starlette.routing.Route(
                 "/api/",
-                ServeStarletteEndpoint(endpoint_tag),
+                ServeStarletteEndpoint(endpoint),
                 methods=methods)
         app = starlette.applications.Starlette(routes=[route])
     """
 
-    def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
-        self.endpoint_tag = endpoint_tag
+    def __init__(self, endpoint: EndpointTag, path_prefix: str):
+        self.endpoint = endpoint
         self.path_prefix = path_prefix
         if self.path_prefix.endswith("/"):
             self.path_prefix = self.path_prefix[:-1]
         self.handle = serve.get_handle(
-            self.endpoint_tag, sync=False, missing_ok=True)
+            self.endpoint, sync=False, missing_ok=True)
 
     async def __call__(self, scope, receive, send):
         http_body_bytes = await self.receive_http_body(scope, receive, send)
@@ -127,7 +127,7 @@ class HTTPProxy:
         self.router = starlette.routing.Router(
             default=self._not_found, redirect_slashes=False)
 
-        # route -> (endpoint_tag, methods).  Updated via long polling.
+        # route -> (endpoint, methods).  Updated via long polling.
         self.route_table: Dict[str, Tuple[EndpointTag, List[str]]] = {}
 
         self.long_poll_client = LongPollClient(
@@ -141,20 +141,23 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
-    def _update_route_table(self, route_table: Dict[str, List[str]]):
-        logger.debug(f"HTTP Proxy: Got updated route table: {route_table}.")
+    def _update_route_table(self, endpoints: Dict[EndpointTag, EndpointInfo]):
+        logger.debug(f"Got updated endpoints: {endpoints}.")
 
         self.route_table = {}
-        for route, (endpoint_tag, methods) in route_table.items():
+        for endpoint, info in endpoints.items():
             # Default case where the user did not specify a route prefix.
-            if not route.startswith("/"):
-                route = f"/{endpoint_tag}/"
-            self.route_table[route] = (endpoint_tag, methods)
+            if info.route is None:
+                route = f"/{endpoint}/"
+            else:
+                route = info.route
+
+            self.route_table[route] = (endpoint, info.http_methods)
 
         # Routes are sorted in order of descending length to enable longest
         # prefix matching (Starlette evaluates the routes in order).
         routes = []
-        for route, (endpoint_tag, methods) in sorted(
+        for route, (endpoint, methods) in sorted(
                 self.route_table.items(), key=lambda x: len(x[0]),
                 reverse=True):
             # Use wildcard so Starlette will match on the route prefix.
@@ -168,7 +171,7 @@ class HTTPProxy:
             routes.append(
                 starlette.routing.Route(
                     starlette_route,
-                    ServeStarletteEndpoint(endpoint_tag, route),
+                    ServeStarletteEndpoint(endpoint, route),
                     methods=methods))
 
         routes.append(

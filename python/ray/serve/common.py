@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import numpy as np
@@ -12,6 +13,17 @@ ReplicaTag = str
 NodeId = str
 GoalId = UUID
 Duration = float
+
+
+@dataclass
+class EndpointInfo:
+    http_methods: List[str]
+    python_methods: Optional[List[str]] = None
+    route: Optional[str] = None
+
+    def __post_init__(self):
+        if self.python_methods is None:
+            self.python_methods = []
 
 
 class BackendInfo(BaseModel):

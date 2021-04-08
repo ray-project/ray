@@ -11,6 +11,7 @@ from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
+    EndpointInfo,
     EndpointTag,
     GoalId,
     NodeId,
@@ -190,8 +191,9 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.endpoint_state.create_endpoint(endpoint, route, methods,
-                                                TrafficPolicy(traffic_dict))
+            self.endpoint_state.create_endpoint(
+                endpoint, EndpointInfo(methods, route=route),
+                TrafficPolicy(traffic_dict))
 
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
@@ -295,14 +297,14 @@ class ServeController:
                 replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.update_endpoint(
-                name,
-                route_prefix,
+            endpoint_info = EndpointInfo(
                 http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
+                route=route_prefix,
                 python_methods=python_methods)
+            self.endpoint_state.update_endpoint(name, endpoint_info,
+                                                TrafficPolicy({
+                                                    name: 1.0
+                                                }))
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

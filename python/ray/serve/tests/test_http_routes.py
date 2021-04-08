@@ -10,26 +10,33 @@ def test_path_validation(serve_instance):
     # Path prefix must start with /.
     with pytest.raises(ValueError):
 
-        @serve.deployment("test", route_prefix="hello")
+        @serve.deployment(route_prefix="hello/")
         class D1:
+            pass
+
+    # Path prefix must end with /.
+    with pytest.raises(ValueError):
+
+        @serve.deployment(route_prefix="/hello")
+        class D2:
             pass
 
     # Wildcards not allowed with new ingress support.
     with pytest.raises(ValueError):
 
-        @serve.deployment("test", route_prefix="/{hello}")
-        class D2:
+        @serve.deployment(route_prefix="/{hello}/")
+        class D3:
             pass
 
-    @serve.deployment(route_prefix="/duplicate")
-    class D3:
+    @serve.deployment(route_prefix="/duplicate/")
+    class D4:
         pass
 
-    D3.deploy()
+    D4.deploy()
 
     # Reject duplicate route.
     with pytest.raises(ValueError):
-        D3.options(name="test2").deploy()
+        D4.options(name="test2").deploy()
 
 
 def test_routes_endpoint(serve_instance):
@@ -37,7 +44,7 @@ def test_routes_endpoint(serve_instance):
     class D1:
         pass
 
-    @serve.deployment(route_prefix="/hello/world")
+    @serve.deployment(route_prefix="/hello/world/")
     class D2:
         pass
 
@@ -65,7 +72,7 @@ def test_routes_endpoint(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/hello")
+    @serve.deployment(route_prefix="/hello/")
     @serve.ingress(app)
     class D3:
         pass
@@ -110,7 +117,7 @@ def test_path_prefixing(serve_instance):
 
         return r
 
-    @serve.deployment(route_prefix="/hello")
+    @serve.deployment(route_prefix="/hello/")
     class D1:
         def __call__(self, *args):
             return "1"
@@ -132,7 +139,7 @@ def test_path_prefixing(serve_instance):
     check_req("/", text="2")
     check_req("/a", text="2")
 
-    @serve.deployment(route_prefix="/hello/world")
+    @serve.deployment(route_prefix="/hello/world/")
     class D3:
         def __call__(self, *args):
             return "3"
@@ -144,7 +151,7 @@ def test_path_prefixing(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/hello/world/again")
+    @serve.deployment(route_prefix="/hello/world/again/")
     @serve.ingress(app)
     class D4:
         @app.get("/")

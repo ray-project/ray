@@ -44,7 +44,7 @@ def test_ingress_prefix(serve_instance):
     def func(a: int):
         return {"result": a}
 
-    @serve.deployment(name="f", route_prefix="/api")
+    @serve.deployment(name="f", route_prefix="/api/")
     @serve.ingress(app)
     class App:
         pass
@@ -201,7 +201,7 @@ def test_fastapi_features(serve_instance):
             file_path=path,
         )
 
-    router = APIRouter(prefix="/prefix")
+    router = APIRouter(prefix="/prefix/")
 
     @router.get("/subpath")
     def router_path():
@@ -217,7 +217,7 @@ def test_fastapi_features(serve_instance):
     Worker.deploy()
 
     url = "http://localhost:8000/fastapi"
-    resp = requests.get(f"{url}")
+    resp = requests.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
 

@@ -1085,7 +1085,7 @@ class ServeDeployment:
             if not route_prefix.startswith("/"):
                 raise ValueError("route_prefix must start with '/'.")
             if not route_prefix.endswith("/"):
-                route_prefix += "/"
+                raise ValueError("route_prefix must end with '/'.")
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None

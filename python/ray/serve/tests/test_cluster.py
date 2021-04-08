@@ -34,7 +34,7 @@ def test_scale_up(ray_cluster):
         pids = set()
         start = time.time()
         while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
+            pids.add(requests.get("http://localhost:8000/D/").text)
             if time.time() - start >= timeout:
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
@@ -83,7 +83,7 @@ def test_node_failure(ray_cluster):
         pids = set()
         start = time.time()
         while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
+            pids.add(requests.get("http://localhost:8000/D/").text)
             if time.time() - start >= timeout:
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
