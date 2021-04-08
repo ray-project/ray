@@ -2208,11 +2208,11 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [this, request, reply, callback = std::move(send_reply_callback)] {
+        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
-          direct_task_receiver_->HandleTask(request, reply, callback);
+          direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
