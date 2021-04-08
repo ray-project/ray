@@ -177,7 +177,8 @@ test_python() {
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_cluster_launcher
-      -python/ray/tests:test_k8s_operator_examples
+      -python/ray/tests/kubernetes_e2e:test_k8s_operator_examples
+      -python/ray/tests/kubernetes_e2e:test_k8s_operator_scaling
       -python/ray/tests:test_k8s_operator_mock
     )
   fi
