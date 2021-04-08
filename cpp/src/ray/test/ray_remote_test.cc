@@ -57,9 +57,9 @@ RAY_REMOTE(PlusTwo);
 RAY_REMOTE(VoidFuncNoArgs);
 RAY_REMOTE(VoidFuncWithArgs);
 RAY_REMOTE(ExceptionFunc);
-RAY_REMOTE(RayFunc(OverloadFunc));
-RAY_REMOTE(RayFunc(OverloadFunc, int));
-RAY_REMOTE(RayFunc(OverloadFunc, int, int));
+RAY_REMOTE(RAY_FUNC(OverloadFunc));
+RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
+RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
 
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
@@ -114,9 +114,9 @@ TEST(RayApiTest, CallWithObjectRef) {
 }
 
 TEST(RayApiTest, OverloadTest) {
-  auto rt0 = Ray::Task(RayFunc(OverloadFunc)).Remote();
-  auto rt1 = Ray::Task(RayFunc(OverloadFunc, int)).Remote(rt0);
-  auto rt2 = Ray::Task(RayFunc(OverloadFunc, int, int)).Remote(rt1, 3);
+  auto rt0 = Ray::Task(RAY_FUNC(OverloadFunc)).Remote();
+  auto rt1 = Ray::Task(RAY_FUNC(OverloadFunc, int)).Remote(rt0);
+  auto rt2 = Ray::Task(RAY_FUNC(OverloadFunc, int, int)).Remote(rt1, 3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
