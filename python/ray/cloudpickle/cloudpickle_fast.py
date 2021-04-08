@@ -653,11 +653,16 @@ class CloudPickler(Pickler):
               reducers, such as Exceptions. See
               https://github.com/cloudpipe/cloudpickle/issues/248
             """
-            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
-                return (
-                    _create_parametrized_type_hint,
-                    parametrized_type_hint_getinitargs(obj)
-                )
+            try:
+                if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+                    return (
+                        _create_parametrized_type_hint,
+                        parametrized_type_hint_getinitargs(obj)
+                    )
+            except pickle.PicklingError:
+                # There are some false positive cases in '_is_parametrized_type_hint'.
+                # We should fail early for these false positive cases.
+                pass
             t = type(obj)
             try:
                 is_anyclass = issubclass(t, type)
