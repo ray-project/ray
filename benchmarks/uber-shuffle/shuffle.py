@@ -67,6 +67,8 @@ def generate_file(
         global_row_index,
         num_rows_per_group,
         num_row_groups_per_file):
+    # TODO(Clark): Optimize this data generation to reduce copies and
+    # progressively write smaller buffers to the Parquet file.
     buffs = []
     for group_index in range(num_row_groups_per_file):
         buffs.append(
@@ -156,24 +158,18 @@ class Validator:
             set(shuffled["key"]) == set(range(num_expected_rows)))
 
 
+#
+# Disk-based shuffle, loads full file from disk in each round.
+#
+
+
 @ray.remote
-def select(filename, num_reducers, seed, round_index, num_rounds):
+def shuffle_select_from_disk(
+        filename, num_reducers, seed, round_index, num_rounds):
     # Load file.
     rows = pd.read_parquet(filename)
 
     # Select rows based on our map index and the random seed.
-    # TODO(Clark): In each round, we're currently loading the full row group
-    # from disk, shuffling the row group (same, deterministic shuffle in each
-    # round), and discarding all row groups that don't belong in the current
-    # round. We should optimize this.
-    # One option would be to read the files into the object store at the
-    # beginning of training, chunked by round partitions, and only select from
-    # the desired round partition in each round, shuffle within each round
-    # partition, and split to reducers. At the beginning of each epoch, the
-    # round partitions could be globally shuffled.
-    # Could also load from disk at the beginning of each epoch, do a full
-    # file shuffle, and put the round partitions into the object store for all
-    # subsequent rounds.
     rows = rows.sample(frac=1, random_state=seed)
     rows = np.array_split(rows, num_rounds)[round_index]
 
@@ -182,7 +178,7 @@ def select(filename, num_reducers, seed, round_index, num_rounds):
 
 
 @ray.remote
-def shuffle(reduce_index, batches_per_round, *chunks):
+def shuffle_reduce(reduce_index, batches_per_round, *chunks):
     # Concatenate and shuffle all rows in the chunks.
     batch = pd.concat(chunks)
     batch = batch.sample(frac=1)
@@ -197,7 +193,7 @@ def consume(chunk):
     return timeit.default_timer()
 
 
-def shuffle_all(
+def shuffle_from_disk(
         filenames, num_trainers, batch_size, batches_per_round, num_rows):
     v = Validator.remote(filenames)
     # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
@@ -219,17 +215,108 @@ def shuffle_all(
     seed = 0
     # TODO(Clark): Move to streaming implementation.
     for round_index in range(num_rounds):
-        # TODO(Clark): Support putting entire training dataset into shared
-        # memory and sourcing each epoch/round from shared memory.
         chunks = [
-            select.options(num_returns=num_trainers).remote(
+            shuffle_select_from_disk.options(num_returns=num_trainers).remote(
                 filename, num_trainers, seed, round_index, num_rounds)
             for filename in filenames]
         shuffled = [
-            shuffle.remote(
+            shuffle_reduce.remote(
                 j,
                 batches_per_round,
                 *[chunks[i][j] for i in range(len(filenames))])
+            for j in range(num_trainers)]
+        # TODO(Clark): Add pipelining of shuffle rounds.
+        ray.get([consume.remote(batch) for batch in shuffled])
+        # finished = ray.get([consume.remote(batch) for batch in shuffled])
+        final_shuffled += shuffled
+
+        # for t in finished:
+        #     print(t - start)
+    end = timeit.default_timer()
+
+    ray.get(v.check.remote(batches_per_round, *final_shuffled))
+
+    return end - start
+
+
+#
+# In-memory shuffling, loads data from disk once per epoch.
+#
+
+
+@ray.remote
+def shuffle_select_from_memory(rows, num_reducers):
+    # Return a list of chunks, one for each reducer.
+    split = np.array_split(rows, num_reducers)
+    return split
+
+
+@ray.remote
+def cache_round_partitions(filename, num_rounds):
+    # Load file.
+    rows = pd.read_parquet(filename)
+
+    # Shuffle rows.
+    rows = rows.sample(frac=1)
+    # Partition the rows into a partition per round.
+    split = np.array_split(rows, num_rounds)
+    if len(split) == 1:
+        split = split[0]
+    return split
+
+
+def cache_in_memory(filenames, num_rounds):
+    # TODO(Clark): In each epoch, we're currently loading the full dataset
+    # from disk, shuffling each file, and partitioning these files into rounds.
+    # We should optimize this so we aren't having to do a disk load at the
+    # beginning of each epoch.
+    # One option would be to read the files into the object store at the
+    # beginning of training, chunked by round partitions, and only select from
+    # the desired round partition in each round, shuffle within each round
+    # partition, and split to reducers. At the beginning of each epoch, the
+    # round partitions could be globally shuffled.
+    round_partitions = []
+    for filename in filenames:
+        rounds = cache_round_partitions.options(
+            num_returns=num_rounds).remote(filename, num_rounds)
+        if not isinstance(rounds, list):
+            rounds = [rounds]
+        round_partitions.append(rounds)
+    return list(zip(*round_partitions))
+
+
+def shuffle_from_memory(
+        filenames, num_trainers, batch_size, batches_per_round, num_rows):
+    v = Validator.remote(filenames)
+    # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
+    # print("Expecting", num_expected_rows, "rows")
+
+    # Calculate the number of shuffle rounds.
+    # TODO(Clark): Handle uneven rounds (remainders).
+    num_rounds = max(
+        num_rows / num_trainers / batch_size / batches_per_round, 1)
+    # Assert even division (no remainders, uneven rounds).
+    assert num_rounds % 1 == 0
+    num_rounds = int(num_rounds)
+
+    print(f"Doing {num_rounds} shuffle rounds.")
+
+    rounds_of_partitions = cache_in_memory(filenames, num_rounds)
+
+    start = timeit.default_timer()
+
+    final_shuffled = []
+    # TODO(Clark): Move to streaming implementation.
+    for round_partitions in rounds_of_partitions:
+        chunks = [
+            shuffle_select_from_memory.options(
+                num_returns=num_trainers).remote(round_partition, num_trainers)
+            for round_partition in round_partitions]
+        shuffled = [
+            shuffle_reduce.remote(
+                j,
+                batches_per_round,
+                *[chunks[i][j] for i in range(len(round_partitions))])
             for j in range(num_trainers)]
         # TODO(Clark): Add pipelining of shuffle rounds.
         ray.get([consume.remote(batch) for batch in shuffled])
@@ -251,8 +338,18 @@ def run_trials(
         batch_size,
         batches_per_round,
         num_rows,
+        use_from_disk_shuffler=False,
         num_trials=None,
         trials_timeout=None):
+    if use_from_disk_shuffler:
+        print(
+            "Using from-disk shuffler that loads data from disk each rounds.")
+        shuffle = shuffle_from_disk
+    else:
+        print(
+            "Using from-memory shuffler that caches data in memory between "
+            "rounds.")
+        shuffle = shuffle_from_memory
     times = []
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_trainers} "
@@ -260,7 +357,7 @@ def run_trials(
               f"rows, with {batches_per_round} batches per round.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
-            shuffle_time = shuffle_all(
+            shuffle_time = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
@@ -276,7 +373,7 @@ def run_trials(
         trial = 0
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
-            shuffle_time = shuffle_all(
+            shuffle_time = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
@@ -302,6 +399,7 @@ if __name__ == "__main__":
     parser.add_argument("--trials-timeout", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--batches-per-round", type=int, default=1)
+    parser.add_argument("--use-from-disk-shuffler", action="store_true")
     parser.add_argument("--cluster", action="store_true")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
     parser.add_argument("--clear-old-data", action="store_true")
@@ -383,9 +481,18 @@ if __name__ == "__main__":
         batch_size,
         batches_per_round,
         num_rows,
+        args.use_from_disk_shuffler,
         num_trials,
         trials_timeout)
 
     mean = np.mean(times)
     std = np.std(times)
-    print(f"\nMean over {len(times)} trials: {mean} +- {std}")
+    throughput_std = np.std([num_rows / time for time in times])
+    batch_throughput_std = np.std([
+        (num_rows / batch_size) / time for time in times])
+    print(f"\nMean over {len(times)} trials: {mean:.3f}s +- {std}")
+    print(f"Mean throughput over {len(times)} trials: "
+          f"{num_rows / mean:.2f} rows/s +- {throughput_std:.2f}")
+    print(f"Mean batch throughput over {len(times)} trials: "
+          f"{(num_rows / batch_size) / mean:.2f} batches/s +- "
+          f"{batch_throughput_std:.2f}")
