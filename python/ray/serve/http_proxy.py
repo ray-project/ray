@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import time
 from typing import List, Dict, Tuple
 
 import uvicorn
@@ -17,7 +18,7 @@ from ray.serve.http_util import HTTPRequestWrapper, Response
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
-MAX_ACTOR_FAILURE_RETRIES = 10
+MAX_REPLICA_FAILURE_RETRIES = 10
 
 
 class ServeStarletteEndpoint:
@@ -73,15 +74,15 @@ class ServeStarletteEndpoint:
 
         retries = 0
         backoff_time_s = 0.05
-        while retries < MAX_ACTOR_FAILURE_RETRIES:
+        while retries < MAX_REPLICA_FAILURE_RETRIES:
             object_ref = await handle.remote(request)
             try:
                 result = await object_ref
                 break
             except RayActorError:
                 logger.warning(
-                    "Request failed due to actor failure. There are "
-                    f"{MAX_ACTOR_FAILURE_RETRIES - retries} retries "
+                    "Request failed due to replica failure. There are "
+                    f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                     "remaining.")
                 await asyncio.sleep(backoff_time_s)
                 backoff_time_s *= 2
@@ -179,6 +180,18 @@ class HTTPProxy:
 
         self.router.routes = routes
 
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        start = time.time()
+        while True:
+            if time.time() - start > timeout_s:
+                raise TimeoutError(
+                    f"Waited {timeout_s} for {endpoint} to propogate.")
+            for tag, _ in self.route_table.values():
+                if endpoint == tag:
+                    return
+            await asyncio.sleep(0.2)
+
     async def _not_found(self, scope, receive, send):
         current_path = scope["path"]
         error_message = ("Path {} not found. "
@@ -245,6 +258,10 @@ class HTTPProxyActor:
 
         # Return None, or re-throw the exception from self.running_task.
         return await done_set.pop()
+
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
         sock = socket.socket()

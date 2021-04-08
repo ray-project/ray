@@ -40,7 +40,7 @@ def test_path_validation(serve_instance):
 
 
 def test_routes_endpoint(serve_instance):
-    @serve.deployment("D1")
+    @serve.deployment
     class D1:
         pass
 
