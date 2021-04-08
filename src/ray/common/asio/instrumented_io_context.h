@@ -72,10 +72,10 @@ struct StatsHandle {
   StatsHandle(std::string handler_name_, int64_t start_time_,
               std::shared_ptr<GuardedHandlerStats> handler_stats_,
               std::shared_ptr<GuardedGlobalStats> global_stats_)
-      : handler_name(handler_name_),
+      : handler_name(std::move(handler_name_)),
         start_time(start_time_),
-        handler_stats(handler_stats_),
-        global_stats(global_stats_) {}
+        handler_stats(std::move(handler_stats_)),
+        global_stats(std::move(global_stats_)) {}
 };
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
@@ -114,7 +114,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(std::function<void()> &fn,
+  static void RecordExecution(const std::function<void()> &fn,
                               std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics

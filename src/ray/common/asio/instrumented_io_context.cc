@@ -66,15 +66,9 @@ void instrumented_io_context::post(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  // NOTE: We capture the handler stats and global stats shared pointers by value,
-  // ensuring that the reference count will be incremented and that the underlying
-  // structs won't be deallocated until all such handlers finish executing. This allows
-  // the handlers to execute without segfaulting even if the thread that constructed the
-  // io_context object exits without joining the handler threads (which can happen in a
-  // hard exit).
   boost::asio::io_context::post(
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
-        RecordExecution(std::move(handler), std::move(stats_handle));
+        RecordExecution(handler, std::move(stats_handle));
       });
 }
 
@@ -90,7 +84,7 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::str
                                        stats, global_stats_);
 }
 
-void instrumented_io_context::RecordExecution(std::function<void()> &fn,
+void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
                                               std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Execute actual handler.
@@ -124,7 +118,7 @@ void instrumented_io_context::RecordExecution(std::function<void()> &fn,
 }
 
 std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
-    const std::string name) {
+    const std::string &name) {
   // Get this handler's stats.
   mutex_.ReaderLock();
   auto it = post_handler_stats_.find(name);

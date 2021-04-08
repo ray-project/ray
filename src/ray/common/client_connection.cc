@@ -108,7 +108,7 @@ void ServerConnection::WriteBufferAsync(
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be written.
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    const auto &io_context =
+    auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
@@ -158,7 +158,7 @@ void ServerConnection::ReadBufferAsync(
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto stats_handle =
+    const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
         socket_, buffer,
@@ -290,7 +290,7 @@ void ServerConnection::DoAsyncWrites() {
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto stats_handle =
+    const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_write.DoAsyncWrites");
     boost::asio::async_write(
         socket_, message_buffers,
@@ -382,7 +382,7 @@ void ClientConnection::ProcessMessages() {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    auto stats_handle =
+    const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
         ServerConnection::socket_, header,
@@ -423,7 +423,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    auto stats_handle =
+    const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
         ServerConnection::socket_, boost::asio::buffer(read_message_),

@@ -35,11 +35,11 @@ class PeriodicalRunner {
                          const std::string name = "UNKNOWN");
 
  private:
-  void DoRunFnPeriodically(std::function<void()> fn,
+  void DoRunFnPeriodically(const std::function<void()> &fn,
                            boost::posix_time::milliseconds period,
                            boost::asio::deadline_timer &timer);
 
-  void DoRunFnPeriodicallyInstrumented(std::function<void()> fn,
+  void DoRunFnPeriodicallyInstrumented(const std::function<void()> &fn,
                                        boost::posix_time::milliseconds period,
                                        boost::asio::deadline_timer &timer,
                                        const std::string name);
