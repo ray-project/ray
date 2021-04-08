@@ -13,22 +13,20 @@ import ray
 # - Run on a large machine with the full dataset size
 # - Get some basic metrics: disk read time, shuffle time between map and reduce
 # tasks, average map/reduce task duration.
-# - Compute number of rounds based on batch size.
+# - [DONE] Compute number of rounds based on batch size.
 # - Scale past memory capacity of the cluster (long-term)
-
-# To confirm:
-# - batch size
-# - dataset size/schema
-#   - do we need to have the batches as part of the schema?
-#   - how large is each row-group file expected to be?
 
 # Dataset info:
 #
 # 100 row groups
 # 4M rows/group
-# ~52GB total
-# 256K rows/batch
-# 4M rows/group, 256 rows/batch -> 170MB/file
+#  - Size of row group can vary from 30k to 4M
+# ~52GB total, on disk, snappy compressed
+# 256k - 512k rows/batch
+#  - batch size could be as small as 50k
+#  - has target in bytes
+#  - is arrived at iteratively, can vary across models
+# 4M rows/group, 256k rows/batch -> 170MB/file
 
 
 DEFAULT_DATA_DIR = "/mnt/disk0/benchmark_scratch"
@@ -168,6 +166,14 @@ def select(filename, num_reducers, seed, round_index, num_rounds):
     # from disk, shuffling the row group (same, deterministic shuffle in each
     # round), and discarding all row groups that don't belong in the current
     # round. We should optimize this.
+    # One option would be to read the files into the object store at the
+    # beginning of training, chunked by round partitions, and only select from
+    # the desired round partition in each round, shuffle within each round
+    # partition, and split to reducers. At the beginning of each epoch, the
+    # round partitions could be globally shuffled.
+    # Could also load from disk at the beginning of each epoch, do a full
+    # file shuffle, and put the round partitions into the object store for all
+    # subsequent rounds.
     rows = rows.sample(frac=1, random_state=seed)
     rows = np.array_split(rows, num_rounds)[round_index]
 
@@ -176,10 +182,7 @@ def select(filename, num_reducers, seed, round_index, num_rounds):
 
 
 @ray.remote
-def shuffle(reduce_index, batches_per_round, *all_chunks):
-    # Select rows for this reducer.
-    chunks = [chunks[reduce_index] for chunks in all_chunks]
-
+def shuffle(reduce_index, batches_per_round, *chunks):
     # Concatenate and shuffle all rows in the chunks.
     batch = pd.concat(chunks)
     batch = batch.sample(frac=1)
@@ -216,16 +219,18 @@ def shuffle_all(
     seed = 0
     # TODO(Clark): Move to streaming implementation.
     for round_index in range(num_rounds):
-        # TODO(Clark): Set num returns = num trainers. So that we"re not
-        # sending all data to all reducers. Should only matter for
-        # distributed version.
+        # TODO(Clark): Support putting entire training dataset into shared
+        # memory and sourcing each epoch/round from shared memory.
         chunks = [
-            select.remote(
+            select.options(num_returns=num_trainers).remote(
                 filename, num_trainers, seed, round_index, num_rounds)
             for filename in filenames]
         shuffled = [
-            shuffle.remote(i, batches_per_round, *chunks)
-            for i in range(num_trainers)]
+            shuffle.remote(
+                j,
+                batches_per_round,
+                *[chunks[i][j] for i in range(len(filenames))])
+            for j in range(num_trainers)]
         # TODO(Clark): Add pipelining of shuffle rounds.
         ray.get([consume.remote(batch) for batch in shuffled])
         # finished = ray.get([consume.remote(batch) for batch in shuffled])
@@ -252,7 +257,7 @@ def run_trials(
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_trainers} "
               f"trainers and a batch size of {batch_size} over {num_rows} "
-              "rows, with {batches_per_round} batches per round.")
+              f"rows, with {batches_per_round} batches per round.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
             shuffle_time = shuffle_all(
