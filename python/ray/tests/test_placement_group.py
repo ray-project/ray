@@ -1181,7 +1181,7 @@ ray.shutdown()
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -1219,7 +1219,7 @@ def test_create_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -1243,7 +1243,7 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -1268,7 +1268,7 @@ def test_create_placement_group_during_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
