@@ -43,11 +43,11 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
     ASSERT_TRUE(cluster_resource_scheduler_->IsAvailableResourceEmpty(resource));
   }
 
-  void CheckRemainingResourceCorrect(NodeResourceInstances &node_resource_instances) {
+  void CheckRemainingResourceCorrect(NodeResources &node_resources) {
     const auto cluster_resource_scheduler_ =
         new_placement_group_resource_manager_->GetResourceScheduler();
-    ASSERT_TRUE(cluster_resource_scheduler_->GetLocalResources() ==
-                node_resource_instances);
+    auto local_node_resource = cluster_resource_scheduler_->GetLocalNodeResources();
+    ASSERT_TRUE(local_node_resource == node_resources);
   }
 };
 
@@ -102,8 +102,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       unit_resource, resource_instances));
-  auto remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
@@ -122,8 +123,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   /// 5. check remaining resources is correct.
   auto remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", unit_resource);
-  auto remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndReturn) {
@@ -154,8 +156,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       init_unit_resource, resource_instances));
-  auto remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+
+  CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 5. return second bundle.
   new_placement_group_resource_manager_->ReturnBundle(second_bundle_spec);
   /// 6. check remaining resources is correct after return second bundle.
@@ -166,16 +170,16 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       std::make_shared<ClusterResourceScheduler>("remaining", remaining_resources);
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       {{"CPU_group_" + group_id.Hex(), 1.0}, {"CPU", 1.0}}, resource_instances));
-  remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 7. return first bundel.
   new_placement_group_resource_manager_->ReturnBundle(first_bundle_spec);
   /// 8. check remaining resources is correct after all bundle returned.
   remaining_resources = {{"CPU", 2.0}};
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", remaining_resources);
-  remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare) {
@@ -200,8 +204,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       unit_resource, resource_instances));
-  auto remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) {
@@ -229,15 +234,16 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
       std::make_shared<TaskResourceInstances>();
   ASSERT_TRUE(remaining_resource_scheduler->AllocateLocalTaskResources(
       unit_resource, resource_instances));
-  auto remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 5. prepare bundle -> commit bundle -> commit bundle.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   new_placement_group_resource_manager_->CommitBundle(bundle_spec);
   // 6. check remaining resources is correct.
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  CheckRemainingResourceCorrect(remaining_resource_instance);
   new_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   // 7. prepare bundle -> return bundle -> commit bundle.
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundle(bundle_spec));
@@ -246,8 +252,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   // 8. check remaining resources is correct.
   remaining_resource_scheduler =
       std::make_shared<ClusterResourceScheduler>("remaining", available_resource);
-  remaining_resouece_instance = remaining_resource_scheduler->GetLocalResources();
-  CheckRemainingResourceCorrect(remaining_resouece_instance);
+  remaining_resource_instance = remaining_resource_scheduler->GetLocalNodeResources();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
 }  // namespace ray

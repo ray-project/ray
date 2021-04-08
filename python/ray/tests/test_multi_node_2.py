@@ -6,7 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
-from ray._private.monitor import Monitor
+from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
 from ray.test_utils import generate_system_config_map, SignalActor
 
@@ -36,7 +36,7 @@ def test_shutdown():
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
+            num_heartbeats_timeout=2, object_timeout_milliseconds=12345)
     ],
     indirect=True)
 def test_system_config(ray_start_cluster_head):
@@ -54,7 +54,7 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 20
+        assert ray._config.num_heartbeats_timeout() == 2
 
     ray.get([f.remote() for _ in range(5)])
 
@@ -222,6 +222,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     ray.get(signal.send.remote())
     ray.get(work_handle)
+    del monitor
 
 
 def test_wait_for_nodes(ray_start_cluster_head):
