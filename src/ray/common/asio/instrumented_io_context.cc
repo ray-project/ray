@@ -115,6 +115,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
       global_stats->stats.max_queue_time = queue_time_ns;
     }
   }
+  handle->execution_recorded = true;
 }
 
 std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(

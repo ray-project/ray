@@ -68,6 +68,7 @@ struct StatsHandle {
   int64_t start_time;
   std::shared_ptr<GuardedHandlerStats> handler_stats;
   std::shared_ptr<GuardedGlobalStats> global_stats;
+  bool execution_recorded = false;
 
   StatsHandle(std::string handler_name_, int64_t start_time_,
               std::shared_ptr<GuardedHandlerStats> handler_stats_,
@@ -76,6 +77,15 @@ struct StatsHandle {
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)) {}
+
+  ~StatsHandle() {
+    if (!execution_recorded) {
+      // If handler execution was never recorded, we need to clean up some queueing
+      // stats in order to prevent those stats from leaking.
+      absl::MutexLock lock(&(handler_stats->mutex));
+      handler_stats->stats.curr_count--;
+    }
+  }
 };
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
