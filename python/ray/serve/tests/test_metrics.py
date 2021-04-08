@@ -19,7 +19,7 @@ def test_serve_metrics(serve_instance):
     f.deploy()
 
     # send 10 concurrent requests
-    url = "http://127.0.0.1:8000/metrics"
+    url = "http://127.0.0.1:8000/metrics/"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
 
     def verify_metrics(do_assert=False):
@@ -79,7 +79,7 @@ def test_backend_logger(serve_instance):
     Counter.deploy()
     f = io.StringIO()
     with redirect_stderr(f):
-        requests.get("http://127.0.0.1:8000/counter")
+        requests.get("http://127.0.0.1:8000/counter/")
 
         def counter_log_success():
             s = f.getvalue()

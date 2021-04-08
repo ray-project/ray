@@ -32,7 +32,7 @@ def test_np_in_composed_model(serve_instance):
     sum_model.deploy()
     ComposedModel.deploy()
 
-    result = requests.get("http://127.0.0.1:8000/model")
+    result = requests.get("http://127.0.0.1:8000/model/")
     assert result.status_code == 200
     assert result.json() == 100.0
 
@@ -49,7 +49,7 @@ def test_backend_worker_memory_growth(serve_instance):
     handle = gc_unreachable_objects.get_handle()
 
     for _ in range(10):
-        result = requests.get("http://127.0.0.1:8000/model")
+        result = requests.get("http://127.0.0.1:8000/model/")
         assert result.status_code == 200
         num_unreachable_objects = result.json()
         assert num_unreachable_objects == 0
