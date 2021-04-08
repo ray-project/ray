@@ -161,7 +161,7 @@ class ImportThread:
 
         if self.worker.mode == ray.SCRIPT_MODE:
             if (run_on_other_drivers == b"False"
-                    or job_id != self.worker.current_job_id.binary()):
+                    or job_id == self.worker.current_job_id.binary()):
                 return
 
         try:
