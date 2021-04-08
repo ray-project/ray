@@ -42,58 +42,96 @@ def human_readable_size(num, precision=1, suffix="B"):
     return f"{num:.{precision}f}{unit}{suffix}"
 
 
-def generate_data(num_row_groups, num_rows_per_group, data_dir):
+def generate_data(
+        num_row_groups,
+        num_rows_per_group,
+        num_row_groups_per_file,
+        data_dir):
     results = []
-    for group_index, row_index in enumerate(
-            range(0, num_row_groups * num_rows_per_group, num_rows_per_group)):
+    for file_index, global_row_index in enumerate(
+            range(
+                0,
+                num_row_groups * num_rows_per_group,
+                num_rows_per_group * num_row_groups_per_file)):
         results.append(
-            generate_row_group.remote(
-                group_index, row_index, num_rows_per_group))
+            generate_file.remote(
+                file_index,
+                global_row_index,
+                num_rows_per_group,
+                num_row_groups_per_file))
     filenames, data_sizes = zip(*ray.get(results))
     return filenames, sum(data_sizes)
 
 
 @ray.remote
-def generate_row_group(group_index, global_row_index, num_rows_in_group):
-    buffer = [
-        {
-            "key": i + global_row_index,
-            "embeddings": {
-                "name0": np.random.randint(0, 2385, dtype=np.long),
-                "name1": np.random.randint(0, 201, dtype=np.long),
-                "name2": np.random.randint(0, 201, dtype=np.long),
-                "name3": np.random.randint(0, 6, dtype=np.long),
-                "name4": np.random.randint(0, 19, dtype=np.long),
-                "name5": np.random.randint(0, 1441, dtype=np.long),
-                "name6": np.random.randint(0, 201, dtype=np.long),
-                "name7": np.random.randint(0, 22, dtype=np.long),
-                "name8": np.random.randint(0, 156, dtype=np.long),
-                "name9": np.random.randint(0, 1216, dtype=np.long),
-                "name10": np.random.randint(0, 9216, dtype=np.long),
-                "name11": np.random.randint(0, 88999, dtype=np.long),
-                "name12": np.random.randint(0, 941792, dtype=np.long),
-                "name13": np.random.randint(0, 9405, dtype=np.long),
-                "name14": np.random.randint(0, 83332, dtype=np.long),
-                "name15": np.random.randint(0, 828767, dtype=np.long),
-                "name16": np.random.randint(0, 945195, dtype=np.long),
-            },
-            "one_hot": {
-                "hot0": np.random.randint(0, 3, dtype=np.long),
-                "hot1": np.random.randint(0, 50, dtype=np.long),
-            },
-            "labels": np.random.rand(),
-        }
-        for i in range(num_rows_in_group)
-    ]
-
-    buff = pd.DataFrame(buffer)
-    data_size = buff.memory_usage(deep=True).sum()
+def generate_file(
+        file_index,
+        global_row_index,
+        num_rows_per_group,
+        num_row_groups_per_file):
+    buffs = []
+    for group_index in range(num_row_groups_per_file):
+        buffs.append(
+            generate_row_group(
+                group_index,
+                global_row_index + group_index * num_rows_per_group,
+                num_rows_per_group))
+    df = pd.concat(buffs)
+    data_size = df.memory_usage(deep=True).sum()
     filename = os.path.join(
-        data_dir, f"row_group_{group_index}.parquet.gzip")
-    buff.to_parquet(
+        data_dir, f"input_data_{file_index}.parquet.gzip")
+    df.to_parquet(
         filename,
-        compression="gzip")
+        engine="pyarrow",
+        compression="gzip",
+        row_group_size=num_rows_per_group)
     return filename, data_size
+
+
+def generate_row_group(group_index, global_row_index, num_rows_in_group):
+    buffer = {
+        "key": np.array(
+            range(global_row_index, global_row_index + num_rows_in_group)),
+        "embeddings_name0": np.random.randint(
+            0, 2385, num_rows_in_group, dtype=np.long),
+        "embeddings_name1": np.random.randint(
+            0, 201, num_rows_in_group, dtype=np.long),
+        "embeddings_name2": np.random.randint(
+            0, 201, num_rows_in_group, dtype=np.long),
+        "embeddings_name3": np.random.randint(
+            0, 6, num_rows_in_group, dtype=np.long),
+        "embeddings_name4": np.random.randint(
+            0, 19, num_rows_in_group, dtype=np.long),
+        "embeddings_name5": np.random.randint(
+            0, 1441, num_rows_in_group, dtype=np.long),
+        "embeddings_name6": np.random.randint(
+            0, 201, num_rows_in_group, dtype=np.long),
+        "embeddings_name7": np.random.randint(
+            0, 22, num_rows_in_group, dtype=np.long),
+        "embeddings_name8": np.random.randint(
+            0, 156, num_rows_in_group, dtype=np.long),
+        "embeddings_name9": np.random.randint(
+            0, 1216, num_rows_in_group, dtype=np.long),
+        "embeddings_name10": np.random.randint(
+            0, 9216, num_rows_in_group, dtype=np.long),
+        "embeddings_name11": np.random.randint(
+            0, 88999, num_rows_in_group, dtype=np.long),
+        "embeddings_name12": np.random.randint(
+            0, 941792, num_rows_in_group, dtype=np.long),
+        "embeddings_name13": np.random.randint(
+            0, 9405, num_rows_in_group, dtype=np.long),
+        "embeddings_name14": np.random.randint(
+            0, 83332, num_rows_in_group, dtype=np.long),
+        "embeddings_name15": np.random.randint(
+            0, 828767, num_rows_in_group, dtype=np.long),
+        "embeddings_name16": np.random.randint(
+            0, 945195, num_rows_in_group, dtype=np.long),
+        "one_hot0": np.random.randint(0, 3, num_rows_in_group, dtype=np.long),
+        "one_hot1": np.random.randint(0, 50, num_rows_in_group, dtype=np.long),
+        "labels": np.random.rand(num_rows_in_group),
+    }
+
+    return pd.DataFrame(buffer)
 
 
 @ray.remote
@@ -104,11 +142,8 @@ class Validator:
 
     def get_num_expected_rows(self):
         if self.num_expected_rows is None:
-            self.num_expected_rows = 0
-            # Load file.
-            for filename in filenames:
-                rows = pd.read_parquet(filename)
-                self.num_expected_rows += len(rows)
+            self.num_expected_rows = sum(
+                len(pd.read_parquet(f)) for f in self.filenames)
         return self.num_expected_rows
 
     def check(self, batches_per_round, *chunks):
@@ -117,10 +152,8 @@ class Validator:
             chunks = [chunk for chunk_list in chunks for chunk in chunk_list]
         shuffled = pd.concat(chunks)
         num_expected_rows = self.get_num_expected_rows()
-        if num_expected_rows != len(shuffled):
-            return False
-
-        return (
+        assert num_expected_rows == len(shuffled)
+        assert (
             list(shuffled["key"]) != list(range(num_expected_rows)) and
             set(shuffled["key"]) == set(range(num_expected_rows)))
 
@@ -169,8 +202,11 @@ def shuffle_all(
 
     # Calculate the number of shuffle rounds.
     # TODO(Clark): Handle uneven rounds (remainders).
-    num_rounds = int(max(
-        num_rows // num_trainers // batch_size // batches_per_round, 1))
+    num_rounds = max(
+        num_rows / num_trainers / batch_size / batches_per_round, 1)
+    # Assert even division (no remainders, uneven rounds).
+    assert num_rounds % 1 == 0
+    num_rounds = int(num_rounds)
 
     print(f"Doing {num_rounds} shuffle rounds.")
 
@@ -199,7 +235,7 @@ def shuffle_all(
         #     print(t - start)
     end = timeit.default_timer()
 
-    assert ray.get(v.check.remote(batches_per_round, *final_shuffled))
+    ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
     return end - start
 
@@ -215,7 +251,8 @@ def run_trials(
     times = []
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_trainers} "
-              f"trainers and a {batch_size} batch_size over {num_rows} rows.")
+              f"trainers and a batch size of {batch_size} over {num_rows} "
+              "rows, with {batches_per_round} batches per round.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
             shuffle_time = shuffle_all(
@@ -254,6 +291,7 @@ if __name__ == "__main__":
         description="Shuffling per-epoch data loader")
     parser.add_argument("--num-rows-per-group", type=int, default=100)
     parser.add_argument("--num-row-groups", type=int, default=100)
+    parser.add_argument("--num-row-groups-per-file", type=int, default=1)
     parser.add_argument("--num-trainers", type=int, default=5)
     parser.add_argument("--num-trials", type=int, default=None)
     parser.add_argument("--trials-timeout", type=int, default=None)
@@ -262,16 +300,26 @@ if __name__ == "__main__":
     parser.add_argument("--cluster", action="store_true")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
     parser.add_argument("--clear-old-data", action="store_true")
+    parser.add_argument("--use-old-data", action="store_true")
     args = parser.parse_args()
+
+    if args.num_row_groups_per_file < 1:
+        raise ValueError("Must have at least one row group per file.")
 
     num_trials = args.num_trials
     trials_timeout = args.trials_timeout
     if num_trials is not None and trials_timeout is not None:
         raise ValueError(
-            "Only one of num_trials and trials_timeout should be specified.")
+            "Only one of --num-trials and --trials-timeout should be "
+            "specified.")
 
     if num_trials is None and trials_timeout is None:
         num_trials = 3
+
+    if args.clear_old_data and args.use_old_data:
+        raise ValueError(
+            "Only one of --clear-old-data and --use-old-data should be "
+            "specified.")
 
     data_dir = args.data_dir
     if args.clear_old_data:
@@ -289,22 +337,29 @@ if __name__ == "__main__":
 
     num_row_groups = args.num_row_groups
     num_rows_per_group = args.num_rows_per_group
-    print(
-        f"Generating {num_row_groups} row groups "
-        f"each with {num_rows_per_group} rows.")
-    # TODO(Clark): Only regenerate data if data doesn't exist and flag for
-    # forced regeneration isn't set.
-    filenames, num_bytes = generate_data(
-        num_row_groups, num_rows_per_group, data_dir)
-    print(
-        f"Generated {num_row_groups} row groups "
-        f"each with {num_rows_per_group} rows, totalling "
-        f"{human_readable_size(num_bytes)}.")
+    num_row_groups_per_file = args.num_row_groups_per_file
+    if not args.use_old_data:
+        print(
+            f"Generating {num_row_groups} row groups with "
+            f"{num_row_groups_per_file} row groups per file and each with "
+            f"{num_rows_per_group} rows.")
+        filenames, num_bytes = generate_data(
+            num_row_groups,
+            num_rows_per_group,
+            num_row_groups_per_file,
+            data_dir)
+        print(
+            f"Generated {len(filenames)} files each containing "
+            f"{num_row_groups_per_file} row groups, where each row group "
+            f"contains {num_rows_per_group} rows, totalling "
+            f"{human_readable_size(num_bytes)}.")
+    else:
+        print("Not generating input data, using existing data instead.")
 
     num_trainers = args.num_trainers
     batch_size = args.batch_size
     batches_per_round = args.batches_per_round
-    num_rows = args.num_row_groups * args.num_rows_per_group
+    num_rows = num_row_groups * num_rows_per_group
 
     # warmup_trials = 2
     # print(f"\nRunning {warmup_trials} warmup trials.")
