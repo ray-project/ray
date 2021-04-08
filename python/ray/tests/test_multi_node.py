@@ -6,8 +6,7 @@ import time
 import ray
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
-                            wait_for_condition, init_error_pubsub,
-                            get_error_message)
+                            init_error_pubsub, get_error_message)
 
 
 def test_error_isolation(call_ray_start):
