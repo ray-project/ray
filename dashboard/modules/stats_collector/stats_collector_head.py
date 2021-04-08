@@ -10,7 +10,8 @@ import ray.gcs_utils
 import ray.new_dashboard.modules.stats_collector.stats_collector_consts \
     as stats_collector_consts
 import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
+from ray.new_dashboard.actor_utils import (
+    actor_classname_from_function_descriptor, )
 from ray.new_dashboard.utils import async_loop_forever
 from ray.new_dashboard.memory_utils import GroupByType, SortingType
 from ray.core.generated import node_manager_pb2
@@ -176,8 +177,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         logger.info("Subscribed to %s", key)
 
         def _process_actor_table_data(data):
-            actor_class = actor_classname_from_task_spec(
-                data.get("taskSpec", {}))
+            actor_class = actor_classname_from_function_descriptor(
+                data.get("functionDescriptor", {}))
             data["actorClass"] = actor_class
 
         # Get all actor info.
