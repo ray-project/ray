@@ -1605,5 +1605,24 @@ def test_placement_group_gpu_assigned(ray_start_cluster):
     assert len(gpu_ids_res) == 2
 
 
+def test_placement_group_ready_when_memory_specified(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{
+            "memory": 50 * 1024 * 1024,
+        }, {
+            "memory": 50 * 1024 * 1024,
+        }])
+
+    assert placement_group.ready()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

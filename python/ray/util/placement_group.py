@@ -5,6 +5,7 @@ from typing import (List, Dict, Optional, Union)
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
 from ray._private.utils import hex_to_binary
+from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
 
 bundle_reservation_check = None
 
@@ -69,17 +70,21 @@ class PlacementGroup:
         resource_name, value = self._get_none_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
+        memory = 0
         resources = {}
         if resource_name == "CPU":
             num_cpus = value
         elif resource_name == "GPU":
             num_gpus = value
+        elif resource_name == "memory":
+            memory = value
         else:
             resources[resource_name] = value
 
         return bundle_reservation_check.options(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             placement_group=self,
             placement_group_bundle_index=bundle_index,
             resources=resources).remote(self)
@@ -113,7 +118,12 @@ class PlacementGroup:
         INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
         for key, value in bundle.items():
             if value > 0:
-                value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
+                if key == "memory":
+                    # Make sure the memory resource can be transformed to memory unit.
+                    to_memory_units(value, True)
+                    value = MEMORY_RESOURCE_UNIT_BYTES
+                else:
+                    value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
                 return key, value
         assert False, "This code should be unreachable."
 
