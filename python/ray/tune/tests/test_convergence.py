@@ -1,6 +1,7 @@
 import math
 import numpy as np
 
+import pytest
 import ray
 from ray import tune
 from ray.tune.stopper import ExperimentPlateauStopper
