@@ -2,20 +2,25 @@ import sys
 
 import pytest
 
-import ray
-import ray.util.client.server.server as ray_client_server
-
 from ray.rllib.examples import rock_paper_scissors_multiagent
+from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.client_mode_hook import _explicitly_enable_client_mode,\
+    client_mode_should_convert
 
 
-def test_rllib_integration(call_ray_stop_only):
-    ray.init(num_cpus=1)
-    ray_client_server.serve("localhost:50051")
-    # Connection timeout. Help.
-    ray.util.connect("localhost:50051")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_rllib_integration(ray_start_regular_shared):
+    with ray_start_client_server():
+        # Confirming the behavior of this context manager.
+        # (Client mode hook not yet enabled.)
+        assert not client_mode_should_convert()
+        # Need to enable this for client APIs to be used.
+        _explicitly_enable_client_mode()
+        # Confirming mode hook is enabled.
+        assert client_mode_should_convert()
 
-    rock_paper_scissors_multiagent.main()
+        rock_paper_scissors_multiagent.main()
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-s", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
