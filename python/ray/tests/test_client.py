@@ -512,7 +512,7 @@ def test_client_serialize_addon(call_ray_stop_only):
         name: str
 
     with ray_start_client_server() as ray:
-        assert ray.get(ray.put(User(name="ray"))) == "ray"
+        assert ray.get(ray.put(User(name="ray"))).name == "ray"
 
 
 if __name__ == "__main__":
