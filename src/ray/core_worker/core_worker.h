@@ -33,6 +33,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -878,9 +879,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
-                                   rpc::WaitForObjectEvictionReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleSubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      rpc::SubscribeForObjectEvictionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Implements gRPC server handler.
+  void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+                               rpc::PubsubLongPollingReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
@@ -984,6 +991,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
+
+  // Get gcs_client
+  std::shared_ptr<gcs::GcsClient> GetGcsClient() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
@@ -1210,6 +1220,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Server that handles pubsub operations of raylets / core workers.
+  std::shared_ptr<pubsub::Publisher> object_status_publisher_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

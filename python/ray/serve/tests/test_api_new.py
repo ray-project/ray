@@ -9,11 +9,10 @@ import starlette.responses
 import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
-from ray.serve.config import BackendConfig
 
 
 def test_e2e(serve_instance):
-    @serve.deployment("api")
+    @serve.deployment(name="api")
     def function(starlette_request):
         return {"method": starlette_request.method}
 
@@ -27,7 +26,7 @@ def test_e2e(serve_instance):
 
 
 def test_starlette_response(serve_instance):
-    @serve.deployment("basic")
+    @serve.deployment(name="basic")
     def basic(_):
         return starlette.responses.Response(
             "Hello, world!", media_type="text/plain")
@@ -35,7 +34,7 @@ def test_starlette_response(serve_instance):
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
 
-    @serve.deployment("html")
+    @serve.deployment(name="html")
     def html(_):
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>")
@@ -45,7 +44,7 @@ def test_starlette_response(serve_instance):
         "http://127.0.0.1:8000/html"
     ).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
-    @serve.deployment("plain_text")
+    @serve.deployment(name="plain_text")
     def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
@@ -53,7 +52,7 @@ def test_starlette_response(serve_instance):
     assert requests.get(
         "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
-    @serve.deployment("json")
+    @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
@@ -61,7 +60,7 @@ def test_starlette_response(serve_instance):
     assert requests.get("http://127.0.0.1:8000/json").json()[
         "hello"] == "world"
 
-    @serve.deployment("redirect")
+    @serve.deployment(name="redirect")
     def redirect(_):
         return starlette.responses.RedirectResponse(
             url="http://127.0.0.1:8000/basic")
@@ -70,7 +69,7 @@ def test_starlette_response(serve_instance):
     assert requests.get(
         "http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
-    @serve.deployment("streaming")
+    @serve.deployment(name="streaming")
     def streaming(_):
         async def slow_numbers():
             for number in range(1, 4):
@@ -87,9 +86,11 @@ def test_starlette_response(serve_instance):
 
 
 def test_backend_user_config(serve_instance):
-    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
-
-    @serve.deployment("counter", config=config)
+    @serve.deployment(
+        "counter", num_replicas=2, user_config={
+            "count": 123,
+            "b": 2
+        })
     class Counter:
         def __init__(self):
             self.count = 10
@@ -114,19 +115,17 @@ def test_backend_user_config(serve_instance):
 
     wait_for_condition(lambda: check("123", 2))
 
-    config.num_replicas = 3
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(num_replicas=3)
     Counter.deploy()
     wait_for_condition(lambda: check("123", 3))
 
-    config.user_config = {"count": 456}
-    Counter = Counter.options(config=config)
+    Counter = Counter.options(user_config={"count": 456})
     Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
-    @serve.deployment("method")
+    @serve.deployment(name="method")
     class CallMethod:
         def method(self, request):
             return "hello"
@@ -146,8 +145,7 @@ def test_call_method(serve_instance):
 
 
 def test_reject_duplicate_route(serve_instance):
-    @serve.deployment("A")
-    @serve.ingress(path_prefix="/api")
+    @serve.deployment(name="A", route_prefix="/api")
     class A:
         pass
 
@@ -157,7 +155,7 @@ def test_reject_duplicate_route(serve_instance):
 
 
 def test_scaling_replicas(serve_instance):
-    @serve.deployment("counter", config=BackendConfig(num_replicas=2))
+    @serve.deployment(name="counter", num_replicas=2)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -176,7 +174,7 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    Counter.options(config=BackendConfig(num_replicas=1)).deploy()
+    Counter.options(num_replicas=1).deploy()
 
     counter_result = []
     for _ in range(10):
@@ -187,40 +185,8 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_updating_config(serve_instance):
-    @serve.deployment(
-        "bsimple", config=BackendConfig(max_batch_size=2, num_replicas=2))
-    class BatchSimple:
-        def __init__(self):
-            self.count = 0
-
-        @serve.accept_batch
-        def __call__(self, request):
-            return [1] * len(request)
-
-    BatchSimple.deploy()
-
-    controller = serve.api._global_client._controller
-    old_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-
-    BatchSimple.options(
-        config=BackendConfig(max_batch_size=5, num_replicas=2)).deploy()
-    new_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple"].keys())
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            controller._all_replica_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the old and new replica tag list should be identical
-    # and should be subset of all_tag_list
-    assert set(old_replica_tag_list) <= set(new_all_tag_list)
-    assert set(old_replica_tag_list) == set(new_replica_tag_list)
-
-
 def test_delete_backend(serve_instance):
-    @serve.deployment("delete")
+    @serve.deployment(name="delete")
     def function(_):
         return "hello"
 
@@ -230,7 +196,7 @@ def test_delete_backend(serve_instance):
 
     function.delete()
 
-    @serve.deployment("delete")
+    @serve.deployment(name="delete")
     def function2(_):
         return "olleh"
 
@@ -246,79 +212,8 @@ def test_delete_backend(serve_instance):
         assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
 
 
-@pytest.mark.skip("Not implemented yet")
-def test_list_endpoints(serve_instance):
-    def f():
-        pass
-
-    serve.create_backend("backend", f)
-    serve.create_backend("backend2", f)
-    serve.create_backend("backend3", f)
-    serve.create_endpoint(
-        "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
-    serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
-    serve.shadow_traffic("endpoint", "backend3", 0.5)
-
-    endpoints = serve.list_endpoints()
-    assert "endpoint" in endpoints
-    assert endpoints["endpoint"] == {
-        "route": "/api",
-        "methods": ["GET", "POST"],
-        "traffic": {
-            "backend": 1.0
-        },
-        "shadows": {
-            "backend3": 0.5
-        }
-    }
-
-    assert "endpoint2" in endpoints
-    assert endpoints["endpoint2"] == {
-        "route": None,
-        "methods": ["POST"],
-        "traffic": {
-            "backend2": 1.0
-        },
-        "shadows": {}
-    }
-
-    serve.delete_endpoint("endpoint")
-    assert "endpoint2" in serve.list_endpoints()
-
-    serve.delete_endpoint("endpoint2")
-    assert len(serve.list_endpoints()) == 0
-
-
-@pytest.mark.skip("Not implemented yet")
-def test_list_backends(serve_instance):
-    @serve.accept_batch
-    def f():
-        pass
-
-    config1 = BackendConfig(max_batch_size=10)
-    serve.create_backend("backend", f, config=config1)
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend" in backends
-    assert backends["backend"].max_batch_size == 10
-
-    config2 = BackendConfig(num_replicas=10)
-    serve.create_backend("backend2", f, config=config2)
-    backends = serve.list_backends()
-    assert len(backends) == 2
-    assert backends["backend2"].num_replicas == 10
-
-    serve.delete_backend("backend")
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend2" in backends
-
-    serve.delete_backend("backend2")
-    assert len(serve.list_backends()) == 0
-
-
 def test_starlette_request(serve_instance):
-    @serve.deployment("api")
+    @serve.deployment(name="api")
     async def echo_body(starlette_request):
         data = await starlette_request.body()
         return data
@@ -331,6 +226,21 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
+
+
+def test_start_idempotent(serve_instance):
+    @serve.deployment(name="start")
+    def func(*args):
+        pass
+
+    func.deploy()
+
+    assert "start" in serve.list_backends()
+    serve.start(detached=True)
+    serve.start()
+    serve.start(detached=True)
+    serve.start()
+    assert "start" in serve.list_backends()
 
 
 if __name__ == "__main__":

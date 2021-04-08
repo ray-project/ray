@@ -41,9 +41,6 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    # Fields used by backend worker to perform timing measurement.
-    tick_enter_replica: Optional[float] = None
-
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
@@ -115,6 +112,8 @@ class ReplicaSet:
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
+            logger.debug(
+                f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -185,7 +184,7 @@ class ReplicaSet:
         return assigned_ref
 
 
-class Router:
+class EndpointRouter:
     def __init__(
             self,
             controller_handle: ActorHandle,

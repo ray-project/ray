@@ -11,7 +11,7 @@ import pytest
 import ray
 from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
-from ray.serve.router import Query, ReplicaSet, RequestMetadata, Router
+from ray.serve.router import Query, ReplicaSet, RequestMetadata, EndpointRouter
 from ray.serve.utils import get_random_letters
 from ray.test_utils import SignalActor
 
@@ -61,7 +61,7 @@ def task_runner_mock_actor():
 
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                             task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller, "svc")
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     # Propogate configs
     await mock_controller.set_traffic.remote(
@@ -85,7 +85,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 
 async def test_changing_backend(ray_instance, mock_controller,
                                 task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller, "svc")
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -113,7 +113,7 @@ async def test_changing_backend(ray_instance, mock_controller,
 
 async def test_split_traffic_random(ray_instance, mock_controller,
                                     task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller, "svc")
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -142,7 +142,7 @@ async def test_split_traffic_random(ray_instance, mock_controller,
 
 async def test_shard_key(ray_instance, mock_controller,
                          task_runner_mock_actor):
-    q = ray.remote(Router).remote(mock_controller, "svc")
+    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     num_backends = 5
     traffic_dict = {}
