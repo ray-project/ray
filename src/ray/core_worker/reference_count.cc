@@ -791,6 +791,13 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         RAY_CHECK(it->second.borrowers.erase(addr));
         DeleteReferenceInternal(it, nullptr);
       });
+  // SANG-TODO
+  // callback = {}
+  // conn->SubscribeRefRemoved({
+  //   if (!status.ok()) { callback(); return; }
+  //   core_worker_subscriber_->SubcribeObject(
+  //       WAIT_FOR_REF_REMOVED_CHANNEL, addr, object_id, callback, callback);
+  // })
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
@@ -852,6 +859,7 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
 void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
                                         rpc::WaitForRefRemovedReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // SANG-TODO publisher
   ReferenceTable borrowed_refs;
   RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
@@ -872,6 +880,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has "
                  << reply->borrowed_refs().size();
   send_reply_callback(Status::OK(), nullptr, nullptr);
+  // SANG-TODO object_status_publisher_->Publish(WAIT_FOR_REF_REMOVED_CHANNEL, reply);
+  // SANG-TODO object_status_publisher_->UnregisterSubscription(WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
 }
 
 void ReferenceCounter::SetRefRemovedCallback(

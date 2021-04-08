@@ -2492,6 +2492,7 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   // goes to 0.
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                             ref_removed_callback);
+  // SANG-TODO object_status_publisher_->RegisterSubscription(WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
 }
 
 void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,
