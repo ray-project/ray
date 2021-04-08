@@ -324,8 +324,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback,
-                                 grpc_client_));
+      RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request,
+                                 std::move(rpc_callback), grpc_client_));
     }
 
     if (!send_queue_.empty()) {
