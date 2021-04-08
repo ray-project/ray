@@ -381,7 +381,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     }],
     indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 // 2, dtype=np.uint8)
