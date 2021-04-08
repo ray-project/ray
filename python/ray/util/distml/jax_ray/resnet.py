@@ -134,14 +134,14 @@ def ResNet18(num_classes):
       return stax.serial(
       GeneralConv(('HWCN', 'OIHW', 'NHWC'), 1, (7, 7), (2, 2), 'SAME'),
       BatchNorm(), Relu, MaxPool((3, 3), strides=(2, 2)),
-      BasicBlock(3, [64, 64]),
-      IdentityBlock(3, [64, 64]),
-      BasicBlock(3, [128, 128]),
-      IdentityBlock(3, [128, 128]),
-      BasicBlock(3, [256, 256]),
-      IdentityBlock(3, [256, 256]),
-      BasicBlock(3, [512, 512]),
-      IdentityBlock(3, [512, 512]),
+      # BasicBlock(3, [64, 64]),
+      # IdentityBlock(3, [64, 64]),
+      # BasicBlock(3, [128, 128]),
+      # IdentityBlock(3, [128, 128]),
+      # BasicBlock(3, [256, 256]),
+      # IdentityBlock(3, [256, 256]),
+      # BasicBlock(3, [512, 512]),
+      # IdentityBlock(3, [512, 512]),
       AvgPool((7, 7), padding="SAME"), Flatten, Dense(num_classes), LogSoftmax)
 
 if __name__ == "__main__":

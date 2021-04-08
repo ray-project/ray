@@ -1,16 +1,22 @@
 import ray
 from ray.util.distml.base_trainer import BaseTrainer
 import ray.util.collective as col
-import numpy as np
 
 import cupy as cp
+import numpy as np
 import ray.util.distml.util as util
 from cupy.cuda.nccl import groupStart, groupEnd
+
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
+    pass
 
 import logging
 
 class ParameterServerStrategy(BaseTrainer):
-    def __init__(self, *args, num_workers=1, num_ps=1, fusion=False, **kwargs):
+    def __init__(self, *args, num_workers=1, num_ps=1, use_tqdm=True, fusion=False, **kwargs):
        
         self.num_ps = num_ps 
         self.num_workers = num_workers
@@ -20,6 +26,8 @@ class ParameterServerStrategy(BaseTrainer):
 
         self.num_cpus_per_server = 1
         self.num_gpus_per_server = 1
+
+        self._use_tqdm = use_tqdm
 
         super(ParameterServerStrategy, self).__init__(*args, **kwargs)
 
@@ -41,9 +49,10 @@ class ParameterServerStrategy(BaseTrainer):
         # now spawn parameter server actors
         shard_ids = self.worker_group.split_parameters(self.assignments)
 
-        for i, server in enumerate(self.server_group.actors):
-            this_shard_id = self.worker_group.actors[0].index_shard.remote(shard_ids, i)
-            ray.wait([server.set_params.remote(this_shard_id)])
+        # TODO(HUI): use scatter to send parameters
+        for server_idx, server in enumerate(self.server_group.actors):
+            this_shard_ref = self.worker_group.actors[0].index_shard.remote(shard_ids, server_idx)
+            ray.wait([server.set_params.remote(this_shard_ref)])
 
     def _start_workers(self, world_size):
         """Create worker(actor), maybe need worker group to manager these workers.
@@ -100,7 +109,6 @@ class ParameterServerStrategy(BaseTrainer):
         self.server_group = DataParallelGroup(**servergroup_init_args)
 
         # Once the group is created, we start it.
-        # HUI: we might change the function name to start_actor
         self.worker_group.start_actors(self.num_workers)
         self.server_group.start_actors(self.num_ps)  # server at the last num_ps processes.
 
@@ -113,13 +121,19 @@ class ParameterServerStrategy(BaseTrainer):
         self.server_group.clean_redundancy()
 
     def shutdown(self, force=False):
-        self.data_parallel_group.shutdown(force=force)
+        self.worker_group.shutdown(force=force)
+        self.server_group.shutdown(force=force)
 
     def save_parameters(self, checkpoint):
-        self.data_parallel_group.save_parameters(checkpoint)
+        # TODO(HUI): ps save parameters.
+        # First, worker rank 0 should pull the latest parameter from servers
+        # Then, worker rank 0 save parameters
+        self.worker_group.save_parameters(checkpoint)
 
     def load_parameters(self, checkpoint):
-        self.data_parallel_group.load_parameters(checkpoint)
+        # TODO(HUI): ps load parameters.
+        # load the needed parameter in all server.
+        self.server_group.load_parameters(checkpoint)
 
     def _round_robin_sharding(self):
         """Generate the assignment of variable to servers."""
@@ -133,39 +147,63 @@ class ParameterServerStrategy(BaseTrainer):
         print("Load of each ps {}".format(loads))
         self.assignments = assignments
 
-    def train(self, *, max_retries=1, info=None):
+    def train(self, *, max_retries=1, info={}):
+        if self._use_tqdm:
+            desc = ""
+            if "epoch_idx" in info.keys():
+                if "num_epochs" in info.keys():
+                    desc = f"Epoch {info['epoch_idx'] + 1}/{info['num_epochs']} "
+                else:
+                    desc = f"Epoch {info['epoch_idx'] + 1} "
+
+            total = self.worker_group.get_train_loader_len()
+            _progress_bar = tqdm(
+                total=total, desc=desc, unit="batch", leave=False)
+            postfix = {}
+            if "val_acc" in info.keys():
+                postfix.update(val_acc=info["val_acc"])
+
+        # TODO(HUI): Record server rank instead of using num_ps.
         # train one epoch
         self.worker_group.start_iteration()
-        for i in range(self.worker_group.get_iteration_len()):
-            self.step()
-            print(f"step: {i}")
-        return stats
+        for idx in range(self.worker_group.get_train_loader_len()):
+            metrics = self.step()
+            if self._use_tqdm:
+                _progress_bar.n = idx + 1
+                if "train_loss" in metrics:
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
+        return info
 
-    def validate(self):
-        stats = self.data_parallel_group.validate(info={})
+    def validate(self, *, info={}):
+        stats = self.worker_group.validate(info=info)
         return stats[0] # validate result should be the same in all workers
 
     def step(self):
         loss_vals = []
         rets = []
+        metrics = {}
 
         for worker_idx, worker in enumerate(self.worker_group.actors):
             for server_idx, server in enumerate(self.server_group.actors):
                 # every server sends its shard to the worker
-                server.send_parameters.remote(worker_idx)
+                server.send_params.remote(worker_idx)
             # the worker receives shards from ps, compute loss, gradients
             # and sends these gradients to every server
             loss_val = worker.compute.remote()
             loss_vals.append(loss_val)
-        ray.get(loss_vals)
+        loss_vals = ray.get(loss_vals)
+        train_loss_list = [d["train_loss"] for d in loss_vals]
+        metrics["train_loss"] = np.mean(train_loss_list)
 
         for worker_idx, worker in enumerate(self.worker_group.actors):
             for server in self.server_group.actors:
                 rets.append(server.update.remote(worker_idx))
-        return ray.get(rets)
+        ray.get(rets)
+        return metrics
 
 
-class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
+class PS(object):  # HUI: In server, the saved params is operator tensor, not cupy
     def __init__(self, 
                  training_operator_cls, operator_config):
         # rank should be true rank. means, rank has already plus num_worker.
@@ -195,9 +233,10 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         for i in range(self.num_workers):
             recv = util.zeros((1,), cpu=False)
             col.recv(recv, i, self.group_name)
+            assert recv==1
         for i in range(self.num_workers):
-            recv = util.zeros((1,), cpu=False)
-            col.send(recv, i, self.group_name)
+            send = util.ones((1,), cpu=False)
+            col.send(send, i, self.group_name)
         return
 
     def get_params(self):
@@ -206,13 +245,17 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
     def set_params(self, params):
         # params should in GPU when calling this function.
         for k, v in params.items():
-            self.params[k] = v
-        print(list(self.params.values()))
+            self.params[k] = self.training_operator.asarray(v)
         self.training_operator.reset_optimizer_for_params(list(self.params.values()))
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
+    def apply_updates(self, grad_buffer_list):
+        self.training_operator.apply_updates(grad_buffer_list, self.num_workers)
+        self.params = self.training_operator.get_named_parameters(cpu=False)
+
     def get_grad_buffer(self):
-        grad_buffer = {n:util.zeros_like(p, cpu=False) for n, p in self.params.items()}
+        grad_buffer = {name:self.training_operator.zeros_like(p, cpu=False) 
+                       for name, p in self.params.items()}
         return grad_buffer
 
     def _inc_gradients(self, gradients):
@@ -224,17 +267,15 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         for name, p in self.get_params().items():
             if gradients[name] is not None:
                 self.grad_buffer[name] += gradients[name]
-        print("collecting gradients success")
 
     def _init_grad_counts(self):
         self.grad_counts = [0] * self.num_workers
         
-    def send_parameters(self, dst_rank):
+    def send_params(self, dst_rank):
         """ Send this param shard to the destination worker """
-        # groupStart()
         for name, v in self.params.items():
-            col.send(v, dst_rank, self.group_name)
-        # groupEnd()
+            cv = self.training_operator.to_cupy(v)
+            col.send(cv, dst_rank, self.group_name)
 
     def update(self, src_rank):
         """Receive gradients and update"""
@@ -243,17 +284,13 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         recv_list = []
         for key in keys:
             to_recv = self.params[key]
-            recv_list.append(util.zeros(to_recv.shape, cpu=False))
-
-        steps = 0
+            recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
         for i in range(len(keys)):
-            col.recv(recv_list[i], src_rank, self.group_name)
-            steps += 1
-        print(f"server: recv complete, steps {steps}")
+            v = self.training_operator.to_cupy(recv_list[i])
+            col.recv(v, src_rank, self.group_name)
 
         for i in range(len(keys)):
             grads[keys[i]] = recv_list[i]
-        print("server: grads set")
 
         self._inc_gradients(grads)
         if not self.grad_counts[src_rank]:
@@ -261,15 +298,8 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
         else:
             raise RuntimeError(f"This worker {src_rank} send gradients again.")
         if sum(self.grad_counts) == self.num_workers:
-            grad_buffer_list = list(self.grad_buffer.values())
-            print("server: applying gradients")
+            self.apply_updates(self.grad_buffer)
 
-            # print(grad_buffer_list)
-            # list[cupy] => list[operator_tensor]
-            grad_buffer_list = self.training_operator.to_operator_tensor(grad_buffer_list)
-
-            self.training_operator.apply_updates(grad_buffer_list)
-            print("server: applying gradients success")
             self.grad_buffer = self.get_grad_buffer()
             self._init_grad_counts()
         return True
@@ -277,6 +307,12 @@ class PS(object):  # HUI: maybe we could let 'PS' derive 'Worker'
     def clean_redundancy(self):
         self.training_operator.clean_redundancy()
 
+    def shutdown(self):
+        # destroy the collective group resources on this process
+        col.destroy_collective_group(self.group_name)
+        if self.training_operator:
+            del self.training_operator
+        return 1
 
 class Worker(object):
     def __init__(self, 
@@ -311,8 +347,9 @@ class Worker(object):
             send = util.ones((1,), cpu=False)
             col.send(send, self.num_workers + i, self.group_name)
         for i in range(self.num_ps):
-            send = util.ones((1,), cpu=False)
-            col.recv(send, self.num_workers + i, self.group_name)
+            recv = util.zeros((1,), cpu=False)
+            col.recv(recv, self.num_workers + i, self.group_name)
+            assert recv==1
         return
 
     def num_params(self):
@@ -331,7 +368,7 @@ class Worker(object):
     def start_iteration(self):
         self.iterator = iter(self.training_operator.train_loader)
     
-    def get_iteration_len(self):
+    def get_train_loader_len(self):
         return len(self.training_operator.train_loader)
 
     def derive_updates(self, batch):
@@ -339,15 +376,19 @@ class Worker(object):
         # TODO (Hao): change it to derive_update and apply_update.
         return self.training_operator.derive_updates(batch)
 
-    def apply_updates(self, updates):
-        assert updates
-        self.training_operator.apply_updates(updates)
+    # def apply_updates(self, updates):
+    #     assert updates
+    #     self.training_operator.apply_updates(updates, self.num_workers)
 
-    def updates_transform(self, updates):
-        return self.training_operator.updates_transform(updates)
+    # def updates_transform(self, updates):
+    #     return self.training_operator.updates_transform(updates)
 
     def compute_gradients(self, params, named=True):
+        """
+        update worker parameters that received from server. compute gradients and return named gradients.
+        """
         self.set_parameters(params)
+
         try:
             batch = next(self.iterator)
         except StopIteration and NameError:
@@ -356,7 +397,7 @@ class Worker(object):
         # different from original core ps. 
         # Here derive_updates return loss_val and graident in order.
 
-        loss_val, grads = self.training_operator.derive_updates_v2(batch)
+        loss_val, grads = self.training_operator.derive_updates(batch)
         
         if named and isinstance(grads, list):
             grads_dict = {f"{idx}":g for idx, g in enumerate(grads)}
@@ -392,8 +433,6 @@ class Worker(object):
         return self.training_operator.get_parameters(cpu)
 
     def get_named_parameters(self, cpu):
-        # HUI: we might need to convert different tensor type to a unified one.
-        # GPU use cupy, CPU use numpy.
         return self.training_operator.get_named_parameters(cpu)
 
     def get_gradients(self):
@@ -409,6 +448,8 @@ class Worker(object):
 
     def compute(self):
         """Returns the loss, and send gradients to servers"""
+        metrics = {}
+        
         # First receive params from servers
         param_shards = []
         weights = self.get_named_parameters(cpu=False)
@@ -420,31 +461,40 @@ class Worker(object):
             param_shard_keys = self.name_list[i]
             for key in param_shard_keys:
                 to_recv = weights[key]
-                recv_list[-1].append(util.ones(to_recv.shape, cpu=False))
+                recv_list[-1].append(
+                    self.training_operator.ones(to_recv.shape, cpu=False))
 
         for i in range(self.num_ps):
             for j in range(len(self.name_list[i])):
-                col.recv(recv_list[i][j], self.num_workers+i, self.group_name)
+                v = self.training_operator.to_cupy(recv_list[i][j])
+                col.recv(v, self.num_workers+i, self.group_name)
 
         # parameter updates
         for i in range(self.num_ps):
             param_shard_keys = self.name_list[i]
             for j in range(len(param_shard_keys)):
                 params[param_shard_keys[j]] = recv_list[i][j]
-        # print("worker, prepare keys for parameter")
 
-        loss, grad = self.compute_gradients(params)
-        print(loss)
+        loss_val, grad = self.compute_gradients(params)
+        metrics["train_loss"] = loss_val.item()
         split_grad = self.split_gradients(grad, self.assignments)
-        steps = 0
         for i in range(self.num_ps):
             this_shard = self.index_shard(split_grad, i)
             for _, v in this_shard.items():
-                col.send(v, self.num_workers+i, self.group_name)
-                steps+=1
-        print("worker, send gradient")
-        return loss
+                cv = self.training_operator.to_cupy(v)
+                col.send(cv, self.num_workers+i, self.group_name)
+        return metrics
 
+    def validate(self, info={}):
+        # PS Strategy, before 
+        return self.training_operator.validate(info)
+
+    def shutdown(self):
+        # destroy the collective group resources on this process
+        col.destroy_collective_group(self.group_name)
+        if self.training_operator:
+            del self.training_operator
+        return 1
 
 class DataParallelGroup:
     """Spawn a group a replicas for data-parallel training."""
@@ -499,37 +549,43 @@ class DataParallelGroup:
             len(self._distributed_actors)))
 
     def test_connection(self):
-        rets = [replica.test_connection.remote() 
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.test_connection.remote() 
+                for _, actor in enumerate(self.actors)]
         return rets
 
     def set_assignments(self, assignments):
-        rets = [replica.set_assignments.remote(assignments) 
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.set_assignments.remote(assignments) 
+                for _, actor in enumerate(self.actors)]
         return rets
 
     def start_iteration(self):
-        rets = [replica.start_iteration.remote() 
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.start_iteration.remote() 
+                for _, actor in enumerate(self.actors)]
 
-    def get_iteration_len(self):
-        return ray.get([self.actors[0].get_iteration_len.remote()])[0]
+    def get_train_loader_len(self):
+        lens =  ray.get([actor.get_train_loader_len.remote() 
+                         for actor in self.actors])
+
+        if len(set(lens)) != 1:
+            raise RuntimeError("All actors should have the same dataloader len.")
+
+        return lens[0]
 
     def train(self, max_retries=1, info={}):
-        rets = [replica.train.remote()
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.train.remote()
+                for _, actor in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 
     def validate(self, info={}):
-        rets = [replica.validate.remote(info)
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.validate.remote(info)
+                for _, actor in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 
     def shutdown(self, force=False):
-        rets = [replica.shutdown.remote()
-                for _, replica in enumerate(self.actors)]
+        rets = [actor.shutdown.remote()
+                for _, actor in enumerate(self.actors)]
         stats = ray.get(rets)
         return stats
 

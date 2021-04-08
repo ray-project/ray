@@ -170,9 +170,12 @@ def ResNet18(num_classes):
 
 def ResNetToy(num_classes):
       return stax.serial(
-      GeneralConv(('HWCN', 'OIHW', 'NHWC'), 1, (7, 7), (2, 2), 'SAME'),
-      BatchNorm(), Relu, MaxPool((3, 3), strides=(2, 2)),
-      # BasicBlock_withoutBN(3, [64, 64]),
+      GeneralConv(('HWCN', 'OIHW', 'NHWC'), 1, (3, 3), (1, 1), 'SAME'),
+      BatchNorm(), Relu, AvgPool((2, 2), padding="SAME"),
+      GeneralConv(('NHWC', 'HWIO', 'NHWC'), 1, (3, 3), (1, 1), 'SAME'),
+      BatchNorm(), Relu, AvgPool((2, 2), padding="SAME"),
+      GeneralConv(('NHWC', 'HWIO', 'NHWC'), 1, (3, 3), (1, 1), 'SAME'),
+      BatchNorm(), Relu,
       AvgPool((7, 7), padding="SAME"), 
       Flatten, Dense(num_classes), LogSoftmax)
 

@@ -100,5 +100,3 @@ class TorchTrainingOperator(TrainingOperator):
     def load_parameters(self, checkpoint):
         # TODO(Hao)
         pass
-
-    def

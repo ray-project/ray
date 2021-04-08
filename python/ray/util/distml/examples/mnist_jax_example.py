@@ -19,7 +19,7 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101, MLP 
+from jax_util.resnet import ResNet18, ResNet50, ResNet101, ResNetToy 
 from jax_util.datasets import mnist
 
 def initialization_hook():
@@ -61,13 +61,15 @@ class Dataloader:
     def __len__(self):
         return self.num_batches
         
-class CifarTrainingOperator(JAXTrainingOperator):
+class MnistTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
     def setup(self, *args, **kwargs):
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, kwargs["batch_size"])
         lr=0.01
-        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        init_fun, predict_fun = ResNetToy(kwargs["num_classes"])
+
         _, init_params = init_fun(rng_key, input_shape)
             
         opt_init, opt_update, get_params = optimizers.adam(lr)
@@ -76,11 +78,11 @@ class CifarTrainingOperator(JAXTrainingOperator):
         with FileLock(".ray.lock"):
             train_images, train_labels, test_images, test_labels = mnist()
             
-        train_images = train_images.reshape(train_images.shape[0], 1, 28, 28)[:1000].transpose(2, 3, 1, 0)
-        test_images = test_images.reshape(test_images.shape[0], 1, 28, 28)[:1000].transpose(2, 3, 1, 0)
+        train_images = train_images.reshape(train_images.shape[0], 1, 28, 28).transpose(2, 3, 1, 0)
+        test_images = test_images.reshape(test_images.shape[0], 1, 28, 28).transpose(2, 3, 1, 0)
 
-        train_labels = train_labels[:1000]
-        test_labels = test_labels[:1000]
+        train_labels = train_labels
+        test_labels = test_labels
 
         train_loader = Dataloader(train_images, train_labels, batch_size=64, shuffle=True)
         test_loader = Dataloader(test_images, test_labels, batch_size=64)
@@ -95,7 +97,6 @@ class CifarTrainingOperator(JAXTrainingOperator):
         #     target_class = jnp.argmax(targets, axis=-1)
         #     return np.mean(list(predicted_class == target_class))
         # self.register_metrics({"accuracy": accuracy_batch})
-
 
 
 if __name__ == "__main__":
@@ -139,29 +140,30 @@ if __name__ == "__main__":
     ray.init(num_gpus=2, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = AllReduceStrategy(
-        training_operator_cls=CifarTrainingOperator,
+        training_operator_cls=MnistTrainingOperator,
         world_size=args.num_workers,
         operator_config={
             "lr": 0.1,
-           "test_mode": args.smoke_test,  # subset the data
+            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64 * args.num_workers,
+            "batch_size": 64,
             "num_classes": 10,
+            "use_tqdm": True,
         },
         )
 
     trainer1.save_parameters("jax_checkpoint")
     trainer1.load_parameters("jax_checkpoint")
 
-    pbar = trange(args.num_epochs, unit="epoch")
-    for i in pbar:
-        info = {"num_steps": 1} if args.smoke_test else {}
+    info = {"num_steps": 1}
+    for i in range(args.num_epochs):
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
-        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
+        info.update(val_acc=val_stats["val_accuracy"]) 
+        # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer1.shutdown()
     print("success!")

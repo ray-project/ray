@@ -103,10 +103,6 @@ class Worker:
         def update(i, opt_state, batch):
             params = self.get_params(opt_state)
             gradient = grad(self.loss)(params, batch)
-
-            gradient_flat, tree  = tree_flatten(gradient)
-            gradient = tree_unflatten(tree, gradient_flat)
-
             return self.opt_update(i, gradient, opt_state)
 
         self.update = update # jax.jit(update)

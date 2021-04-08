@@ -39,7 +39,7 @@ def accuracy(params, batch):
     num_imgs = batch[1].shape[0]
     num_complete_batches, leftover = divmod(num_imgs, batch_size)
     num_batches = num_complete_batches + bool(leftover)
-    batches = synth_batches(batch[0], batch[1])
+    batches = synth_batches(batch[0], batch[1], batch_size)
 
     result = []
     for i in range(num_batches):

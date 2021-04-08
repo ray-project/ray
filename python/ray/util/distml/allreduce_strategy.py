@@ -2,26 +2,52 @@ import ray
 from ray.util.distml.base_trainer import BaseTrainer
 import ray.util.collective as col
 
+import cupy as cp
+import numpy as np
+
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
+    pass
 
 # TODO(Hao): could make an interface class and use factory pattern to
 #            set up strategies/trainers.
 class AllReduceStrategy(BaseTrainer):
-    def __init__(self, *args, fusion=False, **kwargs):
+    def __init__(self, *args, fusion=False, use_tqdm=True, **kwargs):
         self._fusion = fusion
+        self._use_tqdm = use_tqdm
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
 
     def _init_strategy(self):
         """Do initialization for the distributed strategy."""
         pass
 
-    def train(self, *, max_retries=1, info=None):
-        # train one epoch
+    def train(self, *, max_retries=1, info={}):
+        if self._use_tqdm:
+            desc = ""
+            if "epoch_idx" in info.keys():
+                if "num_epochs" in info.keys():
+                    desc = f"Epoch {info['epoch_idx'] + 1}/{info['num_epochs']} "
+                else:
+                    desc = f"Epoch {info['epoch_idx'] + 1} "
 
-        stats = self.data_parallel_group.train(max_retries=1, info={})
-        return stats
-        # rets = [replica.train.remote()
-        #         for _, replica in enumerate(self.data_parallel_group.replicas)]
-        # ray.get(rets)
+            total = self.data_parallel_group.get_train_loader_len()
+            _progress_bar = tqdm(
+                total=total, desc=desc, unit="batch", leave=False)
+            postfix = {}
+            if "val_acc" in info.keys():
+                postfix.update(val_acc=info["val_acc"])
+
+        self.data_parallel_group.start_iteration()
+        for idx in range(self.data_parallel_group.get_train_loader_len()):
+            metrics = self.data_parallel_group.train_batch()
+            if self._use_tqdm:
+                _progress_bar.n = idx + 1
+                if "train_loss" in metrics:
+                    postfix.update(loss=metrics["train_loss"])
+                _progress_bar.set_postfix(postfix)
+        return info
 
     # def train_batch(self, batches):
     #     # First, let each worker proceed with a train_step
@@ -30,8 +56,8 @@ class AllReduceStrategy(BaseTrainer):
     #             for i, replica in enumerate(self.data_parallel_group.replicas)]
     #     ray.get(rets)
 
-    def validate(self):
-        stats = self.data_parallel_group.validate(info={})
+    def validate(self, *info):
+        stats = self.data_parallel_group.validate(info=info)
         return stats[0] # validate result should be the same in all workers
 
     def _start_workers(self, num_workers):
@@ -90,6 +116,15 @@ class Replica:
                  training_operator_cls, operator_config):
         self.training_operator_cls = training_operator_cls
         self.operator_config = operator_config
+
+        if "use_tqdm" in operator_config.keys():
+            self._use_tqdm = operator_config["use_tqdm"]
+        else:
+            self._use_tqdm = False
+
+        if tqdm is None and self._use_tqdm:
+            raise ValueError("tqdm must be installed to use tqdm in training.")
+
         # collective-related information
         self.group_size = None
         self.rank = None
@@ -107,23 +142,28 @@ class Replica:
                                   backend=backend, group_name=group_name)
         return
 
-    def train(self):
-        # need to record some metric, like loss
-        for batch in self.training_operator.yield_train_loader():
-            loss_val = self.train_batch(batch)
-        return 1
+    def start_iteration(self):
+        self.iterator = iter(self.training_operator.train_loader)
+    
+    def get_train_loader_len(self):
+        return len(self.training_operator.train_loader)
 
-    def train_batch(self, batch):
-        loss_val, updates = self.derive_updates(batch)
-        assert updates
-        # TODO: make the signature correct
+    def train_batch(self):
+        metrics = {}
+        try:
+            batch = next(self.iterator)
+        except StopIteration and NameError:
+            raise RuntimeError(
+                "iterator has ran out. Please use `start_iteration` to update iterator")
         
-        # HUI: maybe need a transform for updates to make a list.
-        # for jax, gradient need to call `tree_flatten` and get list.
-        for g in self.updates_transform(updates):
-            col.allreduce(g)
+        loss_val, updates = self.derive_updates(batch)
+        metrics["train_loss"] = loss_val
+
+        for g in updates:
+            cg = self.training_operator.to_cupy(g)
+            col.allreduce(cg)
         self.apply_updates(updates)
-        return loss_val
+        return metrics
 
     def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
@@ -131,8 +171,7 @@ class Replica:
         return self.training_operator.derive_updates(batch)
 
     def apply_updates(self, updates):
-        assert updates
-        self.training_operator.apply_updates(updates)
+        self.training_operator.apply_updates(updates, self.group_size)
 
     def updates_transform(self, updates):
         return self.training_operator.updates_transform(updates)
@@ -143,7 +182,7 @@ class Replica:
     def shutdown(self):
         # destroy the collective group resources on this process
         col.destroy_collective_group(self.group_name)
-        if not self.training_operator:
+        if self.training_operator:
             del self.training_operator
         return 1
 
@@ -197,14 +236,30 @@ class DataParallelGroup:
         # setup the model training operator
         ray.get(self._setup_operator())
 
-    def train(self, max_retries=1, info={}):
-        rets = [replica.train.remote()
+    def start_iteration(self):
+        rets = [replica.start_iteration.remote() 
                 for _, replica in enumerate(self.replicas)]
-        stats = ray.get(rets)
-        return stats
+
+    def get_train_loader_len(self):
+        lens =  ray.get([replica.get_train_loader_len.remote() 
+                         for replica in self.replicas])
+
+        if len(set(lens)) != 1:
+            raise RuntimeError("All actors should have the same dataloader len.")
+
+        return lens[0]
+
+    def train_batch(self):
+        metrics = {}
+        loss_vals = ray.get([replica.train_batch.remote()
+                             for _, replica in enumerate(self.replicas)])
+        train_loss_list = [d["train_loss"] for d in loss_vals]
+        metrics["train_loss"] = np.mean(train_loss_list)
+
+        return metrics
 
     def validate(self, info={}):
-        rets = [replica.validate.remote(info)
+        rets = [replica.validate.remote(info=info)
                 for _, replica in enumerate(self.replicas)]
         stats = ray.get(rets)
         return stats

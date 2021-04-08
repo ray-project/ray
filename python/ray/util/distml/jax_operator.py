@@ -4,10 +4,10 @@ import cupy as cp
 from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
-from jax.dlpack import from_dlpack
-from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, treedef_tuple
+from jax.dlpack import from_dlpack, to_dlpack
+from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, tree_map, build_tree
 from jax._src.util import unzip2
-from jax.experimental.optimizers import Optimizer
+from jax.experimental.optimizers import OptimizerState
 
 from ray.util.distml.base_operator import TrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
@@ -20,6 +20,12 @@ except:
     print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
     jax2tf_available = False
 
+tqdm = None
+try:
+    from tqdm import tqdm
+except ImportError:
+    pass
+
 
 class JAXTrainingOperator(TrainingOperator):
 
@@ -27,6 +33,9 @@ class JAXTrainingOperator(TrainingOperator):
         self.train_step_num = 0 # use to record the training step that has passed.
         self.timers = TimerCollection()
         super(JAXTrainingOperator, self).__init__(operator_config)
+
+        if hasattr(self._config, "jit_mode"):
+            assert not self._config["jit_mode"], "Not support jit in jax operator."
 
         self.setup(**self._config)
 
@@ -61,6 +70,8 @@ class JAXTrainingOperator(TrainingOperator):
         self.criterion = criterion
         if lr_schedulers:
             self.lr_schedulers = lr_schedulers
+            print("WARNING: jax not support learning rate scheduler." 
+                  "This will not work.")
         
         self._register_model(model)
         self._register_optimizer(optimizer)
@@ -90,7 +101,7 @@ class JAXTrainingOperator(TrainingOperator):
         ]
         self.input_signatures = input_signatures
 
-    def loss_fn(self, params, batch):
+    def loss_func(self, params, batch):
         inputs, targets = batch
         logits = self.predict_fun(params, inputs)
         return self.criterion(logits, targets)
@@ -104,44 +115,38 @@ class JAXTrainingOperator(TrainingOperator):
             yield batch
 
     def derive_updates(self, batch):
-        print("Operator: derive updating")
         loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
-        print("Operator: calculate_gradient completed")
         return loss_val, tree_flatten(gradient)[0]
         
     def derive_updates_v2(self, batch):
         loss_val, gradient = self.derive_updates(batch)
-        return loss_val, list(map(self.jax2cupy, gradient))
+        return loss_val, list(map(self.to_cupy, gradient))
 
-    def apply_updates(self, gradient):
-        # gradient = list(map(treedef_tuple, gradient))
+    def apply_updates(self, gradient, num_workers):
+        if isinstance(gradient, dict):
+            gradient = list(gradient.values())
         gradient = tree_unflatten(self.opt_state[1], gradient)
-        print(gradient)
+        gradient = tree_map(lambda x: x/num_workers, gradient)
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
 
-    def updates_transform(self, updates):
-        # flatten_grads = tree_flatten(updates)[0]
+    def to_cupy(self, x):
+        cx = cp.fromDlpack(self.get_jax_dlpack(x))
+        # cx = cp.fromDlpack(to_dlpack(x))
+        # print(cx.data.ptr)
+        # print(x.unsafe_buffer_pointer())
+        assert cx.data.ptr == x.unsafe_buffer_pointer()
 
-        for g in updates:
-            if not len(g):
-               continue
-            yield jax2cupy(g)
-            cp_g/=self.world_size
-
-    def jax2cupy(self, x):
-        return cp.fromDlpack(self.get_jax_dlpack(x))
+        return cx
 
     def to_operator_tensor(self, tensor):
         if isinstance(tensor, list):
             return list(map(lambda x:from_dlpack(x.toDlpack()), tensor))
-        return jax.from_dlpack(tensor.toDlpack())
+        return from_dlpack(tensor.toDlpack())
 
     def _calculate_gradient(self, opt_state, batch):
         params = self.get_params(opt_state)
-        print("operator: get parameter success")
-        loss_val, gradient = value_and_grad(self.loss_fn)(params, batch)
-        print("operator: compute gradient success")
+        loss_val, gradient = value_and_grad(self.loss_func)(params, batch)
         return loss_val, gradient
 
     def get_jax_dlpack(self, tensor):
@@ -155,32 +160,12 @@ class JAXTrainingOperator(TrainingOperator):
         validation_loader = self.validation_loader
         metric_meters = AverageMeterCollection()
 
-        # if self.use_tqdm and self.world_rank == 0:
-        #     desc = ""
-        #     if info is not None and "epoch_idx" in info:
-        #         if "num_epochs" in info:
-        #             desc = f"{info['epoch_idx'] + 1}/{info['num_epochs']}e"
-        #         else:
-        #             desc = f"{info['epoch_idx'] + 1}e"
-
-        #     # TODO: Implement len for Dataset?
-        #     total = info[NUM_STEPS]
-        #     if total is None:
-        #         if hasattr(iterator, "__len__"):
-        #             total = len(iterator)
-
-        #     _progress_bar = tqdm(
-        #         total=total, desc=desc, unit="batch", leave=False)
-
-        # _progress_bar = tqdm(
-        #     total=total, desc=desc, unit="batch", leave=False)
-
         for batch_idx, batch in enumerate(validation_loader):
             batch_info = {"batch_idx": batch_idx}
             batch_info.update(info)
             metrics = self.validate_step(params, batch, batch_info)
             metric_meters.update(metrics, n=metrics.pop("samples_num", 1))
-
+        print("validate", metric_meters.summary())
         return metric_meters.summary()
 
     def validate_step(self, params, batch, batch_info):
@@ -191,10 +176,10 @@ class JAXTrainingOperator(TrainingOperator):
         criterion = self.criterion
         predict_fun = self.predict_fun
         # unpack features into list to support multiple inputs model
-        *inputs, targets = batch
+        inputs, targets = batch
 
         with self.timers.record("eval_fwd"):
-            outputs = predict_fun(params, *inputs)
+            outputs = predict_fun(params, inputs)
             loss = criterion(outputs, targets)
             prediction_class = jnp.argmax(outputs, axis=1)
             targets_class = jnp.argmax(targets, axis=1)
@@ -203,8 +188,8 @@ class JAXTrainingOperator(TrainingOperator):
         samples_num = targets.shape[0]
 
         return {
-            "val_loss": loss,
-            "val_accuracy": acc,
+            "val_loss": loss.item(),
+            "val_accuracy": acc.item(),
             "samples_num": samples_num
         }
 
@@ -236,47 +221,54 @@ class JAXTrainingOperator(TrainingOperator):
         flatten_params, tree = tree_flatten(params)
         if not hasattr(self, "tree"):
             self.tree = tree
-        
+
         if cpu:
             flatten_params = list(map(np.asarray, flatten_params))
         else:
-            flatten_params = list(map(self.jax2cupy, flatten_params))
+            flatten_params = flatten_params
+            # flatten_params = list(map(self.to_cupy, flatten_params))
         return flatten_params
 
     def get_named_parameters(self, cpu):
         params = self.get_parameters(cpu)
-        dict_params = {f"{idx}":p for idx, p in enumerate(params)}
+        if hasattr(self, "preset_keys"):
+            dict_params = {name:p for name, p in zip(self.preset_keys, params)}
+        
+        else:
+            dict_params = {f"{idx}":p for idx, p in enumerate(params)}
         return dict_params
 
-    def set_parameters(self, params):
-        if isinstance(params, dict):
-            # print("Warning: using named parameter to set params")
-            # params = unzip(sorted(params.items(), key=lambda d: d[0]))[1]
-            params = list(params.values())
-            print("operator: convert param from dict to list")
+    def set_parameters(self, new_params):
+        if isinstance(new_params, dict):
+            keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: d[0]))
+            self.preset_keys = keys
 
         if not hasattr(self, "tree"):
             self.tree = tree_structure(self.get_params(self.opt_state)) 
 
         states_flat, tree, subtrees = self.opt_state
-        states = list(map(tree_unflatten, subtrees, states_flat))
 
-        new_states = params, *states[1:]
-        new_states_flat, subtrees2 = unzip2(map(tree_flatten, states))
+        states = map(tree_unflatten, subtrees, states_flat)
 
-        for idx, (subtree, subtree2) in enumerate(zip(subtrees, subtrees2)):
-            if subtree2 != subtree:
+        def update(param, state):
+            new_state = param, *state[1:]
+            return new_state
+
+        new_states = map(update, new_params, states)
+        new_state_flat, new_subtrees = unzip2(map(tree_flatten, new_states))
+
+        for idx, (subtree, new_subtree) in enumerate(zip(subtrees, new_subtrees)):
+            if new_subtree != subtree:
                 msg = ("input structur did not match the save params struture. "
                        "input {} and output {}.")
-                raise TypeError(msg.format(subtree, subtree2))
+                raise TypeError(msg.format(subtree, new_subtree))
 
-        self.opt_state = Optimizer(new_states_flat, tree, subtrees)
-        print("worker: set opt_state")
+        self.opt_state = OptimizerState(new_state_flat, tree, new_subtrees)
 
     def reset_optimizer_for_params(self, params):
         self.tree = tree_structure(params)
         self.opt_state = self.opt_init(params)
-        params2 = self.get_param(self.opt_state)
+        params2 = self.get_params(self.opt_state)
         assert params == params2
 
     # some operation for this ml system.
@@ -293,8 +285,25 @@ class JAXTrainingOperator(TrainingOperator):
         else:
             return jnp.zeros(shape)
 
+    # some operation for this ml system.
+    def ones_like(self, x, cpu=True):
+        if cpu:
+            return np.ones_like(x)
+        else:
+            return jnp.ones_like(x)
+
+    # some operation for this ml system.
+    def zeros_like(self, x, cpu=True):
+        if cpu:
+            return np.zeros_like(x)
+        else:
+            return jnp.zeros_like(x)
+
     def numel(self, v):
         return np.size(v)
+
+    def asarray(self, v):
+        return jnp.asarray(v)
 
     def clean_redundancy(self):
         del self.train_loader

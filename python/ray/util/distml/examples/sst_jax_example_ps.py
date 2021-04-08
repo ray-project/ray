@@ -62,7 +62,7 @@ class Dataloader:
     def __len__(self):
         return self.num_batches
         
-class CifarTrainingOperator(JAXTrainingOperator):
+class SstTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
     def setup(self, *args, **kwargs):
         rng_key = random.PRNGKey(0)
@@ -106,18 +106,45 @@ class CifarTrainingOperator(JAXTrainingOperator):
         self.root_cx = root_cx
         
         self.register(model=[opt_state, init_fun, predict_fun], optimizer=[opt_init, opt_update, get_params], criterion=lambda logits, targets:-jnp.sum(logits * targets))
-        # self.register(model=[opt_state, get_params, predict_fun], optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets))
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
         self.register_input_signatures(input_shape=input_shape)
 
     @override(JAXTrainingOperator)
-    def loss_fn(self, params, batch):
+    def loss_func(self, params, batch):
         cx = self.root_cx.replace_with_list(params)
         inputs, targets = batch
         logits = self.predict_fun(cx, inputs)
         return self.criterion(logits, targets)
+
+    @override(JAXTrainingOperator)
+    def validate_step(self, params, batch, batch_info):
+        if not hasattr(self, "opt_state"):
+            raise RuntimeError("model unset. Please register model in setup.")
+        if not hasattr(self, "criterion"):
+            raise RuntimeError("criterion unset. Please register criterion in setup.")
+        criterion = self.criterion
+        predict_fun = self.predict_fun
+        # unpack features into list to support multiple inputs model
+        *inputs, targets = batch
+
+        cx = self.root_cx.replace_with_list(params)
+        with self.timers.record("eval_fwd"):
+            outputs = predict_fun(cx, *inputs)
+            loss = criterion(outputs, targets)
+            prediction_class = jnp.argmax(outputs, axis=1)
+            targets_class = jnp.argmax(targets, axis=1)
+
+        acc = jnp.mean(prediction_class == targets_class)
+        samples_num = targets.shape[0]
+
+        return {
+            "val_loss": loss,
+            "val_accuracy": acc,
+            "samples_num": samples_num
+        }
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -160,7 +187,7 @@ if __name__ == "__main__":
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = ParameterServerStrategy(
-        training_operator_cls=CifarTrainingOperator,
+        training_operator_cls=SstTrainingOperator,
         world_size=2,
         num_workers=1,
         num_ps=1,
@@ -176,15 +203,14 @@ if __name__ == "__main__":
     # trainer1.save_parameters("jax_checkpoint")
     # trainer1.load_parameters("jax_checkpoint")
 
-    pbar = trange(args.num_epochs, unit="epoch")
-    for i in pbar:
-        info = {"num_steps": 1} if args.smoke_test else {}
+    info = {"num_steps": 1}
+    for i in range(args.num_epochs):
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
-        pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
+        info.update(val_acc=val_stats["val_accuracy"]) 
 
     trainer1.shutdown()
     print("success!")
