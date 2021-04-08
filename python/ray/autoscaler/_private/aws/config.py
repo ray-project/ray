@@ -415,7 +415,14 @@ def _configure_subnet(config):
                 "to populate the list of subnets and trying this again.".
                 format(config["provider"]["availability_zone"]))
 
-    subnet_ids = [s.subnet_id for s in subnets]
+    # Use subnets in only one VPC, so that _configure_security_groups only
+    # needs to create a security group in this one VPC. Otherwise, we'd need
+    # to set up security groups in all of the user's VPCs and set up networking
+    # rules to allow traffic between these groups.
+    # See https://github.com/ray-project/ray/pull/14868.
+    subnet_ids = [
+        s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
+    ]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids

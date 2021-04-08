@@ -5,9 +5,10 @@ import os
 from contextlib import contextmanager
 import pytest
 import subprocess
+import json
 
 import ray
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
 
 
@@ -32,6 +33,7 @@ def get_default_fixture_ray_kwargs():
     ray_kwargs = {
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
+        "dashboard_port": None,
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -52,6 +54,7 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
+
     with _ray_start(
             num_cpus=1, include_dashboard=True, **param) as address_info:
         yield address_info
@@ -217,7 +220,7 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
-    cluster = ray._private.cluster_utils.Cluster(
+    cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
         remote_node = cluster.add_node(num_cpus=1)
@@ -244,3 +247,66 @@ def log_pubsub():
     p.psubscribe(log_channel)
     yield p
     p.close()
+
+
+"""
+Object spilling test fixture
+"""
+# -- Smart open param --
+bucket_name = "object-spilling-test"
+
+# -- File system param --
+spill_local_path = "/tmp/spill"
+
+# -- Spilling configs --
+file_system_object_spilling_config = {
+    "type": "filesystem",
+    "params": {
+        "directory_path": spill_local_path
+    }
+}
+# Since we have differet protocol for a local external storage (e.g., fs)
+# and distributed external storage (e.g., S3), we need to test both cases.
+# This mocks the distributed fs with cluster utils.
+mock_distributed_fs_object_spilling_config = {
+    "type": "mock_distributed_fs",
+    "params": {
+        "directory_path": spill_local_path
+    }
+}
+smart_open_object_spilling_config = {
+    "type": "smart_open",
+    "params": {
+        "uri": f"s3://{bucket_name}/"
+    }
+}
+
+
+def create_object_spilling_config(request, tmp_path):
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    if (request.param["type"] == "filesystem"
+            or request.param["type"] == "mock_distributed_fs"):
+        request.param["params"]["directory_path"] = str(temp_folder)
+    return json.dumps(request.param), temp_folder
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        # TODO(sang): Add a mock dependency to test S3.
+        # smart_open_object_spilling_config,
+    ])
+def object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function",
+    params=[
+        file_system_object_spilling_config,
+        mock_distributed_fs_object_spilling_config
+    ])
+def multi_node_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)

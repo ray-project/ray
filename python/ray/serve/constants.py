@@ -1,5 +1,3 @@
-from enum import auto, Enum
-
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -44,12 +42,12 @@ BACKEND_RECONFIGURE_METHOD = "reconfigure"
 # TODO(edoakes): this should be removed when we remove the old codepath.
 RESERVED_VERSION_TAG = "__serve_version__"
 
+#: All defined HTTP methods.
+# https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+ALL_HTTP_METHODS = [
+    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
+    "PATCH"
+]
 
-class LongPollKey(Enum):
-    def __repr__(self):
-        return f"{self.__class__.__name__}.{self.name}"
-
-    REPLICA_HANDLES = auto()
-    TRAFFIC_POLICIES = auto()
-    BACKEND_CONFIGS = auto()
-    ROUTE_TABLE = auto()
+#: Path suffix used to wildcard all subpaths.
+WILDCARD_PATH_SUFFIX = "/{wildcard:path}"

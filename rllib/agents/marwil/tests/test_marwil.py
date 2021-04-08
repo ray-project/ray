@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
@@ -40,9 +40,9 @@ class TestMARWIL(unittest.TestCase):
                                               os.path.isfile(data_file)))
 
         config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        config["num_workers"] = 2
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 1
+        config["evaluation_interval"] = 2
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.
@@ -55,14 +55,15 @@ class TestMARWIL(unittest.TestCase):
             trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
             learnt = False
             for i in range(num_iterations):
-                eval_results = trainer.train()["evaluation"]
-                print("iter={} R={}".format(
-                    i, eval_results["episode_reward_mean"]))
-                # Learn until some reward is reached on an actual live env.
-                if eval_results["episode_reward_mean"] > min_reward:
-                    print("learnt!")
-                    learnt = True
-                    break
+                eval_results = trainer.train().get("evaluation")
+                if eval_results:
+                    print("iter={} R={}".format(
+                        i, eval_results["episode_reward_mean"]))
+                    # Learn until some reward is reached on an actual live env.
+                    if eval_results["episode_reward_mean"] > min_reward:
+                        print("learnt!")
+                        learnt = True
+                        break
 
             if not learnt:
                 raise ValueError(

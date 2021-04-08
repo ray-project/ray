@@ -125,7 +125,7 @@ class ResourceSpec(
         assert "object_store_memory" not in resources, resources
 
         if node_ip_address is None:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().

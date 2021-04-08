@@ -85,7 +85,11 @@ RAY_PROCESSES = [
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
     ["reporter.py", False],
-    ["dashboard.py", False],
+    ["new_dashboard/dashboard.py", False],
     ["new_dashboard/agent.py", False],
     ["ray_process_reaper.py", False],
 ]
+
+# Max Concurrent SSH Calls to stop Docker
+MAX_PARALLEL_SHUTDOWN_WORKERS = env_integer("MAX_PARALLEL_SHUTDOWN_WORKERS",
+                                            50)

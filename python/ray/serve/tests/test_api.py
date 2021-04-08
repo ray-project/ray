@@ -90,15 +90,16 @@ def test_starlette_response(serve_instance):
                 await asyncio.sleep(0.01)
 
         return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain")
+            slow_numbers(), media_type="text/plain", status_code=418)
 
     serve.create_backend("streaming_response", streaming_response)
     serve.create_endpoint(
         "streaming_response",
         backend="streaming_response",
         route="/streaming_response")
-    assert requests.get(
-        "http://127.0.0.1:8000/streaming_response").text == "123"
+    resp = requests.get("http://127.0.0.1:8000/streaming_response")
+    assert resp.text == "123"
+    assert resp.status_code == 418
 
 
 def test_backend_user_config(serve_instance):
@@ -270,11 +271,10 @@ def test_updating_config(serve_instance):
         def __init__(self):
             self.count = 0
 
-        @serve.accept_batch
         def __call__(self, request):
-            return [1] * len(request)
+            return 1
 
-    config = BackendConfig(max_batch_size=2, num_replicas=3)
+    config = BackendConfig(max_concurrent_queries=2, num_replicas=3)
     serve.create_backend("bsimple:v1", BatchSimple, config=config)
     serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
@@ -282,7 +282,7 @@ def test_updating_config(serve_instance):
     old_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
-    update_config = BackendConfig(max_batch_size=5)
+    update_config = BackendConfig(max_concurrent_queries=5)
     serve.update_backend_config("bsimple:v1", update_config)
     new_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
@@ -439,7 +439,8 @@ def test_list_endpoints(serve_instance):
         },
         "shadows": {
             "backend3": 0.5
-        }
+        },
+        "python_methods": [],
     }
 
     assert "endpoint2" in endpoints
@@ -449,7 +450,8 @@ def test_list_endpoints(serve_instance):
         "traffic": {
             "backend2": 1.0
         },
-        "shadows": {}
+        "shadows": {},
+        "python_methods": [],
     }
 
     serve.delete_endpoint("endpoint")
@@ -460,16 +462,15 @@ def test_list_endpoints(serve_instance):
 
 
 def test_list_backends(serve_instance):
-    @serve.accept_batch
     def f():
         pass
 
-    config1 = BackendConfig(max_batch_size=10)
+    config1 = BackendConfig(max_concurrent_queries=10)
     serve.create_backend("backend", f, config=config1)
     backends = serve.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"].max_batch_size == 10
+    assert backends["backend"].max_concurrent_queries == 10
 
     config2 = BackendConfig(num_replicas=10)
     serve.create_backend("backend2", f, config=config2)

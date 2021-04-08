@@ -27,7 +27,7 @@ def construct_actor_groups(actors):
 def actor_classname_from_task_spec(task_spec):
     return task_spec.get("functionDescriptor", {})\
                 .get("pythonFunctionDescriptor", {})\
-                .get("className", "Unknown actor class")
+                .get("className", "Unknown actor class").split(".")[-1]
 
 
 def _group_actors_by_python_class(actors):

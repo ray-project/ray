@@ -24,7 +24,6 @@
 #include <unordered_map>
 
 #include "ray/common/id.h"
-#include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {

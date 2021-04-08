@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Optional
 from kubernetes.client.exceptions import ApiException
 import yaml
 
-import ray._private.monitor as monitor
+import ray.autoscaler._private.monitor as monitor
 from ray._private import services
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils

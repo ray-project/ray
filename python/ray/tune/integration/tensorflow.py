@@ -36,7 +36,7 @@ def setup_process_group(worker_addresses, index):
 
 
 def setup_address():
-    ip = ray.services.get_node_ip_address()
+    ip = ray.util.get_node_ip_address()
     port = find_free_port()
     return f"{ip}:{port}"
 

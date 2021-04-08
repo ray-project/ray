@@ -76,12 +76,17 @@ class RayTaskError(RayError):
                  ip=None):
         """Initialize a RayTaskError."""
         import ray
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
             self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
-        self.ip = ip or ray._private.services.get_node_ip_address()
+        self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
         # TODO(edoakes): should we handle non-serializable exception objects?
@@ -108,6 +113,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
+                # BaseException implements a __reduce__ method that returns
+                # a tuple with the type and the value of self.args.
+                # https://stackoverflow.com/a/49715949/2213289
+                self.args = (cause, )
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)

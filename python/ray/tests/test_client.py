@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 import sys
@@ -415,6 +416,21 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(detatched_actor.get.remote()) == 6
 
 
+def test_error_serialization(ray_start_regular_shared):
+    """Test that errors will be serialized properly."""
+    fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
+    with pytest.raises(FileNotFoundError):
+        with ray_start_client_server() as ray:
+
+            @ray.remote
+            def g():
+                with open(fake_path, "r") as f:
+                    f.read()
+
+            # Raises a FileNotFoundError
+            ray.get(g.remote())
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
@@ -475,6 +491,15 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     ray_client._inside_client_test = False
     # Wait for f(x) to finish before ray.shutdown() in the fixture
     time.sleep(3)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_gpu_ids(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+        assert ray.get_gpu_ids() == []
 
 
 if __name__ == "__main__":

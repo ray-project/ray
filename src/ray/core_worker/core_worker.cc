@@ -429,7 +429,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.gcs_options.password_,
       /*enable_sync_conn=*/true, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(options_.gcs_options);
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(gcs_options);
 
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
@@ -467,7 +467,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != ray::WorkerType::SPILL_WORKER &&
-       options_.worker_type != ray::WorkerType::RESTORE_WORKER),
+       options_.worker_type != ray::WorkerType::RESTORE_WORKER &&
+       options_.worker_type != ray::WorkerType::UTIL_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
@@ -541,9 +542,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
     std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    if (!options_.is_local_mode) {
-      RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
-    }
     SetCurrentTaskId(task_id);
   }
 
@@ -563,6 +561,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
+
+  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
+      /*periodical_runner=*/&periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -671,9 +675,24 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  if (options.connect_on_start) {
+    RAY_CHECK_OK(
+        local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
+  }
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
+
+  /// If periodic asio stats print is enabled, it will print it.
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms != -1 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
+        },
+        asio_stats_print_interval_ms);
+  }
 }
 
 void CoreWorker::Shutdown() {
@@ -684,6 +703,14 @@ void CoreWorker::Shutdown() {
   if (options_.on_worker_shutdown) {
     options_.on_worker_shutdown(GetWorkerID());
   }
+}
+
+void CoreWorker::ConnectToRaylet() {
+  RAY_CHECK(!options_.connect_on_start);
+  // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // very end in case there is a problem during construction.
+  RAY_CHECK_OK(local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
 }
 
 void CoreWorker::Disconnect(
@@ -2323,9 +2350,10 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
 }
 
-void CoreWorker::HandleWaitForObjectEviction(
-    const rpc::WaitForObjectEvictionRequest &request,
-    rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleSubscribeForObjectEviction(
+    const rpc::SubscribeForObjectEvictionRequest &request,
+    rpc::SubscribeForObjectEvictionReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   // TODO(swang): Drop requests from raylets that executed an older version of
   // the task.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
@@ -2333,10 +2361,13 @@ void CoreWorker::HandleWaitForObjectEviction(
     return;
   }
 
+  const auto subscriber_node_id =
+      NodeID::FromBinary(request.subscriber_address().raylet_id());
   // Send a response to trigger unpinning the object when it is no longer in scope.
-  auto respond = [send_reply_callback](const ObjectID &object_id) {
-    RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
+    object_status_publisher_->Publish(object_id);
+    object_status_publisher_->UnregisterSubscription(subscriber_node_id, object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -2344,9 +2375,35 @@ void CoreWorker::HandleWaitForObjectEviction(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
-    RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
-    respond(object_id);
+    std::ostringstream stream;
+    stream << "Reference for object " << object_id << " has already been freed.";
+    RAY_LOG(DEBUG) << stream.str();
+    send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
+  } else {
+    object_status_publisher_->RegisterSubscription(subscriber_node_id, object_id);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+                                         rpc::PubsubLongPollingReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
+  auto long_polling_reply_callback =
+      [send_reply_callback = std::move(send_reply_callback), reply,
+       subscriber_id](const std::vector<ObjectID> &object_ids) {
+        RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
+        // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
+        // fail if the number of batched objects are more than 50K. Though it is very
+        // rare, we should probably handle it.
+        for (const auto &object_id : object_ids) {
+          reply->add_object_ids(object_id.Binary());
+        }
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      };
+  RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
+  object_status_publisher_->ConnectToSubscriber(subscriber_id,
+                                                std::move(long_polling_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
@@ -2591,6 +2648,20 @@ void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
   }
 }
 
+void CoreWorker::HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
+                                       rpc::RunOnUtilWorkerReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  if (options_.run_on_util_worker_handler) {
+    std::vector<std::string> args(request.args().begin(), request.args().end());
+
+    options_.run_on_util_worker_handler(request.request(), args);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(Status::NotImplemented("RunOnUtilWorker is not supported"),
+                        nullptr, nullptr);
+  }
+}
+
 void CoreWorker::HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
@@ -2789,6 +2860,8 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
+
+std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
