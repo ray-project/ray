@@ -39,16 +39,18 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
 void PeriodicalRunner::DoRunFnPeriodically(std::function<void()> fn,
                                            boost::posix_time::milliseconds period,
                                            boost::asio::deadline_timer &timer) {
-  fn();
-  timer.expires_from_now(period);
-  timer.async_wait([this, fn, period, &timer](const boost::system::error_code &error) {
-    if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `timer` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
-      return;
-    }
-    RAY_CHECK(!error) << error.message();
-    DoRunFnPeriodically(fn, period, timer);
+  io_service_.post([this, fn, period, &timer]() {
+    fn();
+    timer.expires_from_now(period);
+    timer.async_wait([this, fn, period, &timer](const boost::system::error_code &error) {
+      if (error == boost::asio::error::operation_aborted) {
+        // `operation_aborted` is set when `timer` is canceled or destroyed.
+        // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
+        return;
+      }
+      RAY_CHECK(!error) << error.message();
+      DoRunFnPeriodically(fn, period, timer);
+    });
   });
 }
 
