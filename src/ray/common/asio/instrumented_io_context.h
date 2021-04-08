@@ -105,7 +105,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param pad_start_ns How much to pad the observed queueing start time, in
   ///  nanoseconds.
   /// \return An opaque stats handle, to be given to RecordExecution().
-  std::shared_ptr<StatsHandle> RecordStart(const std::string name,
+  std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
                                            int64_t pad_start_ns = 0);
 
   /// Records stats about the provided function's execution. This is used in conjunction
@@ -114,7 +114,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(std::function<void()> fn,
+  static void RecordExecution(std::function<void()> &fn,
                               std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
@@ -153,7 +153,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler.
-  std::shared_ptr<GuardedHandlerStats> GetOrCreate(const std::string name);
+  std::shared_ptr<GuardedHandlerStats> GetOrCreate(const std::string &name);
 
   /// Global stats, across all handlers.
   std::shared_ptr<GuardedGlobalStats> global_stats_;

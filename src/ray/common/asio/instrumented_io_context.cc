@@ -60,7 +60,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
   }
-  auto stats_handle = RecordStart(name);
+  const auto stats_handle = RecordStart(name);
   // References are only invalidated upon deletion of the corresponding item from the
   // table, which we won't do until this io_context is deleted. Provided that
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
@@ -78,7 +78,7 @@ void instrumented_io_context::post(std::function<void()> handler,
       });
 }
 
-std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string name,
+std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string &name,
                                                                   int64_t pad_start_ns) {
   auto stats = GetOrCreate(name);
   {
@@ -90,7 +90,7 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::str
                                        stats, global_stats_);
 }
 
-void instrumented_io_context::RecordExecution(std::function<void()> fn,
+void instrumented_io_context::RecordExecution(std::function<void()> &fn,
                                               std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Execute actual handler.
@@ -100,7 +100,7 @@ void instrumented_io_context::RecordExecution(std::function<void()> fn,
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
   {
-    auto stats = handle->handler_stats;
+    auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
     // Handler-specific execution stats.
     stats->stats.cum_execution_time += execution_time_ns;

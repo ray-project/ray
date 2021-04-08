@@ -60,7 +60,7 @@ void PeriodicalRunner::DoRunFnPeriodically(std::function<void()> fn,
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
-    std::function<void()> fn, boost::posix_time::milliseconds period,
+    std::function<void()> &fn, boost::posix_time::milliseconds period,
     boost::asio::deadline_timer &timer, const std::string name) {
   fn();
   timer.expires_from_now(period);

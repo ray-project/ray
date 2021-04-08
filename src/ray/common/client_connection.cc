@@ -108,9 +108,9 @@ void ServerConnection::WriteBufferAsync(
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be written.
   if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    auto &io_context =
+    const auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    auto stats_handle =
+    const auto stats_handle =
         io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
     boost::asio::async_write(
         socket_, buffer,
