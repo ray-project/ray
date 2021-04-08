@@ -295,7 +295,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     signal_name = f"signal-{get_random_letters()}"
     signal = SignalActor.options(name=signal_name).remote()
 
-    @serve.deployment(name=name, version="1")
+    @serve.deployment(name=name, version="1", num_replicas=2)
     class V1:
         async def handler(self, block: bool):
             if block:
@@ -338,7 +338,6 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    V1 = serve.deployment(name=name, version="1", num_replicas=2)(V1)
     V1.deploy()
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
@@ -390,7 +389,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = v1.get_handle()
             ret = ray.get(handle.remote())
         else:
-            ret = requests.get("http://localhost:8000/{name}").text
+            ret = requests.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -434,19 +433,16 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     name = "test"
 
     @serve.deployment(name=name, version="1", num_replicas=2)
-    def v1(request):
+    def v1(*args):
         return f"1|{os.getpid()}"
 
     @ray.remote(num_cpus=0)
-    def call(block=False):
+    def call():
         if use_handle:
             handle = v1.get_handle()
-            ret = ray.get(handle.remote(block=str(block)))
+            ret = ray.get(handle.remote())
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+            ret = requests.get(f"http://localhost:8000/{name}").text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -455,7 +451,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         responses = defaultdict(set)
         start = time.time()
         while time.time() - start < 30:
-            refs = [call.remote(block=False) for _ in range(10)]
+            refs = [call.remote() for _ in range(10)]
             ready, not_ready = ray.wait(refs, timeout=0.5)
             for ref in ready:
                 val, pid = ray.get(ref)
