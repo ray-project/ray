@@ -1,6 +1,8 @@
 package io.ray.performancetest.test;
 
-/** 1对1单向ray call，一收一发，测试引擎本身的吞吐. */
+/** 1-to-1 ray call, one receiving actor and one sending actor,
+ *  test the throughput of the engine itself.
+ */
 public class ActorPerformanceTestCase1 {
 
   public static void main(String[] args) {

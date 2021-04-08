@@ -56,6 +56,7 @@ void TaskSpecification::ComputeResources() {
   auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {
+    // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
     required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));

@@ -12,9 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class Source {
-
-  private static final String SOURCE_SEND_QPS = "source.send.qps";
-  private static final String SOURCE_GET_RT = "source.get.rt";
   private static final int BATCH_SIZE;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Source.class);
@@ -30,7 +27,7 @@ public class Source {
     }
   }
 
-  public Source(List<ActorHandle<Receiver>> receivers, String jobName) {
+  public Source(List<ActorHandle<Receiver>> receivers) {
     this.receivers = receivers;
   }
 

@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.performancetest.JobInfo;
 import io.ray.performancetest.Receiver;
 import io.ray.performancetest.Source;
 import java.util.ArrayList;
@@ -30,8 +29,6 @@ public class ActorPerformanceTestBase {
         "ray.job.num-java-workers-per-process", String.valueOf(numJavaWorkerPerProcess));
     Ray.init();
     try {
-      JobInfo jobInfo = JobInfo.parseJobInfo(args);
-
       // TODO: Support more layers.
       Preconditions.checkState(layers.length == 2);
       Preconditions.checkState(actorsPerLayer.length == layers.length);
@@ -45,8 +42,7 @@ public class ActorPerformanceTestBase {
         int nodeIndex = layers[0] + i;
         for (int j = 0; j < actorsPerLayer[1]; j++) {
           receivers.add(
-              jobInfo
-                  .assignActorToNode(Ray.actor(Receiver::new, jobInfo.jobName), nodeIndex)
+              Ray.actor(Receiver::new)
                   .remote());
         }
       }
@@ -56,8 +52,7 @@ public class ActorPerformanceTestBase {
         int nodeIndex = i;
         for (int j = 0; j < actorsPerLayer[0]; j++) {
           sources.add(
-              jobInfo
-                  .assignActorToNode(Ray.actor(Source::new, receivers, jobInfo.jobName), nodeIndex)
+              Ray.actor(Source::new, receivers)
                   .remote());
         }
       }

@@ -3,12 +3,9 @@ package io.ray.performancetest;
 import java.nio.ByteBuffer;
 
 public class Receiver {
-
-  private static final String RECEIVER_RECEIVE_QPS = "receiver.receive.qps";
-
   private int value = 0;
 
-  public Receiver(String jobName) {}
+  public Receiver() {}
 
   public boolean ping() {
     return true;
