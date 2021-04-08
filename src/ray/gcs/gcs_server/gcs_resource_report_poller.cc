@@ -33,16 +33,15 @@ void GcsResourceReportPoller::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsResourceReportPoller::Start() {
+  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
   polling_thread_.reset(new std::thread{[this]() {
     SetThreadName("resource_report_poller");
     boost::asio::io_service::work work(polling_service_);
-    RAY_LOG(ERROR) << "Poller thread id " << std::this_thread::get_id();
 
     polling_service_.run();
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
-  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
 }
 
 void GcsResourceReportPoller::Stop() {
@@ -93,11 +92,7 @@ void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_inf
 void GcsResourceReportPoller::TryPullResourceReport() {
   // TODO (Alex): In theory we could acquire mutex_ for shorter intervals, but it's
   // probably not worth the more complicated logic.
-  RAY_CHECK(polling_thread_ != nullptr);
-  RAY_CHECK(std::this_thread::get_id() == polling_thread_->get_id());
-  RAY_LOG(ERROR) << "Getting batch data";
   auto batch_data = get_resource_usage_batch_();
-  RAY_LOG(ERROR) << "Got batch data";
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
