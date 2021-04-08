@@ -165,7 +165,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
   // by canceling worker requests.
   bool worker_requests_remaining = !worker_request_bundles_.empty();
   while (worker_requests_remaining) {
-    while (num_bytes_being_pulled_ > num_bytes_available_ and
+    while (num_bytes_being_pulled_ > num_bytes_available_ &&
            highest_task_req_id_being_pulled_ != 0) {
       // We are over capacity and there is at least one active task request.
       // Try to cancel a task request to make space for the next worker
