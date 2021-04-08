@@ -201,7 +201,7 @@ def test_fastapi_features(serve_instance):
             file_path=path,
         )
 
-    router = APIRouter(prefix="/prefix/")
+    router = APIRouter(prefix="/prefix")
 
     @router.get("/subpath")
     def router_path():
