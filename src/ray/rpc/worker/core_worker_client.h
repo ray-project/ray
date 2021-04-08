@@ -310,7 +310,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      auto rpc_callback = [this, seq_no, task_size, callback{std::move(pair.second)}](
+      auto rpc_callback = [this, this_ptr, seq_no, task_size,
+                           callback{std::move(pair.second)}](
                               Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mutex_);
