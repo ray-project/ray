@@ -89,6 +89,7 @@ class Node:
                                  "cannot both be true.")
             self._register_shutdown_hooks()
 
+        logger.info(f"~~~ ray_params {ray_params.__dict__}")
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support())
@@ -779,6 +780,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
+            tracing_startup_hook=self._ray_params.tracing_startup_hook,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,

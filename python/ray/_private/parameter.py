@@ -151,6 +151,7 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 tracing_startup_hook=None,
                  no_monitor=False,
                  lru_evict=False):
         self.object_ref_seed = object_ref_seed
@@ -191,6 +192,7 @@ class RayParams:
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
+        self.tracing_startup_hook = tracing_startup_hook
         self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)

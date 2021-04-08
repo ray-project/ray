@@ -436,6 +436,11 @@ def debug(address):
     default=False,
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
+@click.option(
+    "--tracing-startup-hook",
+    type=str,
+    default=None,
+)
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -446,7 +451,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, log_style, log_color, verbose):
+          metrics_export_port, no_monitor, tracing_startup_hook, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -507,7 +513,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        no_monitor=no_monitor,
+        tracing_startup_hook=tracing_startup_hook
+        )
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -692,6 +700,14 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
                 sys.exit(1)
+    # if tracing_startup_hook:
+    #     import importlib
+    #     spec = importlib.util.spec_from_file_location("",
+    #     tracing_startup_hook)
+    #     enable_tracing = importlib.util.module_from_spec(spec)
+    #     spec.loader.exec_module(enable_tracing)
+    #     ray.worker.global_worker.run_function_on_all_workers(
+    #         enable_tracing._setup_tracing)
 
 
 @cli.command()

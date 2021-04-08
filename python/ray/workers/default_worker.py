@@ -1,9 +1,11 @@
 import argparse
 import base64
 import json
+import logging
 import time
 import sys
 import os
+from uvicorn import importer
 
 import ray
 import ray.actor
@@ -92,6 +94,11 @@ parser.add_argument(
     type=int,
     help="the port of the node's metric agent.")
 parser.add_argument(
+    "--tracing-startup-hook",
+    type=str,
+    help="tracing startup hook."
+)
+parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
@@ -120,6 +127,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level,
                                           args.logging_format)
+
+    logger = logging.getLogger("ray")
+    logger.info("arrived in default worker woooo")
+    logger.info(f"args here are {args}")
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -160,6 +171,13 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
     )
+
+    if args.tracing_startup_hook is not None:
+        _setup_tracing = importer.import_from_string(args.tracing_startup_hook)
+        logger.info(f"tracing startup hook name {args.tracing_startup_hook}")
+        setup_tracing_result = _setup_tracing()
+        logger.info(setup_tracing_result)
+        logger.info(getattr(ray, "__traced__"))
 
     node = ray.node.Node(
         ray_params,

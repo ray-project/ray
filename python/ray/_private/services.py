@@ -591,6 +591,7 @@ def start_ray_process(command,
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
 
+    # print(f"command is {command}")
     process = ConsolePopen(
         command,
         env=modified_env,
@@ -1343,6 +1344,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 tracing_startup_hook=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1388,6 +1390,7 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        tracing_startup_hook: Tracing startup hook.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         max_bytes (int): Log rotation parameter. Corresponding to
@@ -1465,6 +1468,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--temp-dir={temp_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
+        f"--tracing-startup-hook={tracing_startup_hook}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
