@@ -94,6 +94,7 @@ class Worker:
         else:
             self.channel = grpc.insecure_channel(
                 conn_str, options=grpc_options)
+
         self.channel.subscribe(self._on_channel_state_change)
 
         # Retry the connection until the channel responds to something
