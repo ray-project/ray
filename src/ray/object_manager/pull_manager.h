@@ -177,6 +177,11 @@ class PullManager {
 
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
+  ///
+  /// Returns whether the request was successfully activated. If this returns
+  /// false, then there are no more requests in the queue that can be activated
+  /// (because we have reached the end of the queue or because there is missing
+  /// size information).
   bool ActivateNextPullBundleRequest(const Queue &bundles,
                                      uint64_t *highest_req_id_being_pulled,
                                      std::vector<ObjectID> *objects_to_pull);

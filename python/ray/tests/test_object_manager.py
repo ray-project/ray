@@ -433,8 +433,8 @@ def test_ray_get_task_args_deadlock(shutdown_only):
         foo.remote(*task_args)
         ray.get(get_args)
 
-    for i in range(10):
-        print(i)
+    for i in range(5):
+        start = time.time()
         get_args = [
             ray.put(np.zeros(object_size, dtype=np.uint8))
             for _ in range(num_objects)
@@ -444,6 +444,7 @@ def test_ray_get_task_args_deadlock(shutdown_only):
             for _ in range(num_objects)
         ]
         ray.get(test_deadlock.remote(get_args, task_args))
+        print(f"round {i} finished in {time.time() - start}")
 
 
 if __name__ == "__main__":
