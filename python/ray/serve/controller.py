@@ -194,6 +194,10 @@ class ServeController:
             self.endpoint_state.create_endpoint(endpoint, route, methods,
                                                 TrafficPolicy(traffic_dict))
 
+        # TODO(simon): Use GoalID mechanism for this so client can check for
+        # goal id and http_state complete the goal id.
+        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
+
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
 
@@ -335,3 +339,11 @@ class ServeController:
         route = self.endpoint_state.get_endpoint_route(name)
 
         return backend_info, route
+
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all active deployments."""
+        return {
+            name: (self.backend_state.get_backend(name),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs()
+        }
