@@ -25,9 +25,11 @@ GcsResourceManager::GcsResourceManager(
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage) {
-  periodical_runner_.RunFnPeriodically(
-      [this] { SendBatchedResourceUsage(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  if (!RayConfig::instance().pull_based_resource_reporting()) {
+    periodical_runner_.RunFnPeriodically(
+                                         [this] { SendBatchedResourceUsage(); },
+                                         RayConfig::instance().raylet_report_resources_period_milliseconds());
+  }
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
