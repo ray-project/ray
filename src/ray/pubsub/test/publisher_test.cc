@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/pubsub/publisher.h"
+#include "ray/pubsub/publisher.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -23,6 +23,8 @@
 namespace ray {
 
 using ::testing::_;
+using namespace pubsub;
+using namespace pub_internal;
 
 class PublisherTest : public ::testing::Test {
  public:

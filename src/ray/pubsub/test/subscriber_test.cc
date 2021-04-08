@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -20,6 +20,7 @@
 namespace ray {
 
 using ::testing::_;
+using namespace pubsub;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
