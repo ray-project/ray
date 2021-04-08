@@ -419,8 +419,10 @@ void raylet::RayletClient::GlobalGC(
 }
 
 void raylet::RayletClient::RequestResourceReport(
+    rpc::ResourceUsageBatchData &batch_data,
     const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
   rpc::RequestResourceReportRequest request;
+  request.mutable_batch_data()->CopyFrom(batch_data);
   grpc_client_->RequestResourceReport(request, callback);
 }
 

@@ -145,6 +145,7 @@ class DependencyWaiterInterface {
 class ResourceRequestInterface {
  public:
   virtual void RequestResourceReport(
+      rpc::ResourceUsageBatchData &batch_data,
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
   virtual ~ResourceRequestInterface(){};
@@ -405,6 +406,7 @@ class RayletClient : public RayletClientInterface {
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   void RequestResourceReport(
+      rpc::ResourceUsageBatchData &batch_data,
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   // Subscribe to receive notification on plasma object

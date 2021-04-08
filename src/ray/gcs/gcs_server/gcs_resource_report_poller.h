@@ -35,6 +35,7 @@ class GcsResourceReportPoller {
   GcsResourceReportPoller(
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       std::function<void(const rpc::ResourcesData &)> handle_resource_report,
+      // TODO (Alex): Ideally we should annotate this LOCKS_EXCLUDED(mutex_)
       std::function<std::shared_ptr<rpc::ResourceUsageBatchData>(void)>
           get_resource_usage_batch,
       /* Default values should only be changed for testing. */
@@ -42,15 +43,18 @@ class GcsResourceReportPoller {
           []() { return absl::GetCurrentTimeNanos() / (1000 * 1000); },
       std::function<void(
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+          std::shared_ptr<rpc::ResourceUsageBatchData> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
           request_report =
               [](const rpc::Address &address,
                  std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
+                 std::shared_ptr<rpc::ResourceUsageBatchData> &batch_data,
                  std::function<void(const Status &,
                                     const rpc::RequestResourceReportReply &)>
                      callback) {
+                RAY_CHECK(batch_data != nullptr);
                 auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
-                raylet_client->RequestResourceReport(callback);
+                raylet_client->RequestResourceReport(*batch_data, callback);
               });
 
   ~GcsResourceReportPoller();
@@ -95,6 +99,7 @@ class GcsResourceReportPoller {
   // Send the `RequestResourceReport` RPC.
   std::function<void(
       const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+      std::shared_ptr<rpc::ResourceUsageBatchData> &,
       std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
       request_report_;
   // The minimum delay between two pull requests to the same thread.
@@ -130,7 +135,8 @@ class GcsResourceReportPoller {
   /// pulls. This method is thread safe.
   void TryPullResourceReport() LOCKS_EXCLUDED(mutex_);
   /// Pull resource report without validation.
-  void PullResourceReport(const std::shared_ptr<PullState> state);
+  void PullResourceReport(const std::shared_ptr<PullState> state,
+                          std::shared_ptr<rpc::ResourceUsageBatchData> batch_data);
   /// A resource report was successfully pulled (and the resource manager was already
   /// updated). This method is thread safe.
   void NodeResourceReportReceived(const std::shared_ptr<PullState> state)

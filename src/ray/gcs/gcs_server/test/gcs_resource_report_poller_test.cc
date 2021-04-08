@@ -33,6 +33,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
+                   std::shared_ptr<rpc::ResourceUsageBatchData> &batch_data,
                    std::function<void(const Status &,
                                       const rpc::RequestResourceReportReply &)>
                        callback) {

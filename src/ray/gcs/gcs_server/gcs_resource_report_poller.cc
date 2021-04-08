@@ -11,6 +11,7 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     std::function<int64_t(void)> get_current_time_milli,
     std::function<void(
         const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+        std::shared_ptr<rpc::ResourceUsageBatchData> &,
         std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
         request_report)
     : ticker_(polling_service_),
@@ -89,6 +90,9 @@ void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_inf
 }
 
 void GcsResourceReportPoller::TryPullResourceReport() {
+  // TODO (Alex): In theory we could acquire mutex_ for shorter intervals, but it's
+  // probably not worth the more complicated logic.
+  auto batch_data = get_resource_usage_batch_();
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
@@ -108,15 +112,17 @@ void GcsResourceReportPoller::TryPullResourceReport() {
       continue;
     }
 
-    PullResourceReport(to_pull);
+    PullResourceReport(to_pull, batch_data);
   }
 }
 
-void GcsResourceReportPoller::PullResourceReport(const std::shared_ptr<PullState> state) {
+void GcsResourceReportPoller::PullResourceReport(
+    const std::shared_ptr<PullState> state,
+    std::shared_ptr<rpc::ResourceUsageBatchData> batch_data) {
   inflight_pulls_++;
 
   request_report_(
-      state->address, raylet_client_pool_,
+      state->address, raylet_client_pool_, batch_data,
       [this, state](const Status &status, const rpc::RequestResourceReportReply &reply) {
         if (status.ok()) {
           // TODO (Alex): This callback is always posted onto the main thread. Since most
