@@ -19,7 +19,7 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101, ResNetToy 
+from jax_util.resnet import ResNet18, ResNet50, ResNet101, ToyModel 
 from jax_util.datasets import mnist
 
 def initialization_hook():
@@ -68,7 +68,7 @@ class MnistTrainingOperator(JAXTrainingOperator):
         input_shape = (28, 28, 1, kwargs["batch_size"])
         lr=0.01
         # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        init_fun, predict_fun = ResNetToy(kwargs["num_classes"])
+        init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
         _, init_params = init_fun(rng_key, input_shape)
             
@@ -146,7 +146,7 @@ if __name__ == "__main__":
             "lr": 0.1,
             "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64,
+            "batch_size": 256,
             "num_classes": 10,
             "use_tqdm": True,
         },
@@ -162,6 +162,7 @@ if __name__ == "__main__":
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
+        print("validate", val_stats)
         info.update(val_acc=val_stats["val_accuracy"]) 
         # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 

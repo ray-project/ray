@@ -20,7 +20,7 @@ from jax.tree_util import tree_flatten
 from jax.experimental import optimizers
 from jax.lib import xla_client
 import jax.numpy as jnp
-from jax_util.resnet import ResNet18, ResNet50, ResNet101, ResNetToy, MLP
+from jax_util.resnet import ResNet18, ResNet50, ResNet101, ToyModel, MLP
 from jax_util.datasets import mnist
 
 def initialization_hook():
@@ -71,7 +71,7 @@ class CifarTrainingOperator(JAXTrainingOperator):
         input_shape = (28, 28, 1, batch_size)
         lr= kwargs["lr"]
         # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        init_fun, predict_fun = ResNetToy(kwargs["num_classes"])
+        init_fun, predict_fun = ToyModel(kwargs["num_classes"])
         # init_fun, predict_fun = MLP(kwargs["num_classes"])
         
         _, init_params = init_fun(rng_key, input_shape)
@@ -135,18 +135,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4,6,7"
 
     args, _ = parser.parse_known_args()
     num_cpus = 12
-    num_gpus = 2
+    num_gpus = 4
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = ParameterServerStrategy(
         training_operator_cls=CifarTrainingOperator,
-        world_size=2,
-        num_workers=1,
-        num_ps=1,
+        world_size=4,
+        num_workers=2,
+        num_ps=2,
         operator_config={
             "lr": 0.01,
             "test_mode": args.smoke_test,  # subset the data
@@ -167,6 +167,7 @@ if __name__ == "__main__":
         # Increase `max_retries` to turn on fault tolerance.
         trainer1.train(max_retries=1, info=info)
         val_stats = trainer1.validate()
+        print("validate", val_stats)
         info.update(val_acc=val_stats["val_accuracy"]) 
         
     trainer1.shutdown()

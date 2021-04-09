@@ -486,7 +486,6 @@ class Worker(object):
         return metrics
 
     def validate(self, info={}):
-        # PS Strategy, before 
         return self.training_operator.validate(info)
 
     def shutdown(self):

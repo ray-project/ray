@@ -132,11 +132,7 @@ class JAXTrainingOperator(TrainingOperator):
 
     def to_cupy(self, x):
         cx = cp.fromDlpack(self.get_jax_dlpack(x))
-        # cx = cp.fromDlpack(to_dlpack(x))
-        # print(cx.data.ptr)
-        # print(x.unsafe_buffer_pointer())
         assert cx.data.ptr == x.unsafe_buffer_pointer()
-
         return cx
 
     def to_operator_tensor(self, tensor):
@@ -165,7 +161,6 @@ class JAXTrainingOperator(TrainingOperator):
             batch_info.update(info)
             metrics = self.validate_step(params, batch, batch_info)
             metric_meters.update(metrics, n=metrics.pop("samples_num", 1))
-        print("validate", metric_meters.summary())
         return metric_meters.summary()
 
     def validate_step(self, params, batch, batch_info):
@@ -233,14 +228,13 @@ class JAXTrainingOperator(TrainingOperator):
         params = self.get_parameters(cpu)
         if hasattr(self, "preset_keys"):
             dict_params = {name:p for name, p in zip(self.preset_keys, params)}
-        
         else:
             dict_params = {f"{idx}":p for idx, p in enumerate(params)}
         return dict_params
 
     def set_parameters(self, new_params):
         if isinstance(new_params, dict):
-            keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: d[0]))
+            keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: int(d[0])))
             self.preset_keys = keys
 
         if not hasattr(self, "tree"):
@@ -263,7 +257,7 @@ class JAXTrainingOperator(TrainingOperator):
                        "input {} and output {}.")
                 raise TypeError(msg.format(subtree, new_subtree))
 
-        self.opt_state = OptimizerState(new_state_flat, tree, new_subtrees)
+        self.opt_state = OptimizerState(new_state_flat, tree, subtrees)
 
     def reset_optimizer_for_params(self, params):
         self.tree = tree_structure(params)
