@@ -402,8 +402,12 @@ void GcsServer::CollectStats() {
 void GcsServer::PrintDebugInfo() {
   std::ostringstream stream;
   stream << "num_get_batch_calls: " << gcs_resource_report_poller_->num_get_batch_ << "\n"
-        << "total get batch time: " << gcs_resource_report_poller_->total_get_batch_time_ << "\n"
-        << "average: " << ( gcs_resource_report_poller_->total_get_batch_time_ / gcs_resource_report_poller_->num_get_batch_ ) << "\n";
+         << "total get batch time: " << gcs_resource_report_poller_->total_get_batch_time_
+         << "\n"
+         << "average: "
+         << (gcs_resource_report_poller_->total_get_batch_time_ /
+             gcs_resource_report_poller_->num_get_batch_)
+         << "\n";
   stream << gcs_node_manager_->DebugString() << "\n"
          << gcs_actor_manager_->DebugString() << "\n"
          << gcs_object_manager_->DebugString() << "\n"

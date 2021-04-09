@@ -24,8 +24,7 @@ GcsResourceReportPoller::GcsResourceReportPoller(
       request_report_(request_report),
       poll_period_ms_(RayConfig::instance().gcs_resource_report_poll_period_ms()),
       num_get_batch_(0),
-      total_get_batch_time_(0)
-{}
+      total_get_batch_time_(0) {}
 
 GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 
