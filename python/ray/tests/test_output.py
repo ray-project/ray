@@ -36,6 +36,7 @@ def test_output():
     outputs = subprocess.check_output(
         [sys.executable, __file__, "_ray_instance"],
         stderr=subprocess.STDOUT).decode()
+    print(outputs)
     lines = outputs.split("\n")
     for line in lines:
         print(line)
