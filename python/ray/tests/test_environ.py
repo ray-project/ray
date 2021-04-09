@@ -13,11 +13,11 @@ def test_environ_file_on_linux(ray_start_10_cpus):
         def get_env_from_proc(self):
             pid = os.getpid()
             env = {}
-            with open('/proc/%s/environ' % pid) as fd:
-                for envspec in fd.read().split('\000'):
+            with open("/proc/%s/environ" % pid) as fd:
+                for envspec in fd.read().split("\000"):
                     if not envspec:
                         continue
-                    varname, varval = envspec.split('=', 1)
+                    varname, varval = envspec.split("=", 1)
                     env[varname] = varval
             return env
 
