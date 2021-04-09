@@ -400,9 +400,9 @@ class Worker(object):
         loss_val, grads = self.training_operator.derive_updates(batch)
         
         if named and isinstance(grads, list):
-            grads_dict = {f"{idx}":g for idx, g in enumerate(grads)}
+            grads = {f"{idx}":g for idx, g in enumerate(grads)}
 
-        return loss_val, grads_dict
+        return loss_val, grads
 
     def split_gradients(self, grad, assignments):
         # assuming messages are gradients or parameters

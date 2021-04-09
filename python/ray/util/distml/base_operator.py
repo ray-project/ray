@@ -75,12 +75,3 @@ class TrainingOperator(metaclass=ABCMeta):
     @abstractmethod
     def load_parameters(self, checkpoint):
         raise NotImplementedError()
-
-    @abstractmethod
-    def yield_train_loader(self):
-        """Return a data batch from a data loader."""
-        raise NotImplementedError()
-
-    def yield_validation_loader(self):
-        """Return a data batch from a validation loader."""
-        raise NotImplementedError()

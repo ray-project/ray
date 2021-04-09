@@ -83,7 +83,7 @@ class Worker:
         self.lr = 0.01
         self.num_epochs = 10
 
-        init_fun, predict_fun = ResNet101(self.num_classes)
+        init_fun, predict_fun = ResNet18(self.num_classes)
         _, init_params = init_fun(rng_key, self.input_shape)
 
         opt_init, opt_update, get_params = optimizers.adam(self.lr)
@@ -159,7 +159,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
     enable_jit = False
 
     train_images, train_labels, test_images, test_labels = datasets.mnist()

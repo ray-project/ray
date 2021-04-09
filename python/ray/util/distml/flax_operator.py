@@ -5,20 +5,16 @@ from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
 from jax.dlpack import from_dlpack, to_dlpack
-from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, tree_map, build_tree
+from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, tree_map
 from jax._src.util import unzip2
-from jax.experimental.optimizers import OptimizerState
 
-from ray.util.distml.base_operator import TrainingOperator
+import flax
+import flax.traverse_util as traverse_util
+from flax.core import FrozenDict, unfreeze
+from flax import serialization
+
+from ray.util.distml.jax_operator import JAXTrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
-
-jax2tf_available = True
-try:
-    import tensorflow as tf
-    from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
-except:
-    print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
-    jax2tf_available = False
 
 tqdm = None
 try:
@@ -27,37 +23,10 @@ except ImportError:
     pass
 
 
-class JAXTrainingOperator(TrainingOperator):
+class FLAXTrainingOperator(JAXTrainingOperator):
 
     def __init__(self, operator_config):
-        self.train_step_num = 0 # use to record the training step that has passed.
-        self.timers = TimerCollection()
-        super(JAXTrainingOperator, self).__init__(operator_config)
-
-        if hasattr(self._config, "jit_mode"):
-            assert not self._config["jit_mode"], "Not support jit in jax operator."
-
-        self.setup(**self._config)
-
-    def setup(self, *args, **kwargs):
-        """Function that needs to be override by users.
-        
-        Example:
-            # some code is the same for all users, maybe we can put it in register.
-            rng_key = random.PRNGKey(0)
-            input_shape = (28, 28, 1, batch_size)
-            lr=0.01
-            init_fun, predict_fun = ResNet18(num_classes)
-            _, init_params = init_fun(rng_key, input_shape)
-            
-            opt_init, opt_update, get_params = optimizers.adam(lr)
-            opt_state = opt_init(init_params)
-            
-            self.register(model=(opt_state, get_params, predict_fun), optimizer=opt_update, criterion=lambda logits, targets:-jnp.sum(logits * targets)
-        
-        """
-        
-        pass
+        super(FLAXTrainingOperator, self).__init__(operator_config)
 
     def register(self, 
                  *,
@@ -77,14 +46,10 @@ class JAXTrainingOperator(TrainingOperator):
         self._register_optimizer(optimizer)
             
     def _register_model(self, model):
-        self.opt_state = model[0]
-        self.init_fun = model[1]
-        self.predict_fun = model[2]
+        self.model = model
 
     def _register_optimizer(self, optimizer):
-        self.opt_init = optimizer[0]
-        self.opt_update = optimizer[1]
-        self.get_params = optimizer[2]
+        self.optimizer = optimizer
 
     def register_data(self, *, train_loader=None, validation_loader=None):
         self.train_loader = train_loader
@@ -93,29 +58,36 @@ class JAXTrainingOperator(TrainingOperator):
     def register_input_signatures(self, *, input_shape):
         if not isinstance(input_shape, list):
             input_shape = [input_shape]
-
-        input_signatures = [
-            # The first one will be the serving signature
-            tf.TensorSpec(s, tf.float32)
-            for s in input_shape
-        ]
+        try:
+            input_signatures = [
+                # The first one will be the serving signature
+                tf.TensorSpec(s, tf.float32)
+                for s in input_shape
+            ]
+        except:
+            input_signatures = []
         self.input_signatures = input_signatures
 
     def loss_func(self, params, batch):
         inputs, targets = batch
-        logits = self.predict_fun(params, inputs)
+        logits = self.model.apply(params, inputs)
         return self.criterion(logits, targets)
 
     def derive_updates(self, batch):
-        loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
+        loss_val, gradient = self._calculate_gradient(self.optimizer, batch)
         return loss_val, tree_flatten(gradient)[0]
-        
+
     def apply_updates(self, gradient, num_workers):
-        if isinstance(gradient, dict):
-            gradient = list(gradient.values())
-        gradient = tree_unflatten(self.opt_state[1], gradient)
+        assert isinstance(gradient, dict)
+        
+        if not hasattr(self, "tree"):
+            self.tree = traverse_util.flatten_dict(self.optimizer.target)[1]
+        
+        gradient = tree_unflatten(self.tree, gradient)
         gradient = tree_map(lambda x: x/num_workers, gradient)
-        self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
+
+        self.optimizer = self.optimizer.apply_gradient(gradient)
+        # self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
 
     def to_cupy(self, tensor):
@@ -130,8 +102,8 @@ class JAXTrainingOperator(TrainingOperator):
             return list(map(self.to_operator_tensor, tensor))
         return from_dlpack(tensor.toDlpack())
 
-    def _calculate_gradient(self, opt_state, batch):
-        params = self.get_params(opt_state)
+    def _calculate_gradient(self, optimizer, batch):
+        params = optimizer.target
         loss_val, gradient = value_and_grad(self.loss_func)(params, batch)
         return loss_val, gradient
 
@@ -140,15 +112,14 @@ class JAXTrainingOperator(TrainingOperator):
                                                                take_ownership=False)
 
     def validate(self, info={}):
-        if not hasattr(self, "opt_state"):
-            raise RuntimeError("model unset. Please register model in setup.")
+        if not hasattr(self, "model"):
+            raise RuntimeError("model has not registered.")
         if not hasattr(self, "criterion"):
             raise RuntimeError("criterion unset. Please register criterion in setup.")
-        
-        params = self.get_params(self.opt_state)
+        params = self.optimizer.target
         validation_loader = self.validation_loader
         metric_meters = AverageMeterCollection()
-
+        
         for batch_idx, batch in enumerate(validation_loader):
             batch_info = {"batch_idx": batch_idx}
             batch_info.update(info)
@@ -158,7 +129,7 @@ class JAXTrainingOperator(TrainingOperator):
 
     def validate_step(self, params, batch, batch_info):
         criterion = self.criterion
-        predict_fun = self.predict_fun
+        predict_fun = self.model.apply
         # unpack features into list to support multiple inputs model
         inputs, targets = batch
 
@@ -170,7 +141,6 @@ class JAXTrainingOperator(TrainingOperator):
 
         acc = jnp.mean(prediction_class == targets_class)
         samples_num = targets.shape[0]
-
         return {
             "val_loss": loss.item(),
             "val_accuracy": acc.item(),
@@ -178,75 +148,47 @@ class JAXTrainingOperator(TrainingOperator):
         }
 
     def save_parameters(self, checkpoint):
-        # save model
-        if jax2tf_available:
-            if not getattr(self, "input_signatures"):
-                print("Warning: input_signatures has not set. "
-                    "Please using register_input_signatures to register it.")
-                self.input_signatures = [tf.TensorSpec([], tf.float32)]
-            convert_and_save_model(
-                self.predict_fun,
-                self.get_params(self.opt_state),
-                checkpoint,
-                input_signatures=self.input_signatures,
-                compile_model=False)
-        else:
-            raise RuntimeError("jax2tf is not available.")
+        # Use flax.serialization package to turn target to bytes.
+        # We write these bytes to checkpoint.
+        bytes_output = serialization.to_bytes(self.optimizer.target)
+        with open(checkpoint, "wb") as f:
+            f.write(bytes_output)
 
     def load_parameters(self, checkpoint):
-        print("Warning: Jax not support loading checkpoint. ")
-        if jax2tf_available:
-            restored_model = load_params_from_tf(checkpoint)
-        else:
-            raise RuntimeError("jax2tf is not available.")
+        with open(checkpoint, "rb") as f:
+            bytes_output = f.read()
+
+        optimizer = self.optimizer
+        states = serialization.to_state_dict(optimizer)
+        target = serialization.from_bytes(states["target"], bytes_output)
+        states["target"] = target
+        optimizer = serialization.from_state_dict(optimizer, states)
+        self.optimizer = optimizer
 
     def get_parameters(self, cpu):
-        params = self.get_params(self.opt_state)
+        params = self.optimizer.target
         flatten_params, tree = tree_flatten(params)
-        if not hasattr(self, "tree"):
-            self.tree = tree
 
         if cpu:
             flatten_params = list(map(np.asarray, flatten_params))
-        else:
-            flatten_params = flatten_params
-            # flatten_params = list(map(self.to_cupy, flatten_params))
         return flatten_params
 
     def get_named_parameters(self, cpu):
-        params = self.get_parameters(cpu)
-        if hasattr(self, "preset_keys"):
-            dict_params = {name:p for name, p in zip(self.preset_keys, params)}
-        else:
-            dict_params = {f"{idx}":p for idx, p in enumerate(params)}
-        return dict_params
+        params = self.optimizer.target
+        if cpu:
+            params = tree_map(lambda x: np.asarray(x), params)
+        params_flat_dict = traverse_util.flatten_dict(unfreeze(params))
+        return params_flat_dict
 
     def set_parameters(self, new_params):
-        if isinstance(new_params, dict):
-            keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: int(d[0])))
-            self.preset_keys = keys
+        assert isinstance(new_params, dict)
+        optimizer = self.optimizer
+        new_params = traverse_util.unflatten_dict(new_params)
 
-        if not hasattr(self, "tree"):
-            self.tree = tree_structure(self.get_params(self.opt_state)) 
+        states = serialization.to_state_dict(optimizer)
+        states["target"] = new_params
 
-        states_flat, tree, subtrees = self.opt_state
-
-        states = map(tree_unflatten, subtrees, states_flat)
-
-        def update(param, state):
-            new_state = param, *state[1:]
-            return new_state
-
-        new_states = map(update, new_params, states)
-        new_state_flat, new_subtrees = unzip2(map(tree_flatten, new_states))
-
-        for idx, (subtree, new_subtree) in enumerate(zip(subtrees, new_subtrees)):
-            if new_subtree != subtree:
-                msg = ("input structur did not match the save params struture. "
-                       "input {} and output {}.")
-                raise TypeError(msg.format(subtree, new_subtree))
-
-        self.opt_state = OptimizerState(new_state_flat, tree, subtrees)
+        self.optimizer = serialization.from_state_dict(optimizer, states)
 
     def reset_optimizer_for_params(self, params):
         self.tree = tree_structure(params)

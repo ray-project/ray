@@ -5,7 +5,7 @@ The primary aim here is simplicity and minimal dependencies.
 
 
 import time
-
+import os
 import numpy as np
 import numpy.random as npr
 
@@ -52,6 +52,8 @@ def accuracy(params, batch):
 
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+
     rng_key = random.PRNGKey(0)
 
     batch_size = 128
@@ -75,7 +77,7 @@ if __name__ == "__main__":
     num_complete_batches, leftover = divmod(num_train, batch_size)
     num_batches = num_complete_batches + bool(leftover)
 
-    @jit
+    # @jit
     def update(i, opt_state, batch):
         params = get_params(opt_state)
         return opt_update(i, grad(loss)(params, batch), opt_state)

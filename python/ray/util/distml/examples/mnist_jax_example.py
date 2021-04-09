@@ -64,11 +64,12 @@ class Dataloader:
 class MnistTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
     def setup(self, *args, **kwargs):
+        batch_size = kwargs["batch_size"]
         rng_key = random.PRNGKey(0)
-        input_shape = (28, 28, 1, kwargs["batch_size"])
+        input_shape = (28, 28, 1, batch_size)
         lr=0.01
-        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        init_fun, predict_fun = ToyModel(kwargs["num_classes"])
+        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        # init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
         _, init_params = init_fun(rng_key, input_shape)
             
@@ -84,8 +85,8 @@ class MnistTrainingOperator(JAXTrainingOperator):
         train_labels = train_labels
         test_labels = test_labels
 
-        train_loader = Dataloader(train_images, train_labels, batch_size=64, shuffle=True)
-        test_loader = Dataloader(test_images, test_labels, batch_size=64)
+        train_loader = Dataloader(train_images, train_labels, batch_size=batch_size, shuffle=True)
+        test_loader = Dataloader(test_images, test_labels, batch_size=batch_size)
         
         self.register(model=[opt_state, init_fun, predict_fun], optimizer=[opt_init, opt_update, get_params], criterion=lambda logits, targets:-jnp.sum(logits * targets))
     
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,7"
     os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
@@ -146,7 +147,7 @@ if __name__ == "__main__":
             "lr": 0.1,
             "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 256,
+            "batch_size": 128,
             "num_classes": 10,
             "use_tqdm": True,
         },
