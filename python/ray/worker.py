@@ -1292,10 +1292,14 @@ def connect(node,
             lambda worker_info: sys.path.insert(1, script_directory))
         if not job_config.get_runtime_env_uris():
             current_directory = os.path.abspath(os.path.curdir)
+
             def setup_dir():
-                if '' not in sys.path:
-                    sys.path.insert(0, '')
+                # Here "" means search cwd
+                if "" not in sys.path:
+                    sys.path.insert(0, "")
+                # Change cwd so that it can open local file
                 os.chdir(current_directory)
+
             worker.run_function_on_all_workers(lambda worker_info: setup_dir())
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to

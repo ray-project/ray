@@ -178,6 +178,32 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
+def run_file_as_driver(driver_file: str, env: Dict = None):
+    """Run a driver as a separate process.
+
+    Args:
+        driver_file (str): The file script to run
+        env (dict): The environment variables for the driver.
+
+    Returns:
+        The script's output.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, driver_file],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
+    with proc:
+        output = proc.communicate()[0]
+        if proc.returncode:
+            print(ray._private.utils.decode(output))
+            raise subprocess.CalledProcessError(proc.returncode, proc.args,
+                                                output, proc.stderr)
+        out = ray._private.utils.decode(output)
+    return out
+
+
 def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 

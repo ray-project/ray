@@ -9,11 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (
-    client_test_enabled,
-    get_error_message,
-    run_string_as_driver
-)
+from ray.test_utils import (client_test_enabled, get_error_message,
+                            run_string_as_driver, run_file_as_driver)
 
 import ray
 
@@ -262,10 +259,8 @@ def test_ray_options(shutdown_only):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 4,
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_file_open(ray_start_cluster_head):
-    cluster = ray_start_cluster_head
     @ray.remote
     def warm_up():
         time.sleep(1)
@@ -292,6 +287,44 @@ def open_file():
 ray.get([open_file.remote() for _ in range(100)])
 """
         run_string_as_driver(script)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 4,
+    }], indirect=True)
+def test_module_import(ray_start_cluster_head):
+    @ray.remote
+    def warm_up():
+        time.sleep(1)
+
+    ray.wait([warm_up.remote() for _ in range(100)])
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        (path / "test").mkdir()
+        with (path / "test" / "__init__.py").open("w") as f:
+            f.write("a = 10")
+        with tempfile.TemporaryDirectory() as script_dir:
+            script = f"""
+import os
+import ray
+os.chdir("{tmp_dir}")
+ray.init(address='auto')
+import sys
+sys.path.insert(1, "{tmp_dir}")
+import test
+@ray.remote
+def open_file():
+    return test.a
+
+print(ray.get([open_file.remote() for _ in range(100)]))
+"""
+            script_file = os.path.join(script_dir, "driver.py")
+            with open(script_file, "w") as f:
+                f.write(script)
+            print(run_file_as_driver(script_file))
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
