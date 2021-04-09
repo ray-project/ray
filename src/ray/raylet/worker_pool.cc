@@ -279,8 +279,10 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
-  // When import ray, it will import setproctitle.
-  // Add SPT_NOENV env, prevent setproctitle break /proc/PID/environ
+  // We use setproctitle to change python worker process title, 
+  // causing the process's /proc/PID/environ being empty. 
+  // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ. 
+  // Refer this issue for more details: https://github.com/ray-project/ray/issues/15061
   if (language == Language::PYTHON) {
     env.insert({"SPT_NOENV", "1"});
   }
