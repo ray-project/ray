@@ -67,7 +67,7 @@ class MnistTrainingOperator(JAXTrainingOperator):
         batch_size = kwargs["batch_size"]
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, batch_size)
-        lr=0.01
+        lr = kwargs["lr"]
         init_fun, predict_fun = ResNet18(kwargs["num_classes"])
         # init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
         training_operator_cls=MnistTrainingOperator,
         world_size=args.num_workers,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
             "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 128,

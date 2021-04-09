@@ -49,13 +49,6 @@ class AllReduceStrategy(BaseTrainer):
                 _progress_bar.set_postfix(postfix)
         return info
 
-    # def train_batch(self, batches):
-    #     # First, let each worker proceed with a train_step
-    #     # self.data_parallel_group.train()
-    #     rets = [replica.train_batch.remote(batches[i])
-    #             for i, replica in enumerate(self.data_parallel_group.replicas)]
-    #     ray.get(rets)
-
     def validate(self, *info):
         stats = self.data_parallel_group.validate(info=info)
         return stats[0] # validate result should be the same in all workers
@@ -157,11 +150,12 @@ class Replica:
                 "iterator has ran out. Please use `start_iteration` to update iterator")
         
         loss_val, updates = self.derive_updates(batch)
-        metrics["train_loss"] = loss_val
+        metrics["train_loss"] = loss_val.item()
 
         for g in updates:
             cg = self.training_operator.to_cupy(g)
             col.allreduce(cg)
+
         self.apply_updates(updates)
         return metrics
 

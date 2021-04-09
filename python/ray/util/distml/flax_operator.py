@@ -10,7 +10,7 @@ from jax._src.util import unzip2
 
 import flax
 import flax.traverse_util as traverse_util
-from flax.core import FrozenDict, unfreeze
+from flax.core import FrozenDict, unfreeze, freeze
 from flax import serialization
 
 from ray.util.distml.jax_operator import JAXTrainingOperator
@@ -51,23 +51,6 @@ class FLAXTrainingOperator(JAXTrainingOperator):
     def _register_optimizer(self, optimizer):
         self.optimizer = optimizer
 
-    def register_data(self, *, train_loader=None, validation_loader=None):
-        self.train_loader = train_loader
-        self.validation_loader = validation_loader
-
-    def register_input_signatures(self, *, input_shape):
-        if not isinstance(input_shape, list):
-            input_shape = [input_shape]
-        try:
-            input_signatures = [
-                # The first one will be the serving signature
-                tf.TensorSpec(s, tf.float32)
-                for s in input_shape
-            ]
-        except:
-            input_signatures = []
-        self.input_signatures = input_signatures
-
     def loss_func(self, params, batch):
         inputs, targets = batch
         logits = self.model.apply(params, inputs)
@@ -78,38 +61,22 @@ class FLAXTrainingOperator(JAXTrainingOperator):
         return loss_val, tree_flatten(gradient)[0]
 
     def apply_updates(self, gradient, num_workers):
-        assert isinstance(gradient, dict)
-        
         if not hasattr(self, "tree"):
-            self.tree = traverse_util.flatten_dict(self.optimizer.target)[1]
-        
-        gradient = tree_unflatten(self.tree, gradient)
+            self.tree = tree_flatten(self.optimizer.target)[1]
+    
+        if isinstance(gradient, dict):
+            gradient = freeze(traverse_util.unflatten_dict(gradient))
+        else:
+            gradient = tree_unflatten(self.tree, gradient)
         gradient = tree_map(lambda x: x/num_workers, gradient)
 
         self.optimizer = self.optimizer.apply_gradient(gradient)
-        # self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
-
-    def to_cupy(self, tensor):
-        if isinstance(tensor, list):
-            return list(map(self.to_cupy, tensor))
-        ctensor = cp.fromDlpack(self.get_jax_dlpack(tensor))
-        assert ctensor.data.ptr == tensor.unsafe_buffer_pointer()
-        return ctensor
-
-    def to_operator_tensor(self, tensor):
-        if isinstance(tensor, list):
-            return list(map(self.to_operator_tensor, tensor))
-        return from_dlpack(tensor.toDlpack())
 
     def _calculate_gradient(self, optimizer, batch):
         params = optimizer.target
         loss_val, gradient = value_and_grad(self.loss_func)(params, batch)
         return loss_val, gradient
-
-    def get_jax_dlpack(self, tensor):
-        return xla_client._xla.buffer_to_dlpack_managed_tensor(tensor.device_buffer,
-                                                               take_ownership=False)
 
     def validate(self, info={}):
         if not hasattr(self, "model"):
@@ -192,44 +159,4 @@ class FLAXTrainingOperator(JAXTrainingOperator):
 
     def reset_optimizer_for_params(self, params):
         self.tree = tree_structure(params)
-        self.opt_state = self.opt_init(params)
-        params2 = self.get_params(self.opt_state)
-        assert params == params2
-
-    # some operation for this ml system.
-    def ones(self, shape, cpu=True):
-        if cpu:
-            return np.ones(shape)
-        else:
-            return jnp.ones(shape)
-
-    # some operation for this ml system.
-    def zeros(self, shape, cpu=True):
-        if cpu:
-            return np.zeros(shape)
-        else:
-            return jnp.zeros(shape)
-
-    # some operation for this ml system.
-    def ones_like(self, x, cpu=True):
-        if cpu:
-            return np.ones_like(x)
-        else:
-            return jnp.ones_like(x)
-
-    # some operation for this ml system.
-    def zeros_like(self, x, cpu=True):
-        if cpu:
-            return np.zeros_like(x)
-        else:
-            return jnp.zeros_like(x)
-
-    def numel(self, v):
-        return np.size(v)
-
-    def asarray(self, v):
-        return jnp.asarray(v)
-
-    def clean_redundancy(self):
-        del self.train_loader
-        del self.validation_loader
+        self.optimizer = self.optimizer.init_param_state(params)

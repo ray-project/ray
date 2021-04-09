@@ -7,7 +7,7 @@ from tqdm import trange
 
 import ray
 from ray.util.distml.flax_operator import FLAXTrainingOperator
-from ray.util.distml.allreduce_strategy import AllReduceStrategy
+from ray.util.distml.ps_strategy import ParameterServerStrategy
 from ray.util.sgd.utils import BATCH_SIZE, override
 
 import numpy as np
@@ -124,16 +124,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,7"
-    os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4,6,7"
 
     args, _ = parser.parse_known_args()
-    num_cpus = 4 if args.smoke_test else None
-    ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
+    num_cpus = 12
+    num_gpus = 4
+    ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
-    trainer1 = AllReduceStrategy(
+    trainer1 = ParameterServerStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=args.num_workers,
+        world_size=2,
+        num_workers=1,
+        num_ps=1,
         operator_config={
             "lr": 0.01,
             "test_mode": args.smoke_test,  # subset the data
@@ -144,7 +146,8 @@ if __name__ == "__main__":
         },
         )
 
-    trainer1.load_parameters("jax_checkpoint.db")
+    # trainer1.save_parameters("jax_checkpoint")
+    # trainer1.load_parameters("jax_checkpoint")
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):
@@ -155,8 +158,6 @@ if __name__ == "__main__":
         val_stats = trainer1.validate()
         print("validate", val_stats)
         info.update(val_acc=val_stats["val_accuracy"]) 
-        # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
-        trainer1.save_parameters("jax_checkpoint.db")
-
+        
     trainer1.shutdown()
     print("success!")

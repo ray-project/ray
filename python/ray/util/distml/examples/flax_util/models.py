@@ -17,7 +17,7 @@ class ToyModel(nn.Module):
         self.fc2 = nn.Dense(features=self.num_classes)
         self.log_softmax = nn.log_softmax
 
-    @nn.compact
+    # @nn.compact
     def __call__(self, x):
         x = self.conv1(x)
         x = self.relu(x)
