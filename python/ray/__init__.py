@@ -4,9 +4,6 @@ from os.path import dirname
 import platform
 import sys
 
-# Add SPT_NOENV env, prevent setproctitle break /proc/PID/environ
-os.environ["SPT_NOENV"] = "1"
-
 logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
