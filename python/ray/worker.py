@@ -1290,10 +1290,13 @@ def connect(node,
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         worker.run_function_on_all_workers(
             lambda worker_info: sys.path.insert(1, script_directory))
-        if not job_config.client_job and job_config.get_runtime_env_uris():
+        if not job_config.get_runtime_env_uris():
             current_directory = os.path.abspath(os.path.curdir)
-            worker.run_function_on_all_workers(
-                lambda worker_info: sys.path.insert(1, current_directory))
+            def setup_dir():
+                if '' not in sys.path:
+                    sys.path.insert(0, '')
+                os.chdir(current_directory)
+            worker.run_function_on_all_workers(lambda worker_info: setup_dir())
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used

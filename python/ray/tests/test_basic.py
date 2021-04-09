@@ -9,7 +9,11 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message)
+from ray.test_utils import (
+    client_test_enabled,
+    get_error_message,
+    run_string_as_driver
+)
 
 import ray
 
@@ -253,6 +257,41 @@ def test_ray_options(shutdown_only):
     for key in to_check:
         assert without_options[key] != with_options[key], key
     assert without_options != with_options
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 4,
+    }],
+    indirect=True)
+def test_file_open(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    @ray.remote
+    def warm_up():
+        time.sleep(1)
+
+    ray.wait([warm_up.remote() for _ in range(100)])
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        with (path / "test-file").open("w") as f:
+            f.write("HelloWorld")
+        script = f"""
+import os
+import ray
+os.chdir("{tmp_dir}")
+ray.init(address='auto')
+import sys
+@ray.remote
+def open_file():
+    with open("test-file") as f:
+        print(os.getcwd(), sys.path)
+        return f.read()
+
+ray.get([open_file.remote() for _ in range(100)])
+"""
+        run_string_as_driver(script)
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
