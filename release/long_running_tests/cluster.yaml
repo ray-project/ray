@@ -22,3 +22,9 @@ head_node:
               Value: "release-automation@anyscale.com"
             - Key: anyscale-custodian
               Value: "ignore"
+            - Key: anyscale-expiration
+              Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+
+setup_commands:
+   - sudo apt update && sudo apt install -y unzip
+   - pip install -U {{env["RAY_WHEEL"]}}
