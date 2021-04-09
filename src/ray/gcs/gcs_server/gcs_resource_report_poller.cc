@@ -33,10 +33,10 @@ void GcsResourceReportPoller::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsResourceReportPoller::Start() {
-  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
   polling_thread_.reset(new std::thread{[this]() {
     SetThreadName("resource_report_poller");
     boost::asio::io_service::work work(polling_service_);
+    ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
 
     polling_service_.run();
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
