@@ -235,10 +235,15 @@ class FunctionManager {
   RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
-      return false;
+      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
-    return RegisterNonMemberFunc(name, f);
+    bool ok = RegisterNonMemberFunc(name, f);
+    if (!ok) {
+      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+    }
+
+    return true;
   }
 
   template <typename Function>
@@ -246,10 +251,15 @@ class FunctionManager {
   RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
-      return false;
+      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
-    return RegisterMemberFunc(name, f);
+    bool ok = RegisterMemberFunc(name, f);
+    if (!ok) {
+      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+    }
+
+    return true;
   }
 
   template <typename Function>
