@@ -661,7 +661,7 @@ class CloudPickler(Pickler):
                     )
                 except pickle.PicklingError:
                     # There are some false positive cases in '_is_parametrized_type_hint'.
-                    # We should fail early for these false positive cases.
+                    # We should not fail early for these false positive cases.
                     pass
             t = type(obj)
             try:
