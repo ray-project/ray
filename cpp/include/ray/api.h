@@ -193,7 +193,7 @@ TaskCaller<F> Ray::Task(F func) {
   return TaskInternal<F>(func);
 }
 
-/// Creating an actor
+/// Creating an actor.
 template <typename ActorType, typename... Args>
 ActorCreator<ActorType> Ray::Actor(CreateActorFunc<ActorType, Args...> create_func) {
   return CreateActorInternal<ActorType>(

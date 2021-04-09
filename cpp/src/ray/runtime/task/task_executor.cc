@@ -89,13 +89,13 @@ Status TaskExecutor::ExecuteTask(
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
     if (!func_name.empty()) {
-      auto execute_func = FunctionHelper::GetInstance().GetExecuteFunction(lib_name);
-      if (execute_func == nullptr) {
+      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+      if (entry_func == nullptr) {
         return ray::Status::NotFound(lib_name + " not found");
       }
 
       RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
-      auto result = execute_func(func_name, args_buffer, nullptr);
+      auto result = entry_func(func_name, args_buffer, nullptr);
       RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
@@ -112,13 +112,13 @@ Status TaskExecutor::ExecuteTask(
   } else if (task_type == TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
     if (!func_name.empty()) {
-      auto execute_func = FunctionHelper::GetInstance().GetExecuteFunction(lib_name);
-      if (execute_func == nullptr) {
+      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+      if (entry_func == nullptr) {
         return ray::Status::NotFound(lib_name + " not found");
       }
 
       RAY_LOG(DEBUG) << "Get execute function ok";
-      auto result = execute_func(func_name, args_buffer, current_actor_.get());
+      auto result = entry_func(func_name, args_buffer, current_actor_.get());
       RAY_LOG(DEBUG) << "Execute function ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {
@@ -133,13 +133,13 @@ Status TaskExecutor::ExecuteTask(
     }
   } else {  // NORMAL_TASK
     if (!func_name.empty()) {
-      auto execute_func = FunctionHelper::GetInstance().GetExecuteFunction(lib_name);
-      if (execute_func == nullptr) {
+      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+      if (entry_func == nullptr) {
         return ray::Status::NotFound(lib_name + " not found");
       }
 
       RAY_LOG(DEBUG) << "Get execute function ok";
-      auto result = execute_func(func_name, args_buffer, nullptr);
+      auto result = entry_func(func_name, args_buffer, nullptr);
       RAY_LOG(DEBUG) << "Execute function ok";
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
     } else {

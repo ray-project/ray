@@ -23,7 +23,7 @@ class FunctionHelper {
   std::function<msgpack::sbuffer(const std::string &,
                                  const std::vector<std::shared_ptr<::ray::RayObject>> &,
                                  msgpack::sbuffer *)>
-  GetExecuteFunction(const std::string &lib_name);
+  GetEntryFunction(const std::string &lib_name);
 
  private:
   FunctionHelper() = default;

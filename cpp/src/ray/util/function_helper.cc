@@ -56,7 +56,7 @@ std::shared_ptr<boost::dll::shared_library> FunctionHelper::LoadDll(
 std::function<msgpack::sbuffer(const std::string &,
                                const std::vector<std::shared_ptr<::ray::RayObject>> &,
                                msgpack::sbuffer *)>
-FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
+FunctionHelper::GetEntryFunction(const std::string &lib_name) {
   auto it = funcs_.find(lib_name);
   if (it != funcs_.end()) {
     return it->second;
@@ -68,11 +68,11 @@ FunctionHelper::GetExecuteFunction(const std::string &lib_name) {
   }
 
   try {
-    auto execute_func = boost::dll::import_alias<msgpack::sbuffer(
+    auto entry_func = boost::dll::import_alias<msgpack::sbuffer(
         const std::string &, const std::vector<std::shared_ptr<::ray::RayObject>> &,
         msgpack::sbuffer *)>(*lib, "TaskExecutionHandler");
-    funcs_.emplace(lib_name, execute_func);
-    return execute_func;
+    funcs_.emplace(lib_name, entry_func);
+    return entry_func;
   } catch (std::exception &e) {
     RAY_LOG(WARNING) << "Get execute function failed, lib_name: " << lib_name
                      << ", failed reason: " << e.what();
