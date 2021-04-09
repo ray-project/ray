@@ -69,25 +69,28 @@ sleep(10)
 
 @pytest.fixture(scope="function")
 def working_dir():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        path = Path(tmp_dir)
-        module_path = path / "test_module"
-        module_path.mkdir(parents=True)
-        init_file = module_path / "__init__.py"
-        test_file = module_path / "test.py"
-        with test_file.open(mode="w") as f:
-            f.write("""
-def one():
-    return 1
-""")
-        with init_file.open(mode="w") as f:
-            f.write("""
-from test_module.test import one
-""")
-        old_dir = os.getcwd()
-        os.chdir(tmp_dir)
-        yield tmp_dir
-        os.chdir(old_dir)
+    if sys.platform != "win32":
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+            module_path = path / "test_module"
+            module_path.mkdir(parents=True)
+            init_file = module_path / "__init__.py"
+            test_file = module_path / "test.py"
+            with test_file.open(mode="w") as f:
+                f.write("""
+    def one():
+        return 1
+    """)
+            with init_file.open(mode="w") as f:
+                f.write("""
+    from test_module.test import one
+    """)
+            old_dir = os.getcwd()
+            os.chdir(tmp_dir)
+            yield tmp_dir
+            os.chdir(old_dir)
+    else:
+        yield
 
 
 def start_client_server(cluster, client_mode):
@@ -303,7 +306,7 @@ sleep(600)
     script = driver_script.format(**locals())
     proc = run_string_as_driver_nonblocking(script, env)
     sleep(5)
-    runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
+    runtime_env = """{{  "working_dir": test_module.__path__[0] }}"""
     # Execute the following cmd in the second one which should
     # fail
     execute_statement = "print('OK')"
@@ -330,7 +333,7 @@ def conda_envs():
     def create_tf_env(tf_version: str):
 
         subprocess.run([
-            "conda", "create", "-n", f"tf-{tf_version}", f"--clone",
+            "conda", "create", "-n", f"tf-{tf_version}", "--clone",
             current_conda_env, "-y"
         ])
         commands = [

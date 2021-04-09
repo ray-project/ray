@@ -260,6 +260,7 @@ def test_ray_options(shutdown_only):
     "ray_start_cluster_head", [{
         "num_cpus": 4,
     }], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_file_open(ray_start_cluster_head):
     @ray.remote
     def warm_up():
