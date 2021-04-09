@@ -29,7 +29,7 @@ class ActorPool:
         self._next_task_index = 0
 
         # next task to return
-        self._next_return_index = 0.
+        self._next_return_index = 0
 
         # next work depending when actors free
         self._pending_submits = []
