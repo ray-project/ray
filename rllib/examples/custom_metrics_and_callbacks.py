@@ -26,16 +26,19 @@ class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker: RolloutWorker, base_env: BaseEnv,
                          policies: Dict[str, Policy],
                          episode: MultiAgentEpisode, env_index: int, **kwargs):
-        print("episode {} (env-idx={}) started.".format(
-            episode.episode_id, env_index))
+        # Make sure this episode has just been started (only initial obs
+        # logged so far).
         assert episode.length == 0, \
             "ERROR: `on_episode_start()` callback should be called right " \
             "after env reset!"
+        print("episode {} (env-idx={}) started.".format(
+            episode.episode_id, env_index))
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+        # Make sure this episode is ongoing.
         assert episode.length > 0, \
             "ERROR: `on_episode_step()` callback should not be called right " \
             "after env reset!"
@@ -47,6 +50,7 @@ class MyCallbacks(DefaultCallbacks):
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
                        policies: Dict[str, Policy], episode: MultiAgentEpisode,
                        env_index: int, **kwargs):
+        # Make sure this episode is really done.
         assert episode.batch_builder.policy_collectors[
             "default_policy"].buffers["dones"][-1], \
             "ERROR: `on_episode_end()` should only be called " \
