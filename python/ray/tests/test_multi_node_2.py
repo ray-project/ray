@@ -66,7 +66,6 @@ def test_system_config(ray_start_cluster_head):
     def _node_removed():
         return ray.cluster_resources()["CPU"] == 1
 
-    time.sleep(3)
     wait_for_condition(_node_removed, timeout=3)
 
 
