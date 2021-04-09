@@ -500,23 +500,16 @@ def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
 
-    with ray_start_client_server() as ray:
-        assert ray.get_gpu_ids() == []
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_client_gpu_ids_hook():
-    """
-    Validate that ray.get_gpu_ids is wrapped by client_mode_hook.
-    """
-    import ray
-    # These two lines ensure client mode hook will be in effect.
-    _enable_client_hook(True)
     _explicitly_enable_client_mode()
+    # No client connection.
+    with pytest.raises(Exception) as e:
+        ray.get_gpu_ids()
+    assert str(e.value) == 'Ray Client is not connected.'\
+        ' Please connect by calling `ray.connect`.'
 
-    # Ray isn't actually initialized. However, client mode is on, so we
-    # get the expected result.
-    assert ray.get_gpu_ids() == []
+    with ray_start_client_server():
+        # Now have a client connection.
+        assert ray.get_gpu_ids() == []
 
 
 if __name__ == "__main__":
