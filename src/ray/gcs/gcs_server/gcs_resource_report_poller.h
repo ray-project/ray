@@ -143,6 +143,9 @@ class GcsResourceReportPoller {
       LOCKS_EXCLUDED(mutex_);
 
   friend class GcsResourceReportPollerTest;
+ public:
+  uint64_t num_get_batch_;
+  double total_get_batch_time_;
 };
 
 }  // namespace gcs

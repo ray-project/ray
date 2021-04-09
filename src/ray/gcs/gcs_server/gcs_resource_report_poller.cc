@@ -22,7 +22,10 @@ GcsResourceReportPoller::GcsResourceReportPoller(
       get_resource_usage_batch_(get_resource_usage_batch),
       get_current_time_milli_(get_current_time_milli),
       request_report_(request_report),
-      poll_period_ms_(RayConfig::instance().gcs_resource_report_poll_period_ms()) {}
+      poll_period_ms_(RayConfig::instance().gcs_resource_report_poll_period_ms()),
+      num_get_batch_(0),
+      total_get_batch_time_(0)
+{}
 
 GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 
@@ -92,7 +95,11 @@ void GcsResourceReportPoller::HandleNodeRemoved(const rpc::GcsNodeInfo &node_inf
 void GcsResourceReportPoller::TryPullResourceReport() {
   // TODO (Alex): In theory we could acquire mutex_ for shorter intervals, but it's
   // probably not worth the more complicated logic.
+  num_get_batch_++;
+  double start = absl::GetCurrentTimeNanos();
   auto batch_data = get_resource_usage_batch_();
+  double end = absl::GetCurrentTimeNanos();
+  total_get_batch_time_ += (end - start);
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
