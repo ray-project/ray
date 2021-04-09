@@ -28,12 +28,17 @@ class MyCallbacks(DefaultCallbacks):
                          episode: MultiAgentEpisode, env_index: int, **kwargs):
         print("episode {} (env-idx={}) started.".format(
             episode.episode_id, env_index))
-
+        assert episode.length == 0, \
+            "ERROR: `on_episode_start()` callback should be called right " \
+            "after env reset!"
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(self, *, worker: RolloutWorker, base_env: BaseEnv,
                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+        assert episode.length > 0, \
+            "ERROR: `on_episode_step()` callback should not be called right " \
+            "after env reset!"
         pole_angle = abs(episode.last_observation_for()[2])
         raw_angle = abs(episode.last_raw_obs_for()[2])
         assert pole_angle == raw_angle
@@ -42,6 +47,10 @@ class MyCallbacks(DefaultCallbacks):
     def on_episode_end(self, *, worker: RolloutWorker, base_env: BaseEnv,
                        policies: Dict[str, Policy], episode: MultiAgentEpisode,
                        env_index: int, **kwargs):
+        assert episode.batch_builder.policy_collectors[
+            "default_policy"].buffers["dones"][-1], \
+            "ERROR: `on_episode_end()` should only be called " \
+            "after episode is done!"
         pole_angle = np.mean(episode.user_data["pole_angles"])
         print("episode {} (env-idx={}) ended with length {} and pole "
               "angles {}".format(episode.episode_id, env_index, episode.length,
