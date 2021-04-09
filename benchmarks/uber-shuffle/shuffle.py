@@ -9,10 +9,11 @@ import ray
 
 
 # TODOs:
+# - Instrument profiling:
+#   - Get some basic metrics: disk read time, shuffle time between map and
+#     reduce tasks, average map/reduce task duration.
 # - Plot the results.
 # - Run on a large machine with the full dataset size
-# - Get some basic metrics: disk read time, shuffle time between map and reduce
-# tasks, average map/reduce task duration.
 # - [DONE] Compute number of rounds based on batch size.
 # - Scale past memory capacity of the cluster (long-term)
 
@@ -174,7 +175,10 @@ def shuffle_select_from_disk(
     rows = np.array_split(rows, num_rounds)[round_index]
 
     # Return a list of chunks, one for each reducer.
-    return np.array_split(rows, num_reducers)
+    split = np.array_split(rows, num_reducers)
+    if len(split) == 1:
+        split = split[0]
+    return split
 
 
 @ray.remote
@@ -189,13 +193,14 @@ def shuffle_reduce(reduce_index, batches_per_round, *chunks):
 
 
 @ray.remote
-def consume(chunk):
+def consume(chunk, round_index):
+    print("Round:", round_index)
     return timeit.default_timer()
 
 
 def shuffle_from_disk(
         filenames, num_trainers, batch_size, batches_per_round, num_rows):
-    v = Validator.remote(filenames)
+    # v = Validator.remote(filenames)
     # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
     # print("Expecting", num_expected_rows, "rows")
 
@@ -211,14 +216,19 @@ def shuffle_from_disk(
 
     start = timeit.default_timer()
 
-    final_shuffled = []
     seed = 0
+    consumed = []
     # TODO(Clark): Move to streaming implementation.
     for round_index in range(num_rounds):
-        chunks = [
-            shuffle_select_from_disk.options(num_returns=num_trainers).remote(
+        chunks = []
+        for filename in filenames:
+            chunk = shuffle_select_from_disk.options(
+                num_returns=num_trainers).remote(
                 filename, num_trainers, seed, round_index, num_rounds)
-            for filename in filenames]
+            if not isinstance(chunk, list):
+                chunk = [chunk]
+            chunks.append(chunk)
+
         shuffled = [
             shuffle_reduce.remote(
                 j,
@@ -226,17 +236,15 @@ def shuffle_from_disk(
                 *[chunks[i][j] for i in range(len(filenames))])
             for j in range(num_trainers)]
         # TODO(Clark): Add pipelining of shuffle rounds.
-        ray.get([consume.remote(batch) for batch in shuffled])
-        # finished = ray.get([consume.remote(batch) for batch in shuffled])
-        final_shuffled += shuffled
+        consumed.extend([
+            consume.remote(batch, round_index) for batch in shuffled])
 
-        # for t in finished:
-        #     print(t - start)
+    consumer_times = [end - start for end in ray.get(consumed)]
     end = timeit.default_timer()
 
-    ray.get(v.check.remote(batches_per_round, *final_shuffled))
+    # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
-    return end - start
+    return end - start, consumer_times
 
 
 #
@@ -248,6 +256,8 @@ def shuffle_from_disk(
 def shuffle_select_from_memory(rows, num_reducers):
     # Return a list of chunks, one for each reducer.
     split = np.array_split(rows, num_reducers)
+    if len(split) == 1:
+        split = split[0]
     return split
 
 
@@ -287,7 +297,7 @@ def cache_in_memory(filenames, num_rounds):
 
 def shuffle_from_memory(
         filenames, num_trainers, batch_size, batches_per_round, num_rows):
-    v = Validator.remote(filenames)
+    # v = Validator.remote(filenames)
     # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
     # print("Expecting", num_expected_rows, "rows")
 
@@ -305,13 +315,17 @@ def shuffle_from_memory(
 
     start = timeit.default_timer()
 
-    final_shuffled = []
+    consumed = []
     # TODO(Clark): Move to streaming implementation.
     for round_partitions in rounds_of_partitions:
-        chunks = [
-            shuffle_select_from_memory.options(
-                num_returns=num_trainers).remote(round_partition, num_trainers)
-            for round_partition in round_partitions]
+        chunks = []
+        for round_partition in round_partitions:
+            chunk = shuffle_select_from_memory.options(
+                num_returns=num_trainers).remote(
+                    round_partition, num_trainers)
+            if not isinstance(chunk, list):
+                chunk = [chunk]
+            chunks.append(chunk)
         shuffled = [
             shuffle_reduce.remote(
                 j,
@@ -319,17 +333,13 @@ def shuffle_from_memory(
                 *[chunks[i][j] for i in range(len(round_partitions))])
             for j in range(num_trainers)]
         # TODO(Clark): Add pipelining of shuffle rounds.
-        ray.get([consume.remote(batch) for batch in shuffled])
-        # finished = ray.get([consume.remote(batch) for batch in shuffled])
-        final_shuffled += shuffled
+        consumed.extend([consume.remote(batch) for batch in shuffled])
+    consumer_times = [end - start for end in ray.get(consumed)]
 
-        # for t in finished:
-        #     print(t - start)
+    # ray.get(v.check.remote(batches_per_round, *final_shuffled))
+
     end = timeit.default_timer()
-
-    ray.get(v.check.remote(batches_per_round, *final_shuffled))
-
-    return end - start
+    return end - start, consumer_times
 
 
 def run_trials(
@@ -351,13 +361,14 @@ def run_trials(
             "rounds.")
         shuffle = shuffle_from_memory
     times = []
+    all_consumer_times = []
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_trainers} "
               f"trainers and a batch size of {batch_size} over {num_rows} "
               f"rows, with {batches_per_round} batches per round.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
-            shuffle_time = shuffle(
+            shuffle_time, consumer_times = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
@@ -365,6 +376,7 @@ def run_trials(
                 num_rows)
             print(f"Trial {trial} done after {shuffle_time} seconds.")
             times.append(shuffle_time)
+            all_consumer_times.append(consumer_times)
     elif trials_timeout is not None:
         print(f"Running {trials_timeout} seconds of shuffle trials with "
               f"{num_trainers} trainers and a {batch_size} batch_size over "
@@ -373,7 +385,7 @@ def run_trials(
         trial = 0
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
-            shuffle_time = shuffle(
+            shuffle_time, consumer_times = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
@@ -381,11 +393,12 @@ def run_trials(
                 num_rows)
             print(f"Trial {trial} done after {shuffle_time} seconds.")
             times.append(shuffle_time)
+            all_consumer_times.append(consumer_times)
             trial += 1
     else:
         raise ValueError(
             "One of num_trials and trials_timeout must be specified")
-    return times
+    return times, all_consumer_times
 
 
 if __name__ == "__main__":
@@ -457,6 +470,14 @@ if __name__ == "__main__":
             f"contains {num_rows_per_group} rows, totalling "
             f"{human_readable_size(num_bytes)}.")
     else:
+        num_files = num_row_groups / num_row_groups_per_file
+        assert num_files % 1 == 0
+        num_files = int(num_files)
+        filenames = [
+            os.path.join(
+                data_dir,
+                f"input_data_{file_index}.parquet.gzip")
+            for file_index in range(num_files)]
         print("Not generating input data, using existing data instead.")
 
     num_trainers = args.num_trainers
@@ -475,7 +496,7 @@ if __name__ == "__main__":
     #     warmup_trials)
 
     print("\nRunning real trials.")
-    times = run_trials(
+    times, all_consumer_times = run_trials(
         filenames,
         num_trainers,
         batch_size,
@@ -484,6 +505,36 @@ if __name__ == "__main__":
         args.use_from_disk_shuffler,
         num_trials,
         trials_timeout)
+
+    flat_all_consumer_times = [
+        time
+        for consumer_times in all_consumer_times
+        for time in consumer_times]
+    mean = np.mean(flat_all_consumer_times)
+    std = np.std(flat_all_consumer_times)
+    throughput_std = np.std([
+        num_rows / time
+        for time in flat_all_consumer_times])
+    batch_throughput_std = np.std([
+        (num_rows / batch_size) / time
+        for time in flat_all_consumer_times])
+    print(f"\nMean over {len(flat_all_consumer_times)} "
+          f"consumptions and {len(times)} trials: {mean:.3f}s +- {std}")
+    print(f"Mean throughput over {len(flat_all_consumer_times)} consumptions "
+          f"and {len(times)} trials: {num_rows / mean:.2f} rows/s +- "
+          f"{throughput_std:.2f}")
+    print(f"Mean batch throughput over {len(flat_all_consumer_times)} "
+          f"consumptions and {len(times)} trials: "
+          f"{(num_rows / batch_size) / mean:.2f} batches/s +- "
+          f"{batch_throughput_std:.2f}")
+    shuffle_type = (
+        "from_disk" if args.use_from_disk_shuffler else "from_memory")
+    for trial, consumer_times in enumerate(all_consumer_times):
+        with open(
+                f"output_{num_trainers}_{batches_per_round}_"
+                f"{shuffle_type}_{trial}.txt", "w+") as f:
+            for consumer_time in consumer_times:
+                f.write(f"{consumer_time}\n")
 
     mean = np.mean(times)
     std = np.std(times)
