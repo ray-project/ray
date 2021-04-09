@@ -110,7 +110,7 @@ The following test cases are related with runtime env. It following these steps
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_single_node(ray_start_cluster_head, working_dir, client_mode):
+def test_single_node(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Setup runtime env here
@@ -125,7 +125,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node(two_node_cluster, working_dir, client_mode):
+def test_two_node(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Testing runtime env with working_dir
@@ -140,7 +140,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_module(two_node_cluster, working_dir, client_mode):
+def test_two_node_module(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # test runtime_env iwth py_modules
@@ -155,7 +155,7 @@ def test_two_node_module(two_node_cluster, working_dir, client_mode):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_local_file(two_node_cluster, working_dir, client_mode):
+def test_two_node_local_file(working_dir, two_node_cluster, client_mode):
     with open(os.path.join(working_dir, "test_file"), "w") as f:
         f.write("1")
     cluster, _ = two_node_cluster
@@ -175,7 +175,7 @@ print(sum([int(v) for v in vals]))
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_two_node_uri(two_node_cluster, working_dir, client_mode):
+def test_two_node_uri(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     import ray._private.runtime_env as runtime_env
@@ -196,7 +196,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_regular_actors(ray_start_cluster_head, working_dir, client_mode):
+def test_regular_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -213,7 +213,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_detached_actors(ray_start_cluster_head, working_dir, client_mode):
+def test_detached_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
@@ -239,7 +239,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_1(ray_start_cluster_head, working_dir):
+def test_jobconfig_compatible_1(working_dir, ray_start_cluster_head):
     # start job_config=None
     # start job_config=something
     cluster = ray_start_cluster_head
@@ -265,7 +265,7 @@ sleep(600)
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_2(ray_start_cluster_head, working_dir):
+def test_jobconfig_compatible_2(working_dir, ray_start_cluster_head):
     # start job_config=something
     # start job_config=None
     cluster = ray_start_cluster_head
@@ -290,7 +290,7 @@ sleep(600)
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
-def test_jobconfig_compatible_3(ray_start_cluster_head, working_dir):
+def test_jobconfig_compatible_3(working_dir, ray_start_cluster_head):
     # start job_config=something
     # start job_config=something else
     cluster = ray_start_cluster_head
