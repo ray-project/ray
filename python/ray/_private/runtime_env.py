@@ -25,7 +25,6 @@ PKG_DIR = None
 logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
-FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
 
 class RuntimeEnvDict:
@@ -114,13 +113,10 @@ def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
     for from_file_name in path.glob("**/*"):
         file_size = from_file_name.stat().st_size
-        if file_size >= FILE_SIZE_LIMIT:
-            raise RuntimeError(f"File {from_file_name} is too big, "
-                               "which currently is not allowd ")
         if file_size >= FILE_SIZE_WARNING:
             logger.warning(
-                f"File {from_file_name} is too big ({file_size} bytes). "
-                "Consider exclude this file in working directory.")
+                f"File {from_file_name} is very large ({file_size} bytes). "
+                "Consider excluding this file from the working directory.")
         to_file_name = from_file_name.relative_to(relative_path)
         zip_handler.write(from_file_name, to_file_name)
 

@@ -671,7 +671,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
-  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
+  io_thread_ = std::thread([this]() { RunIOService(); });
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
