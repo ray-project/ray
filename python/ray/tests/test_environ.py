@@ -2,9 +2,9 @@ import os
 import pytest
 import ray
 
+
 @pytest.mark.skipif("sys.platform != 'linux'")
 def test_environ_file_on_linux(ray_start_10_cpus):
-
     @ray.remote
     class Actor1:
         def __init__(self):
@@ -23,7 +23,6 @@ def test_environ_file_on_linux(ray_start_10_cpus):
 
         def get_os_environ(self):
             return os.environ
-
 
     a = Actor1.remote()
     actor_proc_environ = ray.get(a.get_env_from_proc.remote())
