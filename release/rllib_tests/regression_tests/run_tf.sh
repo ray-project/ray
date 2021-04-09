@@ -9,6 +9,3 @@ pip install boto3==1.4.8 cython==0.29.0
 
 # Run tf learning tests.
 rllib train -f compact-regression-tests-tf.yaml
-
-# Run torch learning tests.
-rllib train -f compact-regression-tests-torch.yaml
