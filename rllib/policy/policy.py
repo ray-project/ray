@@ -630,6 +630,8 @@ class Policy(metaclass=ABCMeta):
             if key not in self.view_requirements:
                 self.view_requirements[key] = ViewRequirement()
             self.view_requirements[key].used_for_compute_actions = True
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
