@@ -8,6 +8,9 @@ MB = 1024 * 1024
 
 
 def object_store_memory(a, delta=MB):
+    object_store_memory = ray.available_resources().get("object_store_memory")
+    if object_store_memory is None:
+        return False
     b = ray.available_resources()["object_store_memory"]
     return abs(a - b) < delta
 

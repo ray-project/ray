@@ -486,10 +486,7 @@ class SimpleListCollector(SampleCollector):
                      init_obs: TensorType) -> None:
         # Make sure our mappings are up to date.
         agent_key = (episode.episode_id, agent_id)
-        if agent_key not in self.agent_key_to_policy_id:
-            self.agent_key_to_policy_id[agent_key] = policy_id
-        else:
-            assert self.agent_key_to_policy_id[agent_key] == policy_id
+        self.agent_key_to_policy_id[agent_key] = policy_id
         policy = self.policy_map[policy_id]
         view_reqs = policy.model.view_requirements if \
             getattr(policy, "model", None) else policy.view_requirements

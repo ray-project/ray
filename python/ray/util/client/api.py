@@ -243,9 +243,17 @@ class ClientAPI:
         """
         return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
+    # Client process isn't assigned any GPUs.
+    def get_gpu_ids(self) -> list:
+        return []
+
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
         return self.is_initialized()
+
+    def _internal_kv_exists(self, key: bytes) -> bool:
+        """Hook for internal_kv._internal_kv_exists."""
+        return self.worker.internal_kv_exists(as_bytes(key))
 
     def _internal_kv_get(self, key: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_get."""

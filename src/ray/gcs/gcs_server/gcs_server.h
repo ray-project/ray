@@ -17,9 +17,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -41,6 +43,7 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = true;
   std::string node_ip_address;
+  bool pull_based_resource_reporting;
 };
 
 class GcsNodeManager;
@@ -112,6 +115,12 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
+  /// Initialize KV manager.
+  void InitKVManager();
+
+  /// Initialize resource report polling.
+  void InitResourceReportPolling(const GcsInitData &gcs_init_data);
+
   /// Install event listeners.
   void InstallEventListeners();
 
@@ -128,6 +137,9 @@ class GcsServer {
 
   /// Print debug info periodically.
   void PrintDebugInfo();
+
+  /// Print the asio event loop stats for debugging.
+  void PrintAsioStats();
 
   /// Gcs server configuration.
   GcsServerConfig config_;
@@ -176,12 +188,17 @@ class GcsServer {
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
+  /// Resource report poller.
+  std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

@@ -12,12 +12,11 @@ from ray.serve.utils import block_until_http_ready
 
 
 def test_serve_metrics(serve_instance):
-    @serve.accept_batch
-    def batcher(starlette_requests):
-        return ["hello"] * len(starlette_requests)
+    @serve.deployment(name="metrics")
+    async def f(request):
+        return "hello"
 
-    serve.create_backend("metrics", batcher)
-    serve.create_endpoint("metrics", backend="metrics", route="/metrics")
+    f.deploy()
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
@@ -41,12 +40,8 @@ def test_serve_metrics(serve_instance):
             "backend_processing_latency_ms_bucket",
             "backend_processing_latency_ms_count",
             "backend_processing_latency_ms_sum",
-            "backend_queuing_latency_ms_bucket",
-            "backend_queuing_latency_ms_count",
-            "backend_queuing_latency_ms_sum",
             # gauge
             "replica_processing_queries",
-            "replica_queued_queries",
             # handle
             "serve_handle_request_counter",
             # ReplicaSet
@@ -72,6 +67,7 @@ def test_backend_logger(serve_instance):
     # Tests that backend tag and replica tag appear in Serve log output.
     logger = logging.getLogger("ray")
 
+    @serve.deployment(name="counter")
     class Counter:
         def __init__(self):
             self.count = 0
@@ -80,9 +76,7 @@ def test_backend_logger(serve_instance):
             self.count += 1
             logger.info(f"count: {self.count}")
 
-    serve.create_backend("my_backend", Counter)
-    serve.create_endpoint(
-        "my_endpoint", backend="my_backend", route="/counter")
+    Counter.deploy()
     f = io.StringIO()
     with redirect_stderr(f):
         requests.get("http://127.0.0.1:8000/counter")

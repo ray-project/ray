@@ -493,14 +493,16 @@ class DynamicTFPolicy(TFPolicy):
             dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
-            train_batch["seq_lens"] = self._seq_lens
+            train_batch.seq_lens = self._seq_lens
+            self._loss_input_dict.update({"seq_lens": train_batch.seq_lens})
+
+        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
         loss = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
