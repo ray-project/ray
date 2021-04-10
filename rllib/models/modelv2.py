@@ -170,7 +170,7 @@ class ModelV2:
                         key2: metric2
 
         Returns:
-            Dict of string keys to scalar tensors.
+            Dict[str, TensorType]: The custom metrics for this model.
         """
         return {}
 

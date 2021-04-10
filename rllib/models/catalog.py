@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental flag.
-    # If True, try to use a native (tf.keras.Model or torch.Module) model
-    # instead of our ModelV2 built-in default models.
+    # If True, try to use a native (tf.keras.Model or torch.Module) default
+    # model instead of our built-in ModelV2 defaults.
     # If False (default), use "classic" ModelV2 default models.
     # Note that this currently only works for framework != torch AND fully
     # connected default networks.
