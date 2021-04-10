@@ -1,7 +1,11 @@
 import argparse
+import csv
+from dataclasses import dataclass
 import glob
+import math
 import os
 import timeit
+from typing import List
 
 import pandas as pd
 import numpy as np
@@ -31,6 +35,316 @@ import ray
 
 
 DEFAULT_DATA_DIR = "/mnt/disk0/benchmark_scratch"
+DEFAULT_STATS_DIR = "."
+
+
+@dataclass
+class StageStats:
+    task_durations: List[float]
+    stage_duration: float
+
+
+@dataclass
+class MapStats(StageStats):
+    read_durations: List[float]
+
+
+@dataclass
+class ReduceStats(StageStats):
+    pass
+
+
+@dataclass
+class ConsumeStats:
+    consume_times: List[float]
+
+
+@dataclass
+class RoundStats:
+    map_stats: MapStats
+    reduce_stats: ReduceStats
+    consume_stats: ConsumeStats
+
+
+@dataclass
+class FromMemoryMapStats(StageStats):
+    pass
+
+
+@dataclass
+class FromMemoryRoundStats:
+    map_stats: FromMemoryMapStats
+    reduce_stats: ReduceStats
+    consume_stats: ConsumeStats
+
+
+@dataclass
+class EpochStats:
+    round_stats: List[RoundStats]
+    duration: float
+
+
+@dataclass
+class CacheMapStats(StageStats):
+    read_durations: List[float]
+
+
+@dataclass
+class EpochStatsFromMemoryShuffle:
+    round_stats: List[FromMemoryRoundStats]
+    duration: float
+    cache_map_stats: CacheMapStats
+
+
+class RoundStatsCollector_:
+    def __init__(self, num_maps, num_reduces):
+        self._num_maps = num_maps
+        self._num_reduces = num_reduces
+        self._maps_started = 0
+        self._maps_done = 0
+        self._map_durations = []
+        self._read_durations = []
+        self._reduces_started = 0
+        self._reduces_done = 0
+        self._reduce_durations = []
+        self._consume_times = []
+        self._map_stage_start_time = None
+        self._reduce_stage_start_time = None
+        self._map_stage_duration = None
+        self._reduce_stage_duration = None
+
+    def map_start(self):
+        if self._maps_started == 0:
+            self._map_stage_start(timeit.default_timer())
+        self._maps_started += 1
+
+    def map_done(self, duration, read_duration):
+        self._maps_done += 1
+        self._map_durations.append(duration)
+        self._read_durations.append(read_duration)
+        if self._maps_done == self._num_maps:
+            self._map_stage_done(timeit.default_timer())
+
+    def reduce_start(self):
+        if self._reduces_started == 0:
+            self._reduce_stage_start(timeit.default_timer())
+        self._reduces_started += 1
+
+    def reduce_done(self, duration):
+        self._reduces_done += 1
+        self._reduce_durations.append(duration)
+        if self._reduces_done == self._num_reduces:
+            self._reduce_stage_done(timeit.default_timer())
+
+    def consume(self, consume_time):
+        self._consume_times.append(consume_time)
+
+    def get_consume_times(self):
+        assert len(self._consume_times) == self._num_reduces
+        return self._consume_times
+
+    def get_progress(self):
+        return (
+            self._maps_started, self._maps_done,
+            self._reduces_started, self._reduces_done)
+
+    def get_stage_task_durations(self):
+        # TODO(Clark): Yield until these conditions are true?
+        assert len(self._map_durations) == self._num_maps
+        assert len(self._reduce_durations) == self._num_reduces
+        return self._map_durations, self._reduce_durations
+
+    def _map_stage_start(self, start_time):
+        self._map_stage_start_time = start_time
+
+    def _map_stage_done(self, end_time):
+        assert self._map_stage_start_time is not None
+        self._map_stage_duration = end_time - self._map_stage_start_time
+
+    def _reduce_stage_start(self, start_time):
+        self._reduce_stage_start_time = start_time
+
+    def _reduce_stage_done(self, end_time):
+        assert self._reduce_stage_start_time is not None
+        self._reduce_stage_duration = end_time - self._reduce_stage_start_time
+
+    def get_stage_durations(self):
+        # TODO(Clark): Yield until these conditions are true?
+        assert self._map_stage_duration is not None
+        assert self._reduce_stage_duration is not None
+        return self._map_stage_duration, self._reduce_stage_duration
+
+    def get_map_stats(self):
+        assert len(self._map_durations) == self._num_maps
+        assert self._map_stage_duration is not None
+        return MapStats(
+            self._map_durations,
+            self._map_stage_duration,
+            self._read_durations)
+
+    def get_reduce_stats(self):
+        assert len(self._reduce_durations) == self._num_reduces
+        assert self._reduce_stage_duration is not None
+        return ReduceStats(self._reduce_durations, self._reduce_stage_duration)
+
+    def get_consume_stats(self):
+        assert len(self._consume_times) == self._num_reduces
+        return ConsumeStats(self._consume_times)
+
+    def get_stats(self):
+        # TODO(Clark): Yield until these conditions are true?
+        assert self._maps_done == self._num_maps
+        assert self._reduces_done == self._num_reduces
+        return RoundStats(
+            self.get_map_stats(),
+            self.get_reduce_stats(),
+            self.get_consume_stats())
+
+
+class FromMemoryRoundStatsCollector_(RoundStatsCollector_):
+    def map_done(self, duration):
+        self._maps_done += 1
+        self._map_durations.append(duration)
+        if self._maps_done == self._num_maps:
+            self._map_stage_done(timeit.default_timer())
+
+    def get_map_stats(self):
+        assert self._map_stage_duration is not None
+        assert len(self._map_durations) == self._num_maps
+        return FromMemoryMapStats(
+            self._map_durations, self._map_stage_duration)
+
+    def get_stats(self):
+        # TODO(Clark): Yield until these conditions are true?
+        assert self._maps_done == self._num_maps
+        assert self._reduces_done == self._num_reduces
+        return FromMemoryRoundStats(
+            self.get_map_stats(),
+            self.get_reduce_stats(),
+            self.get_consume_stats())
+
+
+class EpochStatsCollector_:
+    def __init__(self, num_maps, num_reduces, num_rounds):
+        self._collectors = [
+            RoundStatsCollector_(num_maps, num_reduces)
+            for _ in range(num_rounds)]
+        self._duration = None
+
+    def epoch_done(self, duration):
+        self._duration = duration
+
+    def map_start(self, round_idx):
+        self._collectors[round_idx].map_start()
+
+    def map_done(self, round_idx, duration, read_duration):
+        self._collectors[round_idx].map_done(duration, read_duration)
+
+    def reduce_start(self, round_idx):
+        self._collectors[round_idx].reduce_start()
+
+    def reduce_done(self, round_idx, duration):
+        self._collectors[round_idx].reduce_done(duration)
+
+    def consume(self, round_idx, consume_time):
+        self._collectors[round_idx].consume(consume_time)
+
+    def get_consume_times(self, round_idx):
+        self._collectors[round_idx].get_consume_times()
+
+    def get_progress(self, round_idx):
+        self._collectors[round_idx].get_progress()
+
+    def get_stage_task_durations(self, round_idx):
+        self._collectors[round_idx].get_stage_task_durations()
+
+    def get_stage_durations(self, round_idx):
+        self._collectors[round_idx].get_stage_durations()
+
+    def get_round_stats(self, round_idx):
+        self._collectors[round_idx].get_stats()
+
+    def get_stats(self):
+        assert self._duration is not None
+        return EpochStats(
+            [
+                collector.get_stats()
+                for collector in self._collectors],
+            self._duration)
+
+
+class FromMemoryEpochStatsCollector_(EpochStatsCollector_):
+    def __init__(self, num_maps, num_reduces, num_rounds):
+        self._collectors = [
+            FromMemoryRoundStatsCollector_(num_maps, num_reduces)
+            for _ in range(num_rounds)]
+        self._duration = None
+        self._num_cache_maps = num_maps
+        self._cache_maps_started = 0
+        self._cache_maps_done = 0
+        self._cache_map_durations = []
+        self._read_durations = []
+        self._cache_map_stage_start_time = None
+        self._cache_map_stage_duration = None
+
+    def map_done(self, round_idx, duration):
+        self._collectors[round_idx].map_done(duration)
+
+    def cache_map_start(self):
+        if self._cache_maps_started == 0:
+            self._cache_map_stage_start(timeit.default_timer())
+        self._cache_maps_started += 1
+
+    def cache_map_done(self, duration, read_duration):
+        self._cache_maps_done += 1
+        self._cache_map_durations.append(duration)
+        self._read_durations.append(read_duration)
+        if self._cache_maps_done == self._num_cache_maps:
+            self._cache_map_stage_done(timeit.default_timer())
+
+    def _cache_map_stage_start(self, start_time):
+        self._cache_map_stage_start_time = start_time
+
+    def _cache_map_stage_done(self, end_time):
+        assert self._cache_map_stage_start_time is not None
+        self._cache_map_stage_duration = (
+            end_time - self._cache_map_stage_start_time)
+
+    def get_cache_map_task_durations(self):
+        # TODO(Clark): Yield until this condition is true?
+        assert len(self._cache_map_durations) == self._num_cache_maps
+        return self._cache_map_durations
+
+    def get_cache_map_stage_duration(self):
+        # TODO(Clark): Yield until this condition is true?
+        assert self._cache_map_stage_duration is not None
+        return self._cache_map_stage_duration
+
+    def get_cache_map_stats(self):
+        # TODO(Clark): Yield until this condition is true?
+        assert len(self._cache_map_durations) == self._num_cache_maps
+        assert self._cache_map_stage_duration is not None
+        return CacheMapStats(
+            self._cache_map_durations,
+            self._cache_map_stage_duration,
+            self._read_durations)
+
+    def get_progress(self):
+        return self._cache_maps_started, self._cache_maps_done
+
+    def get_stats(self):
+        # TODO(Clark): Yield until this condition is true?
+        assert self._cache_maps_done == self._num_cache_maps
+        return EpochStatsFromMemoryShuffle(
+            [
+                collector.get_stats()
+                for collector in self._collectors],
+            self._duration,
+            self.get_cache_map_stats())
+
+
+EpochStatsCollector = ray.remote(EpochStatsCollector_)
+FromMemoryEpochStatsCollector = ray.remote(FromMemoryEpochStatsCollector_)
 
 
 def human_readable_size(num, precision=1, suffix="B"):
@@ -39,6 +353,19 @@ def human_readable_size(num, precision=1, suffix="B"):
             break
         num /= 1024.0
     return f"{num:.{precision}f}{unit}{suffix}"
+
+
+UNITS = ["", "K", "M", "B", "T", "Q"]
+
+
+def human_readable_big_num(num):
+    idx = int(math.log10(num) // 3)
+    unit = UNITS[idx]
+    new_num = num / 10 ** (3 * idx)
+    if new_num % 1 == 0:
+        return f"{int(new_num)}{unit}"
+    else:
+        return f"{new_num:.1f}{unit}"
 
 
 def generate_data(
@@ -166,9 +493,13 @@ class Validator:
 
 @ray.remote
 def shuffle_select_from_disk(
-        filename, num_reducers, seed, round_index, num_rounds):
+        filename, num_reducers, seed, round_index, num_rounds,
+        stats_collector):
+    stats_collector.map_start.remote(round_index)
+    start = timeit.default_timer()
     # Load file.
     rows = pd.read_parquet(filename)
+    end_read = timeit.default_timer()
 
     # Select rows based on our map index and the random seed.
     rows = rows.sample(frac=1, random_state=seed)
@@ -178,24 +509,32 @@ def shuffle_select_from_disk(
     split = np.array_split(rows, num_reducers)
     if len(split) == 1:
         split = split[0]
+    duration = timeit.default_timer() - start
+    read_duration = end_read - start
+    stats_collector.map_done.remote(round_index, duration, read_duration)
     return split
 
 
 @ray.remote
-def shuffle_reduce(reduce_index, batches_per_round, *chunks):
+def shuffle_reduce(reduce_index, batches_per_round, stats_collector,
+                   round_index, *chunks):
+    stats_collector.reduce_start.remote(round_index)
+    start = timeit.default_timer()
     # Concatenate and shuffle all rows in the chunks.
     batch = pd.concat(chunks)
     batch = batch.sample(frac=1)
     if batches_per_round > 1:
-        return np.array_split(batch, batches_per_round)
-    else:
-        return batch
+        batch = np.array_split(batch, batches_per_round)
+    duration = timeit.default_timer() - start
+    stats_collector.reduce_done.remote(round_index, duration)
+    return batch
 
 
 @ray.remote
-def consume(chunk, round_index):
+def consume(chunk, start_time, stats_collector, round_index):
     print("Round:", round_index)
-    return timeit.default_timer()
+    stats_collector.consume.remote(
+        round_index, timeit.default_timer() - start_time)
 
 
 def shuffle_from_disk(
@@ -212,19 +551,25 @@ def shuffle_from_disk(
     assert num_rounds % 1 == 0
     num_rounds = int(num_rounds)
 
+    # TODO(Clark): Add a stats collector per round? Could result in exhausting
+    # the Ray cluster with stats collecting actors.
+    stats_collector = EpochStatsCollector.remote(
+        len(filenames), num_trainers, num_rounds)
+
     print(f"Doing {num_rounds} shuffle rounds.")
 
     start = timeit.default_timer()
 
     seed = 0
-    consumer_end_times = []
+    consumers = []
     # TODO(Clark): Move to streaming implementation.
     for round_index in range(num_rounds):
         chunks = []
         for filename in filenames:
             chunk = shuffle_select_from_disk.options(
                 num_returns=num_trainers).remote(
-                filename, num_trainers, seed, round_index, num_rounds)
+                    filename, num_trainers, seed, round_index, num_rounds,
+                    stats_collector)
             if not isinstance(chunk, list):
                 chunk = [chunk]
             chunks.append(chunk)
@@ -233,18 +578,26 @@ def shuffle_from_disk(
             shuffle_reduce.remote(
                 j,
                 batches_per_round,
+                stats_collector,
+                round_index,
                 *[chunks[i][j] for i in range(len(filenames))])
             for j in range(num_trainers)]
-        consumer_end_times.extend([
-            consume.remote(batch, round_index) for batch in shuffled])
-    consumer_times = [end_round - start
-                      for end_round in ray.get(consumer_end_times)]
+        consumers.extend([
+            consume.remote(batch, start, stats_collector, round_index)
+            for batch in shuffled])
+
+    # Block until all consumers are done.
+    ray.get(consumers)
 
     end = timeit.default_timer()
 
+    ray.wait([stats_collector.epoch_done.remote(end - start)], num_returns=1)
+
+    stats = ray.get(stats_collector.get_stats.remote())
+
     # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
-    return end - start, consumer_times
+    return stats
 
 
 #
@@ -253,18 +606,25 @@ def shuffle_from_disk(
 
 
 @ray.remote
-def shuffle_select_from_memory(rows, num_reducers):
+def shuffle_select_from_memory(rows, num_reducers, stats_collector, round_idx):
+    stats_collector.map_start.remote(round_idx)
+    start = timeit.default_timer()
     # Return a list of chunks, one for each reducer.
     split = np.array_split(rows, num_reducers)
     if len(split) == 1:
         split = split[0]
+    duration = timeit.default_timer() - start
+    stats_collector.map_done.remote(round_idx, duration)
     return split
 
 
 @ray.remote
-def cache_round_partitions(filename, num_rounds):
+def cache_round_partitions(filename, num_rounds, stats_collector):
+    stats_collector.cache_map_start.remote()
+    start = timeit.default_timer()
     # Load file.
     rows = pd.read_parquet(filename)
+    end_read = timeit.default_timer()
 
     # Shuffle rows.
     rows = rows.sample(frac=1)
@@ -272,10 +632,13 @@ def cache_round_partitions(filename, num_rounds):
     split = np.array_split(rows, num_rounds)
     if len(split) == 1:
         split = split[0]
+    duration = timeit.default_timer() - start
+    read_duration = end_read - start
+    stats_collector.cache_map_done.remote(duration, read_duration)
     return split
 
 
-def cache_in_memory(filenames, num_rounds):
+def cache_in_memory(filenames, num_rounds, stats_collector):
     # TODO(Clark): In each epoch, we're currently loading the full dataset
     # from disk, shuffling each file, and partitioning these files into rounds.
     # We should optimize this so we aren't having to do a disk load at the
@@ -285,10 +648,12 @@ def cache_in_memory(filenames, num_rounds):
     # the desired round partition in each round, shuffle within each round
     # partition, and split to reducers. At the beginning of each epoch, the
     # round partitions could be globally shuffled.
+    # This doesn't matter as much if we're also pipelining epochs.
     round_partitions = []
     for filename in filenames:
         rounds = cache_round_partitions.options(
-            num_returns=num_rounds).remote(filename, num_rounds)
+            num_returns=num_rounds).remote(filename, num_rounds,
+                                           stats_collector)
         if not isinstance(rounds, list):
             rounds = [rounds]
         round_partitions.append(rounds)
@@ -309,20 +674,25 @@ def shuffle_from_memory(
     assert num_rounds % 1 == 0
     num_rounds = int(num_rounds)
 
+    stats_collector = FromMemoryEpochStatsCollector.remote(
+        len(filenames), num_trainers, num_rounds)
+
     print(f"Doing {num_rounds} shuffle rounds.")
 
     start = timeit.default_timer()
 
-    rounds_of_partitions = cache_in_memory(filenames, num_rounds)
+    rounds_of_partitions = cache_in_memory(
+        filenames, num_rounds, stats_collector)
 
-    consumer_end_times = []
+    consumers = []
     # TODO(Clark): Move to streaming implementation.
     for round_index, round_partitions in enumerate(rounds_of_partitions):
         chunks = []
         for round_partition in round_partitions:
             chunk = shuffle_select_from_memory.options(
                 num_returns=num_trainers).remote(
-                    round_partition, num_trainers)
+                    round_partition, num_trainers,
+                    stats_collector, round_index)
             if not isinstance(chunk, list):
                 chunk = [chunk]
             chunks.append(chunk)
@@ -330,17 +700,26 @@ def shuffle_from_memory(
             shuffle_reduce.remote(
                 j,
                 batches_per_round,
+                stats_collector,
+                round_index,
                 *[chunks[i][j] for i in range(len(round_partitions))])
             for j in range(num_trainers)]
-        consumer_end_times.extend([
-            consume.remote(batch, round_index) for batch in shuffled])
-    consumer_times = [end_round - start
-                      for end_round in ray.get(consumer_end_times)]
+        consumers.extend([
+            consume.remote(batch, start, stats_collector, round_index)
+            for batch in shuffled])
+
+    # Block until all consumers are done.
+    ray.get(consumers)
+
+    end = timeit.default_timer()
+
+    ray.wait([stats_collector.epoch_done.remote(end - start)], num_returns=1)
+
+    stats = ray.get(stats_collector.get_stats.remote())
 
     # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
-    end = timeit.default_timer()
-    return end - start, consumer_times
+    return stats
 
 
 def run_trials(
@@ -354,30 +733,28 @@ def run_trials(
         trials_timeout=None):
     if use_from_disk_shuffler:
         print(
-            "Using from-disk shuffler that loads data from disk each rounds.")
+            "Using from-disk shuffler that loads data from disk each round.")
         shuffle = shuffle_from_disk
     else:
         print(
             "Using from-memory shuffler that caches data in memory between "
             "rounds.")
         shuffle = shuffle_from_memory
-    times = []
-    all_consumer_times = []
+    all_stats = []
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_trainers} "
               f"trainers and a batch size of {batch_size} over {num_rows} "
               f"rows, with {batches_per_round} batches per round.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
-            shuffle_time, consumer_times = shuffle(
+            stats = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
                 batches_per_round,
                 num_rows)
-            print(f"Trial {trial} done after {shuffle_time} seconds.")
-            times.append(shuffle_time)
-            all_consumer_times.append(consumer_times)
+            print(f"Trial {trial} done after {stats.duration} seconds.")
+            all_stats.append(stats)
     elif trials_timeout is not None:
         print(f"Running {trials_timeout} seconds of shuffle trials with "
               f"{num_trainers} trainers and a {batch_size} batch_size over "
@@ -386,20 +763,19 @@ def run_trials(
         trial = 0
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
-            shuffle_time, consumer_times = shuffle(
+            stats = shuffle(
                 filenames,
                 num_trainers,
                 batch_size,
                 batches_per_round,
                 num_rows)
-            print(f"Trial {trial} done after {shuffle_time} seconds.")
-            times.append(shuffle_time)
-            all_consumer_times.append(consumer_times)
+            print(f"Trial {trial} done after {stats.duration} seconds.")
+            all_stats.append(stats)
             trial += 1
     else:
         raise ValueError(
             "One of num_trials and trials_timeout must be specified")
-    return times, all_consumer_times
+    return all_stats
 
 
 if __name__ == "__main__":
@@ -416,8 +792,12 @@ if __name__ == "__main__":
     parser.add_argument("--use-from-disk-shuffler", action="store_true")
     parser.add_argument("--cluster", action="store_true")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--stats-dir", type=str, default=DEFAULT_STATS_DIR)
     parser.add_argument("--clear-old-data", action="store_true")
     parser.add_argument("--use-old-data", action="store_true")
+    parser.add_argument("--no-round-stats", action="store_true")
+    parser.add_argument("--no-consume-stats", action="store_true")
+    parser.add_argument("--overwrite-stats", action="store_true")
     args = parser.parse_args()
 
     if args.num_row_groups_per_file < 1:
@@ -497,46 +877,18 @@ if __name__ == "__main__":
     #     warmup_trials)
 
     print("\nRunning real trials.")
-    times, all_consumer_times = run_trials(
+    use_from_disk_shuffler = args.use_from_disk_shuffler
+    all_stats = run_trials(
         filenames,
         num_trainers,
         batch_size,
         batches_per_round,
         num_rows,
-        args.use_from_disk_shuffler,
+        use_from_disk_shuffler,
         num_trials,
         trials_timeout)
 
-    flat_all_consumer_times = [
-        time
-        for consumer_times in all_consumer_times
-        for time in consumer_times]
-    mean = np.mean(flat_all_consumer_times)
-    std = np.std(flat_all_consumer_times)
-    throughput_std = np.std([
-        num_rows / time
-        for time in flat_all_consumer_times])
-    batch_throughput_std = np.std([
-        (num_rows / batch_size) / time
-        for time in flat_all_consumer_times])
-    print(f"\nMean over {len(flat_all_consumer_times)} "
-          f"consumptions and {len(times)} trials: {mean:.3f}s +- {std}")
-    print(f"Mean throughput over {len(flat_all_consumer_times)} consumptions "
-          f"and {len(times)} trials: {num_rows / mean:.2f} rows/s +- "
-          f"{throughput_std:.2f}")
-    print(f"Mean batch throughput over {len(flat_all_consumer_times)} "
-          f"consumptions and {len(times)} trials: "
-          f"{(num_rows / batch_size) / mean:.2f} batches/s +- "
-          f"{batch_throughput_std:.2f}")
-    shuffle_type = (
-        "from_disk" if args.use_from_disk_shuffler else "from_memory")
-    for trial, consumer_times in enumerate(all_consumer_times):
-        with open(
-                f"output_{num_trainers}_{batches_per_round}_"
-                f"{shuffle_type}_{trial}.txt", "w") as f:
-            for consumer_time in consumer_times:
-                f.write(f"{consumer_time}\n")
-
+    times = [stats.duration for stats in all_stats]
     mean = np.mean(times)
     std = np.std(times)
     throughput_std = np.std([num_rows / time for time in times])
@@ -548,3 +900,216 @@ if __name__ == "__main__":
     print(f"Mean batch throughput over {len(times)} trials: "
           f"{(num_rows / batch_size) / mean:.2f} batches/s +- "
           f"{batch_throughput_std:.2f}")
+
+    shuffle_type = (
+        "from_disk" if use_from_disk_shuffler else "from_memory")
+    overwrite_stats = args.overwrite_stats
+    write_mode = "w+" if overwrite_stats else "a+"
+    stats_dir = args.stats_dir
+    hr_num_row_groups = human_readable_big_num(num_row_groups)
+    hr_num_rows_per_group = human_readable_big_num(num_rows_per_group)
+    filename = (
+        f"trial_stats_{shuffle_type}_{hr_num_row_groups}_"
+        f"{hr_num_rows_per_group}.csv")
+    filename = os.path.join(stats_dir, filename)
+    write_header = (
+        overwrite_stats or not os.path.exists(filename) or
+        os.path.getsize(filename) == 0)
+    print(f"Writing out trial stats to {filename}.")
+    # TODO(Clark): Add per-mapper, per-reducer, and per-trainer stat CSVs.
+    with open(filename, write_mode) as f:
+        fieldnames = [
+            "shuffle_type",
+            "row_groups_per_file",
+            "num_trainers",
+            "batches_per_round",
+            "trial",
+            "duration",
+            "row_throughput",
+            "batch_throughput",
+            "avg_map_stage_duration",  # across rounds
+            "std_map_stage_duration",  # across rounds
+            "avg_reduce_stage_duration",  # across rounds
+            "std_reduce_stage_duration",  # across rounds
+            "avg_map_task_duration",  # across rounds and mappers
+            "std_map_task_duration",  # across rounds and mappers
+            "avg_reduce_task_duration",  # across rounds and reducers
+            "std_reduce_task_duration",  # across rounds and reducers
+            "avg_time_to_consume",  # across rounds and consumers
+            "std_time_to_consume"]  # across rounds and consumers
+        if use_from_disk_shuffler:
+            fieldnames += [
+                "avg_read_duration",  # across rounds and mappers
+                "std_read_duration"]  # across rounds and mappers
+        else:
+            fieldnames += [
+                "cache_map_stage_duration",
+                "avg_cache_map_task_duration",  # across mappers
+                "std_cache_map_task_duration",  # across mappers
+                "avg_read_duration",  # across rounds
+                "std_read_duration"]  # across rounds
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        row = {
+            "shuffle_type": shuffle_type,
+            "row_groups_per_file": num_row_groups_per_file,
+            "num_trainers": num_trainers,
+            "batches_per_round": batches_per_round,
+        }
+        for trial, stats in enumerate(all_stats):
+            row["trial"] = trial
+            row["duration"] = stats.duration
+            row["row_throughput"] = num_rows / stats.duration
+            row["batch_throughput"] = num_rows / batch_size / stats.duration
+
+            # Get the stats from each round.
+            map_task_durations = []
+            map_stage_durations = []
+            reduce_task_durations = []
+            reduce_stage_durations = []
+            read_durations = []
+            consume_times = []
+            for round_stats in stats.round_stats:
+                map_stats = round_stats.map_stats
+                map_stage_durations.append(map_stats.stage_duration)
+                for duration in map_stats.task_durations:
+                    map_task_durations.append(duration)
+                if use_from_disk_shuffler:
+                    for duration in map_stats.read_durations:
+                        read_durations.append(duration)
+                reduce_stats = round_stats.reduce_stats
+                reduce_stage_durations.append(reduce_stats.stage_duration)
+                for duration in reduce_stats.task_durations:
+                    reduce_task_durations.append(duration)
+                for consume_time in round_stats.consume_stats.consume_times:
+                    consume_times.append(consume_time)
+
+            # Calculate the trial stats.
+            row["avg_map_stage_duration"] = np.mean(map_stage_durations)
+            row["std_map_stage_duration"] = np.std(map_stage_durations)
+            row["avg_reduce_stage_duration"] = np.mean(reduce_stage_durations)
+            row["std_reduce_stage_duration"] = np.std(reduce_stage_durations)
+            row["avg_map_task_duration"] = np.mean(map_task_durations)
+            row["std_map_task_duration"] = np.std(map_task_durations)
+            row["avg_reduce_task_duration"] = np.mean(reduce_task_durations)
+            row["std_reduce_task_duration"] = np.std(reduce_task_durations)
+            row["avg_time_to_consume"] = np.mean(consume_times)
+            row["std_time_to_consume"] = np.std(consume_times)
+            if not use_from_disk_shuffler:
+                cache_map_stats = stats.cache_map_stats
+                row["cache_map_stage_duration"] = (
+                    cache_map_stats.stage_duration)
+                row["avg_cache_map_task_duration"] = np.mean(
+                    cache_map_stats.task_durations)
+                row["std_cache_map_task_duration"] = np.std(
+                    cache_map_stats.task_durations)
+                for duration in cache_map_stats.read_durations:
+                    read_durations.append(duration)
+            row["avg_read_duration"] = np.mean(read_durations)
+            row["std_read_duration"] = np.std(read_durations)
+            writer.writerow(row)
+
+    if not args.no_round_stats:
+        # TODO(Clark): Add per-round granularity for stats.
+        filename = (
+            f"round_stats_{shuffle_type}_{hr_num_row_groups}_"
+            f"{hr_num_rows_per_group}.csv")
+        filename = os.path.join(stats_dir, filename)
+        write_header = (
+            overwrite_stats or not os.path.exists(filename) or
+            os.path.getsize(filename) == 0)
+        print(f"Writing out round stats to {filename}.")
+        # TODO(Clark): Add per-mapper, per-reducer, and per-trainer stat CSVs.
+        with open(filename, write_mode) as f:
+            fieldnames = [
+                "shuffle_type",
+                "row_groups_per_file",
+                "num_trainers",
+                "batches_per_round",
+                "trial",
+                "round",
+                "map_stage_duration",
+                "reduce_stage_duration",
+                "avg_map_task_duration",  # across mappers
+                "std_map_task_duration",  # across mappers
+                "avg_reduce_task_duration",  # across reducers
+                "std_reduce_task_duration",  # across reducers
+                "avg_time_to_consume",  # across consumers
+                "std_time_to_consume"]  # across consumers
+            if use_from_disk_shuffler:
+                fieldnames += [
+                    "avg_read_duration",  # across mappers
+                    "std_read_duration"]  # across mappers
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            row = {
+                "shuffle_type": shuffle_type,
+                "row_groups_per_file": num_row_groups_per_file,
+                "num_trainers": num_trainers,
+                "batches_per_round": batches_per_round,
+            }
+            for trial, trial_stats in enumerate(all_stats):
+                row["trial"] = trial
+                for round_idx, stats in enumerate(trial_stats.round_stats):
+                    row["round"] = round_idx
+                    row["map_stage_duration"] = stats.map_stats.stage_duration
+                    row["reduce_stage_duration"] = (
+                        stats.reduce_stats.stage_duration)
+                    row["avg_map_task_duration"] = np.mean(
+                        stats.map_stats.task_durations)
+                    row["std_map_task_duration"] = np.std(
+                        stats.map_stats.task_durations)
+                    row["avg_reduce_task_duration"] = np.mean(
+                        stats.reduce_stats.task_durations)
+                    row["std_reduce_task_duration"] = np.std(
+                        stats.reduce_stats.task_durations)
+                    row["avg_time_to_consume"] = np.mean(
+                        stats.consume_stats.consume_times)
+                    row["std_time_to_consume"] = np.std(
+                        stats.consume_stats.consume_times)
+                    if use_from_disk_shuffler:
+                        row["avg_read_duration"] = np.mean(
+                            stats.map_stats.read_durations)
+                        row["std_read_duration"] = np.std(
+                            stats.map_stats.read_durations)
+                    writer.writerow(row)
+    if not args.no_consume_stats:
+        print("Writing out consume stats.")
+        # TODO(Clark): Add per-round granularity for stats.
+        filename = (
+            f"consume_stats_{shuffle_type}_{hr_num_row_groups}_"
+            f"{hr_num_rows_per_group}.csv")
+        filename = os.path.join(stats_dir, filename)
+        write_header = (
+            overwrite_stats or not os.path.exists(filename) or
+            os.path.getsize(filename) == 0)
+        with open(filename, write_mode) as f:
+            fieldnames = [
+                "shuffle_type",
+                "row_groups_per_file",
+                "num_trainers",
+                "batches_per_round",
+                "trial",
+                "round",
+                "consumer",
+                "consume_time"]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            row = {
+                "shuffle_type": shuffle_type,
+                "row_groups_per_file": num_row_groups_per_file,
+                "num_trainers": num_trainers,
+                "batches_per_round": batches_per_round,
+            }
+            for trial, trial_stats in enumerate(all_stats):
+                row["trial"] = trial
+                for round_idx, stats in enumerate(trial_stats.round_stats):
+                    row["round"] = round_idx
+                    for consumer, consume_time in enumerate(
+                            stats.consume_stats.consume_times):
+                        row["consumer"] = consumer
+                        row["consume_time"] = consume_time
+                        writer.writerow(row)

@@ -92,10 +92,9 @@ worker_nodes:
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
-# file_mounts: {
-#     "/home/ubuntu/dask-on-ray/": "/home/swang/ray/dask-on-ray-shuffle",
-#     "/home/ubuntu/dotfiles/": "/home/swang/dotfiles",
-# }
+file_mounts: {
+    "/home/ubuntu/uber-shuffle/": "/home/ubuntu/workspace/ray/benchmarks/uber-shuffle",
+}
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
 # list of paths. The same path on the head node will be copied to the worker node.
