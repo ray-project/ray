@@ -126,9 +126,9 @@ java_binary(
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
+        ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
         ":io_ray_ray_test",
-        ":io_ray_ray_performance_test",
     ],
 )
 
