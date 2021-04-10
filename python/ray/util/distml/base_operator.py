@@ -68,10 +68,41 @@ class TrainingOperator(metaclass=ABCMeta):
     def validate_step(self, *args, **kwargs):
         raise NotImplementedError()
 
+
+    def get_custom_states(self, *args, **kwargs):
+        """Functions to be optionally override by users to represent any custom states.
+
+        See ``save_parameters`` for more details.
+        """
+        pass
+
+    def load_custom_states(self, states, *args, **kwargs):
+        """Functions to be optionally override by users to load any custom states.
+
+        See ``load_parameters`` for more details.
+        """
+        pass
+
+
     @abstractmethod
-    def save_parameters(self, checkpoint):
+    def save_states(self, states):
+        """Save the states to a file path.
+
+         This function shall be instantiated in framework-specific operator
+         implementations.
+         """
         raise NotImplementedError()
 
     @abstractmethod
-    def load_parameters(self, checkpoint):
+    def get_states(self, states):
+        """Return the states for the operator in a dict."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def load_states(self, checkpoint):
+        """Load the states from a file path.
+
+        This functions shall be instantiated in framework-specific operators
+        implementations.
+        """
         raise NotImplementedError()
