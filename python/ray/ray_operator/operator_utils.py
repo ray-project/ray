@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterator
 
 from kubernetes.watch import Watch
 
-from ray.autoscaler._private.kubernetes import custom_objects_api
+from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private.providers import _get_default_config
 
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")

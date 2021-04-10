@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, List, Tuple
 
 import ray
@@ -7,7 +8,7 @@ from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (format_actor_name, logger, get_all_node_ids,
                              get_current_node_resource_key)
-from ray.serve.common import NodeId
+from ray.serve.common import EndpointTag, NodeId
 
 
 class HTTPState:
@@ -69,6 +70,7 @@ class HTTPState:
                                 name, node_id, self._config.host,
                                 self._config.port))
                 proxy = HTTPProxyActor.options(
+                    num_cpus=self._config.num_cpus,
                     name=name,
                     lifetime="detached" if self._detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
@@ -98,3 +100,15 @@ class HTTPState:
         for node_id in to_stop:
             proxy = self._proxy_actors.pop(node_id)
             ray.kill(proxy, no_restart=True)
+
+    async def ensure_http_route_exists(self, endpoint: EndpointTag,
+                                       timeout_s: float):
+        """Block until the route has been propagated to all HTTP proxies.
+        When the timeout occur in any of the http proxy, the whole method will
+        re-throw the TimeoutError.
+        """
+        await asyncio.gather(*[
+            proxy.block_until_endpoint_exists.remote(
+                endpoint, timeout_s=timeout_s)
+            for proxy in self._proxy_actors.values()
+        ])

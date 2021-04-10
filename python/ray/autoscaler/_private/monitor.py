@@ -28,6 +28,7 @@ import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
+from ray._raylet import connect_to_gcs, disconnect_from_gcs
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,11 @@ class Monitor:
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
+        (ip, port) = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \
@@ -105,6 +109,7 @@ class Monitor:
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
+        worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
@@ -115,6 +120,9 @@ class Monitor:
         self.autoscaler = None
 
         logger.info("Monitor: Started")
+
+    def __del__(self):
+        disconnect_from_gcs(self.gcs_client)
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
@@ -261,8 +269,9 @@ class Monitor:
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
 
     def _signal_handler(self, sig, frame):
-        return self._handle_failure(f"Terminated with signal {sig}\n" +
-                                    "".join(traceback.format_stack(frame)))
+        self._handle_failure(f"Terminated with signal {sig}\n" +
+                             "".join(traceback.format_stack(frame)))
+        sys.exit(sig + 128)
 
     def run(self):
         # Register signal handlers for autoscaler termination.

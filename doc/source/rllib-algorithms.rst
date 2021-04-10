@@ -861,7 +861,7 @@ as the module uses the values from the paper by default. For example:
     }
 
 **Functionality**
-RLlib's Curiosity is based on `"ICM" (intrinsic curiosity module) described in this paper here <https://https://arxiv.org/pdf/1705.05363.pdf>`__.
+RLlib's Curiosity is based on `"ICM" (intrinsic curiosity module) described in this paper here <https://arxiv.org/pdf/1705.05363.pdf>`__.
 It allows agents to learn in sparse-reward- or even no-reward environments by
 calculating so-called "intrinsic rewards", purely based on the information content that is incoming via the observation channel.
 Sparse-reward environments are envs where almost all reward signals are 0.0, such as these `[MiniGrid env examples here] <https://github.com/maximecb/gym-minigrid>`__.

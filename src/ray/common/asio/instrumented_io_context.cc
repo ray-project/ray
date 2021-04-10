@@ -56,7 +56,7 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string &name) {
+                                   const std::string name) {
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
   }
