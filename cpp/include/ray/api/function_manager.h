@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/serializer.h>
+#include "absl/utility/utility.h"
 
 #include <boost/callable_traits.hpp>
 #include <functional>
@@ -23,7 +24,6 @@
 #include <tuple>
 #include <unordered_map>
 
-#include "absl/utility/utility.h"
 #include "ray/core.h"
 
 namespace ray {

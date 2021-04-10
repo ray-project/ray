@@ -15,7 +15,6 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/serializer.h>
-
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
 #include "ray/core.h"

@@ -105,7 +105,7 @@ class Ray {
             typename... ArgTypes>
   static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
                                                      ExecFuncType &exec_func,
-                                                     ArgTypes &...args);
+                                                     ArgTypes &... args);
 
   /// Include the `Call` methods for calling actor methods.
   /// Used by ActorHandle to implement .Call()
@@ -189,7 +189,7 @@ template <typename ActorType, typename FuncType, typename ExecFuncType,
           typename... ArgTypes>
 inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
                                                         ExecFuncType &exec_func,
-                                                        ArgTypes &...args) {
+                                                        ArgTypes &... args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
   Arguments::WrapArgs(&task_args, args...);
   RemoteFunctionPtrHolder ptr;

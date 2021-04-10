@@ -17,7 +17,6 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
-
 #include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"

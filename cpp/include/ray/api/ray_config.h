@@ -2,7 +2,6 @@
 #pragma once
 #include <memory>
 #include <string>
-
 #include "ray/core.h"
 
 namespace ray {

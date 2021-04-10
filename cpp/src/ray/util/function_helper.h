@@ -5,7 +5,6 @@
 #include <msgpack.hpp>
 #include <string>
 #include <unordered_map>
-
 #include "ray/core.h"
 
 namespace ray {

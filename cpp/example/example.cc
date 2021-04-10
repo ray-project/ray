@@ -4,7 +4,6 @@
 /// including the header
 #include <ray/api.h>
 #include <ray/api/ray_config.h>
-
 #include "gflags/gflags.h"
 
 /// using namespace

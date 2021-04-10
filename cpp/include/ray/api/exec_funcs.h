@@ -17,9 +17,7 @@
 #include <ray/api/arguments.h>
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
-
 #include <msgpack.hpp>
-
 #include "absl/utility/utility.h"
 #include "ray/core.h"
 
@@ -36,7 +34,7 @@ template <typename ReturnType, typename CastReturnType, typename... OtherArgType
 absl::enable_if_t<!std::is_void<ReturnType>::value, std::shared_ptr<msgpack::sbuffer>>
 ExecuteNormalFunction(uintptr_t base_addr, size_t func_offset,
                       const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-                      TaskType task_type, std::shared_ptr<OtherArgTypes> &&...args) {
+                      TaskType task_type, std::shared_ptr<OtherArgTypes> &&... args) {
   int arg_index = 0;
   Arguments::UnwrapArgs(args_buffer, arg_index, &args...);
 
@@ -54,7 +52,7 @@ template <typename ReturnType, typename CastReturnType, typename... OtherArgType
 absl::enable_if_t<std::is_void<ReturnType>::value> ExecuteNormalFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer, TaskType task_type,
-    std::shared_ptr<OtherArgTypes> &&...args) {
+    std::shared_ptr<OtherArgTypes> &&... args) {
   // TODO: Will support void functions for old api later.
 }
 
@@ -63,7 +61,7 @@ std::shared_ptr<msgpack::sbuffer> ExecuteActorFunction(
     uintptr_t base_addr, size_t func_offset,
     const std::vector<std::shared_ptr<RayObject>> &args_buffer,
     std::shared_ptr<msgpack::sbuffer> &actor_buffer,
-    std::shared_ptr<OtherArgTypes> &&...args) {
+    std::shared_ptr<OtherArgTypes> &&... args) {
   uintptr_t actor_ptr = Serializer::Deserialize<uintptr_t>(
       (const char *)actor_buffer->data(), actor_buffer->size());
   ActorType *actor_object = (ActorType *)actor_ptr;

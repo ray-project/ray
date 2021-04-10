@@ -1,13 +1,10 @@
 
 #include "function_helper.h"
-
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <boost/filesystem.hpp>
 #include <memory>
-
 #include "address_helper.h"
 #include "ray/core.h"
 

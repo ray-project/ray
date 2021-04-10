@@ -2,10 +2,8 @@
 
 #include <ray/api/function_manager.h>
 #include <ray/api/serializer.h>
-
 #include <boost/dll.hpp>
 #include <memory>
-
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/core.h"
