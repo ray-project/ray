@@ -1,4 +1,3 @@
-"""TODO(Runhui): JAX Operator"""
 import numpy as np
 import cupy as cp
 from jax import grad, value_and_grad
@@ -108,7 +107,7 @@ class JAXTrainingOperator(TrainingOperator):
 
     def derive_updates(self, batch):
         loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
-        return loss_val, tree_flatten(gradient)[0]
+        return loss_val.item(), tree_flatten(gradient)[0]
         
     def apply_updates(self, gradient, num_workers):
         if isinstance(gradient, dict):

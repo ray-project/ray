@@ -1,12 +1,8 @@
-"""TODO(Runhui): JAX Operator"""
 import numpy as np
 import cupy as cp
 from jax import grad, value_and_grad
 import jax.numpy as jnp
-from jax.lib import xla_client
-from jax.dlpack import from_dlpack, to_dlpack
-from jax.tree_util import tree_flatten, tree_unflatten, tree_structure, tree_map
-from jax._src.util import unzip2
+from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 
 import flax
 import flax.traverse_util as traverse_util
@@ -58,7 +54,7 @@ class FLAXTrainingOperator(JAXTrainingOperator):
 
     def derive_updates(self, batch):
         loss_val, gradient = self._calculate_gradient(self.optimizer, batch)
-        return loss_val, tree_flatten(gradient)[0]
+        return loss_val.item(), tree_flatten(gradient)[0]
 
     def apply_updates(self, gradient, num_workers):
         if not hasattr(self, "tree"):
@@ -158,5 +154,5 @@ class FLAXTrainingOperator(JAXTrainingOperator):
         self.optimizer = serialization.from_state_dict(optimizer, states)
 
     def reset_optimizer_for_params(self, params):
-        self.tree = tree_structure(params)
+        self.tree = tree_flatten(params)[1]
         self.optimizer = self.optimizer.init_param_state(params)

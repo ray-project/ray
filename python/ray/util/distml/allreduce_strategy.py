@@ -149,8 +149,9 @@ class Replica:
             raise RuntimeError(
                 "iterator has ran out. Please use `start_iteration` to update iterator")
         
+        # loss_val should be in cpu, this convertion should be done in operator.
         loss_val, updates = self.derive_updates(batch)
-        metrics["train_loss"] = loss_val.item()
+        metrics["train_loss"] = loss_val
 
         for g in updates:
             cg = self.training_operator.to_cupy(g)

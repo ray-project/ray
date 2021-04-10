@@ -93,6 +93,7 @@ class MnistTrainingOperator(JAXTrainingOperator):
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
         self.register_input_signatures(input_shape=input_shape)
+
         # def accuracy_batch(outputs, targets):
         #     predicted_class = jnp.argmax(outputs, axis=-1)
         #     target_class = jnp.argmax(targets, axis=-1)
@@ -153,8 +154,8 @@ if __name__ == "__main__":
         },
         )
 
-    trainer1.save_parameters("jax_checkpoint")
-    trainer1.load_parameters("jax_checkpoint")
+    # trainer1.save_parameters("jax_checkpoint")
+    # trainer1.load_parameters("jax_checkpoint")
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):
