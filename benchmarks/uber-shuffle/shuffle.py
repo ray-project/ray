@@ -217,11 +217,9 @@ def shuffle_from_disk(
     start = timeit.default_timer()
 
     seed = 0
-    consumer_start_times = []
     consumer_end_times = []
     # TODO(Clark): Move to streaming implementation.
     for round_index in range(num_rounds):
-        start_round = timeit.default_timer()
         chunks = []
         for filename in filenames:
             chunk = shuffle_select_from_disk.options(
@@ -237,14 +235,10 @@ def shuffle_from_disk(
                 batches_per_round,
                 *[chunks[i][j] for i in range(len(filenames))])
             for j in range(num_trainers)]
-        # TODO(Clark): Add pipelining of shuffle rounds.
-        consumer_start_times.append(start_round)
         consumer_end_times.extend([
             consume.remote(batch, round_index) for batch in shuffled])
-    consumer_times = [end_round - start_round
-                      for start_round, end_round in zip(
-                          consumer_start_times,
-                          ray.get(consumer_end_times))]
+    consumer_times = [end_round - start
+                      for end_round in ray.get(consumer_end_times)]
 
     end = timeit.default_timer()
 
@@ -317,15 +311,13 @@ def shuffle_from_memory(
 
     print(f"Doing {num_rounds} shuffle rounds.")
 
-    rounds_of_partitions = cache_in_memory(filenames, num_rounds)
-
     start = timeit.default_timer()
 
-    consumer_start_times = []
+    rounds_of_partitions = cache_in_memory(filenames, num_rounds)
+
     consumer_end_times = []
     # TODO(Clark): Move to streaming implementation.
     for round_index, round_partitions in enumerate(rounds_of_partitions):
-        start_round = timeit.default_timer()
         chunks = []
         for round_partition in round_partitions:
             chunk = shuffle_select_from_memory.options(
@@ -340,14 +332,10 @@ def shuffle_from_memory(
                 batches_per_round,
                 *[chunks[i][j] for i in range(len(round_partitions))])
             for j in range(num_trainers)]
-        # TODO(Clark): Add pipelining of shuffle rounds.
-        consumer_start_times.append(start_round)
         consumer_end_times.extend([
             consume.remote(batch, round_index) for batch in shuffled])
-    consumer_times = [end - start
-                      for start, end in zip(
-                          consumer_start_times,
-                          ray.get(consumer_end_times))]
+    consumer_times = [end_round - start
+                      for end_round in ray.get(consumer_end_times)]
 
     # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
@@ -545,7 +533,7 @@ if __name__ == "__main__":
     for trial, consumer_times in enumerate(all_consumer_times):
         with open(
                 f"output_{num_trainers}_{batches_per_round}_"
-                f"{shuffle_type}_{trial}.txt", "w+") as f:
+                f"{shuffle_type}_{trial}.txt", "w") as f:
             for consumer_time in consumer_times:
                 f.write(f"{consumer_time}\n")
 
