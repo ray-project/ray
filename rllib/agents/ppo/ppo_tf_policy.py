@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-        policy: Policy, model: Union[ModelV2, tf.keras.Model],
+        policy: Policy, model: Union[ModelV2, "tf.keras.Model"],
         dist_class: Type[TFActionDistribution],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.

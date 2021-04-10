@@ -431,12 +431,6 @@ class SampleBatch(dict):
         except KeyError:
             return default
 
-    def get(self, key, default=None):
-        try:
-            return self.__getitem__(key)
-        except KeyError:
-            return default
-
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
         """Returns one column (by key) from the data.
