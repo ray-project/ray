@@ -393,7 +393,7 @@ class DynamicTFPolicy(TFPolicy):
             ])
 
         instance._loss_input_dict = input_dict
-        loss = instance._do_loss_init(input_dict)
+        loss = instance._do_loss_init(SampleBatch(input_dict))
         loss_inputs = [
             (k, existing_inputs[i])
             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
