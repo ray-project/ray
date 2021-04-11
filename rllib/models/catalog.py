@@ -186,7 +186,7 @@ class ModelCatalog:
             config: ModelConfigDict,
             dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
             framework: str = "tf",
-            **kwargs) -> (type, int):
+            **kwargs) -> Tuple[Type[ActionDistribution], int]:
         """Returns a distribution class and size for the given action space.
 
         Args:
@@ -200,11 +200,9 @@ class ModelCatalog:
                 constructor.
 
         Returns:
-            Tuple:
-                - dist_class (ActionDistribution): Python class of the
-                    distribution.
-                - dist_dim (int): The size of the input vector to the
-                    distribution.
+            Tuple[Type[ActionDistribution], int]: Python class of the
+                distribution and the size of the input vector to the
+                distribution.
         """
 
         dist_cls = None
@@ -250,8 +248,8 @@ class ModelCatalog:
                         "using a Tuple action space, or the multi-agent API.")
 
                 if dist_type is None:
-                    cls = TorchGaussianSquashedGaussian if framework == "torch" \
-                        else GaussianSquashedGaussian
+                    cls = TorchGaussianSquashedGaussian if \
+                        framework == "torch" else GaussianSquashedGaussian
                     if np.any(action_space.bounded_below &
                               action_space.bounded_above):
                         lo = np.min(action_space.low)
@@ -259,19 +257,20 @@ class ModelCatalog:
                         if np.any(action_space.low != lo) or \
                                 np.any(action_space.high != hi):
                             raise UnsupportedSpaceException(
-                                "The Box space has non-matching low/high value(s)."
-                                " Make sure that all low/high values are the same "
-                                "accross the different dimensions of your Box. If "
-                                "the different dimensions must have different "
-                                "low/high values, try splitting up your space into"
-                                " a Tuple or Dict space.")
+                                "The Box space has non-matching low/high "
+                                "value(s). Make sure that all low/high "
+                                "values are the same accross the different "
+                                "dimensions of your Box. If the different "
+                                "dimensions must have different low/high "
+                                "values, try splitting up your space into "
+                                "a Tuple or Dict space.")
                         dist_cls = partial(cls, low=lo, high=hi)
                         num_inputs = cls.required_model_output_shape(
                             action_space, config)
                         return dist_cls, num_inputs
                     else:
-                        dist_cls = TorchDiagGaussian if framework == "torch" else \
-                            DiagGaussian
+                        dist_cls = TorchDiagGaussian if \
+                            framework == "torch" else DiagGaussian
                 elif dist_type == "deterministic":
                     dist_cls = TorchDeterministic if framework == "torch" \
                         else Deterministic
