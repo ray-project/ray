@@ -14,9 +14,10 @@ except ImportError:
 # TODO(Hao): could make an interface class and use factory pattern to
 #            set up strategies/trainers.
 class AllReduceStrategy(BaseTrainer):
-    def __init__(self, *args, fusion=False, use_tqdm=True, **kwargs):
+    def __init__(self, *args, fusion=False, use_tqdm=True, max_iteration=None, **kwargs):
         self._fusion = fusion
         self._use_tqdm = use_tqdm
+        self._max_iteration = max_iteration
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
 
     def _init_strategy(self):
@@ -24,6 +25,8 @@ class AllReduceStrategy(BaseTrainer):
         pass
 
     def train(self, *, max_retries=1, info={}):
+        total = self._max_iteration if self._max_iteration else self.data_parallel_group.get_train_loader_len()
+
         if self._use_tqdm:
             desc = ""
             if "epoch_idx" in info.keys():
@@ -32,7 +35,6 @@ class AllReduceStrategy(BaseTrainer):
                 else:
                     desc = f"Epoch {info['epoch_idx'] + 1} "
 
-            total = self.data_parallel_group.get_train_loader_len()
             _progress_bar = tqdm(
                 total=total, desc=desc, unit="batch", leave=False)
             postfix = {}
@@ -40,7 +42,7 @@ class AllReduceStrategy(BaseTrainer):
                 postfix.update(val_acc=info["val_acc"])
 
         self.data_parallel_group.start_iteration()
-        for idx in range(self.data_parallel_group.get_train_loader_len()):
+        for idx in range(total):
             metrics = self.data_parallel_group.train_batch()
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
@@ -139,16 +141,20 @@ class Replica:
         self.iterator = iter(self.training_operator.train_loader)
     
     def get_train_loader_len(self):
-        return len(self.training_operator.train_loader)
+        if hasattr(self.training_operator.train_loader, "__len__"):
+            return len(self.training_operator.train_loader)
+        else:
+            raise RuntimeError("traning dataloader has no attributed `__len__`."
+                               "Please set `max_iteration` in AllReduceStrategy.")
 
     def train_batch(self):
         metrics = {}
         try:
             batch = next(self.iterator)
         except StopIteration and NameError:
-            raise RuntimeError(
-                "iterator has ran out. Please use `start_iteration` to update iterator")
-        
+            self.iterator = iter(self.training_operator.train_loader)
+            batch = next(self.iterator)
+
         # loss_val should be in cpu, this convertion should be done in operator.
         loss_val, updates = self.derive_updates(batch)
         metrics["train_loss"] = loss_val
@@ -236,8 +242,8 @@ class DataParallelGroup:
                 for _, replica in enumerate(self.replicas)]
 
     def get_train_loader_len(self):
-        lens =  ray.get([replica.get_train_loader_len.remote() 
-                         for replica in self.replicas])
+        lens = ray.get([replica.get_train_loader_len.remote() 
+                        for replica in self.replicas])
 
         if len(set(lens)) != 1:
             raise RuntimeError("All actors should have the same dataloader len.")

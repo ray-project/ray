@@ -16,11 +16,11 @@ except ImportError:
 import logging
 
 class ParameterServerStrategy(BaseTrainer):
-    def __init__(self, *args, num_workers=1, num_ps=1, use_tqdm=True, fusion=False, **kwargs):
-       
+    def __init__(self, *args, num_workers=1, num_ps=1, use_tqdm=True, max_iteration=None, fusion=False, **kwargs):
         self.num_ps = num_ps 
         self.num_workers = num_workers
         self._fusion = fusion
+        self._max_iteration = max_iteration
 
         self.assignments = None
 
@@ -148,6 +148,8 @@ class ParameterServerStrategy(BaseTrainer):
         self.assignments = assignments
 
     def train(self, *, max_retries=1, info={}):
+        total = self._max_iteration if self._max_iteration else self.worker_group.get_train_loader_len()
+
         if self._use_tqdm:
             desc = ""
             if "epoch_idx" in info.keys():
@@ -156,7 +158,6 @@ class ParameterServerStrategy(BaseTrainer):
                 else:
                     desc = f"Epoch {info['epoch_idx'] + 1} "
 
-            total = self.worker_group.get_train_loader_len()
             _progress_bar = tqdm(
                 total=total, desc=desc, unit="batch", leave=False)
             postfix = {}
@@ -166,7 +167,7 @@ class ParameterServerStrategy(BaseTrainer):
         # TODO(HUI): Record server rank instead of using num_ps.
         # train one epoch
         self.worker_group.start_iteration()
-        for idx in range(self.worker_group.get_train_loader_len()):
+        for idx in range(total):
             metrics = self.step()
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
@@ -282,9 +283,12 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         keys = list(self.params.keys())
         grads = dict()
         recv_list = []
+        
         for key in keys:
             to_recv = self.params[key]
+            print(key)
             recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
+
         for i in range(len(keys)):
             v = self.training_operator.to_cupy(recv_list[i])
             col.recv(v, src_rank, self.group_name)
@@ -369,7 +373,11 @@ class Worker(object):
         self.iterator = iter(self.training_operator.train_loader)
     
     def get_train_loader_len(self):
-        return len(self.training_operator.train_loader)
+        if hasattr(self.training_operator.train_loader, "__len__"):
+            return len(self.training_operator.train_loader)
+        else:
+            raise RuntimeError("traning dataloader has no attributed `__len__`."
+                               "Please set `max_iteration` in AllReduceStrategy.")
 
     def derive_updates(self, batch):
         # TODO (Hao): handling data loader next.
@@ -392,8 +400,8 @@ class Worker(object):
         try:
             batch = next(self.iterator)
         except StopIteration and NameError:
-            raise RuntimeError(
-                "iterator has ran out. Please use `start_iteration` to update iterator")
+            self.iterator = iter(self.training_operator.train_loader)
+            batch = next(self.iterator)
         # different from original core ps. 
         # Here derive_updates return loss_val and graident in order.
 
@@ -476,7 +484,7 @@ class Worker(object):
                 params[param_shard_keys[j]] = recv_list[i][j]
 
         loss_val, grad = self.compute_gradients(params)
-        metrics["train_loss"] = loss_val.item()
+        metrics["train_loss"] = loss_val
         split_grad = self.split_gradients(grad, self.assignments)
         for i in range(self.num_ps):
             this_shard = self.index_shard(split_grad, i)
@@ -562,8 +570,8 @@ class DataParallelGroup:
                 for _, actor in enumerate(self.actors)]
 
     def get_train_loader_len(self):
-        lens =  ray.get([actor.get_train_loader_len.remote() 
-                         for actor in self.actors])
+        lens = ray.get([actor.get_train_loader_len.remote() 
+                        for actor in self.actors])
 
         if len(set(lens)) != 1:
             raise RuntimeError("All actors should have the same dataloader len.")

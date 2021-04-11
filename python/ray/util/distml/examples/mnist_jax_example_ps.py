@@ -134,18 +134,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "3,5"
 
     args, _ = parser.parse_known_args()
     num_cpus = 12
-    num_gpus = 4
+    num_gpus = 2
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
     trainer1 = ParameterServerStrategy(
         training_operator_cls=CifarTrainingOperator,
-        world_size=4,
-        num_workers=2,
-        num_ps=2,
+        world_size=2,
+        num_workers=1,
+        num_ps=1,
         operator_config={
             "lr": 0.01,
             "test_mode": args.smoke_test,  # subset the data

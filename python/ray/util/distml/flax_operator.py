@@ -35,8 +35,6 @@ class FLAXTrainingOperator(JAXTrainingOperator):
         self.criterion = criterion
         if lr_schedulers:
             self.lr_schedulers = lr_schedulers
-            print("WARNING: jax not support learning rate scheduler." 
-                  "This will not work.")
         
         self._register_model(model)
         self._register_optimizer(optimizer)
@@ -66,7 +64,11 @@ class FLAXTrainingOperator(JAXTrainingOperator):
             gradient = tree_unflatten(self.tree, gradient)
         gradient = tree_map(lambda x: x/num_workers, gradient)
 
-        self.optimizer = self.optimizer.apply_gradient(gradient)
+        hyper_params = {}
+        if hasattr(self, "lr_schedulers"):
+            hyper_params["learning_rate"] = self.lr_schedulers.step()
+
+        self.optimizer = self.optimizer.apply_gradient(gradient, **hyper_params)
         self.train_step_num += 1
 
     def _calculate_gradient(self, optimizer, batch):

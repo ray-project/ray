@@ -121,7 +121,7 @@ class JAXTrainingOperator(TrainingOperator):
         if isinstance(tensor, list):
             return list(map(self.to_cupy, tensor))
         ctensor = cp.fromDlpack(self.get_jax_dlpack(tensor))
-        assert ctensor.data.ptr == tensor.unsafe_buffer_pointer()
+        # assert ctensor.data.ptr == tensor.unsafe_buffer_pointer()
         return ctensor
 
     def to_operator_tensor(self, tensor):

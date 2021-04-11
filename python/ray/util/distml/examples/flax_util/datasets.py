@@ -10,9 +10,8 @@ def make_wiki_train_loader(batch_size=8):
                                             batch_size=batch_size,
                                             is_training=True,
                                             use_next_sentence_label=True)
+    return train_dataset
 
-    for batch in train_dataset:
-        yield tf2numpy(batch)
 
 def tf2numpy(batch):
     new_batch = [dict()]
@@ -24,10 +23,6 @@ def tf2numpy(batch):
 
 
 if __name__ == "__main__":
-
-
-
-
     train_dataset = get_wiki_train_dataset()
 
     for batch in train_dataset:
