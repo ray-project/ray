@@ -39,6 +39,9 @@ class ClientBaseRef:
     def binary(self):
         return self.id
 
+    def hex(self):
+        return self.id.hex()
+
     def __eq__(self, other):
         return self.id == other.id
 
