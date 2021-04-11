@@ -63,8 +63,6 @@ def test_pretask_posttask_shared_state(ray_start_regular_shared):
     assert result == 5
 
 
-
-
 def test_postsubmit(ray_start_regular_shared):
     """
     Test that postsubmit is called after each task.
