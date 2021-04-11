@@ -65,7 +65,7 @@ class TestQMix(unittest.TestCase):
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space))
 
-        ray.init(local_mode=True)#TODO
+        ray.init()
         agent = QMixTrainer(
             env="action_mask_test",
             config={
