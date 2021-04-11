@@ -276,7 +276,7 @@ def test_file_open(ray_start_cluster_head):
         script = f"""
 import os
 import ray
-os.chdir("{tmp_dir}")
+os.chdir(r"{tmp_dir}")
 ray.init(address='auto')
 import sys
 @ray.remote
@@ -302,7 +302,8 @@ def test_module_import(ray_start_cluster_head):
     ray.wait([warm_up.remote() for _ in range(100)])
     import tempfile
     from pathlib import Path
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory(dir=cwd) as tmp_dir:
         path = Path(tmp_dir)
         (path / "test").mkdir()
         with (path / "test" / "__init__.py").open("w") as f:
@@ -311,7 +312,7 @@ def test_module_import(ray_start_cluster_head):
             script = f"""
 import os
 import ray
-os.chdir("{tmp_dir}")
+os.chdir(r"{tmp_dir}")
 ray.init(address='auto')
 import sys
 sys.path.insert(1, "{tmp_dir}")

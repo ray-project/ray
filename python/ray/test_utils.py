@@ -188,6 +188,8 @@ def run_file_as_driver(driver_file: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    if env is not None:
+        env.update(os.environ)
     proc = subprocess.Popen(
         [sys.executable, driver_file],
         stdout=subprocess.PIPE,
@@ -214,6 +216,8 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     Returns:
         The script's output.
     """
+    if env is not None:
+        env.update(os.environ)
     proc = subprocess.Popen(
         [sys.executable, "-"],
         stdin=subprocess.PIPE,

@@ -18,7 +18,7 @@ driver_script = """
 from time import sleep
 import sys
 import logging
-sys.path.insert(0, "{working_dir}")
+sys.path.insert(0, r"{working_dir}")
 import test_module
 import ray
 import ray.util
@@ -114,7 +114,7 @@ def test_single_node(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Setup runtime env here
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -128,7 +128,7 @@ def test_two_node(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # Testing runtime env with working_dir
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -158,7 +158,7 @@ def test_two_node_local_file(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     # test runtime_env iwth working_dir
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
 vals = ray.get([check_file.remote('test_file')] * 1000)
@@ -183,7 +183,7 @@ def test_two_node_uri(working_dir, two_node_cluster, client_mode):
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
         runtime_env.create_project_package(working_dir, [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
-        runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
+        runtime_env = f"""{{ "working_dir_uri": r"{pkg_uri}" }}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -196,7 +196,7 @@ def test_two_node_uri(working_dir, two_node_cluster, client_mode):
 def test_regular_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
 test_actor = TestActor.options(name="test_actor").remote()
@@ -212,7 +212,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 def test_detached_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
 test_actor = TestActor.options(name="test_actor", lifetime="detached").remote()
@@ -249,7 +249,7 @@ sleep(600)
     proc = run_string_as_driver_nonblocking(script, env)
     # waiting it to be up
     sleep(5)
-    runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
+    runtime_env = f"""{{  "working_dir": r"{working_dir}" }}"""
     # Execute the second one which should trigger an error
     execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
