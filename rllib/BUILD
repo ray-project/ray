@@ -2170,7 +2170,7 @@ py_test(
     name = "examples/parallel_evaluation_and_training_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
     args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6"]
 )
