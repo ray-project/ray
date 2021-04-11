@@ -233,8 +233,7 @@ def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
 
 def test_pretask_posttask_shared_state_multi_client(ray_start_regular_shared):
     """
-    Test that pretask return values are passed to the correct corresponding
-    posttask callbacks when multiple callbacks are given.
+    Repeat the last test with Ray client.
     """
 
     class PretaskPosttaskCallback(RayDaskCallback):
