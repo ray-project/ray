@@ -115,20 +115,19 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port(lower_bound=10000, upper_bound=65535, blacklist=None):
-    if not blacklist:
-        blacklist = set()
+def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
+    if not denylist:
+        denylist = set()
     port = random.randint(lower_bound, upper_bound)
     retry = 0
-    while port in blacklist:
+    while port in denylist:
         if retry > 100:
             break
         port = random.randint(lower_bound, upper_bound)
         retry += 1
     if retry > 100:
-        raise ValueError(
-            "Failed to find a new port from the range "
-            f"{lower_bound}-{upper_bound}. Blacklist: {blacklist}")
+        raise ValueError("Failed to find a new port from the range "
+                         f"{lower_bound}-{upper_bound}. Denylist: {denylist}")
     return port
 
 
@@ -803,7 +802,7 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 fate_share=None,
-                port_blacklist=None):
+                port_denylist=None):
     """Start the Redis global state store.
 
     Args:
@@ -825,7 +824,7 @@ def start_redis(node_ip_address,
             to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        port_blacklist (set): A set of blacklist ports that shouldn't
+        port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
 
     Returns:
@@ -871,7 +870,7 @@ def start_redis(node_ip_address,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file,
         fate_share=fate_share,
-        port_blacklist=port_blacklist)
+        port_denylist=port_denylist)
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
@@ -901,7 +900,7 @@ def start_redis(node_ip_address,
     redis_shards = []
     # If Redis shard ports are not provided, start the port range of the
     # other Redis shards at a high, random port.
-    last_shard_port = new_port(blacklist=port_blacklist) - 1
+    last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE
@@ -926,7 +925,7 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             fate_share=fate_share,
-            port_blacklist=port_blacklist)
+            port_denylist=port_denylist)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)
@@ -948,7 +947,7 @@ def _start_redis_instance(executable,
                           password=None,
                           redis_max_memory=None,
                           fate_share=None,
-                          port_blacklist=None):
+                          port_denylist=None):
     """Start a single Redis server.
 
     Notes:
@@ -974,7 +973,7 @@ def _start_redis_instance(executable,
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
-        port_blacklist (set): A set of blacklist ports that shouldn't
+        port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
 
     Returns:
@@ -1013,7 +1012,7 @@ def _start_redis_instance(executable,
         # did not exit within 0.1 seconds).
         if process_info.process.poll() is None:
             break
-        port = new_port(blacklist=port_blacklist)
+        port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "

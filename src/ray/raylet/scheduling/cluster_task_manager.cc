@@ -1,9 +1,9 @@
-#include "ray/raylet/scheduling/cluster_task_manager.h"
-
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>
 
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -37,7 +37,10 @@ ClusterTaskManager::ClusterTaskManager(
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
-      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes) {}
+      max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
+      metric_tasks_queued_(0),
+      metric_tasks_dispatched_(0),
+      metric_tasks_spilled_(0) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -282,6 +285,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
+  metric_tasks_queued_++;
   Work work = std::make_tuple(task, reply, [send_reply_callback] {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
@@ -769,6 +773,22 @@ std::string ClusterTaskManager::DebugStr() const {
   return buffer.str();
 }
 
+void ClusterTaskManager::RecordMetrics() {
+  stats::NumReceivedTasks.Record(metric_tasks_queued_);
+  stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
+  stats::NumSpilledTasks.Record(metric_tasks_spilled_);
+
+  metric_tasks_queued_ = 0;
+  metric_tasks_dispatched_ = 0;
+  metric_tasks_spilled_ = 0;
+
+  uint64_t num_infeasible_tasks = 0;
+  for (const auto &pair : infeasible_tasks_) {
+    num_infeasible_tasks += pair.second.size();
+  }
+  stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
+}
+
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
   for (auto shapes_it = infeasible_tasks_.begin();
        shapes_it != infeasible_tasks_.end();) {
@@ -811,6 +831,7 @@ void ClusterTaskManager::Dispatch(
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
     rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
+  metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());
@@ -885,6 +906,7 @@ void ClusterTaskManager::Dispatch(
 }
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work) {
+  metric_tasks_spilled_++;
   const auto &task = std::get<0>(work);
   const auto &task_spec = task.GetTaskSpecification();
   RemoveFromBacklogTracker(task);

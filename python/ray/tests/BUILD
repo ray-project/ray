@@ -29,6 +29,7 @@ py_test_module_list(
     "test_cli.py",
     "test_client.py",
     "test_client_init.py",
+    "test_client_library_integration.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -96,6 +97,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_job.py",
     "test_k8s_operator_mock.py",
+    "test_kv.py",
     "test_memstat.py",
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
@@ -113,17 +115,6 @@ py_test_module_list(
   extra_srcs = SRCS,
   tags = ["exclusive"],
   deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_k8s_cluster_launcher.py",
-    "test_k8s_operator_examples.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  deps = ["//:ray_lib"],
-  tags = ["kubernetes"]
 )
 
 py_test_module_list(

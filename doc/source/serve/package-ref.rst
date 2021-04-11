@@ -37,4 +37,4 @@ objects instead of Starlette requests.
 
 Batching Requests
 -----------------
-.. autofunction:: ray.serve.accept_batch
+.. autofunction:: ray.serve.batch

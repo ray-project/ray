@@ -247,8 +247,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
           /*core_worker_subscriber_=*/
-          std::make_shared<Subscriber>(self_node_id_, config.node_manager_address,
-                                       config.node_manager_port, worker_rpc_pool_)),
+          std::make_shared<pubsub::Subscriber>(self_node_id_, config.node_manager_address,
+                                               config.node_manager_port,
+                                               worker_rpc_pool_)),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -1244,7 +1245,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
     cb(true);
   }
 
-  auto from_path = resource_path / boost::filesystem::path(uri.substr(pos + sep.size()));
+  auto from_path =
+      resource_path / boost::filesystem::path(uri.substr(pos + sep.size())).stem();
   if (!boost::filesystem::exists(from_path)) {
     RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
     cb(true);
@@ -2268,26 +2270,15 @@ void NodeManager::RecordMetrics() {
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
-  // Last recorded time will be reset in the caller side.
-  uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
 
-  // Record average number of tasks information per second.
-  stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *
-                                     (1000.0 / (double)duration_ms));
-  metrics_num_task_scheduled_ = 0;
-  stats::AvgNumExecutedTasks.Record((double)metrics_num_task_executed_ *
-                                    (1000.0 / (double)duration_ms));
-  metrics_num_task_executed_ = 0;
-  stats::AvgNumSpilledBackTasks.Record((double)metrics_num_task_spilled_back_ *
-                                       (1000.0 / (double)duration_ms));
-  metrics_num_task_spilled_back_ = 0;
-
-  object_directory_->RecordMetrics(duration_ms);
+  cluster_task_manager_->RecordMetrics();
   object_manager_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();
 
+  uint64_t current_time = current_time_ms();
+  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
+  object_directory_->RecordMetrics(duration_ms);
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {

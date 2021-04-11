@@ -11,7 +11,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from urllib.parse import urlparse
 import os
 import sys
@@ -25,7 +25,6 @@ PKG_DIR = None
 logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
-FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
 
 class RuntimeEnvDict:
@@ -114,13 +113,10 @@ def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
     for from_file_name in path.glob("**/*"):
         file_size = from_file_name.stat().st_size
-        if file_size >= FILE_SIZE_LIMIT:
-            raise RuntimeError(f"File {from_file_name} is too big, "
-                               "which currently is not allowd ")
         if file_size >= FILE_SIZE_WARNING:
             logger.warning(
-                f"File {from_file_name} is too big ({file_size} bytes). "
-                "Consider exclude this file in working directory.")
+                f"File {from_file_name} is very large ({file_size} bytes). "
+                "Consider excluding this file from the working directory.")
         to_file_name = from_file_name.relative_to(relative_path)
         zip_handler.write(from_file_name, to_file_name)
 
@@ -218,24 +214,24 @@ def create_project_package(working_dir: str, py_modules: List[str],
             _zip_module(Path(py_module), Path(py_module).parent, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
-    """Fetch a package from a given uri.
+def fetch_package(pkg_uri: str) -> int:
+    """Fetch a package from a given uri if not exists locally.
 
-    This function is used to fetch a pacakge from the given uri to local
-    filesystem. If it exists, it'll just return 0.
+    This function is used to fetch a pacakge from the given uri and unpack it.
 
     Args:
         pkg_uri (str): The uri of the package to download.
-        pkg_file (pathlib.Path): The path in local filesystem to download the
-            package.
 
     Returns:
-        The number of bytes downloaded.
+        The directory containing this package
     """
-    if pkg_file is None:
-        pkg_file = Path(_get_local_path(pkg_uri))
-    if pkg_file.exists():
-        return 0
+    pkg_file = Path(_get_local_path(pkg_uri))
+    local_dir = pkg_file.with_suffix("")
+    assert local_dir != pkg_file, "Invalid pkg_file!"
+    if local_dir.exists():
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        return local_dir
+    logger.debug("Fetch packge")
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         code = _internal_kv_get(pkg_uri)
@@ -243,9 +239,14 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
             raise IOError("Fetch uri failed")
         code = code or b""
         pkg_file.write_bytes(code)
-        return len(code)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+    logger.debug(f"Unpack {pkg_file} to {local_dir}")
+    with ZipFile(str(pkg_file), "r") as zip_ref:
+        zip_ref.extractall(local_dir)
+    pkg_file.unlink()
+    return local_dir
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
@@ -340,7 +341,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
@@ -348,19 +349,20 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
 
     Args:
         pkg_uri list(str): Package of the working dir for the runtime env.
-    """
 
+    Return:
+        Working directory is returned if the pkg_uris is not empty,
+        otherwise, None is returned.
+    """
+    pkg_dir = None
     assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
-        pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
+        pkg_file = Path(_get_local_path(pkg_uri))
         with FileLock(str(pkg_file) + ".lock"):
-            # TODO(yic): checksum calculation is required
-            if pkg_file.exists():
-                logger.debug(
-                    f"{pkg_uri} has existed locally, skip downloading")
-            else:
-                pkg_size = fetch_package(pkg_uri, pkg_file)
-                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-        sys.path.insert(0, str(pkg_file))
+            pkg_dir = fetch_package(pkg_uri)
+        sys.path.insert(0, str(pkg_dir))
+    # Right now, multiple pkg_uris are not supported correctly.
+    # We return the last one as working directory
+    return str(pkg_dir) if pkg_dir else None

@@ -7,11 +7,6 @@ but we put comments right after code blocks to prevent large white spaces
 in the documentation.
 """
 # yapf: disable
-if __name__ == "__main__":
-    # temporarily disable due to mnist outage
-    import sys
-    sys.exit(0)
-
 # __torch_model_start__
 import torch
 import torch.nn as nn

@@ -20,6 +20,10 @@
 
 namespace ray {
 
+namespace pubsub {
+
+using SubscriberID = UniqueID;
+using PublisherID = UniqueID;
 using SubscriptionCallback = std::function<void(const ObjectID &)>;
 using SubscriptionFailureCallback = std::function<void(const ObjectID &)>;
 
@@ -28,14 +32,14 @@ class SubscriberInterface {
  public:
   /// Subscribe to the object.
   ///
-  /// \param owner_address Address of the owner to subscribe the object.
-  /// \param object_id The object id to subscribe from the owner.
+  /// \param publisher_address Address of the publisher to subscribe the object.
+  /// \param object_id The object id to subscribe from the publisher.
   /// \param subscription_callback A callback that is invoked whenever the given object
   /// information is published.
   /// \param subscription_failure_callback A callback that is
-  /// invoked whenever the owner is dead (or failed).
+  /// invoked whenever the publisher is dead (or failed).
   virtual void SubcribeObject(
-      const rpc::Address &owner_address, const ObjectID &object_id,
+      const rpc::Address &publisher_address, const ObjectID &object_id,
       SubscriptionCallback subscription_callback,
       SubscriptionFailureCallback subscription_failure_callback) = 0;
 
@@ -49,9 +53,9 @@ class SubscriberInterface {
   ///
   /// TODO(sang): Once it starts sending RPCs to unsubscribe, we should start handling
   /// message ordering.
-  /// \param owner_address The owner address that it will unsubscribe to.
+  /// \param publisher_address The publisher address that it will unsubscribe to.
   /// \param object_id The object id to unsubscribe.
-  virtual bool UnsubscribeObject(const rpc::Address &owner_address,
+  virtual bool UnsubscribeObject(const rpc::Address &publisher_address,
                                  const ObjectID &object_id) = 0;
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
@@ -61,22 +65,30 @@ class SubscriberInterface {
 };
 
 /// The pubsub client implementation.
+///
+/// Protocol details:
+///
+/// - Publisher keeps refreshing the long polling connection every subscriber_timeout_ms.
+/// - Subscriber always try making reconnection as long as there are subscribed entries.
+/// - If long polling request is failed (if non-OK status is returned from the RPC),
+/// consider the publisher is dead.
+///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(const NodeID self_node_id, const std::string self_node_address,
-                      const int self_node_port,
-                      rpc::CoreWorkerClientPool &owner_client_pool)
-      : self_node_id_(self_node_id),
-        self_node_address_(self_node_address),
-        self_node_port_(self_node_port),
-        owner_client_pool_(owner_client_pool) {}
+  explicit Subscriber(const PublisherID subscriber_id,
+                      const std::string subscriber_address, const int subscriber_port,
+                      rpc::CoreWorkerClientPool &publisher_client_pool)
+      : subscriber_id_(subscriber_id),
+        subscriber_address_(subscriber_address),
+        subscriber_port_(subscriber_port),
+        publisher_client_pool_(publisher_client_pool) {}
   ~Subscriber() = default;
 
-  void SubcribeObject(const rpc::Address &owner_address, const ObjectID &object_id,
+  void SubcribeObject(const rpc::Address &publisher_address, const ObjectID &object_id,
                       SubscriptionCallback subscription_callback,
                       SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool UnsubscribeObject(const rpc::Address &owner_address,
+  bool UnsubscribeObject(const rpc::Address &publisher_address,
                          const ObjectID &object_id) override;
 
   bool AssertNoLeak() const override;
@@ -84,8 +96,8 @@ class Subscriber : public SubscriberInterface {
  private:
   /// Encapsulates the subscription information such as subscribed object ids ->
   /// callbacks.
-  /// TODO(sang): Use a channel abstraction instead of owner address once OBOD uses the
-  /// pubsub.
+  /// TODO(sang): Use a channel abstraction instead of publisher address once OBOD uses
+  /// the pubsub.
   struct SubscriptionInfo {
     SubscriptionInfo(const rpc::Address &pubsub_server_address)
         : pubsub_server_address_(pubsub_server_address) {}
@@ -98,19 +110,21 @@ class Subscriber : public SubscriberInterface {
         subscription_callback_map_;
   };
 
-  /// Create a long polling connection to the owner for receiving the published messages.
+  /// Create a long polling connection to the publisher for receiving the published
+  /// messages.
+  ///
   /// TODO(sang): Currently, we assume that unregistered objects will never be published
   /// from the pubsub server. We may want to loose the restriction once OBOD is supported
   /// by this function.
-  /// \param owner_address The address of the owner that publishes
+  /// \param publisher_address The address of the publisher that publishes
   /// objects.
   /// \param subscriber_address The address of the subscriber.
-  void MakeLongPollingPubsubConnection(const rpc::Address &owner_address,
+  void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
                                        const rpc::Address &subscriber_address);
 
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
-  void HandleLongPollingResponse(const rpc::Address &owner_address,
+  void HandleLongPollingResponse(const rpc::Address &publisher_address,
                                  const rpc::Address &subscriber_address,
                                  const Status &status,
                                  const rpc::PubsubLongPollingReply &reply);
@@ -118,23 +132,25 @@ class Subscriber : public SubscriberInterface {
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionCallback> GetSubscriptionCallback(
-      const rpc::Address &owner_address, const ObjectID &object_id) const;
+      const rpc::Address &publisher_address, const ObjectID &object_id) const;
 
-  /// Returns a owner failure callback; Returns a nullopt if the object id is not
+  /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionCallback> GetFailureCallback(
-      const rpc::Address &owner_address, const ObjectID &object_id) const;
+      const rpc::Address &publisher_address, const ObjectID &object_id) const;
 
   /// Self node's address information.
-  const NodeID self_node_id_;
-  const std::string self_node_address_;
-  const int self_node_port_;
+  const SubscriberID subscriber_id_;
+  const std::string subscriber_address_;
+  const int subscriber_port_;
 
-  /// Mapping of the owner ID -> subscription info.
-  absl::flat_hash_map<WorkerID, SubscriptionInfo> subscription_map_;
+  /// Mapping of the publisher ID -> subscription info.
+  absl::flat_hash_map<PublisherID, SubscriptionInfo> subscription_map_;
 
-  /// Cache of gRPC clients to owners.
-  rpc::CoreWorkerClientPool &owner_client_pool_;
+  /// Cache of gRPC clients to publishers.
+  rpc::CoreWorkerClientPool &publisher_client_pool_;
 };
+
+}  // namespace pubsub
 
 }  // namespace ray
