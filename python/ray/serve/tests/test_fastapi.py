@@ -16,53 +16,53 @@ from ray.serve.utils import make_fastapi_class_based_view
 
 
 def test_fastapi_function(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
+    @serve.deployment(name="f")
     @serve.ingress(app)
     class FastAPIApp:
         pass
 
-    client.deploy("f", FastAPIApp)
+    FastAPIApp.deploy()
 
-    resp = requests.get(f"http://localhost:8000/f/100")
+    resp = requests.get("http://localhost:8000/f/100")
     assert resp.json() == {"result": 100}
 
-    resp = requests.get(f"http://localhost:8000/f/not-number")
+    resp = requests.get("http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
     assert resp.json()["detail"][0]["type"] == "type_error.integer"
 
 
 def test_ingress_prefix(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/{a}")
     def func(a: int):
         return {"result": a}
 
-    @serve.ingress(app, path_prefix="/api")
+    @serve.deployment(route_prefix="/api")
+    @serve.ingress(app)
     class App:
         pass
 
-    client.deploy("f", App)
+    App.deploy()
 
-    resp = requests.get(f"http://localhost:8000/api/100")
+    resp = requests.get("http://localhost:8000/api/100")
     assert resp.json() == {"result": 100}
 
 
 def test_class_based_view(serve_instance):
-    client = serve_instance
     app = FastAPI()
 
     @app.get("/other")
     def hello():
         return "hello"
 
+    @serve.deployment(name="f")
     @serve.ingress(app)
     class A:
         def __init__(self):
@@ -76,12 +76,13 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
-    client.deploy("f", A)
-    resp = requests.get(f"http://localhost:8000/f/calc/41")
+    A.deploy()
+
+    resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
-    resp = requests.post(f"http://localhost:8000/f/calc/41")
+    resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
-    resp = requests.get(f"http://localhost:8000/f/other")
+    resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
 
 
@@ -209,7 +210,7 @@ def test_fastapi_features(serve_instance):
 
     app.include_router(router)
 
-    @serve.deployment("fastapi")
+    @serve.deployment(name="fastapi")
     @serve.ingress(app)
     class Worker:
         pass

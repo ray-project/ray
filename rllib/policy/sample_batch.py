@@ -430,7 +430,9 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.values())
+        return sum(
+            v.nbytes if isinstance(v, np.ndarray) else sys.getsizeof(v)
+            for v in self.values())
 
     def get(self, key, default=None):
         try:

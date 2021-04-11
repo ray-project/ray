@@ -38,19 +38,12 @@ class _BatchQueue:
             self._handle_batch_task = asyncio.get_event_loop().create_task(
                 self._handle_batches(handle_batch_func))
 
-    def set_config(self, max_batch_size: int, timeout_s: float) -> None:
-        self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
-
     def put(self, request: Tuple[Any, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         # Signal when the full batch is ready. The event will be reset
         # in wait_for_batch.
         if self.queue.qsize() == self.max_batch_size:
             self.full_batch_event.set()
-
-    def qsize(self) -> int:
-        return self.queue.qsize()
 
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
@@ -173,28 +166,29 @@ def batch(func: F) -> G:
 
 # "Decorator factory" use case (called with arguments).
 @overload
-def batch(max_batch_size: int = 10,
-          batch_wait_timeout_s: float = 0.0) -> Callable[[F], G]:
+def batch(max_batch_size: Optional[int] = 10,
+          batch_wait_timeout_s: Optional[float] = 0.0) -> Callable[[F], G]:
     pass
 
 
 def batch(_func=None, max_batch_size=10, batch_wait_timeout_s=0.0):
     """Converts a function to asynchronously handle batches.
 
-    The function can be a standalone function or a class method, and must
-    take a list of objects as its sole argument and return a list of the
-    same length.
+    The function can be a standalone function or a class method. In both
+    cases, the function must be `async def` and take a list of objects as
+    its sole argument and return a list of the same length as a result.
 
     When invoked, the caller passes a single object. These will be batched
     and executed asynchronously once there is a batch of `max_batch_size`
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
     Example:
-        @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5)
-        async def handle_batch(self, batch: List[str]):
+
+    >>> @serve.batch(max_batch_size=50, batch_wait_timeout_s=0.5)
+        async def handle_batch(batch: List[str]):
             return [s.lower() for s in batch]
 
-        async def handle_single(self, s: str):
+    >>> async def handle_single(s: str):
             # Will return s.lower().
             return await handle_batch(s)
 
