@@ -56,7 +56,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -74,6 +74,10 @@ class TestSAC(unittest.TestCase):
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
+        # If we use default buffer size (1e6), the buffer will take up
+        # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
+        # available system memory (8.34816 GB).
+        config["buffer_size"] = 40000
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -186,15 +190,8 @@ class TestSAC(unittest.TestCase):
 
         env = SimpleEnv
         batch_size = 100
-        if env is SimpleEnv:
-            obs_size = (batch_size, 1)
-            actions = np.random.random(size=(batch_size, 2))
-        elif env == "CartPole-v0":
-            obs_size = (batch_size, 4)
-            actions = np.random.randint(0, 2, size=(batch_size, ))
-        else:
-            obs_size = (batch_size, 3)
-            actions = np.random.random(size=(batch_size, 1))
+        obs_size = (batch_size, 1)
+        actions = np.random.random(size=(batch_size, 2))
 
         # Batch of size=n.
         input_ = self._get_batch_helper(obs_size, actions, batch_size)
@@ -403,9 +400,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.07)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.07)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -420,9 +417,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.07)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.07)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {

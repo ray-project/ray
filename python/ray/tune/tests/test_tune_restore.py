@@ -6,11 +6,13 @@ import shutil
 import tempfile
 import time
 import unittest
+
 import skopt
 import numpy as np
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from zoopt import ValueType
+from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
@@ -27,6 +29,7 @@ from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
+from ray.tune.suggest.hebo import HEBOSearch
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -90,6 +93,12 @@ class TuneRestoreTest(unittest.TestCase):
 
 
 class TuneInterruptionTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Wait up to five seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
     def testExperimentInterrupted(self):
         import multiprocessing
 
@@ -160,6 +169,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         def on_trial_start(self, trials, **info):
             self._step += 1
             if self._step >= self.steps:
+                print(f"Failing after step {self._step} with "
+                      f"{len(trials)} trials")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):
@@ -174,25 +185,29 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 assert len(trials) == self.expected_trials
                 self._checked = True
 
-    @classmethod
-    def setUpClass(cls):
-        ray.init(local_mode=True, num_cpus=2)
-
-    @classmethod
-    def tearDownClass(cls):
-        ray.shutdown()
-
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        # Wait up to 1.5 seconds for placement groups when starting a trial
+        os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "1.5"
+        # Block for results even when placement groups are pending
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+        # Change back to local_mode=True after this is resolved:
+        # https://github.com/ray-project/ray/issues/13932
+        ray.init(local_mode=False, num_cpus=2)
+
         from ray.tune import register_trainable
         register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
         os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
         shutil.rmtree(self.logdir)
+        ray.shutdown()
 
     def testFailResumeGridSearch(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         config = dict(
             num_samples=3,
             fail_fast=True,
@@ -222,6 +237,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 9 for v in test2_counter.values())
 
     def testFailResumeWithPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -263,6 +280,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 10 for v in test2_counter.values())
 
     def testFailResumeAfterPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -305,6 +324,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 10 for v in test2_counter.values())
 
     def testMultiExperimentFail(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         experiments = []
         for i in range(3):
             experiments.append(
@@ -725,6 +746,33 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             dim_dict=dim_dict,
             metric="loss",
             mode="min")
+
+        return search_alg, cost
+
+
+class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space_config = [
+            {
+                "name": "width",
+                "type": "num",
+                "lb": 0,
+                "ub": 20
+            },
+            {
+                "name": "height",
+                "type": "num",
+                "lb": -100,
+                "ub": 100
+            },
+        ]
+        space = HEBODesignSpace().parse(space_config)
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = HEBOSearch(
+            space=space, metric="loss", mode="min", random_state_seed=5)
 
         return search_alg, cost
 

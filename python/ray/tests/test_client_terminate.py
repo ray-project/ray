@@ -1,4 +1,6 @@
 import pytest
+import sys
+
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.test_utils import wait_for_condition
@@ -42,6 +44,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
         wait_for_condition(_all_actors_dead(ray), timeout=10)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
     with ray_start_client_server() as ray:

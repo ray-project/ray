@@ -283,7 +283,7 @@ install_dependencies() {
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
       case "${OSTYPE}" in
         darwin*) pip install torch torchvision;;
-        *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
+        *) pip install torch==1.8.1+cpu torchvision==0.9.1+cpu -f "${torch_url}";;
       esac
     fi
 
@@ -293,7 +293,7 @@ install_dependencies() {
     local status="0";
     local errmsg="";
     for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements.txt 2>&1) && break;
+      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
       status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
     done
     if [ "$status" != "0" ]; then
@@ -324,13 +324,7 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7" ]; then
-      # Install Python 3.7 dependencies if 3.7 is set.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
-    else
-      # Else default to Python 3.6.
-      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
-    fi
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
   # For Tune, install upstream dependencies.
@@ -343,13 +337,13 @@ install_dependencies() {
     # If CI has deemed that a different version of Tensorflow or Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
-      case "${TORCH_VERSION-1.7}" in
-        1.7) TORCHVISION_VERSION=0.8.1;;
+      case "${TORCH_VERSION-1.8.1}" in
+        1.8.1) TORCHVISION_VERSION=0.9.1;;
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
       pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-        torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
+        torch=="${TORCH_VERSION-1.8.1}" torchvision=="${TORCHVISION_VERSION}" \
         tensorflow=="${TF_VERSION-2.2.0}" gym
     fi
   fi
@@ -365,7 +359,7 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

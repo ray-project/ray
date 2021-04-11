@@ -157,11 +157,11 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
             <Grid container spacing={2}>
               <Grid item xs>
                 <div className={classes.label}>Sent Tps</div>{" "}
-                {memoryConverter(nodeDetail?.net[0])}/s
+                {memoryConverter(nodeDetail?.networkSpeed[0])}/s
               </Grid>
               <Grid item xs>
                 <div className={classes.label}>Recieved Tps</div>{" "}
-                {memoryConverter(nodeDetail?.net[1])}/s
+                {memoryConverter(nodeDetail?.networkSpeed[1])}/s
               </Grid>
             </Grid>
             <Grid container spacing={2}>

@@ -40,8 +40,6 @@ class Backend(object):
                              "Only NCCL is supported".format(name))
         if backend == Backend.MPI:
             raise RuntimeError("Ray does not support MPI backend.")
-        if backend == Backend.GLOO:
-            raise NotImplementedError()
         return backend
 
 

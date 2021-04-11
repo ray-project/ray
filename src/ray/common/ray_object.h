@@ -63,6 +63,11 @@ class RayObject {
 
   RayObject(rpc::ErrorType error_type);
 
+  RayObject(rpc::ErrorType error_type, const std::string &append_data);
+
+  RayObject(rpc::ErrorType error_type, const uint8_t *append_data,
+            size_t append_data_size);
+
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; }
 
@@ -92,12 +97,20 @@ class RayObject {
   /// large to return directly as part of a gRPC response).
   bool IsInPlasmaError() const;
 
+  /// Mark this object as accessed before.
+  void SetAccessed() { accessed_ = true; };
+
+  /// Check if this object was accessed before.
+  bool WasAccessed() const { return accessed_; }
+
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
   const std::vector<ObjectID> nested_ids_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
+  /// Whether this object was accessed.
+  bool accessed_ = false;
 };
 
 }  // namespace ray

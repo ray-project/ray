@@ -106,7 +106,7 @@ void MetricPointExporter::ExportViewData(
 }
 
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 boost::asio::io_service &io_service,
+                                                 instrumented_io_context &io_service,
                                                  const std::string address)
     : client_call_manager_(io_service) {
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));

@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import unittest
 
@@ -24,12 +25,41 @@ class TestPG(unittest.TestCase):
         config["num_workers"] = 0
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for fw in framework_iterator(config):
+            # For tf, build with fake-GPUs.
+            config["_fake_gpus"] = fw == "tf"
+            config["num_gpus"] = 2 if fw == "tf" else 0
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())
             check_compute_single_action(
                 trainer, include_prev_action_reward=True)
+
+    def test_pg_fake_multi_gpu_learning(self):
+        """Test whether PGTrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(pg.DEFAULT_CONFIG)
+
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+
+        config["framework"] = "tf"
+        # Mimic tuned_example for PG CartPole.
+        config["model"]["fcnet_hiddens"] = [64]
+        config["model"]["fcnet_activation"] = "linear"
+
+        trainer = pg.PGTrainer(config=config, env="CartPole-v0")
+        num_iterations = 200
+        learnt = False
+        for i in range(num_iterations):
+            results = trainer.train()
+            print("reward={}".format(results["episode_reward_mean"]))
+            # Make this test quite short (75.0).
+            if results["episode_reward_mean"] > 75.0:
+                learnt = True
+                break
+        assert learnt, "PG multi-GPU (with fake-GPUs) did not learn CartPole!"
+        trainer.stop()
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""

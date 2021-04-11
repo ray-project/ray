@@ -17,15 +17,13 @@ cdef class GlobalStateAccessor:
     cdef:
         unique_ptr[CGlobalStateAccessor] inner
 
-    def __init__(self, redis_address, redis_password,
-                 c_bool is_test_client=False):
+    def __init__(self, redis_address, redis_password):
         if not redis_password:
             redis_password = ""
         self.inner.reset(
             new CGlobalStateAccessor(
                 redis_address.encode("ascii"),
                 redis_password.encode("ascii"),
-                is_test_client,
             ),
         )
 

@@ -64,6 +64,16 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback) = 0;
 
+  /// Kill actor via GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to destroy.
+  /// \param force_kill Whether to force kill an actor by killing the worker.
+  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
+  /// \param callback Callback that will be called after the actor is destroyed.
+  /// \return Status
+  virtual Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
+                                const StatusCallback &callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// This should be called after the worker has resolved the actor dependencies.
@@ -470,21 +480,12 @@ class NodeInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
-  /// Set the internal config string that will be used by all nodes started in the
-  /// cluster.
-  ///
-  /// \param config Map of config options
-  /// \return Status
-  virtual Status AsyncSetInternalConfig(
-      std::unordered_map<std::string, std::string> &config) = 0;
-
   /// Get the internal config string from GCS.
   ///
   /// \param callback Processes a map of config options
   /// \return Status
   virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::unordered_map<std::string, std::string>>
-          &callback) = 0;
+      const OptionalItemCallback<std::string> &callback) = 0;
 
  protected:
   NodeInfoAccessor() = default;
@@ -724,7 +725,8 @@ class PlacementGroupInfoAccessor {
   /// written to GCS.
   /// \return Status.
   virtual Status AsyncCreatePlacementGroup(
-      const PlacementGroupSpecification &placement_group_spec) = 0;
+      const PlacementGroupSpecification &placement_group_spec,
+      const StatusCallback &callback) = 0;
 
   /// Get a placement group data from GCS asynchronously by id.
   ///
@@ -768,6 +770,98 @@ class PlacementGroupInfoAccessor {
 
  protected:
   PlacementGroupInfoAccessor() = default;
+};
+
+class InternalKVAccessor {
+ public:
+  virtual ~InternalKVAccessor() = default;
+
+  /// Asynchronously list keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param callback Callback that will be called after scanning.
+  /// \return Status
+  virtual Status AsyncInternalKVKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) = 0;
+
+  /// Asynchronously get the value for a given key.
+  ///
+  /// \param key The key to lookup.
+  /// \param callback Callback that will be called after get the value.
+  virtual Status AsyncInternalKVGet(
+      const std::string &key, const OptionalItemCallback<std::string> &callback) = 0;
+
+  /// Asynchronously set the value for a given key.
+  ///
+  /// \param key The key in <key, value> pair
+  /// \param value The value associated with the key
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+                                    bool overwrite,
+                                    const OptionalItemCallback<int> &callback) = 0;
+
+  /// Asynchronously check the existence of a given key
+  ///
+  /// \param key The key to check
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVExists(const std::string &key,
+                                       const OptionalItemCallback<bool> &callback) = 0;
+
+  /// Asynchronously delete a key
+  ///
+  /// \param key The key to delete
+  /// \param callback Callback that will be called after the operation.
+  /// \return Status
+  virtual Status AsyncInternalKVDel(const std::string &key,
+                                    const StatusCallback &callback) = 0;
+
+  // These are sync functions of the async above
+
+  /// List keys with prefix stored in internal kv
+  ///
+  /// \param prefix The prefix to scan.
+  /// \param value It's an output parameter. It'll be set to the keys with `prefix`
+  /// \return Status
+  Status Keys(const std::string &prefix, std::vector<std::string> &value);
+
+  /// Set the <key, value> in the store
+  ///
+  /// \param key The key of the pair
+  /// \param value The value of the pair
+  /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
+  ///     exists.
+  /// \param added It's an output parameter. It'll be set to be true if
+  ///     any row is added.
+  /// \return Status
+  Status Put(const std::string &key, const std::string &value, bool overwrite,
+             bool &added);
+
+  /// Retrive the value associated with a key
+  ///
+  /// \param key The key to lookup
+  /// \param value It's an output parameter. It'll be set to the value of the key
+  /// \return Status
+  Status Get(const std::string &key, std::string &value);
+
+  /// Delete the key
+  ///
+  /// \param key The key to delete
+  /// \return Status
+  Status Del(const std::string &key);
+
+  /// Check existence of a key in the store
+  ///
+  /// \param key The key to check
+  /// \param exist It's an output parameter. It'll be true if the key exists in the
+  ///    system. Otherwise, it'll be set to be false.
+  /// \return Status
+  Status Exists(const std::string &key, bool &exist);
+
+ protected:
+  InternalKVAccessor() = default;
 };
 
 }  // namespace gcs

@@ -26,7 +26,7 @@
 #include "ray/util/logging.h"
 
 /// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
+enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
 
 const std::string ResourceEnumToString(PredefinedResources resource);
 
@@ -43,6 +43,9 @@ std::vector<double> VectorFixedPointToVectorDouble(
 struct ResourceCapacity {
   FixedPoint total;
   FixedPoint available;
+  ResourceCapacity() {}
+  ResourceCapacity(FixedPoint &&_available, FixedPoint &&_total)
+      : total(_total), available(_available) {}
 };
 
 /// Capacities of each instance of a resource.
@@ -94,6 +97,9 @@ class TaskResourceInstances {
   /// The list of instances of each custom resource allocated to a task.
   absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
+  /// Get instances based on the string.
+  const std::vector<FixedPoint> &Get(const std::string &resource_name,
+                                     const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
   TaskRequest ToTaskRequest() const;
   /// Get CPU instances only.
@@ -159,6 +165,15 @@ class NodeResources {
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
+  /// of each resource and return the highest.
+  float CalculateCriticalResourceUtilization() const;
+  /// Returns true if the node has the available resources to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  bool IsAvailable(const TaskRequest &task_req) const;
+  /// Returns true if the node's total resources are enough to run the task.
+  /// Note: This doesn't account for the binpacking of unit resources.
+  bool IsFeasible(const TaskRequest &task_req) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
@@ -183,6 +198,32 @@ class NodeResourceInstances {
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
+};
+
+struct Node {
+  Node(const NodeResources &resources)
+      : last_reported_(resources), local_view_(resources) {}
+
+  void ResetLocalView() { local_view_ = last_reported_; }
+
+  NodeResources *GetMutableLocalView() { return &local_view_; }
+
+  const NodeResources &GetLocalView() const { return local_view_; }
+
+ private:
+  /// The resource information according to the last heartbeat reported by
+  /// this node.
+  /// NOTE(swang): For the local node, this field should be ignored because
+  /// we do not receive heartbeats from ourselves and the local view is
+  /// therefore always the most up-to-date.
+  NodeResources last_reported_;
+  /// Our local view of the remote node's resources. This may be dirty
+  /// because it includes any resource requests that we allocated to this
+  /// node through spillback since our last heartbeat tick. This view will
+  /// get overwritten by the last reported view on each heartbeat tick, to
+  /// make sure that our local view does not skew too much from the actual
+  /// resources when light heartbeats are enabled.
+  NodeResources local_view_;
 };
 
 /// \request Conversion result to a TaskRequest data structure.

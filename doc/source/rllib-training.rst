@@ -236,6 +236,14 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
+    # or simply get the last checkpoint (with highest "training_iteration")
+    last_checkpoint = analysis.get_last_checkpoint()
+    # if there are multiple trials, select a specific trial or automatically
+    # choose the best one according to a given metric
+    last_checkpoint = analysis.get_last_checkpoint(
+        metric="episode_reward_mean", mode="max"
+    )
+
 Loading and restoring a trained agent from a checkpoint is simple:
 
 .. code-block:: python
@@ -796,18 +804,19 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_phase(phase)))
 
+    num_gpus = 0
+    num_workers = 2
+
     ray.init()
     tune.run(
         train,
         config={
-            "num_gpus": 0,
-            "num_workers": 2,
+            "num_gpus": num_gpus,
+            "num_workers": num_workers,
         },
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": lambda spec: spec.config.num_gpus,
-            "extra_cpu": lambda spec: spec.config.num_workers,
-        },
+        resources_per_trial=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),
     )
 
 Approach 2: Use the callbacks API to update the environment on new training results:

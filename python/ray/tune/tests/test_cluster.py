@@ -4,7 +4,6 @@ import os
 
 import pytest
 import shutil
-import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -25,10 +24,14 @@ from ray.tune.syncer import CloudSyncer, SyncerCallback, get_node_syncer
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils._mock_trainable import MyTrainableClass
 from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
                                  MOCK_REMOTE_DIR)
+
+# Wait up to five seconds for placement groups when starting a trial
+os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
+# Block for results even when placement groups are pending
+os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
 
 
 def _check_trial_running(trial):
@@ -108,6 +111,8 @@ def start_connected_emptyhead_cluster():
 
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
+    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
@@ -218,6 +223,8 @@ def test_queue_trials(start_connected_emptyhead_cluster):
     Tune oversubscribes a trial when `queue_trials=True`, but
     does not block other trials from running.
     """
+    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_emptyhead_cluster
     runner = TrialRunner()
 
@@ -354,8 +361,15 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
-def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
+@pytest.mark.parametrize("with_pg", [True, False])
+def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
+                       with_pg):
     """Removing a node in full cluster causes Trial to be requeued."""
+    os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
+    if not with_pg:
+        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
+
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -385,13 +399,16 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     assert _check_trial_running(running_trials[0])
     cluster.remove_node(node)
     cluster.wait_for_nodes()
+    time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
     assert all(
         t.status == Trial.PENDING for t in trials), runner.debug_string()
 
-    with pytest.raises(TuneError):
-        runner.step()
+    if not with_pg:
+        # Only raises if placement groups are not used
+        with pytest.raises(TuneError):
+            runner.step()
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake_remote", "__fake_durable"])
@@ -734,83 +751,6 @@ tune.run(
         raise_on_failed_trial=False)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
-    ray.shutdown()
-    cluster.shutdown()
-
-
-def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
-    """Tests restoration of HyperOptSearch experiment on cluster shutdown
-    with actual interrupt.
-
-    Restoration should restore both state of trials
-    and previous search algorithm (HyperOptSearch) state.
-    This is an end-to-end test.
-    """
-    cluster = start_connected_cluster
-    dirpath = str(tmpdir)
-    local_checkpoint_dir = os.path.join(dirpath, "experiment")
-    from ray.tune import register_trainable
-    register_trainable("trainable", MyTrainableClass)
-
-    def execute_script_with_args(*args):
-        current_dir = os.path.dirname(__file__)
-        script = os.path.join(current_dir,
-                              "_test_cluster_interrupt_searcher.py")
-        subprocess.Popen([sys.executable, script] + list(args))
-
-    args = ["--ray-address", cluster.address, "--local-dir", dirpath]
-    execute_script_with_args(*args)
-    # Wait until the right checkpoint is saved.
-    # The trainable returns every 0.5 seconds, so this should not miss
-    # the checkpoint.
-    for i in range(50):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
-            trials = runner.get_trials()
-            if trials and len(trials) >= 10:
-                break
-        time.sleep(.5)
-    else:
-        raise ValueError(f"Didn't generate enough trials: {len(trials)}")
-
-    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
-        raise RuntimeError(
-            f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
-            f"Current list: {os.listdir(local_checkpoint_dir)}.")
-
-    ray.shutdown()
-    cluster.shutdown()
-
-    cluster = _start_new_cluster()
-    execute_script_with_args(*(args + ["--resume"]))
-
-    time.sleep(2)
-
-    register_trainable("trainable", MyTrainableClass)
-    reached = False
-    for i in range(50):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
-            trials = runner.get_trials()
-
-            if len(trials) == 0:
-                continue  # nonblocking script hasn't resumed yet, wait
-
-            reached = True
-            assert len(trials) >= 10
-            assert len(trials) <= 20
-            if len(trials) == 20:
-                break
-            else:
-                stop_fn = runner.trial_executor.stop_trial
-                [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
-        time.sleep(.5)
-    assert reached is True
-
     ray.shutdown()
     cluster.shutdown()
 

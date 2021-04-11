@@ -342,7 +342,7 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
 
-        searcher = BayesOptSearch(metric="b", mode="max")
+        searcher = BayesOptSearch(metric="b/z", mode="max")
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
@@ -496,6 +496,75 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testConvertHEBO(self):
+        from ray.tune.suggest.hebo import HEBOSearch
+        from hebo.design_space.design_space import DesignSpace
+        import torch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HEBOSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
+
+        config = {
+            "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "b": {
+                "x": tune.sample.Integer(0, 5),
+                "y": 4,
+                "z": tune.sample.Float(1e-4, 1e-2).loguniform()
+            }
+        }
+        converted_config = HEBOSearch.convert_search_space(config)
+        hebo_space_config = [
+            {
+                "name": "a",
+                "type": "cat",
+                "categories": [2, 3, 4]
+            },
+            {
+                "name": "b/x",
+                "type": "int",
+                "lb": 0,
+                "ub": 5
+            },
+            {
+                "name": "b/z",
+                "type": "pow",
+                "lb": 1e-4,
+                "ub": 1e-2
+            },
+        ]
+        hebo_space = DesignSpace().parse(hebo_space_config)
+
+        searcher1 = HEBOSearch(
+            space=converted_config,
+            metric="a",
+            mode="max",
+            random_state_seed=123)
+        searcher2 = HEBOSearch(
+            space=hebo_space, metric="a", mode="max", random_state_seed=123)
+
+        np.random.seed(1234)
+        torch.manual_seed(1234)
+        config1 = searcher1.suggest("0")
+        np.random.seed(1234)
+        torch.manual_seed(1234)
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"]["x"], list(range(5)))
+        self.assertLess(1e-4, config1["b"]["z"])
+        self.assertLess(config1["b"]["z"], 1e-2)
+
+        searcher = HEBOSearch(metric="a", mode="max", random_state_seed=123)
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1)
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertEqual(trial.config["b"]["y"], 4)
+
+        # Mixed configs are not supported
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -673,6 +742,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
+        import optuna
         from optuna.samplers import RandomSampler
 
         # Grid search not supported, should raise ValueError
@@ -690,7 +760,14 @@ class SearchSpaceTest(unittest.TestCase):
             }
         }
         converted_config = OptunaSearch.convert_search_space(config)
-        optuna_config = [
+        optuna_config = {
+            "a": optuna.distributions.CategoricalDistribution([2, 3, 4]),
+            "b": {
+                "x": optuna.distributions.IntUniformDistribution(0, 5, step=2),
+                "z": optuna.distributions.LogUniformDistribution(1e-4, 1e-2)
+            }
+        }
+        legacy_optuna_config = [
             param.suggest_categorical("a", [2, 3, 4]),
             param.suggest_int("b/x", 0, 5, 2),
             param.suggest_loguniform("b/z", 1e-4, 1e-2)
@@ -704,10 +781,19 @@ class SearchSpaceTest(unittest.TestCase):
         searcher2 = OptunaSearch(
             space=optuna_config, sampler=sampler2, metric="a", mode="max")
 
+        sampler3 = RandomSampler(seed=1234)
+        searcher3 = OptunaSearch(
+            space=legacy_optuna_config,
+            sampler=sampler3,
+            metric="a",
+            mode="max")
+
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
+        config3 = searcher3.suggest("0")
 
         self.assertEqual(config1, config2)
+        self.assertEqual(config1, config3)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])

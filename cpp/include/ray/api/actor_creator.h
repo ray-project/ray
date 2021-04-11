@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <ray/api/actor_handle.h>
 #include "ray/core.h"
 
 namespace ray {

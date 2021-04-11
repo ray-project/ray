@@ -64,7 +64,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
                          std::vector<std::unique_ptr<RayObject>> *results)>
-          pin_task_arguments);
+          get_task_arguments,
+      size_t max_pinned_task_arguments_bytes);
 
   /// (Step 1) Queue tasks and schedule.
   /// Queue task and schedule. This hanppens when processing the worker lease request.
@@ -118,7 +119,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+  void FillResourceUsage(rpc::ResourcesData &data) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -157,20 +158,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
-  /// Handle the resource usage updated event of the specified node.
-  ///
-  /// \param node_id ID of the node which resources are updated.
-  /// \param resource_data The node resources.
-  void OnNodeResourceUsageUpdated(const NodeID &node_id,
-                                  const rpc::ResourcesData &resource_data) override;
-
-  /// Handle the object missing event.
-  ///
-  /// \param object_id ID of the missing object.
-  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
-  /// object.
-  void OnObjectMissing(const ObjectID &object_id,
-                       const std::vector<TaskID> &waiting_task_ids) override;
+  void RecordMetrics() override;
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
@@ -194,6 +182,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
+  /// Helper method when the current node does not have the available resources to run a
+  /// task.
+  ///
+  /// \returns true if the task was spilled. The task may not be spilled if the
+  /// spillback policy specifies the local node (which may happen if no other nodes have
+  /// the available resources).
+  bool TrySpillback(const Work &spec, bool &is_infeasible);
+
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
   /// queue and whether the worker was successfully leased to execute the work.
@@ -204,7 +200,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// becomes feasible to schedule.
   void TryLocalInfeasibleTaskScheduling();
 
+  // Try to spill waiting tasks to a remote node, starting from the end of the
+  // queue.
+  void SpillWaitingTasks();
+
   const NodeID &self_node_id_;
+  /// Responsible for resource tracking/view of the cluster.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
@@ -218,6 +219,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   const int max_resource_shapes_per_load_report_;
   const bool report_worker_backlog_;
 
+  /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
+  /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
@@ -238,7 +241,19 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, so that they can be moved to dispatch once their
   /// dependencies are local.
-  absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+  ///
+  /// We keep these in a queue so that tasks can be spilled back from the end
+  /// of the queue. This is to try to prioritize spilling tasks whose
+  /// dependencies may not be fetched locally yet.
+  ///
+  /// Note that because tasks can also move from dispatch -> waiting, the order
+  /// in this queue may not match the order in which we initially received the
+  /// tasks. This also means that the PullManager may request dependencies for
+  /// these tasks in a different order than the waiting task queue.
+  std::list<Work> waiting_task_queue_;
+
+  /// An index for the above queue.
+  absl::flat_hash_map<TaskID, std::list<Work>::iterator> waiting_tasks_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
@@ -256,17 +271,31 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// the task is running.
   std::function<bool(const std::vector<ObjectID> &object_ids,
                      std::vector<std::unique_ptr<RayObject>> *results)>
-      pin_task_arguments_;
+      get_task_arguments_;
 
   /// Arguments needed by currently granted lease requests. These should be
   /// pinned before the lease is granted to ensure that the arguments are not
   /// evicted before the task(s) start running.
-  std::unordered_map<TaskID, std::vector<std::unique_ptr<RayObject>>>
+  std::unordered_map<TaskID, std::vector<ObjectID>> executing_task_args_;
+
+  /// All arguments of running tasks, which are also pinned in the object
+  /// store. The value is a pair: (the pointer to the object store that should
+  /// be deleted once the object is no longer needed, number of tasks that
+  /// depend on the object).
+  std::unordered_map<ObjectID, std::pair<std::unique_ptr<RayObject>, size_t>>
       pinned_task_arguments_;
 
   /// The total number of arguments pinned for running tasks.
   /// Used for debug purposes.
-  size_t num_pinned_task_arguments_ = 0;
+  size_t pinned_task_arguments_bytes_ = 0;
+
+  /// The maximum amount of bytes that can be used by executing task arguments.
+  size_t max_pinned_task_arguments_bytes_;
+
+  /// Metrics collected since the last report.
+  uint64_t metric_tasks_queued_;
+  uint64_t metric_tasks_dispatched_;
+  uint64_t metric_tasks_spilled_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
@@ -277,15 +306,27 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const Task &task, rpc::RequestWorkerLeaseReply *reply,
-      std::function<void(void)> send_reply_callback);
+      std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+      rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
 
+  // Helper function to pin a task's args immediately before dispatch. This
+  // returns false if there are missing args (due to eviction) or if there is
+  // not enough memory available to dispatch the task, due to other executing
+  // tasks' arguments.
+  bool PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec, bool *args_missing);
+
+  // Helper functions to pin and release an executing task's args.
+  void PinTaskArgs(const TaskSpecification &spec,
+                   std::vector<std::unique_ptr<RayObject>> args);
+  void ReleaseTaskArgs(const TaskID &task_id);
+
   friend class ClusterTaskManagerTest;
+  FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
 };
 }  // namespace raylet
 }  // namespace ray

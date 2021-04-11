@@ -93,6 +93,7 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
   if (is_ready_) {
     return;  // We have already hit the number of objects to return limit.
   }
+  object->SetAccessed();
   objects_.emplace(object_id, object);
   if (objects_.size() == num_objects_ ||
       (abort_if_any_object_is_exception_ && object->IsException() &&
@@ -106,6 +107,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   std::unique_lock<std::mutex> lock(mutex_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
+    iter->second->SetAccessed();
     return iter->second;
   }
 
@@ -116,11 +118,13 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals)
+    std::function<Status()> check_signals,
+    std::function<void(const RayObject &)> unhandled_exception_handler)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
       raylet_client_(raylet_client),
-      check_signals_(check_signals) {}
+      check_signals_(check_signals),
+      unhandled_exception_handler_(unhandled_exception_handler) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -136,6 +140,7 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
+    ptr->SetAccessed();
     callback(ptr);
   }
 }
@@ -146,6 +151,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
     auto obj = iter->second;
+    obj->SetAccessed();
     if (obj->IsInPlasmaError()) {
       return nullptr;
     }
@@ -209,7 +215,11 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
-      objects_.emplace(object_id, object_entry);
+      EmplaceObjectAndUpdateStats(object_id, object_entry);
+    } else {
+      // It is equivalent to the object being added and immediately deleted from the
+      // store.
+      OnDelete(object_entry);
     }
   }
 
@@ -223,6 +233,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 
   // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
+    object_entry->SetAccessed();
     cb(object_entry);
   }
 
@@ -257,6 +268,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
+        iter->second->SetAccessed();
         (*results)[i] = iter->second;
         if (remove_after_get) {
           // Note that we cannot remove the object_id from `objects_` now,
@@ -273,7 +285,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     // Clean up the objects if ref counting is off.
     if (ref_counter_ == nullptr) {
       for (const auto &object_id : ids_to_remove) {
-        objects_.erase(object_id);
+        EraseObjectAndUpdateStats(object_id);
       }
     }
 
@@ -426,7 +438,8 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
       if (it->second->IsInPlasmaError()) {
         plasma_ids_to_delete->insert(object_id);
       } else {
-        objects_.erase(it);
+        OnDelete(it->second);
+        EraseObjectAndUpdateStats(object_id);
       }
     }
   }
@@ -435,7 +448,11 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
-    objects_.erase(object_id);
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      OnDelete(it->second);
+      EraseObjectAndUpdateStats(object_id);
+    }
   }
 }
 
@@ -451,17 +468,57 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
+void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
+  rpc::ErrorType error_type;
+  // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
+  if (obj->IsException(&error_type) &&
+      // Only warn on task failures (avoid actor died, for example).
+      (error_type == rpc::ErrorType::WORKER_DIED ||
+       error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION)
+
+      && !obj->WasAccessed() && unhandled_exception_handler_ != nullptr) {
+    unhandled_exception_handler_(*obj);
+  }
+}
+
+inline void CoreWorkerMemoryStore::EraseObjectAndUpdateStats(const ObjectID &object_id) {
+  auto it = objects_.find(object_id);
+  if (it == objects_.end()) {
+    return;
+  }
+
+  if (it->second->IsInPlasmaError()) {
+    num_in_plasma_ -= 1;
+  } else {
+    num_local_objects_ -= 1;
+    used_object_store_memory_ -= it->second->GetSize();
+  }
+  RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
+            used_object_store_memory_ >= 0);
+  objects_.erase(it);
+}
+
+inline void CoreWorkerMemoryStore::EmplaceObjectAndUpdateStats(
+    const ObjectID &object_id, std::shared_ptr<RayObject> &object_entry) {
+  auto inserted = objects_.emplace(object_id, object_entry).second;
+  if (inserted) {
+    if (object_entry->IsInPlasmaError()) {
+      num_in_plasma_ += 1;
+    } else {
+      num_local_objects_ += 1;
+      used_object_store_memory_ += object_entry->GetSize();
+    }
+  }
+  RAY_CHECK(num_in_plasma_ >= 0 && num_local_objects_ >= 0 &&
+            used_object_store_memory_ >= 0);
+}
+
 MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   absl::MutexLock lock(&mu_);
   MemoryStoreStats item;
-  for (const auto &it : objects_) {
-    if (it.second->IsInPlasmaError()) {
-      item.num_in_plasma += 1;
-    } else {
-      item.num_local_objects += 1;
-      item.used_object_store_memory += it.second->GetSize();
-    }
-  }
+  item.num_in_plasma = num_in_plasma_;
+  item.num_local_objects = num_local_objects_;
+  item.used_object_store_memory = used_object_store_memory_;
   return item;
 }
 

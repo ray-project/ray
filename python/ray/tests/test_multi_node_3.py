@@ -7,7 +7,7 @@ import ray
 from ray.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    kill_process_by_name, Semaphore)
+    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -48,12 +48,12 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["stop"])
 
     # Test starting Ray with a worker port list.
-    check_call_ray(["start", "--head", "--worker-port-list", "10000,10001"])
+    check_call_ray(["start", "--head", "--worker-port-list", "10002,10003"])
     check_call_ray(["stop"])
 
     # Test starting Ray with a non-int in the worker port list.
     with pytest.raises(subprocess.CalledProcessError):
-        check_call_ray(["start", "--head", "--worker-port-list", "10000,a"])
+        check_call_ray(["start", "--head", "--worker-port-list", "10002,a"])
     check_call_ray(["stop"])
 
     # Test starting Ray with an invalid port in the worker port list.
@@ -94,7 +94,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked = subprocess.Popen(
         ["ray", "start", "--head", "--block", "--port", "0"])
 
-    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
+    wait_for_children_names_of_pid(blocked.pid, ["raylet"], timeout=30)
 
     blocked.poll()
     assert blocked.returncode is None
@@ -256,7 +256,7 @@ ray.init(address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
+g.remote(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """
@@ -280,7 +280,7 @@ import ray
 ray.init(address="{}")
 @ray.remote
 def g():
-    ray.wait(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
+    ray.wait(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
 g.remote()
 time.sleep(1)
 print("success")

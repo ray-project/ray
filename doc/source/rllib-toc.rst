@@ -117,7 +117,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Model-based / Meta-learning
+*  Model-based / Meta-learning / Offline
 
    -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
@@ -126,6 +126,8 @@ Algorithms
    -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
    -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+   -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
 *  Multi-agent
 

@@ -14,11 +14,14 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -38,8 +41,9 @@ struct GcsServerConfig {
   std::string redis_address;
   uint16_t redis_port = 6379;
   bool retry_redis = true;
-  bool is_test = false;
+  bool enable_sharding_conn = true;
   std::string node_ip_address;
+  bool pull_based_resource_reporting;
 };
 
 class GcsNodeManager;
@@ -57,7 +61,7 @@ class GcsPlacementGroupManager;
 class GcsServer {
  public:
   explicit GcsServer(const GcsServerConfig &config,
-                     boost::asio::io_service &main_service);
+                     instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -111,6 +115,12 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
+  /// Initialize KV manager.
+  void InitKVManager();
+
+  /// Initialize resource report polling.
+  void InitResourceReportPolling(const GcsInitData &gcs_init_data);
+
   /// Install event listeners.
   void InstallEventListeners();
 
@@ -128,13 +138,16 @@ class GcsServer {
   /// Print debug info periodically.
   void PrintDebugInfo();
 
+  /// Print the asio event loop stats for debugging.
+  void PrintAsioStats();
+
   /// Gcs server configuration.
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
-  boost::asio::io_context &main_service_;
+  instrumented_io_context &main_service_;
   /// The io service used by heartbeat manager in case of node failure detector being
   /// blocked by main thread.
-  boost::asio::io_service heartbeat_manager_io_service_;
+  instrumented_io_context heartbeat_manager_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
@@ -175,12 +188,17 @@ class GcsServer {
   /// Stats handler and service.
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
+  /// Resource report poller.
+  std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

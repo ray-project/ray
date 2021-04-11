@@ -1,12 +1,80 @@
+import os
 import pytest
 import time
 import sys
 import logging
 import threading
+import _thread
 
 import ray.util.client.server.server as ray_client_server
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.client_mode_hook import _explicitly_enable_client_mode
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_thread_safe(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def block():
+            print("blocking run")
+            time.sleep(99)
+
+        @ray.remote
+        def fast():
+            print("fast run")
+            return "ok"
+
+        class Blocker(threading.Thread):
+            def __init__(self):
+                threading.Thread.__init__(self)
+                self.daemon = True
+
+            def run(self):
+                ray.get(block.remote())
+
+        b = Blocker()
+        b.start()
+        time.sleep(1)
+
+        # Can concurrently execute the get.
+        assert ray.get(fast.remote(), timeout=5) == "ok"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_interrupt_ray_get(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        def block():
+            print("blocking run")
+            time.sleep(99)
+
+        @ray.remote
+        def fast():
+            print("fast run")
+            time.sleep(1)
+            return "ok"
+
+        class Interrupt(threading.Thread):
+            def run(self):
+                time.sleep(2)
+                _thread.interrupt_main()
+
+        it = Interrupt()
+        it.start()
+        with pytest.raises(KeyboardInterrupt):
+            ray.get(block.remote())
+
+        # Assert we can still get new items after the interrupt.
+        assert ray.get(fast.remote()) == "ok"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -75,7 +143,7 @@ def test_wait(ray_start_regular_shared):
 
         with pytest.raises(Exception):
             # Reference not in the object store.
-            ray.wait([ClientObjectRef("blabla")])
+            ray.wait([ClientObjectRef(b"blabla")])
         with pytest.raises(TypeError):
             ray.wait("blabla")
         with pytest.raises(TypeError):
@@ -276,6 +344,13 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_serializing_exceptions(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        with pytest.raises(ValueError):
+            ray.get_actor("abc")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
@@ -342,6 +417,21 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(detatched_actor.get.remote()) == 6
 
 
+def test_error_serialization(ray_start_regular_shared):
+    """Test that errors will be serialized properly."""
+    fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
+    with pytest.raises(FileNotFoundError):
+        with ray_start_client_server() as ray:
+
+            @ray.remote
+            def g():
+                with open(fake_path, "r") as f:
+                    f.read()
+
+            # Raises a FileNotFoundError
+            ray.get(g.remote())
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
@@ -402,6 +492,23 @@ def test_dataclient_server_drop(ray_start_regular_shared):
     ray_client._inside_client_test = False
     # Wait for f(x) to finish before ray.shutdown() in the fixture
     time.sleep(3)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_client_gpu_ids(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    _explicitly_enable_client_mode()
+    # No client connection.
+    with pytest.raises(Exception) as e:
+        ray.get_gpu_ids()
+    assert str(e.value) == "Ray Client is not connected."\
+        " Please connect by calling `ray.connect`."
+
+    with ray_start_client_server():
+        # Now have a client connection.
+        assert ray.get_gpu_ids() == []
 
 
 if __name__ == "__main__":

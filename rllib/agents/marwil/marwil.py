@@ -16,6 +16,10 @@ DEFAULT_CONFIG = with_common_config({
     # Use importance sampling estimators for reward
     "input_evaluation": ["is", "wis"],
 
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
+
     # Scaling of advantages in exponential terms.
     # When beta is 0.0, MARWIL is reduced to imitation learning.
     "beta": 1.0,
@@ -70,9 +74,15 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
+def validate_config(config):
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILTFPolicy,
     get_policy_class=get_policy_class,
+    validate_config=validate_config,
     execution_plan=execution_plan)

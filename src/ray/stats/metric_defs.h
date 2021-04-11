@@ -24,6 +24,9 @@
 ///
 /// You can follow these examples to define your metrics.
 
+/// NOTE: When adding a new metric, add the metric name to the _METRICS list in
+/// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
+
 ///
 /// Common
 ///
@@ -64,9 +67,36 @@ static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
-static Gauge NumInfeasibleTasks(
-    "num_infeasible_tasks",
-    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+static Gauge ObjectDirectoryLocationSubscriptions(
+    "object_directory_subscriptions",
+    "Number of object location subscriptions. If this is high, the raylet is attempting "
+    "to pull a lot of objects.",
+    "subscriptions");
+
+static Gauge ObjectDirectoryLocationUpdates(
+    "object_directory_updates",
+    "Number of object location updates per second., If this is high, the raylet is "
+    "attempting to pull a lot of objects and/or the locations for objects are frequently "
+    "changing (e.g. due to many object copies or evictions).",
+    "updates");
+
+static Gauge ObjectDirectoryLocationLookups(
+    "object_directory_lookups",
+    "Number of object location lookups per second. If this is high, the raylet is "
+    "waiting on a lot of objects.",
+    "lookups");
+
+static Gauge ObjectDirectoryAddedLocations(
+    "object_directory_added_locations",
+    "Number of object locations added per second., If this is high, a lot of objects "
+    "have been added on this node.",
+    "additions");
+
+static Gauge ObjectDirectoryRemovedLocations(
+    "object_directory_removed_locations",
+    "Number of object locations removed per second. If this is high, a lot of objects "
+    "have been removed from this node.",
+    "removals");
 
 static Histogram HeartbeatReportMs(
     "heartbeat_report_ms",
@@ -79,20 +109,32 @@ static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
 
-static Gauge AvgNumScheduledTasks(
-    "avg_num_scheduled_tasks",
-    "Number of tasks that are queued on this node per second. It doesn't guarantee "
-    "that the task will be executed in this node. If the task is executed, it is "
-    "recorded as avg_num_executed_tasks. If the task is not executed and needs to be "
-    "scheduled in other nodes, it will be recorded as avg_num_spilled_back_tasks",
-    "tasks");
+static Sum NumWorkersStarted(
+    "internal_num_processes_started",
+    "The total number of worker processes the worker pool has created.", "processes");
 
-static Gauge AvgNumExecutedTasks("avg_num_executed_tasks",
-                                 "Number of executed tasks on this node per second.",
-                                 "tasks");
+static Sum NumReceivedTasks(
+    "internal_num_received_tasks",
+    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
 
-static Gauge AvgNumSpilledBackTasks("avg_num_spilled_back_tasks",
-                                    "Number of spilled back tasks per second.", "tasks");
+static Sum NumDispatchedTasks(
+    "internal_num_dispatched_tasks",
+    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
+
+static Sum NumSpilledTasks("internal_num_spilled_tasks",
+                           "The cumulative number of lease requeusts that this raylet "
+                           "has spilled to other raylets.",
+                           "tasks");
+
+static Gauge NumInfeasibleTasks(
+    "internal_num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+
+static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
+                                 "Bandwidth of object spilling.", "MB");
+
+static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
+                                  "Bandwidth of object restoration.", "MB");
 
 ///
 /// GCS Server Metrics

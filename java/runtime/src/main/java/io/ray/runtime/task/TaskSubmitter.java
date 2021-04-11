@@ -6,11 +6,10 @@ import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import java.util.List;
-import java.util.Map;
 
 /** A set of methods to submit tasks and create actors. */
 public interface TaskSubmitter {
@@ -63,13 +62,10 @@ public interface TaskSubmitter {
   /**
    * Create a placement group.
    *
-   * @param name Name of the placement group.
-   * @param bundles Pre-allocated resource list.
-   * @param strategy Actor placement strategy.
+   * @param creationOptions Creation options of the placement group.
    * @return A handle to the created placement group.
    */
-  PlacementGroup createPlacementGroup(
-      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy);
+  PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions);
 
   /**
    * Remove a placement group by id.

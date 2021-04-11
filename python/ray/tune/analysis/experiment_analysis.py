@@ -20,6 +20,7 @@ from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
     EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.util import unflattened_lookup
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,10 @@ class Analysis:
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
-            return [(c.value, c.result[metric]) for c in checkpoints]
+            # Support metrics given as paths, e.g.
+            # "info/learner/default_policy/policy_loss".
+            return [(c.value, unflattened_lookup(metric, c.result))
+                    for c in checkpoints]
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
@@ -269,6 +273,32 @@ class Analysis:
             return max(checkpoint_paths, key=lambda x: x[1])[0]
         else:
             return min(checkpoint_paths, key=lambda x: x[1])[0]
+
+    def get_last_checkpoint(self,
+                            trial=None,
+                            metric="training_iteration",
+                            mode="max"):
+        """Helper function that wraps Analysis.get_best_checkpoint().
+        Gets the last persistent checkpoint path of the provided trial,
+        i.e., with the highest "training_iteration".
+        If no trial is specified, it loads the best trial according to the
+        provided metric and mode (defaults to max. training iteration).
+
+        Args:
+            trial (Trial): The log directory or an instance of a trial.
+            If None, load the latest trial automatically.
+            metric (str): If no trial is specified, use this metric to identify
+            the best trial and load the last checkpoint from this trial.
+            mode (str): If no trial is specified, use the metric and this mode
+            to identify the best trial and load the last checkpoint from it.
+
+        Returns:
+            Path for last checkpoint of trial
+        """
+        if trial is None:
+            trial = self.get_best_logdir(metric, mode)
+
+        return self.get_best_checkpoint(trial, "training_iteration", "max")
 
     def _retrieve_rows(self,
                        metric: Optional[str] = None,

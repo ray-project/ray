@@ -16,25 +16,40 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
 
+ClusterResourceScheduler::ClusterResourceScheduler()
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold())
+
+          {};
+
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : local_node_id_(local_node_id) {
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      local_node_id_(local_node_id),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
-    const std::unordered_map<std::string, double> &local_node_resources) {
+    const std::unordered_map<std::string, double> &local_node_resources,
+    std::function<int64_t(void)> get_used_object_store_memory)
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      hybrid_threshold_(RayConfig::instance().scheduler_hybrid_threshold()),
+      loadbalance_spillback_(RayConfig::instance().scheduler_loadbalance_spillback()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
   AddOrUpdateNode(local_node_id_, node_resources);
   InitLocalResources(node_resources);
+  get_used_object_store_memory_ = get_used_object_store_memory;
 }
 
 void ClusterResourceScheduler::AddOrUpdateNode(
@@ -211,10 +226,9 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   return violations;
 }
 
-int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
-                                                         bool actor_creation,
-                                                         int64_t *total_violations,
-                                                         bool *is_infeasible) {
+int64_t ClusterResourceScheduler::GetBestSchedulableNodeSimpleBinPack(
+    const TaskRequest &task_req, bool actor_creation, bool force_spillback,
+    int64_t *total_violations, bool *is_infeasible) {
   // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
   // being set.
   *is_infeasible = false;
@@ -223,40 +237,25 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // We will pick the node with the smallest number of soft violations.
   int64_t min_violations = INT_MAX;
   // Node associated to min_violations.
-  int64_t best_node = -1;
+  std::vector<int64_t> best_nodes;
   *total_violations = 0;
-
-  if (actor_creation && task_req.IsEmpty()) {
-    // This an actor which requires no resources.
-    // Pick a random node to to avoid all scheduling all actors on the local node.
-    if (nodes_.size() > 0) {
-      int idx = std::rand() % nodes_.size();
-      for (auto &node : nodes_) {
-        if (idx == 0) {
-          best_node = node.first;
-          break;
-        }
-        idx--;
-      }
-    }
-    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
-                   << ", # nodes = " << nodes_.size()
-                   << ", task_req = " << task_req.DebugString();
-    return best_node;
-  }
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   const auto local_node_it = nodes_.find(local_node_id_);
-  if (local_node_it != nodes_.end()) {
-    if (IsSchedulable(task_req, local_node_it->first,
-                      local_node_it->second.GetLocalView()) == 0) {
-      return local_node_id_;
+  if (!force_spillback) {
+    if (local_node_it != nodes_.end()) {
+      if (IsSchedulable(task_req, local_node_it->first,
+                        local_node_it->second.GetLocalView()) == 0) {
+        return local_node_id_;
+      }
     }
   }
 
   // Check whether any node in the request placement_hints, satisfes
   // all resource constraints of the request.
+  // TODO(sang): Uniform random distribution of tasks based on placement hint is not
+  // implemented yet because it is currently not used.
   for (const auto &task_req_placement_hint : task_req.placement_hints) {
     auto it = nodes_.find(task_req_placement_hint);
     if (it != nodes_.end()) {
@@ -273,44 +272,106 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // of soft constraint violations.
     int64_t violations = IsSchedulable(task_req, node.first, node.second.GetLocalView());
     if (violations == -1) {
-      if (!local_node_feasible && best_node == -1 &&
+      if (!local_node_feasible && best_nodes.empty() &&
           IsFeasible(task_req, node.second.GetLocalView())) {
         // If the local node is not feasible, and a better node has not yet
         // been found, and this node does not currently have the resources
         // available but is feasible, then schedule to this node.
         // NOTE(swang): This is needed to make sure that tasks that are not
         // feasible on this node are spilled back to a node that does have the
-        // appropriate total resources in a timely manner. If there are
-        // multiple feasible nodes, this algorithm can still introduce delays
-        // because of inefficient load-balancing.
-        best_node = node.first;
+        // appropriate total resources in a timely manner.
+        best_nodes.emplace_back(node.first);
       }
+      continue;
+    }
+
+    if (force_spillback && node.first == local_node_id_) {
+      // Forcing spill back to remote node, so skip the local node.
       continue;
     }
 
     // Update the node with the smallest number of soft constraints violated.
     if (min_violations > violations) {
       min_violations = violations;
-      best_node = node.first;
+      // Clear should be performed by O(1) by the compiler because the
+      // vector entry type is int64_t.
+      best_nodes.clear();
     }
-    if (violations == 0) {
-      // If violation is 0, we can schedule the task. So just break the loop
-      break;
+    if (min_violations == violations) {
+      best_nodes.emplace_back(node.first);
     }
   }
   *total_violations = min_violations;
+
+  // Randomly select one of the best nodes to spillback.
+  int64_t best_node = -1;
+  if (!best_nodes.empty()) {
+    int idx;
+    if (loadbalance_spillback_) {
+      idx = std::rand() % best_nodes.size();
+    } else {
+      idx = 0;
+    }
+    best_node = best_nodes[idx];
+  }
+
   // If there's no best node, and the task is not feasible locally,
   // it means the task is infeasible.
   *is_infeasible = best_node == -1 && !local_node_feasible;
   return best_node;
 }
 
+int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
+                                                         bool force_spillback,
+                                                         int64_t *total_violations,
+                                                         bool *is_infeasible) {
+  // The zero cpu actor is a special case that must be handled the same way by all
+  // scheduling policies.
+  if (actor_creation && task_req.IsEmpty()) {
+    int64_t best_node = -1;
+    // This is an actor which requires no resources.
+    // Pick a random node to to avoid scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      std::uniform_int_distribution<int> distribution(0, nodes_.size() - 1);
+      int idx = distribution(gen_);
+      best_node = std::next(nodes_.begin(), idx)->first;
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
+
+  if (!hybrid_spillback_) {
+    return GetBestSchedulableNodeSimpleBinPack(task_req, actor_creation, force_spillback,
+                                               total_violations, is_infeasible);
+  }
+
+  // TODO (Alex): Setting require_available == force_spillback is a hack in order to
+  // remain bug compatible with the legacy scheduling algorithms.
+  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
+      task_req, local_node_id_, nodes_, hybrid_threshold_, force_spillback,
+      force_spillback);
+  *is_infeasible = best_node_id == -1 ? true : false;
+  if (!*is_infeasible) {
+    // TODO (Alex): Support soft constraints if needed later.
+    *total_violations = 0;
+  }
+
+  RAY_LOG(DEBUG) << "Scheduling decision. "
+                 << "forcing spillback: " << force_spillback
+                 << ". Best node: " << best_node_id
+                 << ", is infeasible: " << *is_infeasible;
+  return best_node_id;
+}
+
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
-    int64_t *total_violations, bool *is_infeasible) {
+    bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, total_violations,
-                                           is_infeasible);
+  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, force_spillback,
+                                           total_violations, is_infeasible);
 
   std::string id_string;
   if (node_id == -1) {
@@ -371,36 +432,41 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
   return node_it->second.GetLocalView();
 }
 
-int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
 
-void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
-                                                double resource_total) {
-  string_to_int_map_.Insert(resource_name);
-  int64_t resource_id = string_to_int_map_.Get(resource_name);
+const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
+  return string_to_int_map_;
+}
 
-  if (local_resources_.custom_resources.contains(resource_id)) {
-    FixedPoint total(resource_total);
-    auto &instances = local_resources_.custom_resources[resource_id];
-    instances.total[0] += total;
-    instances.available[0] += total;
-    auto local_node_it = nodes_.find(local_node_id_);
-    RAY_CHECK(local_node_it != nodes_.end());
-    auto &capacity =
-        local_node_it->second.GetMutableLocalView()->custom_resources[resource_id];
-    capacity.available += total;
-    capacity.total += total;
+void ClusterResourceScheduler::AddLocalResourceInstances(
+    const std::string &resource_name, const std::vector<FixedPoint> &instances) {
+  ResourceInstanceCapacities *node_instances;
+  local_resources_.predefined_resources.resize(PredefinedResources_MAX);
+  if (kCPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[CPU];
+  } else if (kGPU_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[GPU];
+  } else if (kObjectStoreMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[OBJECT_STORE_MEM];
+  } else if (kMemory_ResourceLabel == resource_name) {
+    node_instances = &local_resources_.predefined_resources[MEM];
   } else {
-    ResourceInstanceCapacities capacity;
-    capacity.total.resize(1);
-    capacity.total[0] = resource_total;
-    capacity.available.resize(1);
-    capacity.available[0] = resource_total;
-    local_resources_.custom_resources.emplace(resource_id, capacity);
-    std::string node_id_string = string_to_int_map_.Get(local_node_id_);
-    RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
-    UpdateResourceCapacity(node_id_string, resource_name, resource_total);
-    UpdateLocalAvailableResourcesFromResourceInstances();
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    node_instances = &local_resources_.custom_resources[resource_id];
   }
+
+  if (node_instances->total.size() < instances.size()) {
+    node_instances->total.resize(instances.size());
+    node_instances->available.resize(instances.size());
+  }
+
+  for (size_t i = 0; i < instances.size(); i++) {
+    node_instances->available[i] += instances[i];
+    node_instances->total[i] =
+        std::max(node_instances->total[i], node_instances->available[i]);
+  }
+  UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
 bool ClusterResourceScheduler::IsAvailableResourceEmpty(
@@ -417,8 +483,8 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -455,8 +521,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
@@ -512,13 +578,14 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     idx = (int)CPU;
   } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == ray::kTPU_ResourceLabel) {
-    idx = (int)TPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
   } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
+    local_view->predefined_resources[idx].available = 0;
     local_view->predefined_resources[idx].total = 0;
 
     if (node_id == local_node_id_) {
@@ -792,14 +859,17 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
     }
   }
 
-  for (auto &custom_resource : local_view->custom_resources) {
-    auto it = local_resources_.custom_resources.find(custom_resource.first);
-    if (it != local_resources_.custom_resources.end()) {
-      custom_resource.second.available = 0;
-      for (const auto &available : it->second.available) {
-        custom_resource.second.available += available;
-      }
-    }
+  for (auto &custom_resource : local_resources_.custom_resources) {
+    int64_t resource_name = custom_resource.first;
+    auto &instances = custom_resource.second;
+
+    FixedPoint available = std::accumulate(instances.available.begin(),
+                                           instances.available.end(), FixedPoint());
+    FixedPoint total =
+        std::accumulate(instances.total.begin(), instances.total.end(), FixedPoint());
+
+    local_view->custom_resources[resource_name].available = available;
+    local_view->custom_resources[resource_name].total = total;
   }
 }
 
@@ -912,8 +982,8 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
     return ray::kCPU_ResourceLabel;
   } else if (res_idx == GPU) {
     return ray::kGPU_ResourceLabel;
-  } else if (res_idx == TPU) {
-    return ray::kTPU_ResourceLabel;
+  } else if (res_idx == OBJECT_STORE_MEM) {
+    return ray::kObjectStoreMemory_ResourceLabel;
   } else if (res_idx == MEM) {
     return ray::kMemory_ResourceLabel;
   } else {
@@ -947,8 +1017,7 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
   last_report_resources_.reset(new NodeResources(node_resources));
 }
 
-void ClusterResourceScheduler::FillResourceUsage(
-    std::shared_ptr<rpc::ResourcesData> resources_data) {
+void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
@@ -972,18 +1041,27 @@ void ClusterResourceScheduler::FillResourceUsage(
     }
   }
 
+  // Automatically report object store usage.
+  // XXX: this MUTATES the resources field, which is needed since we are storing
+  // it in last_report_resources_.
+  if (get_used_object_store_memory_ != nullptr) {
+    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
+    double used = get_used_object_store_memory_();
+    capacity.available = FixedPoint(capacity.total.Double() - used);
+  }
+
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     const auto &label = ResourceEnumToString((PredefinedResources)i);
     const auto &capacity = resources.predefined_resources[i];
     const auto &last_capacity = last_report_resources_->predefined_resources[i];
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   for (const auto &it : resources.custom_resources) {
@@ -993,12 +1071,12 @@ void ClusterResourceScheduler::FillResourceUsage(
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
     if (capacity.available != last_capacity.available && capacity.available > 0) {
-      resources_data->set_resources_available_changed(true);
-      (*resources_data->mutable_resources_available())[label] =
+      resources_data.set_resources_available_changed(true);
+      (*resources_data.mutable_resources_available())[label] =
           capacity.available.Double();
     }
     if (capacity.total != last_capacity.total) {
-      (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      (*resources_data.mutable_resources_total())[label] = capacity.total.Double();
     }
   }
   if (resources != *last_report_resources_.get()) {

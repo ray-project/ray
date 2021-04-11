@@ -68,7 +68,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
     return null;
   }
 
-  const { raylet, hostname, ip, cpu, mem, net, disk, logUrl } = node;
+  const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
   const { nodeId, state } = raylet;
 
   return (
@@ -84,12 +84,12 @@ export const NodeCard = (props: { node: NodeDetail }) => {
           <Grid item>
             {hostname}({ip})
           </Grid>
-          {net && net[0] >= 0 && (
+          {networkSpeed && networkSpeed[0] >= 0 && (
             <Grid item>
               <span style={{ fontWeight: "bold" }}>Sent</span>{" "}
-              {memoryConverter(net[0])}/s{" "}
+              {memoryConverter(networkSpeed[0])}/s{" "}
               <span style={{ fontWeight: "bold" }}>Received</span>{" "}
-              {memoryConverter(net[1])}/s
+              {memoryConverter(networkSpeed[1])}/s
             </Grid>
           )}
         </Grid>
@@ -203,8 +203,8 @@ const Nodes = () => {
                 ["mem[2]", "Used Memory"],
                 ["mem[0]", "Total Memory"],
                 ["cpu", "CPU"],
-                ["net[0]", "Sent"],
-                ["net[1]", "Received"],
+                ["networkSpeed[0]", "Sent"],
+                ["networkSpeed[1]", "Received"],
                 ["disk./.used", "Used Disk"],
               ]}
               onChange={(val) => setSortKey(val)}
@@ -266,7 +266,7 @@ const Nodes = () => {
                         cpu = 0,
                         mem = [],
                         disk,
-                        net = [0, 0],
+                        networkSpeed = [0, 0],
                         raylet,
                         logUrl,
                       }: NodeDetail,
@@ -312,10 +312,10 @@ const Nodes = () => {
                           )}
                         </TableCell>
                         <TableCell align="center">
-                          {memoryConverter(net[0])}/s
+                          {memoryConverter(networkSpeed[0])}/s
                         </TableCell>
                         <TableCell align="center">
-                          {memoryConverter(net[1])}/s
+                          {memoryConverter(networkSpeed[1])}/s
                         </TableCell>
                         <TableCell>
                           <Link to={`/log/${encodeURIComponent(logUrl)}`}>

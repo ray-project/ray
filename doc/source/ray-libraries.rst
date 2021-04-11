@@ -46,7 +46,13 @@ Hugging Face Transformers |hugging|
 
 State-of-the-art Natural Language Processing for Pytorch and TensorFlow 2.0.
 
+It integrates with Ray for distributed hyperparameter tuning of transformer models:
+
 [`Link to integration <https://huggingface.co/transformers/master/main_classes/trainer.html#transformers.Trainer.hyperparameter_search>`__]
+
+As well as for distributed document retrieval for Retrieval Augmented Generation Models
+
+[`Link to integration <https://github.com/huggingface/transformers/tree/master/examples/research_projects/rag#document-retrieval>`__]
 
 Intel Analytics Zoo |zoo|
 -------------------------
@@ -81,6 +87,13 @@ PyCaret |pycaret|
 PyCaret is an open source low-code machine learning library in Python that aims to reduce the hypothesis to insights cycle time in a ML experiment. It enables data scientists to perform end-to-end experiments quickly and efficiently.
 
 GitHub: `https://github.com/pycaret/pycaret <https://github.com/pycaret/pycaret>`_
+
+PyTorch Lightning |ptl|
+-----------------------
+
+PyTorch Lightning is a popular open-source library that provides a high level interface for PyTorch. The goal of PyTorch Lightning is to structure your PyTorch code to abstract the details of training, making AI research scalable and fast to iterate on.
+
+[`Link to integration <https://github.com/ray-project/ray_lightning_accelerators>`__]
 
 RayDP |raydp|
 -------------
@@ -148,6 +161,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |pycaret| image:: images/pycaret.png
+    :class: inline-figure
+    :height: 30
+
+.. |ptl| image:: images/pytorch_lightning_small.png
     :class: inline-figure
     :height: 30
 

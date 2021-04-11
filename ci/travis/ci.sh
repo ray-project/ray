@@ -141,9 +141,12 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
+      -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
+      -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
+      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
@@ -153,7 +156,10 @@ test_python() {
       -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
+      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_failure
+      -python/ray/tests:test_failure_2
+      -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -165,12 +171,11 @@ test_python() {
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
+      -python/ray/tests:test_placement_group # timeout and OOM
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_cluster_launcher
-      -python/ray/tests:test_k8s_operator_examples
       -python/ray/tests:test_k8s_operator_mock
     )
   fi
@@ -190,7 +195,7 @@ test_python() {
 test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
+  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run the cpp example
   bazel run //cpp/example:example
 
@@ -312,12 +317,26 @@ build_wheels() {
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
+        -e "BUILDKITE=${BUILDKITE:-}"
+        -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
       )
 
-      # This command should be kept in sync with ray/python/README-building-wheels.md,
-      # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-      quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+
+      if [ -z "${BUILDKITE-}" ]; then
+        # This command should be kept in sync with ray/python/README-building-wheels.md,
+        # except the "${MOUNT_BAZEL_CACHE[@]}" part.
+        docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+        quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+      else
+        cp -rT /ray /ray-mount
+        ls /ray-mount
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
+        docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
+          quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+        cp -rT /ray-mount /ray # copy new files back here
+        find . | grep whl # testing
+      fi
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.

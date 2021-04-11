@@ -51,7 +51,10 @@
     "eslint": "./node_modules/.bin/eslint \"src/**\""
   },
   "eslintConfig": {
-    "ignorePatterns": ["*.svg", "*.css"],
+    "ignorePatterns": [
+      "*.svg",
+      "*.css"
+    ],
     "extends": [
       "plugin:import/warnings",
       "react-app"

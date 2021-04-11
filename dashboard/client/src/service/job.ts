@@ -1,10 +1,10 @@
-import axios from "axios";
 import { JobDetailRsp, JobListRsp } from "../type/job";
+import { get } from "./requestHandlers";
 
 export const getJobList = () => {
-  return axios.get<JobListRsp>("jobs?view=summary");
+  return get<JobListRsp>("jobs?view=summary");
 };
 
 export const getJobDetail = (id: string) => {
-  return axios.get<JobDetailRsp>(`jobs/${id}`);
+  return get<JobDetailRsp>(`jobs/${id}`);
 };

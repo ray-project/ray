@@ -73,10 +73,10 @@ class WorkerContext {
 
   bool CurrentActorDetached() const;
 
-  int GetNextTaskIndex();
+  uint64_t GetNextTaskIndex();
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
-  int GetNextPutIndex();
+  ObjectIDIndexType GetNextPutIndex();
 
  protected:
   // allow unit test to set.

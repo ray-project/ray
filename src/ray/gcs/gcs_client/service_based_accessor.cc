@@ -200,6 +200,26 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncKillActor(
+    const ActorID &actor_id, bool force_kill, bool no_restart,
+    const ray::gcs::StatusCallback &callback) {
+  rpc::KillActorViaGcsRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_force_kill(force_kill);
+  request.set_no_restart(no_restart);
+  client_impl_->GetGcsRpcClient().KillActorViaGcs(
+      request, [callback](const Status &, const rpc::KillActorViaGcsReply &reply) {
+        if (callback) {
+          auto status =
+              reply.status().code() == (int)StatusCode::OK
+                  ? Status()
+                  : Status(StatusCode(reply.status().code()), reply.status().message());
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
@@ -601,39 +621,18 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
   }
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSetInternalConfig(
-    std::unordered_map<std::string, std::string> &config) {
-  rpc::SetInternalConfigRequest request;
-  request.mutable_config()->mutable_config()->insert(config.begin(), config.end());
-
-  client_impl_->GetGcsRpcClient().SetInternalConfig(
-      request, [](const Status &status, const rpc::SetInternalConfigReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to set internal config: " << status.message();
-        }
-      });
-  return Status::OK();
-}
-
 Status ServiceBasedNodeInfoAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const OptionalItemCallback<std::string> &callback) {
   rpc::GetInternalConfigRequest request;
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
-        boost::optional<std::unordered_map<std::string, std::string>> config;
         if (status.ok()) {
-          if (reply.has_config()) {
-            RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config().DebugString();
-            config = std::unordered_map<std::string, std::string>(
-                reply.config().config().begin(), reply.config().config().end());
-          } else {
-            RAY_LOG(DEBUG) << "No internal config was stored.";
-          }
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
-        callback(status, config);
+        callback(status, reply.config());
       });
   return Status::OK();
 }
@@ -1313,10 +1312,17 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
     const StatusCallback &callback) {
   auto job_id = JobID::FromBinary(data_ptr->job_id());
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
-  Status status = client_impl_->GetGcsPubSub().Publish(
-      ERROR_INFO_CHANNEL, job_id.Hex(), data_ptr->SerializeAsString(), callback);
-  RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
-  return status;
+  rpc::ReportJobErrorRequest request;
+  request.mutable_job_error()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportJobError(
+      request,
+      [job_id, callback](const Status &status, const rpc::ReportJobErrorReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
+      });
+  return Status::OK();
 }
 
 ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
@@ -1415,12 +1421,13 @@ ServiceBasedPlacementGroupInfoAccessor::ServiceBasedPlacementGroupInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
-    const ray::PlacementGroupSpecification &placement_group_spec) {
+    const ray::PlacementGroupSpecification &placement_group_spec,
+    const StatusCallback &callback) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
-      request, [placement_group_spec](const Status &,
-                                      const rpc::CreatePlacementGroupReply &reply) {
+      request, [placement_group_spec, callback](
+                   const Status &, const rpc::CreatePlacementGroupReply &reply) {
         auto status =
             reply.status().code() == (int)StatusCode::OK
                 ? Status()
@@ -1432,6 +1439,9 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
           RAY_LOG(ERROR) << "Placement group id = "
                          << placement_group_spec.PlacementGroupId()
                          << " failed to be registered. " << status;
+        }
+        if (callback) {
+          callback(status);
         }
       });
   return Status::OK();
@@ -1520,6 +1530,77 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
         RAY_LOG(DEBUG)
             << "Finished waiting placement group until ready, placement group id = "
             << placement_group_id;
+      });
+  return Status::OK();
+}
+
+ServiceBasedInternalKVAccessor::ServiceBasedInternalKVAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
+    const std::string &key, const OptionalItemCallback<std::string> &callback) {
+  rpc::InternalKVGetRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVGet(
+      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
+          callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVPut(
+    const std::string &key, const std::string &value, bool overwrite,
+    const OptionalItemCallback<int> &callback) {
+  rpc::InternalKVPutRequest req;
+  req.set_key(key);
+  req.set_value(value);
+  req.set_overwrite(overwrite);
+  client_impl_->GetGcsRpcClient().InternalKVPut(
+      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
+        callback(status, reply.added_num());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVExists(
+    const std::string &key, const OptionalItemCallback<bool> &callback) {
+  rpc::InternalKVExistsRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVExists(
+      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
+        callback(status, reply.exists());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVDel(
+    const std::string &key, const StatusCallback &callback) {
+  rpc::InternalKVDelRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVDel(
+      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVKeys(
+    const std::string &prefix,
+    const OptionalItemCallback<std::vector<std::string>> &callback) {
+  rpc::InternalKVKeysRequest req;
+  req.set_prefix(prefix);
+  client_impl_->GetGcsRpcClient().InternalKVKeys(
+      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, VectorFromProtobuf(reply.results()));
+        }
       });
   return Status::OK();
 }

@@ -1,5 +1,5 @@
 from ray.util.client import ray
-
+from ray.job_config import JobConfig
 from ray._private.client_mode_hook import _enable_client_hook
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
@@ -9,7 +9,10 @@ from typing import List, Tuple, Dict, Any
 def connect(conn_str: str,
             secure: bool = False,
             metadata: List[Tuple[str, str]] = None,
-            connection_retries: int = 3) -> Dict[str, Any]:
+            connection_retries: int = 3,
+            job_config: JobConfig = None,
+            *,
+            ignore_version: bool = False) -> Dict[str, Any]:
     if ray.is_connected():
         raise RuntimeError("Ray Client is already connected. "
                            "Maybe you called ray.util.connect twice by "
@@ -23,7 +26,12 @@ def connect(conn_str: str,
     # for supporting things like cert_path, ca_path, etc and creating
     # the correct metadata
     return ray.connect(
-        conn_str, secure=secure, metadata=metadata, connection_retries=3)
+        conn_str,
+        job_config=job_config,
+        secure=secure,
+        metadata=metadata,
+        connection_retries=connection_retries,
+        ignore_version=ignore_version)
 
 
 def disconnect():

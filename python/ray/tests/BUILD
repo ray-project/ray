@@ -14,11 +14,12 @@ py_test_module_list(
     "test_async.py",
     "test_actor.py",
     "test_actor_advanced.py",
-    "test_advanced_3.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_advanced.py",
     "test_advanced_2.py",
+    "test_advanced_3.py",
+    "test_advanced_4.py",
     "test_array.py",
     "test_autoscaling_policy.py",
     "test_basic.py",
@@ -28,6 +29,7 @@ py_test_module_list(
     "test_cli.py",
     "test_client.py",
     "test_client_init.py",
+    "test_client_library_integration.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -46,7 +48,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_memory_limits.py",
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -57,16 +58,18 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_object_manager.py",
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
+    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
     "test_tensorflow.py",
-    "test_unreconstructable_errors.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -82,6 +85,7 @@ py_test_module_list(
     "test_asyncio.py",
     "test_autoscaler.py",
     "test_autoscaler_yaml.py",
+    "test_cli_logger.py",
     "test_client_metadata.py",
     "test_client_references.py",
     "test_client_terminate.py",
@@ -93,6 +97,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_job.py",
     "test_k8s_operator_mock.py",
+    "test_kv.py",
     "test_memstat.py",
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
@@ -114,18 +119,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_k8s_cluster_launcher.py",
-    "test_k8s_operator_examples.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  deps = ["//:ray_lib"],
-  tags = ["kubernetes"]
-)
-
-py_test_module_list(
-  files = [
     "test_failure.py",
+    "test_failure_2.py",
     "test_stress_failure.py",
   ],
   size = "large",
@@ -137,7 +132,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_placement_group.py",
-    "test_object_spilling.py",
+    "test_runtime_env.py",
   ],
   size = "large",
   extra_srcs = SRCS,

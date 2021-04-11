@@ -76,9 +76,10 @@ Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This functi
 ``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Each trial has
-* a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
-* a resource specification (``resources_per_trial`` or ``trial.resources``)
-* And other configuration values.
+
+- a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
+- a resource specification (``resources_per_trial`` or ``trial.resources``)
+- And other configuration values.
 
 Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
 

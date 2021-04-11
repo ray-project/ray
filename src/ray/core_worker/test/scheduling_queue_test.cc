@@ -15,6 +15,7 @@
 #include <thread>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
@@ -36,10 +37,9 @@ class MockWaiter : public DependencyWaiter {
 };
 
 TEST(SchedulingQueueTest, TestInOrder) {
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -57,10 +57,9 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
   ObjectID obj3 = ObjectID::FromRandom();
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -83,10 +82,9 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
 
 TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -101,10 +99,9 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 }
 
 TEST(SchedulingQueueTest, TestOutOfOrder) {
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -119,10 +116,9 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 }
 
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -142,10 +138,9 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 }
 
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
-  boost::asio::io_service io_service;
+  instrumented_io_context io_service;
   MockWaiter waiter;
-  WorkerContext context(WorkerType::WORKER, WorkerID::FromRandom(), JobID::Nil());
-  ActorSchedulingQueue queue(io_service, waiter, context);
+  ActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
