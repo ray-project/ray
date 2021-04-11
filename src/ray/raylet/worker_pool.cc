@@ -278,6 +278,15 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
+
+  // We use setproctitle to change python worker process title,
+  // causing the process's /proc/PID/environ being empty.
+  // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
+  // Refer this issue for more details: https://github.com/ray-project/ray/issues/15061
+  if (language == Language::PYTHON) {
+    env.insert({"SPT_NOENV", "1"});
+  }
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
