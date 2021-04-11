@@ -11,7 +11,7 @@ parser.add_argument(
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=150.0)
+parser.add_argument("--stop-reward", type=float, default=100.0)
 
 if __name__ == "__main__":
     import ray
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         # Run for 50 episodes (25 per eval worker and per
         # evaluation round). The longer it takes to evaluate, the more
         # sense it makes to use `evaluation_parallel_to_training=True`.
-        "evaluation_num_episodes": 50,
+        "evaluation_num_episodes": 10,
         # Switch on evaluation in parallel with training.
         "evaluation_parallel_to_training": True,
     }
