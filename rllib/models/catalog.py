@@ -186,7 +186,7 @@ class ModelCatalog:
             config: ModelConfigDict,
             dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
             framework: str = "tf",
-            **kwargs) -> Tuple[Type[ActionDistribution], int]:
+            **kwargs) -> (Type[ActionDistribution], int):
         """Returns a distribution class and size for the given action space.
 
         Args:
