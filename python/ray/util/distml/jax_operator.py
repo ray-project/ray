@@ -290,3 +290,13 @@ class JAXTrainingOperator(TrainingOperator):
     def clean_redundancy(self):
         del self.train_loader
         del self.validation_loader
+
+    # TODO(HUI)
+    def save_states(self, states):
+        pass
+
+    def get_states(self, states):
+        pass
+
+    def load_states(self, checkpoint):
+        pass

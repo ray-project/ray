@@ -49,7 +49,7 @@ def _partial_flatten(x):
 
 def _one_hot(x, k, dtype=np.float32):
     """Create a one-hot encoding of x of size k."""
-    return np.array(x[:, None] == np.arange(k), dtype)
+    return np.asarray(x[:, None] == np.arange(k), dtype)
 
 
 def mnist_raw():
