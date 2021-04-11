@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
 # Fake CartPole episode of n time steps.
-FAKE_BATCH = {
+FAKE_BATCH = SampleBatch({
     SampleBatch.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32),
@@ -35,7 +35,7 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
-}
+})
 
 
 class MyCallbacks(DefaultCallbacks):
