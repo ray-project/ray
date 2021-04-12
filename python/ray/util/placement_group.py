@@ -119,7 +119,8 @@ class PlacementGroup:
         for key, value in bundle.items():
             if value > 0:
                 if key == "memory":
-                    # Make sure the memory resource can be transformed to memory unit.
+                    # Make sure the memory resource can be
+                    # transformed to memory unit.
                     to_memory_units(value, True)
                     value = MEMORY_RESOURCE_UNIT_BYTES
                 else:
