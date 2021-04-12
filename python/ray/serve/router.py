@@ -41,9 +41,6 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    # Fields used by backend worker to perform timing measurement.
-    tick_enter_replica: Optional[float] = None
-
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""

@@ -51,7 +51,7 @@ def _import_local(provider_config):
 
 
 def _import_kubernetes(provider_config):
-    from ray.autoscaler._private.kubernetes.node_provider import \
+    from ray.autoscaler._private._kubernetes.node_provider import \
         KubernetesNodeProvider
     return KubernetesNodeProvider
 

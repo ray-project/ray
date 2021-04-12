@@ -1582,5 +1582,28 @@ def test_placement_group_gpu_set(ray_start_cluster):
     assert result == [0]
 
 
+def test_placement_group_gpu_assigned(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_gpus=2)
+    ray.init(address=cluster.address)
+    gpu_ids_res = set()
+
+    @ray.remote(num_gpus=1, num_cpus=0)
+    def f():
+        import os
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    pg1 = ray.util.placement_group([{"GPU": 1}])
+    pg2 = ray.util.placement_group([{"GPU": 1}])
+
+    assert pg1.wait(10)
+    assert pg2.wait(10)
+
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg1).remote()))
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
+
+    assert len(gpu_ids_res) == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

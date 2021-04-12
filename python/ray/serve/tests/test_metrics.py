@@ -12,11 +12,10 @@ from ray.serve.utils import block_until_http_ready
 
 
 def test_serve_metrics(serve_instance):
-    @serve.accept_batch
-    def batcher(starlette_requests):
-        return ["hello"] * len(starlette_requests)
+    async def f(request):
+        return "hello"
 
-    serve.create_backend("metrics", batcher)
+    serve.create_backend("metrics", f)
     serve.create_endpoint("metrics", backend="metrics", route="/metrics")
 
     # send 10 concurrent requests
@@ -41,12 +40,8 @@ def test_serve_metrics(serve_instance):
             "backend_processing_latency_ms_bucket",
             "backend_processing_latency_ms_count",
             "backend_processing_latency_ms_sum",
-            "backend_queuing_latency_ms_bucket",
-            "backend_queuing_latency_ms_count",
-            "backend_queuing_latency_ms_sum",
             # gauge
             "replica_processing_queries",
-            "replica_queued_queries",
             # handle
             "serve_handle_request_counter",
             # ReplicaSet

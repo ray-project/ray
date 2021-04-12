@@ -32,11 +32,10 @@ def test_serve_graceful_shutdown(serve_instance):
     signal = SignalActor.remote()
 
     class WaitBackend:
-        @serve.accept_batch
-        async def __call__(self, requests):
-            signal_actor = await requests[0].body()
+        async def __call__(self, request):
+            signal_actor = await request.body()
             await signal_actor.wait.remote()
-            return ["" for _ in range(len(requests))]
+            return ""
 
     serve.create_backend(
         "wait",
@@ -44,7 +43,6 @@ def test_serve_graceful_shutdown(serve_instance):
         config=BackendConfig(
             # Make sure we can queue up queries in the replica side.
             max_concurrent_queries=10,
-            max_batch_size=1,
             experimental_graceful_shutdown_wait_loop_s=0.5,
             experimental_graceful_shutdown_timeout_s=1000,
         ))
