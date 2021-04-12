@@ -1435,7 +1435,7 @@ py_test(
 py_test(
     name = "tests/test_io",
     tags = ["tests_dir", "tests_dir_I"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_io.py"]
 )
 
@@ -1844,7 +1844,7 @@ py_test(
     name = "examples/custom_env_tf",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test"]
 )
@@ -1853,7 +1853,7 @@ py_test(
     name = "examples/custom_env_torch",
     main = "examples/custom_env.py",
     tags = ["examples", "examples_C"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test", "--torch"]
 )
@@ -2188,7 +2188,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_pg_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
 )
