@@ -391,7 +391,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
     actors = [LargeMemoryActor.remote() for _ in range(5)]
 
-    ray.get([actor.ready.remote() for actor in actors], timeout=10)
+    # ray.get([actor.ready.remote() for actor in actors], timeout=10)
     for _ in range(5):
         pending = [a.some_expensive_task.remote() for a in actors]
         while pending:
