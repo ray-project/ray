@@ -211,7 +211,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
-    excludes = set([Path(p).absolute() for p in excludes])
+    excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
