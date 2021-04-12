@@ -181,9 +181,9 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     import ray._private.runtime_env as runtime_env
     import tempfile
     with tempfile.NamedTemporaryFile(suffix="zip") as tmp_file:
-        pkg_name = runtime_env.get_project_package_name(working_dir, [])
+        pkg_name = runtime_env.get_project_package_name(working_dir, [], [])
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
-        runtime_env.create_project_package(working_dir, [], tmp_file.name)
+        runtime_env.create_project_package(working_dir, [], [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
         runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
         # Execute the following cmd in driver with runtime_env
