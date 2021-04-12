@@ -114,7 +114,6 @@ class ConvergenceTest(unittest.TestCase):
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-3)
 
-    @pytest.mark.skip(reason="Flaky. Skip temporarily.")
     def testConvergenceOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
 
@@ -127,9 +126,9 @@ class ConvergenceTest(unittest.TestCase):
 
         # This assertion is much weaker than in the BO case, but TPE
         # don't converge too close. It is still unlikely to get to this
-        # tolerance with random search (~0.01% chance)
+        # tolerance with random search (5 * 0.05 = 0.25% chance)
         assert len(analysis.trials) < 100
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=5e-2)
 
     def testConvergenceSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
@@ -153,6 +152,5 @@ class ConvergenceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
