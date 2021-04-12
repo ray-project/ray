@@ -68,15 +68,14 @@ class RayServeHandle:
        >>> ray.get(await async_handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
     """
-
     def __init__(
-            self,
-            controller_handle: ActorHandle,
-            endpoint_name: EndpointTag,
-            handle_options: Optional[HandleOptions] = None,
-            *,
-            known_python_methods: List[str] = [],
-            _router: Optional[EndpointRouter] = None,
+        self,
+        controller_handle: ActorHandle,
+        endpoint_name: EndpointTag,
+        handle_options: Optional[HandleOptions] = None,
+        *,
+        known_python_methods: List[str] = [],
+        _router: Optional[EndpointRouter] = None,
     ):
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
@@ -128,11 +127,10 @@ class RayServeHandle:
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
 
-        return self.__class__(
-            self.controller_handle,
-            self.endpoint_name,
-            new_options,
-            _router=self.router)
+        return self.__class__(self.controller_handle,
+                              self.endpoint_name,
+                              new_options,
+                              _router=self.router)
 
     def _remote(self, endpoint_name, handle_options, request_data,
                 kwargs) -> Coroutine:
@@ -204,7 +202,8 @@ class RayServeSyncHandle(RayServeHandle):
             create_or_get_async_loop_in_thread(),
         )
 
-    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
+    def remote(self,
+               request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
         """Issue an asynchronous request to the endpoint.
 

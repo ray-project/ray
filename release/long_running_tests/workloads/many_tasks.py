@@ -21,15 +21,14 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 cluster = Cluster()
 for i in range(num_nodes):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=2,
-        num_gpus=0,
-        resources={str(i): 2},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0")
+    cluster.add_node(redis_port=6379 if i == 0 else None,
+                     num_redis_shards=num_redis_shards if i == 0 else None,
+                     num_cpus=2,
+                     num_gpus=0,
+                     resources={str(i): 2},
+                     object_store_memory=object_store_memory,
+                     redis_max_memory=redis_max_memory,
+                     dashboard_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
@@ -59,8 +58,9 @@ while True:
     print("Iteration {}:\n"
           "  - Iteration time: {}.\n"
           "  - Absolute time: {}.\n"
-          "  - Total elapsed time: {}.".format(
-              iteration, new_time - previous_time, new_time,
-              new_time - start_time))
+          "  - Total elapsed time: {}.".format(iteration,
+                                               new_time - previous_time,
+                                               new_time,
+                                               new_time - start_time))
     previous_time = new_time
     iteration += 1

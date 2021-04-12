@@ -78,8 +78,9 @@ def _setup_cluster_for_test(ray_start_cluster):
     @ray.remote
     class A:
         async def ping(self):
-            histogram = Histogram(
-                "test_histogram", description="desc", boundaries=[0.1, 1.6])
+            histogram = Histogram("test_histogram",
+                                  description="desc",
+                                  boundaries=[0.1, 1.6])
             histogram = ray.get(ray.put(histogram))  # Test serialization.
             histogram.record(1.5)
             ray.get(worker_should_exit.wait.remote())
@@ -113,8 +114,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             prom_addresses)
 
         # Raylet should be on every node
-        assert all(
-            "raylet" in components for components in components_dict.values())
+        assert all("raylet" in components
+                   for components in components_dict.values())
 
         # GCS server should be on one node
         assert any("gcs_server" in components
@@ -215,8 +216,8 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() == "Windows",
+                    reason="Failing on Windows.")
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
     global_node = ray.worker._global_node
@@ -263,8 +264,10 @@ def test_basic_custom_metrics(metric_mock):
     metric_mock.record.assert_called_with(4, tags={})
 
     # -- Histogram
-    histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
+    histogram = Histogram("hist",
+                          description="hist",
+                          boundaries=[1.0, 3.0],
+                          tag_keys=("a", "b"))
     histogram._metric = metric_mock
     tags = {"a": "10", "b": "b"}
     histogram.record(8, tags=tags)
@@ -273,8 +276,10 @@ def test_basic_custom_metrics(metric_mock):
 
 def test_custom_metrics_info(metric_mock):
     # Make sure .info public method works.
-    histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b"))
+    histogram = Histogram("hist",
+                          description="hist",
+                          boundaries=[1.0, 2.0],
+                          tag_keys=("a", "b"))
     assert histogram.info["name"] == "hist"
     assert histogram.info["description"] == "hist"
     assert histogram.info["boundaries"] == [1.0, 2.0]
@@ -285,11 +290,10 @@ def test_custom_metrics_info(metric_mock):
 
 
 def test_custom_metrics_default_tags(metric_mock):
-    histogram = Histogram(
-        "hist", description="hist", boundaries=[1.0, 2.0],
-        tag_keys=("a", "b")).set_default_tags({
-            "b": "b"
-        })
+    histogram = Histogram("hist",
+                          description="hist",
+                          boundaries=[1.0, 2.0],
+                          tag_keys=("a", "b")).set_default_tags({"b": "b"})
     histogram._metric = metric_mock
 
     # Check specifying non-default tags.

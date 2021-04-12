@@ -16,15 +16,14 @@ from ray.tune.utils._mock_trainable import MyTrainableClass
 
 
 def _start_new_cluster():
-    cluster = Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
-            "num_cpus": 1,
-            "_system_config": {
-                "num_heartbeats_timeout": 10
-            }
-        })
+    cluster = Cluster(initialize_head=True,
+                      connect=True,
+                      head_node_args={
+                          "num_cpus": 1,
+                          "_system_config": {
+                              "num_heartbeats_timeout": 10
+                          }
+                      })
     # Pytest doesn't play nicely with imports
     register_trainable("__fake_remote", MockRemoteTrainer)
     register_trainable("__fake_durable", MockDurableTrainer)
@@ -74,8 +73,8 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL",
+                                 local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             if trials and len(trials) >= 10:
                 break
@@ -101,8 +100,8 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL",
+                                 local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
 
             if len(trials) == 0:

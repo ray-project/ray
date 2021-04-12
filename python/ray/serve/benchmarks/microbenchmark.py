@@ -79,10 +79,9 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
         routes = requests.get("http://localhost:8000/-/routes").json()
         assert "/api" in routes, routes
 
-    @serve.deployment(
-        name=deployment_name,
-        num_replicas=num_replicas,
-        max_concurrent_queries=max_concurrent_queries)
+    @serve.deployment(name=deployment_name,
+                      num_replicas=num_replicas,
+                      max_concurrent_queries=max_concurrent_queries)
     class Backend:
         @serve.batch(max_batch_size=max_batch_size)
         async def batch(self, reqs):
@@ -111,10 +110,9 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
             for _ in range(CALLS_PER_BATCH):
                 await fetch(session, data)
 
-        await timeit(
-            "single client {} data".format(data_size),
-            single_client,
-            multiplier=CALLS_PER_BATCH)
+        await timeit("single client {} data".format(data_size),
+                     single_client,
+                     multiplier=CALLS_PER_BATCH)
 
     clients = [Client.remote() for _ in range(NUM_CLIENTS)]
     ray.get([client.ready.remote() for client in clients])
@@ -122,10 +120,9 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
     async def many_clients():
         ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
-    await timeit(
-        "{} clients {} data".format(len(clients), data_size),
-        many_clients,
-        multiplier=CALLS_PER_BATCH * len(clients))
+    await timeit("{} clients {} data".format(len(clients), data_size),
+                 many_clients,
+                 multiplier=CALLS_PER_BATCH * len(clients))
 
 
 async def main():

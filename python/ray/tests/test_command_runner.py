@@ -79,10 +79,9 @@ def test_ssh_command_runner():
     cmd_runner = SSHCommandRunner(**args)
 
     env_vars = {"var1": "quote between this \" and this", "var2": "123"}
-    cmd_runner.run(
-        "echo helloo",
-        port_forward=[(8265, 8265)],
-        environment_variables=env_vars)
+    cmd_runner.run("echo helloo",
+                   port_forward=[(8265, 8265)],
+                   environment_variables=env_vars)
 
     expected = [
         "ssh",
@@ -246,14 +245,15 @@ def test_docker_rsync():
     remote_host_file = f"{docker_mount_prefix}{remote_file}"
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
-    cmd_runner.run_rsync_up(
-        local_mount, remote_mount, options={"docker_mount_if_possible": True})
+    cmd_runner.run_rsync_up(local_mount,
+                            remote_mount,
+                            options={"docker_mount_if_possible": True})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
         "1.2.3.4", pattern=f"-avz {local_mount} ray@1.2.3.4:{remote_mount}")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"mkdir -p {remote_mount}")
+    process_runner.assert_not_has_call("1.2.3.4",
+                                       pattern=f"mkdir -p {remote_mount}")
     # No docker cp for file_mounts
     process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_has_call(
@@ -263,14 +263,15 @@ def test_docker_rsync():
     ##############################
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
-    cmd_runner.run_rsync_up(
-        local_file, remote_file, options={"docker_mount_if_possible": False})
+    cmd_runner.run_rsync_up(local_file,
+                            remote_file,
+                            options={"docker_mount_if_possible": False})
 
     # Make sure we do not copy directly to raw destination
     process_runner.assert_not_has_call(
         "1.2.3.4", pattern=f"-avz {local_file} ray@1.2.3.4:{remote_file}")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"mkdir -p {remote_file}")
+    process_runner.assert_not_has_call("1.2.3.4",
+                                       pattern=f"mkdir -p {remote_file}")
 
     process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_has_call(
@@ -278,8 +279,9 @@ def test_docker_rsync():
     process_runner.clear_history()
     ##############################
 
-    cmd_runner.run_rsync_down(
-        remote_mount, local_mount, options={"docker_mount_if_possible": True})
+    cmd_runner.run_rsync_down(remote_mount,
+                              local_mount,
+                              options={"docker_mount_if_possible": True})
 
     process_runner.assert_not_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(
@@ -291,8 +293,9 @@ def test_docker_rsync():
     process_runner.clear_history()
     ##############################
 
-    cmd_runner.run_rsync_down(
-        remote_file, local_file, options={"docker_mount_if_possible": False})
+    cmd_runner.run_rsync_down(remote_file,
+                              local_file,
+                              options={"docker_mount_if_possible": False})
 
     process_runner.assert_has_call("1.2.3.4", pattern=f"docker cp")
     process_runner.assert_not_has_call(
@@ -321,14 +324,13 @@ def test_rsync_exclude_and_filter():
     remote_mount = "/root/protected_mount/"
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
-    cmd_runner.run_rsync_up(
-        local_mount,
-        remote_mount,
-        options={
-            "docker_mount_if_possible": True,
-            "rsync_exclude": ["test"],
-            "rsync_filter": [".ignore"]
-        })
+    cmd_runner.run_rsync_up(local_mount,
+                            remote_mount,
+                            options={
+                                "docker_mount_if_possible": True,
+                                "rsync_exclude": ["test"],
+                                "rsync_filter": [".ignore"]
+                            })
 
     process_runner.assert_has_call(
         "1.2.3.4", pattern=f"--exclude test --filter dir-merge,- .ignore")
@@ -354,16 +356,15 @@ def test_rsync_without_exclude_and_filter():
     remote_mount = "/root/protected_mount/"
 
     process_runner.respond_to_call("docker inspect -f", ["true"])
-    cmd_runner.run_rsync_up(
-        local_mount,
-        remote_mount,
-        options={
-            "docker_mount_if_possible": True,
-        })
+    cmd_runner.run_rsync_up(local_mount,
+                            remote_mount,
+                            options={
+                                "docker_mount_if_possible": True,
+                            })
 
     process_runner.assert_not_has_call("1.2.3.4", pattern=f"--exclude test")
-    process_runner.assert_not_has_call(
-        "1.2.3.4", pattern=f"--filter dir-merge,- .ignore")
+    process_runner.assert_not_has_call("1.2.3.4",
+                                       pattern=f"--filter dir-merge,- .ignore")
 
 
 @pytest.mark.parametrize("run_option_type",

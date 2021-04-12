@@ -14,56 +14,49 @@ from ray._private.parameter import RayParams
 from ray._private.ray_logging import (get_worker_log_file_name,
                                       configure_log_file)
 
-parser = argparse.ArgumentParser(
-    description=("Parse addresses for the worker "
-                 "to connect to."))
-parser.add_argument(
-    "--node-ip-address",
-    required=True,
-    type=str,
-    help="the ip address of the worker's node")
-parser.add_argument(
-    "--node-manager-port",
-    required=True,
-    type=int,
-    help="the port of the worker's node")
-parser.add_argument(
-    "--raylet-ip-address",
-    required=False,
-    type=str,
-    default=None,
-    help="the ip address of the worker's raylet")
-parser.add_argument(
-    "--redis-address",
-    required=True,
-    type=str,
-    help="the address to use for Redis")
-parser.add_argument(
-    "--redis-password",
-    required=False,
-    type=str,
-    default=None,
-    help="the password to use for Redis")
-parser.add_argument(
-    "--object-store-name",
-    required=True,
-    type=str,
-    help="the object store's name")
-parser.add_argument(
-    "--raylet-name", required=False, type=str, help="the raylet's name")
-parser.add_argument(
-    "--logging-level",
-    required=False,
-    type=str,
-    default=ray_constants.LOGGER_LEVEL,
-    choices=ray_constants.LOGGER_LEVEL_CHOICES,
-    help=ray_constants.LOGGER_LEVEL_HELP)
-parser.add_argument(
-    "--logging-format",
-    required=False,
-    type=str,
-    default=ray_constants.LOGGER_FORMAT,
-    help=ray_constants.LOGGER_FORMAT_HELP)
+parser = argparse.ArgumentParser(description=("Parse addresses for the worker "
+                                              "to connect to."))
+parser.add_argument("--node-ip-address",
+                    required=True,
+                    type=str,
+                    help="the ip address of the worker's node")
+parser.add_argument("--node-manager-port",
+                    required=True,
+                    type=int,
+                    help="the port of the worker's node")
+parser.add_argument("--raylet-ip-address",
+                    required=False,
+                    type=str,
+                    default=None,
+                    help="the ip address of the worker's raylet")
+parser.add_argument("--redis-address",
+                    required=True,
+                    type=str,
+                    help="the address to use for Redis")
+parser.add_argument("--redis-password",
+                    required=False,
+                    type=str,
+                    default=None,
+                    help="the password to use for Redis")
+parser.add_argument("--object-store-name",
+                    required=True,
+                    type=str,
+                    help="the object store's name")
+parser.add_argument("--raylet-name",
+                    required=False,
+                    type=str,
+                    help="the raylet's name")
+parser.add_argument("--logging-level",
+                    required=False,
+                    type=str,
+                    default=ray_constants.LOGGER_LEVEL,
+                    choices=ray_constants.LOGGER_LEVEL_CHOICES,
+                    help=ray_constants.LOGGER_LEVEL_HELP)
+parser.add_argument("--logging-format",
+                    required=False,
+                    type=str,
+                    default=ray_constants.LOGGER_FORMAT,
+                    help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
     "--temp-dir",
     required=False,
@@ -80,31 +73,28 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if cloudpickle should be used for serialization.")
-parser.add_argument(
-    "--worker-type",
-    required=False,
-    type=str,
-    default="WORKER",
-    help="Specify the type of the worker process")
-parser.add_argument(
-    "--metrics-agent-port",
-    required=True,
-    type=int,
-    help="the port of the node's metric agent.")
+parser.add_argument("--worker-type",
+                    required=False,
+                    type=str,
+                    default="WORKER",
+                    help="Specify the type of the worker process")
+parser.add_argument("--metrics-agent-port",
+                    required=True,
+                    type=int,
+                    help="the port of the node's metric agent.")
 parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
     default="",
     help="The configuration of object spilling. Only used by I/O workers.")
-parser.add_argument(
-    "--logging-rotate-bytes",
-    required=False,
-    type=int,
-    default=ray_constants.LOGGING_ROTATE_BYTES,
-    help="Specify the max bytes for rotating "
-    "log file, default is "
-    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+parser.add_argument("--logging-rotate-bytes",
+                    required=False,
+                    type=int,
+                    default=ray_constants.LOGGING_ROTATE_BYTES,
+                    help="Specify the max bytes for rotating "
+                    "log file, default is "
+                    f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
 parser.add_argument(
     "--logging-rotate-backup-count",
     required=False,
@@ -161,12 +151,11 @@ if __name__ == "__main__":
         metrics_agent_port=args.metrics_agent_port,
     )
 
-    node = ray.node.Node(
-        ray_params,
-        head=False,
-        shutdown_at_exit=False,
-        spawn_reaper=False,
-        connect_only=True)
+    node = ray.node.Node(ray_params,
+                         head=False,
+                         shutdown_at_exit=False,
+                         spawn_reaper=False,
+                         connect_only=True)
     ray.worker._global_node = node
     ray.worker.connect(node, mode=mode)
 

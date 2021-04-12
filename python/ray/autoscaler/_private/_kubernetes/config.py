@@ -130,10 +130,12 @@ def get_autodetected_resources(container_data):
 
 
 def get_resource(container_resources, resource_name):
-    request = _get_resource(
-        container_resources, resource_name, field_name="requests")
-    limit = _get_resource(
-        container_resources, resource_name, field_name="limits")
+    request = _get_resource(container_resources,
+                            resource_name,
+                            field_name="requests")
+    limit = _get_resource(container_resources,
+                          resource_name,
+                          field_name="limits")
     resource = min(request, limit)
     # float("inf") value means the resource wasn't detected in either
     # requests or limits
@@ -218,8 +220,8 @@ def _configure_namespace(provider_config):
         return namespace
 
     logger.info(log_prefix + not_found_msg(namespace_field, namespace))
-    namespace_config = client.V1Namespace(
-        metadata=client.V1ObjectMeta(name=namespace))
+    namespace_config = client.V1Namespace(metadata=client.V1ObjectMeta(
+        name=namespace))
     core_api().create_namespace(namespace_config)
     logger.info(log_prefix + created_msg(namespace_field, namespace))
     return namespace

@@ -20,7 +20,6 @@ torch, nn = try_import_torch()
 
 class TorchDistributionWrapper(ActionDistribution):
     """Wrapper class for torch.distributions."""
-
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: TorchModelV2):
         # If inputs are not a torch Tensor, make them one and make sure they
@@ -58,7 +57,6 @@ class TorchDistributionWrapper(ActionDistribution):
 
 class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
-
     @override(ActionDistribution)
     def __init__(self,
                  inputs: List[TensorType],
@@ -87,7 +85,6 @@ class TorchCategorical(TorchDistributionWrapper):
 
 class TorchMultiCategorical(TorchDistributionWrapper):
     """MultiCategorical distribution for MultiDiscrete action spaces."""
-
     @override(TorchDistributionWrapper)
     def __init__(self,
                  inputs: List[TensorType],
@@ -178,7 +175,6 @@ class TorchMultiCategorical(TorchDistributionWrapper):
 
 class TorchDiagGaussian(TorchDistributionWrapper):
     """Wrapper class for PyTorch Normal distribution."""
-
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: TorchModelV2):
         super().__init__(inputs, model)
@@ -216,7 +212,6 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     The distribution will never return low or high exactly, but
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
-
     def __init__(self,
                  inputs: List[TensorType],
                  model: TorchModelV2,
@@ -309,7 +304,6 @@ class TorchBeta(TorchDistributionWrapper):
         with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
         and Gamma(n) = (n - 1)!
     """
-
     def __init__(self,
                  inputs: List[TensorType],
                  model: TorchModelV2,
@@ -324,8 +318,8 @@ class TorchBeta(TorchDistributionWrapper):
         self.high = high
         alpha, beta = torch.chunk(self.inputs, 2, dim=-1)
         # Note: concentration0==beta, concentration1=alpha (!)
-        self.dist = torch.distributions.Beta(
-            concentration1=alpha, concentration0=beta)
+        self.dist = torch.distributions.Beta(concentration1=alpha,
+                                             concentration0=beta)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
@@ -365,7 +359,6 @@ class TorchDeterministic(TorchDistributionWrapper):
     This is similar to DiagGaussian with standard deviation zero (thus only
     requiring the "mean" values as NN output).
     """
-
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
         return self.inputs
@@ -389,7 +382,6 @@ class TorchDeterministic(TorchDistributionWrapper):
 class TorchMultiActionDistribution(TorchDistributionWrapper):
     """Action distribution that operates on multiple, possibly nested actions.
     """
-
     def __init__(self, inputs, model, *, child_distributions, input_lens,
                  action_space):
         """Initializes a TorchMultiActionDistribution object.
@@ -496,7 +488,6 @@ class TorchDirichlet(TorchDistributionWrapper):
     [0,1] and sum to 1.
 
     e.g. actions that represent resource allocation."""
-
     def __init__(self, inputs, model):
         """Input is a tensor of logits. The exponential of logits is used to
         parametrize the Dirichlet distribution as all parameters need to be

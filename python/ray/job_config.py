@@ -17,7 +17,6 @@ class JobConfig:
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
     """
-
     def __init__(self,
                  worker_env=None,
                  num_java_workers_per_process=1,

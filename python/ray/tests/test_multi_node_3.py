@@ -4,10 +4,12 @@ import subprocess
 import sys
 
 import ray
-from ray.test_utils import (
-    check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
-    wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
-    wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
+from ray.test_utils import (check_call_ray, run_string_as_driver,
+                            run_string_as_driver_nonblocking,
+                            wait_for_children_of_pid,
+                            wait_for_children_of_pid_to_exit,
+                            wait_for_children_names_of_pid,
+                            kill_process_by_name, Semaphore)
 
 
 def test_calling_start_ray_head(call_ray_stop_only):

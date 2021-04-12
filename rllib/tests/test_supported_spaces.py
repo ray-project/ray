@@ -25,9 +25,8 @@ ACTION_SPACES_TO_TEST = {
     "dict": Dict({
         "action_choice": Discrete(3),
         "parameters": Box(-1.0, 1.0, (1, ), dtype=np.float32),
-        "yet_another_nested_dict": Dict({
-            "a": Tuple([Discrete(2), Discrete(3)])
-        })
+        "yet_another_nested_dict": Dict(
+            {"a": Tuple([Discrete(2), Discrete(3)])})
     }),
 }
 
@@ -58,13 +57,12 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         print("=== Testing {} (fw={}) A={} S={} ===".format(
             alg, fw, action_space, obs_space))
         config.update(
-            dict(
-                env_config=dict(
-                    action_space=action_space,
-                    observation_space=obs_space,
-                    reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                    p_done=1.0,
-                    check_action_bounds=check_bounds)))
+            dict(env_config=dict(action_space=action_space,
+                                 observation_space=obs_space,
+                                 reward_space=Box(
+                                     1.0, 1.0, shape=(), dtype=np.float32),
+                                 p_done=1.0,
+                                 check_action_bounds=check_bounds)))
         stat = "ok"
 
         try:
@@ -150,16 +148,15 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_ddpg(self):
-        check_support(
-            "DDPG", {
-                "exploration_config": {
-                    "ou_base_scale": 100.0
-                },
-                "timesteps_per_iteration": 1,
-                "buffer_size": 1000,
-                "use_state_preprocessor": True,
+        check_support("DDPG", {
+            "exploration_config": {
+                "ou_base_scale": 100.0
             },
-            check_bounds=True)
+            "timesteps_per_iteration": 1,
+            "buffer_size": 1000,
+            "use_state_preprocessor": True,
+        },
+                      check_bounds=True)
 
     def test_dqn(self):
         config = {"timesteps_per_iteration": 1, "buffer_size": 1000}

@@ -118,28 +118,27 @@ class HyperOptSearch(Searcher):
 
 
     """
-
     def __init__(
-            self,
-            space: Optional[Dict] = None,
-            metric: Optional[str] = None,
-            mode: Optional[str] = None,
-            points_to_evaluate: Optional[List[Dict]] = None,
-            n_initial_points: int = 20,
-            random_state_seed: Optional[int] = None,
-            gamma: float = 0.25,
-            max_concurrent: Optional[int] = None,
-            use_early_stopped_trials: Optional[bool] = None,
+        self,
+        space: Optional[Dict] = None,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        points_to_evaluate: Optional[List[Dict]] = None,
+        n_initial_points: int = 20,
+        random_state_seed: Optional[int] = None,
+        gamma: float = 0.25,
+        max_concurrent: Optional[int] = None,
+        use_early_stopped_trials: Optional[bool] = None,
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        super(HyperOptSearch, self).__init__(
-            metric=metric,
-            mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+        super(HyperOptSearch,
+              self).__init__(metric=metric,
+                             mode=mode,
+                             max_concurrent=max_concurrent,
+                             use_early_stopped_trials=use_early_stopped_trials)
         self.max_concurrent = max_concurrent
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
@@ -150,8 +149,8 @@ class HyperOptSearch(Searcher):
         if n_initial_points is None:
             self.algo = hpo.tpe.suggest
         else:
-            self.algo = partial(
-                hpo.tpe.suggest, n_startup_jobs=n_initial_points)
+            self.algo = partial(hpo.tpe.suggest,
+                                n_startup_jobs=n_initial_points)
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
 
@@ -168,8 +167,8 @@ class HyperOptSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space",
+                                                   cls=type(self)))
                 space = self.convert_search_space(space)
             self._space = space
             self._setup_hyperopt()
@@ -202,7 +201,6 @@ class HyperOptSearch(Searcher):
     def _convert_categories_to_indices(self, config):
         """Convert config parameters for categories into hyperopt-compatible
         representations where instead the index of the category is expected."""
-
         def _lookup(config_dict, space_dict, key):
             if isinstance(config_dict[key], dict):
                 for k in config_dict[key]:
@@ -261,14 +259,13 @@ class HyperOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self.domain:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
@@ -430,19 +427,20 @@ class HyperOptSearch(Searcher):
                         return hpo.base.pyll.scope.int(
                             hpo.hp.quniform(par, domain.lower, domain.upper,
                                             quantize))
-                    return hpo.hp.uniformint(
-                        par, domain.lower, high=domain.upper)
+                    return hpo.hp.uniformint(par,
+                                             domain.lower,
+                                             high=domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return hpo.hp.choice(par, [
-                        HyperOptSearch.convert_search_space(
-                            category, prefix=par)
+                        HyperOptSearch.convert_search_space(category,
+                                                            prefix=par)
                         if isinstance(category, dict) else
                         HyperOptSearch.convert_search_space(
                             dict(enumerate(category)), prefix=f"{par}/{i}")
-                        if isinstance(category, list) else resolve_value(
-                            f"{par}/{i}", category)
-                        if isinstance(category, Domain) else category
+                        if isinstance(category, list) else
+                        resolve_value(f"{par}/{i}", category) if isinstance(
+                            category, Domain) else category
                         for i, category in enumerate(domain.categories)
                     ])
 

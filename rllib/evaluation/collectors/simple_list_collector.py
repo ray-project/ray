@@ -51,11 +51,10 @@ class _AgentCollector:
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
         self.shift_before = -min(
-            (int(vr.shift.split(":")[0])
-             if isinstance(vr.shift, str) else vr.shift) -
-            (1
-             if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
-            for k, vr in view_reqs.items())
+            (int(vr.shift.split(":")[0]) if isinstance(vr.shift, str) else vr.
+             shift) -
+            (1 if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0
+             ) for k, vr in view_reqs.items())
         # The actual data buffers (lists holding each timestep's data).
         self.buffers: Dict[str, List] = {}
         # The episode ID for the agent for which we collect data.
@@ -170,8 +169,9 @@ class _AgentCollector:
                 # every n timesteps.
                 if view_req.batch_repeat_value > 1:
                     count = int(
-                        math.ceil((len(np_data[data_col]) - self.shift_before)
-                                  / view_req.batch_repeat_value))
+                        math.ceil(
+                            (len(np_data[data_col]) - self.shift_before) /
+                            view_req.batch_repeat_value))
                     data = np.asarray([
                         np_data[data_col][self.shift_before +
                                           (i * view_req.batch_repeat_value) +
@@ -193,8 +193,8 @@ class _AgentCollector:
                     ]
                     data = np.lib.stride_tricks.as_strided(
                         d[self.shift_before - shift_win:],
-                        [self.agent_steps, shift_win
-                         ] + [d.shape[i] for i in range(1, len(d.shape))],
+                        [self.agent_steps, shift_win] +
+                        [d.shape[i] for i in range(1, len(d.shape))],
                         [data_size, data_size] + strides)
             # Set of (probably non-consecutive) indices.
             # Example:
@@ -212,12 +212,13 @@ class _AgentCollector:
                 # Batch repeat (only provide a value every n timesteps).
                 if view_req.batch_repeat_value > 1:
                     count = int(
-                        math.ceil((len(np_data[data_col]) - self.shift_before)
-                                  / view_req.batch_repeat_value))
+                        math.ceil(
+                            (len(np_data[data_col]) - self.shift_before) /
+                            view_req.batch_repeat_value))
                     data = np.asarray([
-                        np_data[data_col][self.shift_before + (
-                            i * view_req.batch_repeat_value) + shift]
-                        for i in range(count)
+                        np_data[data_col][self.shift_before +
+                                          (i * view_req.batch_repeat_value) +
+                                          shift] for i in range(count)
                     ])
                 # Shift is exactly 0: Use trajectory as is.
                 elif shift == 0:
@@ -226,9 +227,8 @@ class _AgentCollector:
                 elif shift > 0:
                     data = to_float_np_array(
                         self.buffers[data_col][self.shift_before + shift:] + [
-                            np.zeros(
-                                shape=view_req.space.shape,
-                                dtype=view_req.space.dtype)
+                            np.zeros(shape=view_req.space.shape,
+                                     dtype=view_req.space.dtype)
                             for _ in range(shift)
                         ])
                 # Shift is negative: Shift into the already existing and
@@ -308,7 +308,6 @@ class _PolicyCollector:
     contain single episode/trajectory data for a single agent and are then
     appended to this policy's buffers.
     """
-
     def __init__(self, policy):
         """Initializes a _PolicyCollector instance.
 
@@ -366,8 +365,9 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(
-            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
+        batch = SampleBatch(self.buffers,
+                            _seq_lens=self.seq_lens,
+                            _dont_check_lens=True)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset agent steps to 0 and seq-lens to empty list.
@@ -398,7 +398,6 @@ class SimpleListCollector(SampleCollector):
     per agent. When an agent is done, then its local batch is appended into the
     corresponding policy batch for the agent's policy.
     """
-
     def __init__(self,
                  policy_map: Dict[PolicyID, Policy],
                  clip_rewards: Union[bool, float],
@@ -585,16 +584,16 @@ class SimpleListCollector(SampleCollector):
                         fill_value = np.zeros_like(view_req.space.sample()) \
                             if isinstance(view_req.space, Space) else \
                             view_req.space
-                        self.agent_collectors[k]._build_buffers({
-                            data_col: fill_value
-                        })
+                        self.agent_collectors[k]._build_buffers(
+                            {data_col: fill_value})
                     if isinstance(time_indices, tuple):
                         if time_indices[1] == -1:
                             data_list.append(
                                 buffers[k][data_col][time_indices[0]:])
                         else:
-                            data_list.append(buffers[k][data_col][time_indices[
-                                0]:time_indices[1] + 1])
+                            data_list.append(buffers[k][data_col]
+                                             [time_indices[0]:time_indices[1] +
+                                              1])
                     else:
                         data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
@@ -633,10 +632,9 @@ class SimpleListCollector(SampleCollector):
                 pre_batch["rewards"] = np.sign(pre_batch["rewards"])
         elif self.clip_rewards:
             for _, (_, pre_batch) in pre_batches.items():
-                pre_batch["rewards"] = np.clip(
-                    pre_batch["rewards"],
-                    a_min=-self.clip_rewards,
-                    a_max=self.clip_rewards)
+                pre_batch["rewards"] = np.clip(pre_batch["rewards"],
+                                               a_min=-self.clip_rewards,
+                                               a_max=self.clip_rewards)
 
         post_batches = {}
         for agent_id, (_, pre_batch) in pre_batches.items():
@@ -648,8 +646,8 @@ class SimpleListCollector(SampleCollector):
                     "Episode {} terminated for all agents, but we still don't "
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
-                        episode_id, agent_id, self.agent_key_to_policy_id[(
-                            episode_id, agent_id)]) +
+                        episode_id, agent_id, self.agent_key_to_policy_id[
+                            (episode_id, agent_id)]) +
                     "Please ensure that you include the last observations "
                     "of all live agents when setting done[__all__] to "
                     "True. Alternatively, set no_done_at_end=True to "

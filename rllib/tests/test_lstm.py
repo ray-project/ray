@@ -60,13 +60,12 @@ class TestLSTMUtils(unittest.TestCase):
         f = [[101, 102, 103, 201, 202, 203, 204, 205],
              [[101], [102], [103], [201], [202], [203], [204], [205]]]
         s = [[209, 208, 207, 109, 108, 107, 106, 105]]
-        _, _, seq_lens = chop_into_sequences(
-            episode_ids=eps_ids,
-            unroll_ids=batch_ids,
-            agent_indices=agent_ids,
-            feature_columns=f,
-            state_columns=s,
-            max_seq_len=4)
+        _, _, seq_lens = chop_into_sequences(episode_ids=eps_ids,
+                                             unroll_ids=batch_ids,
+                                             agent_indices=agent_ids,
+                                             feature_columns=f,
+                                             state_columns=s,
+                                             max_seq_len=4)
         self.assertEqual(seq_lens.tolist(), [2, 1, 1, 2, 2])
 
     def test_multi_agent(self):
@@ -114,22 +113,21 @@ class TestRNNSequencing(unittest.TestCase):
     def test_simple_optimizer_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOTrainer(
-            env="counter",
-            config={
-                "num_workers": 0,
-                "rollout_fragment_length": 10,
-                "train_batch_size": 10,
-                "sgd_minibatch_size": 10,
-                "num_sgd_iter": 1,
-                "simple_optimizer": True,
-                "model": {
-                    "custom_model": "rnn",
-                    "max_seq_len": 4,
-                    "vf_share_layers": True,
-                },
-                "framework": "tf",
-            })
+        ppo = PPOTrainer(env="counter",
+                         config={
+                             "num_workers": 0,
+                             "rollout_fragment_length": 10,
+                             "train_batch_size": 10,
+                             "sgd_minibatch_size": 10,
+                             "num_sgd_iter": 1,
+                             "simple_optimizer": True,
+                             "model": {
+                                 "custom_model": "rnn",
+                                 "max_seq_len": 4,
+                                 "vf_share_layers": True,
+                             },
+                             "framework": "tf",
+                         })
         ppo.train()
         ppo.train()
 

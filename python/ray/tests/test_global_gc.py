@@ -98,8 +98,9 @@ def test_global_gc(shutdown_only):
 def test_global_gc_when_full(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):
-        cluster.add_node(
-            num_cpus=1, num_gpus=0, object_store_memory=100 * 1024 * 1024)
+        cluster.add_node(num_cpus=1,
+                         num_gpus=0,
+                         object_store_memory=100 * 1024 * 1024)
     ray.init(address=cluster.address)
 
     class LargeObjectWithCyclicRef:
@@ -167,8 +168,8 @@ def test_global_gc_when_full(shutdown_only):
 
 
 def test_global_gc_actors(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
 
     try:
         gc.disable()

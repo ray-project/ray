@@ -23,20 +23,19 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         self.head_gpus = 4
         self.head_custom = 16
 
-        self.cluster = Cluster(
-            initialize_head=True,
-            connect=True,
-            head_node_args={
-                "include_dashboard": False,
-                "num_cpus": self.head_cpus,
-                "num_gpus": self.head_gpus,
-                "resources": {
-                    "custom": self.head_custom
-                },
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
+        self.cluster = Cluster(initialize_head=True,
+                               connect=True,
+                               head_node_args={
+                                   "include_dashboard": False,
+                                   "num_cpus": self.head_cpus,
+                                   "num_gpus": self.head_gpus,
+                                   "resources": {
+                                       "custom": self.head_custom
+                                   },
+                                   "_system_config": {
+                                       "num_heartbeats_timeout": 10
+                                   }
+                               })
         # Pytest doesn't play nicely with imports
         _register_all()
 
@@ -114,31 +113,28 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     trial_executor._pg_manager._pgs_for_removal)
 
                 # All trials should be scheduled
-                this.assertEqual(
-                    scheduled,
-                    min(scheduled, len(trials)),
-                    msg=f"Num trials iter {iteration}")
+                this.assertEqual(scheduled,
+                                 min(scheduled, len(trials)),
+                                 msg=f"Num trials iter {iteration}")
                 # The number of PGs should decrease when trials finish
-                this.assertEqual(
-                    max(scheduled, len(trials)) - num_finished,
-                    total_num_tracked,
-                    msg=f"Num tracked iter {iteration}")
+                this.assertEqual(max(scheduled, len(trials)) - num_finished,
+                                 total_num_tracked,
+                                 msg=f"Num tracked iter {iteration}")
                 # The number of actual placement groups should match this
-                this.assertEqual(
-                    max(scheduled, len(trials)) - num_finished,
-                    num_non_removed_pgs - num_removal_scheduled_pgs,
-                    msg=f"Num actual iter {iteration}")
+                this.assertEqual(max(scheduled, len(trials)) - num_finished,
+                                 num_non_removed_pgs -
+                                 num_removal_scheduled_pgs,
+                                 msg=f"Num actual iter {iteration}")
 
         start = time.time()
-        out = tune.run(
-            train,
-            config={"start_time": start},
-            resources_per_trial=placement_group_factory,
-            num_samples=10,
-            trial_executor=trial_executor,
-            callbacks=[_TestCallback()],
-            reuse_actors=reuse_actors,
-            verbose=2)
+        out = tune.run(train,
+                       config={"start_time": start},
+                       resources_per_trial=placement_group_factory,
+                       num_samples=10,
+                       trial_executor=trial_executor,
+                       callbacks=[_TestCallback()],
+                       reuse_actors=reuse_actors,
+                       verbose=2)
 
         trial_end_times = sorted(t.last_result["end"] for t in out.trials)
         print("Trial end times:", trial_end_times)
@@ -199,17 +195,16 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
 
         start = time.time()
-        out = tune.run(
-            train,
-            config={
-                "start_time": start,
-                "base": tune.grid_search(list(range(0, 100, 10)))
-            },
-            resources_per_trial=placement_group_factory,
-            num_samples=1,
-            trial_executor=trial_executor,
-            reuse_actors=reuse_actors,
-            verbose=2)
+        out = tune.run(train,
+                       config={
+                           "start_time": start,
+                           "base": tune.grid_search(list(range(0, 100, 10)))
+                       },
+                       resources_per_trial=placement_group_factory,
+                       num_samples=1,
+                       trial_executor=trial_executor,
+                       reuse_actors=reuse_actors,
+                       verbose=2)
 
         avgs = sorted(t.last_result["avg"] for t in out.trials)
         self.assertSequenceEqual(avgs, list(range(3, 103, 10)))

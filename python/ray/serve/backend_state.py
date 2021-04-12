@@ -43,7 +43,6 @@ class ActorReplicaWrapper:
 
     *All Ray API calls should be made here, not in BackendState.*
     """
-
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
                  replica_tag: ReplicaTag, backend_tag: BackendTag):
         self._actor_name = actor_name
@@ -193,7 +192,6 @@ class BackendReplica(VersionedReplica):
 
     This is basically a checkpointable lightweight state machine.
     """
-
     def __init__(self, controller_name: str, detached: bool,
                  replica_tag: ReplicaTag, backend_tag: BackendTag,
                  version: str):
@@ -350,10 +348,9 @@ class BackendReplica(VersionedReplica):
 
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of BackendReplicas."""
-
     def __init__(self):
-        self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
-            list)
+        self._replicas: Dict[ReplicaState,
+                             List[BackendReplica]] = defaultdict(list)
 
     def add(self, state: ReplicaState, replica: VersionedReplica):
         """Add the provided replica under the provided state.
@@ -366,7 +363,8 @@ class ReplicaStateContainer:
         assert isinstance(replica, VersionedReplica)
         self._replicas[state].append(replica)
 
-    def get(self, states: Optional[List[ReplicaState]] = None
+    def get(self,
+            states: Optional[List[ReplicaState]] = None
             ) -> List[BackendReplica]:
         """Get all replicas of the given states.
 
@@ -449,8 +447,8 @@ class ReplicaStateContainer:
             return sum(
                 len(
                     list(
-                        filter(lambda r: r.version == version, self._replicas[
-                            state]))) for state in states)
+                        filter(lambda r: r.version == version,
+                               self._replicas[state]))) for state in states)
         elif exclude_version is not None and version is None:
             return sum(
                 len(
@@ -474,7 +472,6 @@ class BackendState:
     This class is *not* thread safe, so any state-modifying methods should be
     called with a lock held.
     """
-
     def __init__(self, controller_name: str, detached: bool,
                  kv_store: RayInternalKVStore, long_poll_host: LongPollHost,
                  goal_manager: AsyncGoalManager):
@@ -509,8 +506,9 @@ class BackendState:
                 (self._replicas, self._backend_metadata, self._target_replicas,
                  self._target_versions, self._backend_goals)))
 
-    def _notify_backend_configs_changed(
-            self, key: Optional[BackendTag] = None) -> None:
+    def _notify_backend_configs_changed(self,
+                                        key: Optional[BackendTag] = None
+                                        ) -> None:
         for key, config in self.get_backend_configs(key).items():
             self._long_poll_host.notify_changed(
                 (LongPollNamespace.BACKEND_CONFIGS, key),
@@ -518,8 +516,8 @@ class BackendState:
             )
 
     def get_running_replica_handles(
-            self,
-            filter_tag: Optional[BackendTag] = None,
+        self,
+        filter_tag: Optional[BackendTag] = None,
     ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return {
             backend_tag: {
@@ -531,8 +529,9 @@ class BackendState:
             if filter_tag is None or backend_tag == filter_tag
         }
 
-    def _notify_replica_handles_changed(
-            self, key: Optional[BackendTag] = None) -> None:
+    def _notify_replica_handles_changed(self,
+                                        key: Optional[BackendTag] = None
+                                        ) -> None:
         for key, replica_dict in self.get_running_replica_handles(key).items():
             self._long_poll_host.notify_changed(
                 (LongPollNamespace.REPLICA_HANDLES, key),
@@ -540,8 +539,8 @@ class BackendState:
             )
 
     def get_backend_configs(
-            self,
-            filter_tag: Optional[BackendTag] = None,
+        self,
+        filter_tag: Optional[BackendTag] = None,
     ) -> Dict[BackendTag, BackendConfig]:
         return {
             tag: info.backend_config
@@ -584,8 +583,8 @@ class BackendState:
             # because `None` is used to indicate always redeploying.
             if backend_info.version == RESERVED_VERSION_TAG:
                 if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
+                        and existing_info.replica_config
+                        == backend_info.replica_config):
                     return self._backend_goals.get(backend_tag, None)
             # New codepath: treat version as ground truth for implementation.
             else:
@@ -610,7 +609,8 @@ class BackendState:
             self._goal_manager.complete_goal(existing_goal_id)
         return new_goal_id
 
-    def delete_backend(self, backend_tag: BackendTag,
+    def delete_backend(self,
+                       backend_tag: BackendTag,
                        force_kill: bool = False) -> Optional[GoalId]:
         # This method must be idempotent. We should validate that the
         # specified backend exists on the client.
@@ -650,17 +650,17 @@ class BackendState:
         # We include SHOULD_START and STARTING replicas here because if there
         # are replicas still pending startup, we may as well terminate them
         # and start new version replicas instead.
-        old_running_replicas = replicas.count(
-            exclude_version=target_version,
-            states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                ReplicaState.RUNNING
-            ])
+        old_running_replicas = replicas.count(exclude_version=target_version,
+                                              states=[
+                                                  ReplicaState.SHOULD_START,
+                                                  ReplicaState.STARTING,
+                                                  ReplicaState.RUNNING
+                                              ])
         old_stopping_replicas = replicas.count(
             exclude_version=target_version,
             states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
-        new_running_replicas = replicas.count(
-            version=target_version, states=[ReplicaState.RUNNING])
+        new_running_replicas = replicas.count(version=target_version,
+                                              states=[ReplicaState.RUNNING])
 
         # If the backend is currently scaling down, let the scale down
         # complete before doing a rolling update.
@@ -671,8 +671,8 @@ class BackendState:
         # an old version and the new version. Note that we cannot directly
         # count the number of stopping replicas because once replicas finish
         # stopping, they are removed from the data structure.
-        pending_replicas = (
-            target_replicas - new_running_replicas - old_running_replicas)
+        pending_replicas = (target_replicas - new_running_replicas -
+                            old_running_replicas)
 
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
@@ -680,13 +680,13 @@ class BackendState:
         rollout_size = max(int(0.2 * target_replicas), 1)
         max_to_stop = max(rollout_size - pending_replicas, 0)
 
-        replicas_to_stop = replicas.pop(
-            exclude_version=target_version,
-            states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                ReplicaState.RUNNING
-            ],
-            max_replicas=max_to_stop)
+        replicas_to_stop = replicas.pop(exclude_version=target_version,
+                                        states=[
+                                            ReplicaState.SHOULD_START,
+                                            ReplicaState.STARTING,
+                                            ReplicaState.RUNNING
+                                        ],
+                                        max_replicas=max_to_stop)
 
         for replica in replicas_to_stop:
             replica.set_should_stop(graceful_shutdown_timeout_s)
@@ -695,10 +695,10 @@ class BackendState:
         return len(replicas_to_stop)
 
     def _scale_backend_replicas(
-            self,
-            backend_tag: BackendTag,
-            target_replicas: int,
-            target_version: str,
+        self,
+        backend_tag: BackendTag,
+        target_replicas: int,
+        target_version: str,
     ) -> bool:
         """Scale the given backend to the number of replicas.
 

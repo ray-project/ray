@@ -763,7 +763,6 @@ class SilentClickException(click.ClickException):
     our code to log errors manually using `cli_logger.error()` to allow for
     colors and other formatting.
     """
-
     def __init__(self, message: str):
         super(SilentClickException, self).__init__(message)
 

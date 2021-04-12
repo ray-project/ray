@@ -5,11 +5,10 @@ from ray.serve.config import BackendConfig
 
 def test_imported_backend(serve_instance):
     config = BackendConfig(user_config="config")
-    serve.create_backend(
-        "imported",
-        "ray.serve.utils.MockImportedBackend",
-        "input_arg",
-        config=config)
+    serve.create_backend("imported",
+                         "ray.serve.utils.MockImportedBackend",
+                         "input_arg",
+                         config=config)
     serve.create_endpoint("imported", backend="imported")
 
     # Basic sanity check.
@@ -17,8 +16,8 @@ def test_imported_backend(serve_instance):
     assert ray.get(handle.remote()) == {"arg": "input_arg", "config": "config"}
 
     # Check that updating backend config works.
-    serve.update_backend_config(
-        "imported", BackendConfig(user_config="new_config"))
+    serve.update_backend_config("imported",
+                                BackendConfig(user_config="new_config"))
     assert ray.get(handle.remote()) == {
         "arg": "input_arg",
         "config": "new_config"

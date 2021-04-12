@@ -54,7 +54,6 @@ class TFPolicy(Policy):
         >>> print(policy.postprocess_trajectory(SampleBatch({...})))
         SampleBatch({"action": ..., "advantages": ..., ...})
     """
-
     @DeveloperAPI
     def __init__(self,
                  observation_space: gym.spaces.Space,
@@ -313,17 +312,18 @@ class TFPolicy(Policy):
                     self._optimizer.variables(), self._sess)
 
     @override(Policy)
-    def compute_actions(
-            self,
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Union[List[TensorType], TensorType] = None,
-            prev_reward_batch: Union[List[TensorType], TensorType] = None,
-            info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
-            explore: Optional[bool] = None,
-            timestep: Optional[int] = None,
-            **kwargs):
+    def compute_actions(self,
+                        obs_batch: Union[List[TensorType], TensorType],
+                        state_batches: Optional[List[TensorType]] = None,
+                        prev_action_batch: Union[List[TensorType],
+                                                 TensorType] = None,
+                        prev_reward_batch: Union[List[TensorType],
+                                                 TensorType] = None,
+                        info_batch: Optional[Dict[str, list]] = None,
+                        episodes: Optional[List["MultiAgentEpisode"]] = None,
+                        explore: Optional[bool] = None,
+                        timestep: Optional[int] = None,
+                        **kwargs):
 
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -362,8 +362,10 @@ class TFPolicy(Policy):
 
         builder = TFRunBuilder(self._sess, "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
-        to_fetch = self._build_compute_actions(
-            builder, input_dict=input_dict, explore=explore, timestep=timestep)
+        to_fetch = self._build_compute_actions(builder,
+                                               input_dict=input_dict,
+                                               explore=explore,
+                                               timestep=timestep)
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
@@ -376,22 +378,22 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def compute_log_likelihoods(
-            self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+        self,
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType],
+                                          TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None
+    ) -> TensorType:
 
         if self._log_likelihood is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o a "
                              "self._log_likelihood op!")
 
         # Exploration hook before each forward pass.
-        self.exploration.before_compute_actions(
-            explore=False, tf_sess=self.get_session())
+        self.exploration.before_compute_actions(explore=False,
+                                                tf_sess=self.get_session())
 
         builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
         # Feed actions (for which we want logp values) into graph.
@@ -430,8 +432,9 @@ class TFPolicy(Policy):
 
         # Callback handling.
         learn_stats = {}
-        self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+        self.callbacks.on_learn_on_batch(policy=self,
+                                         train_batch=postprocessed_batch,
+                                         result=learn_stats)
 
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         stats = builder.get(fetches)
@@ -756,8 +759,9 @@ class TFPolicy(Policy):
         timestep = timestep if timestep is not None else self.global_timestep
 
         # Call the exploration before_compute_actions hook.
-        self.exploration.before_compute_actions(
-            timestep=timestep, explore=explore, tf_sess=self.get_session())
+        self.exploration.before_compute_actions(timestep=timestep,
+                                                explore=explore,
+                                                tf_sess=self.get_session())
 
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
 
@@ -769,9 +773,8 @@ class TFPolicy(Policy):
                         builder.add_feed_dict({self._input_dict[key]: value})
             # For policies that inherit directly from TFPolicy.
             else:
-                builder.add_feed_dict({
-                    self._obs_input: input_dict[SampleBatch.OBS]
-                })
+                builder.add_feed_dict(
+                    {self._obs_input: input_dict[SampleBatch.OBS]})
                 if SampleBatch.PREV_ACTIONS in input_dict:
                     builder.add_feed_dict({
                         self._prev_action_input: input_dict[
@@ -791,9 +794,8 @@ class TFPolicy(Policy):
                     dict(zip(self._state_inputs, state_batches)))
 
             if "state_in_0" in input_dict:
-                builder.add_feed_dict({
-                    self._seq_lens: np.ones(len(input_dict["state_in_0"]))
-                })
+                builder.add_feed_dict(
+                    {self._seq_lens: np.ones(len(input_dict["state_in_0"]))})
 
         # Hardcoded old way: Build fixed fields, if provided.
         # TODO: (sven) This can be deprecated after trajectory view API flag is
@@ -807,19 +809,16 @@ class TFPolicy(Policy):
 
             builder.add_feed_dict({self._obs_input: obs_batch})
             if state_batches:
-                builder.add_feed_dict({
-                    self._seq_lens: np.ones(len(obs_batch))
-                })
+                builder.add_feed_dict(
+                    {self._seq_lens: np.ones(len(obs_batch))})
             if self._prev_action_input is not None and \
                prev_action_batch is not None:
-                builder.add_feed_dict({
-                    self._prev_action_input: prev_action_batch
-                })
+                builder.add_feed_dict(
+                    {self._prev_action_input: prev_action_batch})
             if self._prev_reward_input is not None and \
                prev_reward_batch is not None:
-                builder.add_feed_dict({
-                    self._prev_reward_input: prev_reward_batch
-                })
+                builder.add_feed_dict(
+                    {self._prev_reward_input: prev_reward_batch})
             builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
         builder.add_feed_dict({self._is_training: False})
@@ -927,7 +926,6 @@ class TFPolicy(Policy):
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
-
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
@@ -940,9 +938,8 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        self.cur_lr.load(self.lr_schedule.value(global_vars["timestep"]),
+                         session=self._sess)
 
     @override(TFPolicy)
     def optimizer(self):
@@ -952,18 +949,16 @@ class LearningRateSchedule:
 @DeveloperAPI
 class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
-
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = get_variable(
-            entropy_coeff,
-            framework="tf",
-            tf_name="entropy_coeff",
-            trainable=False)
+        self.entropy_coeff = get_variable(entropy_coeff,
+                                          framework="tf",
+                                          tf_name="entropy_coeff",
+                                          trainable=False)
 
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff,
+                                                           framework=None)
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):

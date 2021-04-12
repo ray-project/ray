@@ -69,8 +69,8 @@ def _load_local_defaults_config():
 
 def _load_kubernetes_defaults_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
-    return os.path.join(
-        os.path.dirname(ray_kubernetes.__file__), "defaults.yaml")
+    return os.path.join(os.path.dirname(ray_kubernetes.__file__),
+                        "defaults.yaml")
 
 
 def _load_aws_defaults_config():

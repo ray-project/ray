@@ -76,7 +76,6 @@ class LogMonitor:
         can_open_more_files (bool): True if we can still open more files and
             false otherwise.
     """
-
     def __init__(self, logs_dir, redis_address, redis_password=None):
         """Initialize the log monitor object."""
         self.ip = services.get_node_ip_address()
@@ -149,14 +148,13 @@ class LogMonitor:
 
                 self.log_filenames.add(file_path)
                 self.closed_file_infos.append(
-                    LogFileInfo(
-                        filename=file_path,
-                        size_when_last_opened=0,
-                        file_position=0,
-                        file_handle=None,
-                        is_err_file=is_err_file,
-                        job_id=job_id,
-                        worker_pid=worker_pid))
+                    LogFileInfo(filename=file_path,
+                                size_when_last_opened=0,
+                                file_position=0,
+                                file_handle=None,
+                                is_err_file=is_err_file,
+                                job_id=job_id,
+                                worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
 
@@ -290,56 +288,49 @@ class LogMonitor:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "log monitor to connect "
-                     "to."))
-    parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="The address to use for Redis.")
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="the password to use for Redis")
-    parser.add_argument(
-        "--logging-level",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_LEVEL,
-        choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
-    parser.add_argument(
-        "--logging-format",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
-    parser.add_argument(
-        "--logging-filename",
-        required=False,
-        type=str,
-        default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
-        help="Specify the name of log file, "
-        "log to stdout if set empty, default is "
-        f"\"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}\"")
+    parser = argparse.ArgumentParser(description=("Parse Redis server for the "
+                                                  "log monitor to connect "
+                                                  "to."))
+    parser.add_argument("--redis-address",
+                        required=True,
+                        type=str,
+                        help="The address to use for Redis.")
+    parser.add_argument("--redis-password",
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="the password to use for Redis")
+    parser.add_argument("--logging-level",
+                        required=False,
+                        type=str,
+                        default=ray_constants.LOGGER_LEVEL,
+                        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+                        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument("--logging-format",
+                        required=False,
+                        type=str,
+                        default=ray_constants.LOGGER_FORMAT,
+                        help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument("--logging-filename",
+                        required=False,
+                        type=str,
+                        default=ray_constants.LOG_MONITOR_LOG_FILE_NAME,
+                        help="Specify the name of log file, "
+                        "log to stdout if set empty, default is "
+                        f"\"{ray_constants.LOG_MONITOR_LOG_FILE_NAME}\"")
     parser.add_argument(
         "--logs-dir",
         required=True,
         type=str,
         help="Specify the path of the temporary directory used by Ray "
         "processes.")
-    parser.add_argument(
-        "--logging-rotate-bytes",
-        required=False,
-        type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    parser.add_argument("--logging-rotate-bytes",
+                        required=False,
+                        type=int,
+                        default=ray_constants.LOGGING_ROTATE_BYTES,
+                        help="Specify the max bytes for rotating "
+                        "log file, default is "
+                        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
@@ -348,16 +339,16 @@ if __name__ == "__main__":
         help="Specify the backup count of rotated log file, default is "
         f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
-    setup_component_logger(
-        logging_level=args.logging_level,
-        logging_format=args.logging_format,
-        log_dir=args.logs_dir,
-        filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count)
+    setup_component_logger(logging_level=args.logging_level,
+                           logging_format=args.logging_format,
+                           log_dir=args.logs_dir,
+                           filename=args.logging_filename,
+                           max_bytes=args.logging_rotate_bytes,
+                           backup_count=args.logging_rotate_backup_count)
 
-    log_monitor = LogMonitor(
-        args.logs_dir, args.redis_address, redis_password=args.redis_password)
+    log_monitor = LogMonitor(args.logs_dir,
+                             args.redis_address,
+                             redis_password=args.redis_password)
 
     try:
         log_monitor.run()

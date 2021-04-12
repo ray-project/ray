@@ -405,8 +405,8 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         del actor
 
-        actor = Accumulator.options(
-            name="test_acc2", lifetime="detached").remote()
+        actor = Accumulator.options(name="test_acc2",
+                                    lifetime="detached").remote()
         actor.inc.remote()
         del actor
 

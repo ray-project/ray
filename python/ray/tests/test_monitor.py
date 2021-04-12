@@ -6,26 +6,22 @@ ray.experimental.internal_kv.redis = False
 
 def test_parse_resource_demands():
     resource_load_by_shape = ray.gcs_utils.ResourceLoad(resource_demands=[
-        ray.gcs_utils.ResourceDemand(
-            shape={"CPU": 1},
-            num_ready_requests_queued=1,
-            num_infeasible_requests_queued=0,
-            backlog_size=0),
-        ray.gcs_utils.ResourceDemand(
-            shape={"CPU": 2},
-            num_ready_requests_queued=1,
-            num_infeasible_requests_queued=0,
-            backlog_size=1),
-        ray.gcs_utils.ResourceDemand(
-            shape={"CPU": 3},
-            num_ready_requests_queued=0,
-            num_infeasible_requests_queued=1,
-            backlog_size=2),
-        ray.gcs_utils.ResourceDemand(
-            shape={"CPU": 4},
-            num_ready_requests_queued=1,
-            num_infeasible_requests_queued=1,
-            backlog_size=2),
+        ray.gcs_utils.ResourceDemand(shape={"CPU": 1},
+                                     num_ready_requests_queued=1,
+                                     num_infeasible_requests_queued=0,
+                                     backlog_size=0),
+        ray.gcs_utils.ResourceDemand(shape={"CPU": 2},
+                                     num_ready_requests_queued=1,
+                                     num_infeasible_requests_queued=0,
+                                     backlog_size=1),
+        ray.gcs_utils.ResourceDemand(shape={"CPU": 3},
+                                     num_ready_requests_queued=0,
+                                     num_infeasible_requests_queued=1,
+                                     backlog_size=2),
+        ray.gcs_utils.ResourceDemand(shape={"CPU": 4},
+                                     num_ready_requests_queued=1,
+                                     num_infeasible_requests_queued=1,
+                                     backlog_size=2),
     ])
 
     waiting, infeasible = \

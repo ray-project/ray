@@ -25,13 +25,12 @@ def connect(conn_str: str,
     # TODO(barakmich): https://github.com/ray-project/ray/issues/13274
     # for supporting things like cert_path, ca_path, etc and creating
     # the correct metadata
-    return ray.connect(
-        conn_str,
-        job_config=job_config,
-        secure=secure,
-        metadata=metadata,
-        connection_retries=connection_retries,
-        ignore_version=ignore_version)
+    return ray.connect(conn_str,
+                       job_config=job_config,
+                       secure=secure,
+                       metadata=metadata,
+                       connection_retries=connection_retries,
+                       ignore_version=ignore_version)
 
 
 def disconnect():

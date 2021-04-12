@@ -439,8 +439,9 @@ def create_redis_client(redis_address, password=None):
     redis_ip_address, redis_port = redis_address.split(":")
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port), password=password)
+    return redis.StrictRedis(host=redis_ip_address,
+                             port=int(redis_port),
+                             password=password)
 
 
 def start_ray_process(command,
@@ -617,15 +618,14 @@ def start_ray_process(command,
                 return str(stream)
         return None
 
-    return ProcessInfo(
-        process=process,
-        stdout_file=_get_stream_name(stdout_file),
-        stderr_file=_get_stream_name(stderr_file),
-        use_valgrind=use_valgrind,
-        use_gdb=use_gdb,
-        use_valgrind_profiler=use_valgrind_profiler,
-        use_perftools_profiler=use_perftools_profiler,
-        use_tmux=use_tmux)
+    return ProcessInfo(process=process,
+                       stdout_file=_get_stream_name(stdout_file),
+                       stderr_file=_get_stream_name(stderr_file),
+                       use_valgrind=use_valgrind,
+                       use_gdb=use_gdb,
+                       use_valgrind_profiler=use_valgrind_profiler,
+                       use_perftools_profiler=use_perftools_profiler,
+                       use_tmux=use_tmux)
 
 
 def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
@@ -642,8 +642,9 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, password=None):
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
     """
-    redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password)
+    redis_client = redis.StrictRedis(host=redis_ip_address,
+                                     port=redis_port,
+                                     password=password)
     # Wait for the Redis server to start.
     num_retries = ray_constants.START_REDIS_WAIT_RETRIES
     delay = 0.001
@@ -784,11 +785,10 @@ def start_reaper(fate_share=None):
     reaper_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR,
                                    "ray_process_reaper.py")
     command = [sys.executable, "-u", reaper_filepath]
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_REAPER,
-        pipe_stdin=True,
-        fate_share=fate_share)
+    process_info = start_ray_process(command,
+                                     ray_constants.PROCESS_TYPE_REAPER,
+                                     pipe_stdin=True,
+                                     fate_share=fate_share)
     return process_info
 
 
@@ -876,14 +876,15 @@ def start_redis(node_ip_address,
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    primary_redis_client = redis.StrictRedis(
-        host=node_ip_address, port=port, password=password)
+    primary_redis_client = redis.StrictRedis(host=node_ip_address,
+                                             port=port,
+                                             password=password)
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
-    primary_redis_client.set("RedirectOutput", 1
-                             if redirect_worker_output else 0)
+    primary_redis_client.set("RedirectOutput",
+                             1 if redirect_worker_output else 0)
 
     # Init job counter to GCS.
     primary_redis_client.set("JobCounter", 0)
@@ -999,8 +1000,8 @@ def _start_redis_instance(executable,
             if " " in password:
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
-        command += (
-            ["--port", str(port), "--loglevel", "warning"] + load_module_args)
+        command += (["--port", str(port), "--loglevel", "warning"] +
+                    load_module_args)
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -1015,15 +1016,16 @@ def _start_redis_instance(executable,
         port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
-        raise RuntimeError("Couldn't start Redis. "
-                           "Check log files: {} {}".format(
-                               stdout_file.name if stdout_file is not None else
-                               "<stdout>", stderr_file.name
-                               if stdout_file is not None else "<stderr>"))
+        raise RuntimeError(
+            "Couldn't start Redis. "
+            "Check log files: {} {}".format(
+                stdout_file.name if stdout_file is not None else "<stdout>",
+                stderr_file.name if stdout_file is not None else "<stderr>"))
 
     # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(
-        host="127.0.0.1", port=port, password=password)
+    redis_client = redis.StrictRedis(host="127.0.0.1",
+                                     port=port,
+                                     password=password)
     # Wait for the Redis server to start.
     wait_for_redis_to_start("127.0.0.1", port, password=password)
     # Configure Redis to generate keyspace notifications. TODO(rkn): Change
@@ -1066,8 +1068,8 @@ def _start_redis_instance(executable,
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
-    cur_config = (redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"])
+    cur_config = (redis_client.config_get("client-output-buffer-limit")
+                  ["client-output-buffer-limit"])
     cur_config_list = cur_config.split()
     assert len(cur_config_list) == 12
     cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
@@ -1114,12 +1116,11 @@ def start_log_monitor(redis_address,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_LOG_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
+    process_info = start_ray_process(command,
+                                     ray_constants.PROCESS_TYPE_LOG_MONITOR,
+                                     stdout_file=stdout_file,
+                                     stderr_file=stderr_file,
+                                     fate_share=fate_share)
     return process_info
 
 
@@ -1210,12 +1211,11 @@ def start_dashboard(require_dashboard,
         ]
         if redis_password:
             command += ["--redis-password", redis_password]
-        process_info = start_ray_process(
-            command,
-            ray_constants.PROCESS_TYPE_DASHBOARD,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            fate_share=fate_share)
+        process_info = start_ray_process(command,
+                                         ray_constants.PROCESS_TYPE_DASHBOARD,
+                                         stdout_file=stdout_file,
+                                         stderr_file=stderr_file,
+                                         fate_share=fate_share)
 
         # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
@@ -1242,8 +1242,8 @@ def start_dashboard(require_dashboard,
             lines = []
             try:
                 with open(dashboard_log, "rb") as f:
-                    with mmap.mmap(
-                            f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                    with mmap.mmap(f.fileno(), 0,
+                                   access=mmap.ACCESS_READ) as mm:
                         end = mm.size()
                         for _ in range(n):
                             sep = mm.rfind(b"\n", 0, end - 1)
@@ -1314,12 +1314,11 @@ def start_gcs_server(redis_address,
     ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_GCS_SERVER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
+    process_info = start_ray_process(command,
+                                     ray_constants.PROCESS_TYPE_GCS_SERVER,
+                                     stdout_file=stdout_file,
+                                     stderr_file=stderr_file,
+                                     fate_share=fate_share)
     return process_info
 
 
@@ -1567,12 +1566,12 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
-        redis_address,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
-        node_ip_address,
+    redis_address,
+    plasma_store_name,
+    raylet_name,
+    redis_password,
+    session_dir,
+    node_ip_address,
 ):
     """This method assembles the command used to start a Java worker.
 
@@ -1590,8 +1589,8 @@ def build_java_worker_command(
     pairs = []
     if redis_address is not None:
         pairs.append(("ray.address", redis_address))
-    pairs.append(("ray.raylet.node-manager-port",
-                  "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
+    pairs.append(
+        ("ray.raylet.node-manager-port", "RAY_NODE_MANAGER_PORT_PLACEHOLDER"))
 
     if plasma_store_name is not None:
         pairs.append(("ray.object-store.socket-name", plasma_store_name))
@@ -1621,12 +1620,12 @@ def build_java_worker_command(
 
 
 def build_cpp_worker_command(
-        cpp_worker_options,
-        redis_address,
-        plasma_store_name,
-        raylet_name,
-        redis_password,
-        session_dir,
+    cpp_worker_options,
+    redis_address,
+    plasma_store_name,
+    raylet_name,
+    redis_password,
+    session_dir,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1745,8 +1744,8 @@ def determine_plasma_store_config(object_store_memory,
     # Print the object store memory using two decimal places.
     logger.debug(
         "Determine to start the Plasma object store with {} GB memory "
-        "using {}.".format(
-            round(object_store_memory / 10**9, 2), plasma_directory))
+        "using {}.".format(round(object_store_memory / 10**9, 2),
+                           plasma_directory))
 
     return plasma_directory, object_store_memory
 
@@ -1794,12 +1793,11 @@ def start_worker(node_ip_address,
     ]
     if raylet_ip_address is not None:
         command.append("--raylet-ip-address=" + raylet_ip_address)
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_WORKER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
+    process_info = start_ray_process(command,
+                                     ray_constants.PROCESS_TYPE_WORKER,
+                                     stdout_file=stdout_file,
+                                     stderr_file=stderr_file,
+                                     fate_share=fate_share)
     return process_info
 
 
@@ -1842,12 +1840,11 @@ def start_monitor(redis_address,
         command.append("--autoscaling-config=" + str(autoscaling_config))
     if redis_password:
         command.append("--redis-password=" + redis_password)
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_MONITOR,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
+    process_info = start_ray_process(command,
+                                     ray_constants.PROCESS_TYPE_MONITOR,
+                                     stdout_file=stdout_file,
+                                     stderr_file=stderr_file,
+                                     fate_share=fate_share)
     return process_info
 
 

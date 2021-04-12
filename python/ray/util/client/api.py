@@ -21,7 +21,6 @@ class ClientAPI:
     """The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
     """
-
     def __init__(self, worker=None):
         self.worker = worker
 
@@ -264,8 +263,8 @@ class ClientAPI:
                          value: bytes,
                          overwrite: bool = False) -> bool:
         """Hook for internal_kv._internal_kv_put."""
-        return self.worker.internal_kv_put(
-            as_bytes(key), as_bytes(value), overwrite)
+        return self.worker.internal_kv_put(as_bytes(key), as_bytes(value),
+                                           overwrite)
 
     def _internal_kv_del(self, key: bytes) -> None:
         """Hook for internal_kv._internal_kv_del."""

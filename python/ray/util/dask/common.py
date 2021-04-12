@@ -59,8 +59,8 @@ def unpack_object_refs(*args):
         if typ in (list, tuple, set):
             repack_task = (typ, [_unpack(i) for i in expr])
         elif typ in (dict, OrderedDict):
-            repack_task = (typ,
-                           [[_unpack(k), _unpack(v)] for k, v in expr.items()])
+            repack_task = (typ, [[_unpack(k), _unpack(v)]
+                                 for k, v in expr.items()])
         elif is_dataclass(expr):
             repack_task = (
                 apply,

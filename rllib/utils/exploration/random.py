@@ -24,7 +24,6 @@ class Random(Exploration):
     Space.sample()).
     If explore=False, returns the greedy/max-likelihood action.
     """
-
     def __init__(self, action_space: Space, *, model: ModelV2,
                  framework: Optional[str], **kwargs):
         """Initialize a Random Exploration object.
@@ -33,11 +32,10 @@ class Random(Exploration):
             action_space (Space): The gym action space used by the environment.
             framework (Optional[str]): One of None, "tf", "tfe", "torch".
         """
-        super().__init__(
-            action_space=action_space,
-            model=model,
-            framework=framework,
-            **kwargs)
+        super().__init__(action_space=action_space,
+                         model=model,
+                         framework=framework,
+                         **kwargs)
 
         self.action_space_struct = get_base_struct_from_space(
             self.action_space)
@@ -56,9 +54,9 @@ class Random(Exploration):
             return self.get_torch_exploration_action(action_distribution,
                                                      explore)
 
-    def get_tf_exploration_action_op(
-            self, action_dist: ActionDistribution,
-            explore: Optional[Union[bool, TensorType]]):
+    def get_tf_exploration_action_op(self, action_dist: ActionDistribution,
+                                     explore: Optional[Union[bool,
+                                                             TensorType]]):
         def true_fn():
             batch_size = 1
             req = force_tuple(
@@ -72,19 +70,18 @@ class Random(Exploration):
             # components: (Multi)Discrete or Box.
             def random_component(component):
                 if isinstance(component, Discrete):
-                    return tf.random.uniform(
-                        shape=(batch_size, ) + component.shape,
-                        maxval=component.n,
-                        dtype=component.dtype)
+                    return tf.random.uniform(shape=(batch_size, ) +
+                                             component.shape,
+                                             maxval=component.n,
+                                             dtype=component.dtype)
                 elif isinstance(component, MultiDiscrete):
-                    return tf.concat(
-                        [
-                            tf.random.uniform(
-                                shape=(batch_size, 1),
-                                maxval=n,
-                                dtype=component.dtype) for n in component.nvec
-                        ],
-                        axis=1)
+                    return tf.concat([
+                        tf.random.uniform(shape=(batch_size, 1),
+                                          maxval=n,
+                                          dtype=component.dtype)
+                        for n in component.nvec
+                    ],
+                                     axis=1)
                 elif isinstance(component, Box):
                     if component.bounded_above.all() and \
                             component.bounded_below.all():
@@ -95,25 +92,25 @@ class Random(Exploration):
                                 maxval=component.high.flat[0],
                                 dtype=component.dtype)
                         else:
-                            return tf.random.uniform(
-                                shape=(batch_size, ) + component.shape,
-                                minval=component.low,
-                                maxval=component.high,
-                                dtype=component.dtype)
+                            return tf.random.uniform(shape=(batch_size, ) +
+                                                     component.shape,
+                                                     minval=component.low,
+                                                     maxval=component.high,
+                                                     dtype=component.dtype)
                     else:
-                        return tf.random.normal(
-                            shape=(batch_size, ) + component.shape,
-                            dtype=component.dtype)
+                        return tf.random.normal(shape=(batch_size, ) +
+                                                component.shape,
+                                                dtype=component.dtype)
                 else:
                     assert isinstance(component, Simplex), \
                         "Unsupported distribution component '{}' for random " \
                         "sampling!".format(component)
                     return tf.nn.softmax(
-                        tf.random.uniform(
-                            shape=(batch_size, ) + component.shape,
-                            minval=0.0,
-                            maxval=1.0,
-                            dtype=component.dtype))
+                        tf.random.uniform(shape=(batch_size, ) +
+                                          component.shape,
+                                          minval=0.0,
+                                          maxval=1.0,
+                                          dtype=component.dtype))
 
             actions = tree.map_structure(random_component,
                                          self.action_space_struct)
@@ -122,11 +119,10 @@ class Random(Exploration):
         def false_fn():
             return action_dist.deterministic_sample()
 
-        action = tf.cond(
-            pred=tf.constant(explore, dtype=tf.bool)
-            if isinstance(explore, bool) else explore,
-            true_fn=true_fn,
-            false_fn=false_fn)
+        action = tf.cond(pred=tf.constant(explore, dtype=tf.bool)
+                         if isinstance(explore, bool) else explore,
+                         true_fn=true_fn,
+                         false_fn=false_fn)
 
         # TODO(sven): Move into (deterministic_)sample(logp=True|False)
         batch_size = tf.shape(tree.flatten(action)[0])[0]
@@ -150,6 +146,7 @@ class Random(Exploration):
             action = torch.from_numpy(a).to(self.device)
         else:
             action = action_dist.deterministic_sample()
-        logp = torch.zeros(
-            (action.size()[0], ), dtype=torch.float32, device=self.device)
+        logp = torch.zeros((action.size()[0], ),
+                           dtype=torch.float32,
+                           device=self.device)
         return action, logp

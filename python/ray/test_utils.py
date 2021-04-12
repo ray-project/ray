@@ -93,11 +93,10 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     # some deadlocks that occur when piping ray's output on Windows
     argv = ["ray"] + args
     if sys.platform == "win32":
-        result = check_call_module(
-            ray_main,
-            argv,
-            capture_stdout=capture_stdout,
-            capture_stderr=capture_stderr)
+        result = check_call_module(ray_main,
+                                   argv,
+                                   capture_stdout=capture_stdout,
+                                   capture_stderr=capture_stderr)
     else:
         stdout_redir = None
         stderr_redir = None
@@ -221,12 +220,11 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
         "del sys",
         "exec(\"del script\\n\" + script)",
     ])
-    proc = subprocess.Popen(
-        [sys.executable, "-c", script],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env)
+    proc = subprocess.Popen([sys.executable, "-c", script],
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -441,9 +439,9 @@ def wait_until_server_available(address,
 def get_other_nodes(cluster, exclude_head=False):
     """Get all nodes except the one that we're connected to."""
     return [
-        node for node in cluster.list_all_nodes() if
-        node._raylet_socket_name != ray.worker._global_node._raylet_socket_name
-        and (exclude_head is False or node.head is False)
+        node for node in cluster.list_all_nodes()
+        if node._raylet_socket_name != ray.worker._global_node.
+        _raylet_socket_name and (exclude_head is False or node.head is False)
     ]
 
 

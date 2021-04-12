@@ -33,12 +33,11 @@ def test_shutdown():
     assert not any(n.any_processes_alive() for n in [node, node2])
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [
-        generate_system_config_map(
-            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
-    ],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster_head", [
+    generate_system_config_map(num_heartbeats_timeout=20,
+                               object_timeout_milliseconds=12345)
+],
+                         indirect=True)
 def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
@@ -67,8 +66,9 @@ def test_system_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(
-        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    monitor = Monitor(address,
+                      None,
+                      redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     return monitor
 
 
@@ -168,13 +168,12 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     return resource_usage
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 1,
-    }, {
-        "num_cpus": 2,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster_head", [{
+    "num_cpus": 1,
+}, {
+    "num_cpus": 2,
+}],
+                         indirect=True)
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -245,12 +244,11 @@ def test_wait_for_nodes(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
-@pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --ray-client-server-port 20000 " +
-        "--min-worker-port=0 --max-worker-port=0 --port 0"
-    ],
-    indirect=True)
+@pytest.mark.parametrize("call_ray_start", [
+    "ray start --head --ray-client-server-port 20000 " +
+    "--min-worker-port=0 --max-worker-port=0 --port 0"
+],
+                         indirect=True)
 def test_ray_client(call_ray_start):
     from ray.util.client import ray
     ray.connect("localhost:20000")

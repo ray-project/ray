@@ -57,7 +57,6 @@ class CollectMetrics:
         >>> print(next(output_op))
         {"episode_reward_max": ..., "episode_reward_mean": ..., ...}
     """
-
     def __init__(self,
                  workers: WorkerSet,
                  min_history: int = 100,
@@ -129,7 +128,6 @@ class OncePerTimeInterval:
         >>> print(time.time() - start)
         5.00001  # will be greater than 5 seconds
     """
-
     def __init__(self, delay: int):
         self.delay = delay
         self.last_called = 0
@@ -156,7 +154,6 @@ class OncePerTimestepsElapsed:
         >>> next(throttled_op)
         # will only return after 1000 steps have elapsed
     """
-
     def __init__(self, delay_steps: int):
         self.delay_steps = delay_steps
         self.last_called = 0

@@ -40,7 +40,6 @@ class Analysis:
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
     """
-
     def __init__(self,
                  experiment_dir: str,
                  default_metric: Optional[str] = None,
@@ -210,10 +209,10 @@ class Analysis:
                 "Couldn't read config from {} paths".format(fail_count))
         return self._configs
 
-    def get_trial_checkpoints_paths(self,
-                                    trial: Trial,
-                                    metric: Optional[str] = None
-                                    ) -> List[Tuple[str, Number]]:
+    def get_trial_checkpoints_paths(
+            self,
+            trial: Trial,
+            metric: Optional[str] = None) -> List[Tuple[str, Number]]:
         """Gets paths and metrics of all persistent checkpoints of a trial.
 
         Args:
@@ -234,8 +233,9 @@ class Analysis:
 
             # Join with trial dataframe to get metrics.
             trial_df = self.trial_dataframes[trial_dir]
-            path_metric_df = chkpt_df.merge(
-                trial_df, on="training_iteration", how="inner")
+            path_metric_df = chkpt_df.merge(trial_df,
+                                            on="training_iteration",
+                                            how="inner")
             return path_metric_df[["chkpt_path", metric]].values.tolist()
         elif isinstance(trial, Trial):
             checkpoints = trial.checkpoint_manager.best_checkpoints()
@@ -362,7 +362,6 @@ class ExperimentAnalysis(Analysis):
         >>> analysis = ExperimentAnalysis(
         >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
-
     def __init__(self,
                  experiment_checkpoint_path: str,
                  trials: Optional[List[Trial]] = None,
@@ -386,9 +385,9 @@ class ExperimentAnalysis(Analysis):
         ]
         self.trials = trials
 
-        super(ExperimentAnalysis, self).__init__(
-            os.path.dirname(experiment_checkpoint_path), default_metric,
-            default_mode)
+        super(ExperimentAnalysis,
+              self).__init__(os.path.dirname(experiment_checkpoint_path),
+                             default_metric, default_mode)
 
     @property
     def best_trial(self) -> Trial:
@@ -526,12 +525,11 @@ class ExperimentAnalysis(Analysis):
         if not pd:
             raise ValueError("`best_result_df` requires pandas. Install with "
                              "`pip install pandas`.")
-        return pd.DataFrame.from_records(
-            [
-                flatten_dict(trial.last_result, delimiter=".")
-                for trial in self.trials
-            ],
-            index="trial_id")
+        return pd.DataFrame.from_records([
+            flatten_dict(trial.last_result, delimiter=".")
+            for trial in self.trials
+        ],
+                                         index="trial_id")
 
     def get_best_trial(self,
                        metric: Optional[str] = None,

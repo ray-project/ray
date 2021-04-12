@@ -293,8 +293,9 @@ def get_async(apply_async,
 
             keyorder = order(dsk)
 
-            state = start_state_from_dask(
-                dsk, cache=cache, sortkey=keyorder.get)
+            state = start_state_from_dask(dsk,
+                                          cache=cache,
+                                          sortkey=keyorder.get)
 
             for _, start_state, _, _, _ in callbacks:
                 if start_state:

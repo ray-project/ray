@@ -54,7 +54,6 @@ class _ActorClassCache:
     Note that we assume there can be multiple trainables in the
     system at once.
     """
-
     def __init__(self):
         self._cache = {}
 
@@ -85,7 +84,6 @@ class _TrialCleanup:
         threshold (int): Number of futures to hold at once. If the threshold
             is passed, cleanup will kick in and remove futures.
     """
-
     def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
         self.threshold = threshold
         self._cleanup_map = {}
@@ -117,8 +115,8 @@ class _TrialCleanup:
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
         while len(self._cleanup_map) > num_to_keep:
-            dones, _ = ray.wait(
-                list(self._cleanup_map), timeout=DEFAULT_GET_TIMEOUT)
+            dones, _ = ray.wait(list(self._cleanup_map),
+                                timeout=DEFAULT_GET_TIMEOUT)
             if not dones:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
@@ -138,7 +136,6 @@ def noop_logger_creator(config, logdir):
 
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
-
     def __init__(self,
                  queue_trials: bool = False,
                  reuse_actors: bool = False,
@@ -400,7 +397,10 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial, checkpoint=None, runner=None,
+    def _start_trial(self,
+                     trial,
+                     checkpoint=None,
+                     runner=None,
                      train=True) -> bool:
         """Starts trial and restores last result if trial was paused.
 
@@ -600,9 +600,9 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
                 try:
-                    reset_val = ray.get(
-                        trainable.reset.remote(extra_config, logger_creator),
-                        timeout=DEFAULT_GET_TIMEOUT)
+                    reset_val = ray.get(trainable.reset.remote(
+                        extra_config, logger_creator),
+                                        timeout=DEFAULT_GET_TIMEOUT)
                 except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
                     return False
@@ -792,8 +792,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         if trial.uses_placement_groups:
             return trial in self._staged_trials or self._pg_manager.can_stage(
-            ) or self._pg_manager.has_ready(
-                trial, update=True)
+            ) or self._pg_manager.has_ready(trial, update=True)
 
         return self.has_resources(trial.resources)
 
@@ -853,13 +852,13 @@ class RayTrialExecutor(TrialExecutor):
                           self._avail_resources.gpu,
                           _to_gb(total_resources.pop("memory", 0.)),
                           _to_gb(self._avail_resources.memory),
-                          _to_gb(
-                              total_resources.pop("object_store_memory", 0.)),
+                          _to_gb(total_resources.pop("object_store_memory",
+                                                     0.)),
                           _to_gb(self._avail_resources.object_store_memory)))
             customs = ", ".join([
-                "{}/{} {}".format(
-                    total_resources.get(name, 0.),
-                    self._avail_resources.get_res_total(name), name)
+                "{}/{} {}".format(total_resources.get(name, 0.),
+                                  self._avail_resources.get_res_total(name),
+                                  name)
                 for name in self._avail_resources.custom_resources
                 if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
             ])
@@ -880,8 +879,8 @@ class RayTrialExecutor(TrialExecutor):
                            _to_gb(self._avail_resources.object_store_memory)))
             if self._avail_resources.custom_resources:
                 custom = ", ".join(
-                    "{} {}".format(
-                        self._avail_resources.get_res_total(name), name)
+                    "{} {}".format(self._avail_resources.get_res_total(name),
+                                   name)
                     for name in self._avail_resources.custom_resources)
                 res_str += " ({})".format(custom)
             return res_str
@@ -995,9 +994,9 @@ class RayTrialExecutor(TrialExecutor):
         """
         if trial.export_formats and len(trial.export_formats) > 0:
             with self._change_working_directory(trial):
-                return ray.get(
-                    trial.runner.export_model.remote(trial.export_formats),
-                    timeout=DEFAULT_GET_TIMEOUT)
+                return ray.get(trial.runner.export_model.remote(
+                    trial.export_formats),
+                               timeout=DEFAULT_GET_TIMEOUT)
         return {}
 
     def has_gpus(self):

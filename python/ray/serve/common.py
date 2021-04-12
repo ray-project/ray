@@ -36,8 +36,8 @@ class TrafficPolicy:
 
     @property
     def backend_tags(self):
-        return set(self.traffic_dict.keys()).union(
-            set(self.shadow_dict.keys()))
+        return set(self.traffic_dict.keys()).union(set(
+            self.shadow_dict.keys()))
 
     def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
         prob = 0

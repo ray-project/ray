@@ -68,8 +68,9 @@ def execution_plan(workers, config):
             )) \
         .for_each(TrainOneStep(workers))
 
-    train_op = Concurrently(
-        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+    train_op = Concurrently([store_op, replay_op],
+                            mode="round_robin",
+                            output_indexes=[1])
 
     return StandardMetricsReporting(train_op, workers, config)
 
@@ -79,10 +80,9 @@ def validate_config(config):
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
 
 
-MARWILTrainer = build_trainer(
-    name="MARWIL",
-    default_config=DEFAULT_CONFIG,
-    default_policy=MARWILTFPolicy,
-    get_policy_class=get_policy_class,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+MARWILTrainer = build_trainer(name="MARWIL",
+                              default_config=DEFAULT_CONFIG,
+                              default_policy=MARWILTFPolicy,
+                              get_policy_class=get_policy_class,
+                              validate_config=validate_config,
+                              execution_plan=execution_plan)

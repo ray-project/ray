@@ -120,8 +120,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             cur_num_clients = self.num_clients
         return ray_client_pb2.ConnectionInfoResponse(
             num_clients=cur_num_clients,
-            python_version="{}.{}.{}".format(
-                sys.version_info[0], sys.version_info[1], sys.version_info[2]),
+            python_version="{}.{}.{}".format(sys.version_info[0],
+                                             sys.version_info[1],
+                                             sys.version_info[2]),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
             protocol_version=CURRENT_PROTOCOL_VERSION)

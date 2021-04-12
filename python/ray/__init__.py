@@ -33,13 +33,13 @@ if "OMP_NUM_THREADS" not in os.environ:
 
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
-pickle5_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
+pickle5_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                            "pickle5_files")
 sys.path.insert(0, pickle5_path)
 
 # Importing psutil & setproctitle. Must be before ray._raylet is initialized.
-thirdparty_files = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
+thirdparty_files = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                                "thirdparty_files")
 sys.path.insert(0, thirdparty_files)
 
 if sys.platform == "win32":

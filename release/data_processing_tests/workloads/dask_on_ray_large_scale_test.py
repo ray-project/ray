@@ -67,7 +67,6 @@ class ProcessingChainRoutines:
         20 / 10 = 2 input files. Since NUM_MINS_PER_OUTPUT_FILE is 5,
         we'd produce 20 / 5 = 4 output files.
     """
-
     @staticmethod
     def load_input_file() -> np.ndarray:
         """
@@ -75,10 +74,9 @@ class ProcessingChainRoutines:
 
         In real life, this is read from cloud storage or disk.
         """
-        audio_tensor = np.ones(
-            SAMPLING_RATE_PER_SECOND * NUM_CHANNELS * NUM_MINS_PER_INPUT_FILE *
-            60,
-            dtype=np.float32)
+        audio_tensor = np.ones(SAMPLING_RATE_PER_SECOND * NUM_CHANNELS *
+                               NUM_MINS_PER_INPUT_FILE * 60,
+                               dtype=np.float32)
         audio_tensor = np.reshape(audio_tensor, (NUM_CHANNELS, -1))  # reshape
         return audio_tensor
 
@@ -92,8 +90,8 @@ class ProcessingChainRoutines:
         Dask computations.
         """
         dask_array_lists = list()
-        num_files = int(
-            num_minutes_to_load_for_data_producer / NUM_MINS_PER_INPUT_FILE)
+        num_files = int(num_minutes_to_load_for_data_producer /
+                        NUM_MINS_PER_INPUT_FILE)
 
         # Load num_files number of files lazily
         for i in range(0, num_files):
@@ -101,9 +99,8 @@ class ProcessingChainRoutines:
                 ProcessingChainRoutines.load_input_file)()
             dask_arr = dask.array.from_delayed(
                 delayed_obj,
-                shape=(
-                    NUM_CHANNELS,
-                    SAMPLING_RATE_PER_SECOND * NUM_MINS_PER_INPUT_FILE * 60),
+                shape=(NUM_CHANNELS, SAMPLING_RATE_PER_SECOND *
+                       NUM_MINS_PER_INPUT_FILE * 60),
                 dtype=np.float32)
             dask_array_lists.append(dask_arr)
 
@@ -113,8 +110,8 @@ class ProcessingChainRoutines:
         # Rechunk the array
         # Chunk size in the time dimension should be a power of
         # two for the later FFT operations.
-        final_dask_array = dask.array.rechunk(
-            final_dask_array, chunks=(NUM_CHANNELS, 2 << 23))
+        final_dask_array = dask.array.rechunk(final_dask_array,
+                                              chunks=(NUM_CHANNELS, 2 << 23))
 
         # Return the final dask.array in an Xarray
         return xarray.Dataset(
@@ -231,15 +228,14 @@ class ProcessingChainRoutines:
 
     @staticmethod
     def save_all_xarrays(
-            xarray_filename_pairs: List[Tuple],
-            ray_scheduler,
-            dirpath: str,
-            batch_size: int,
+        xarray_filename_pairs: List[Tuple],
+        ray_scheduler,
+        dirpath: str,
+        batch_size: int,
     ):
         """
         Save xarrays; saving `batch_size` number of Xarrays at a time.
         """
-
         def chunks(lst, n):
             """Yield successive n-sized chunks from lst."""
             for i in range(0, len(lst), n):
@@ -286,11 +282,12 @@ def main():
 
         # 2. Apply FFT
         print("Apply FFT")
-        xr2 = ProcessingChainRoutines.fft_xarray(
-            xr_input=xr1, n_fft=n_fft, hop_length=hop_length)
+        xr2 = ProcessingChainRoutines.fft_xarray(xr_input=xr1,
+                                                 n_fft=n_fft,
+                                                 hop_length=hop_length)
 
-        num_output_files = int(
-            NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER / NUM_MINS_PER_OUTPUT_FILE)
+        num_output_files = int(NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER /
+                               NUM_MINS_PER_OUTPUT_FILE)
         start_time = 0
 
         # 3. Produce indices for

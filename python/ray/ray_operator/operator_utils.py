@@ -50,12 +50,11 @@ def config_path(cluster_name: str) -> str:
 
 def cluster_cr_stream() -> Iterator:
     w = Watch()
-    return w.stream(
-        custom_objects_api().list_namespaced_custom_object,
-        namespace=RAY_NAMESPACE,
-        group="cluster.ray.io",
-        version="v1",
-        plural="rayclusters")
+    return w.stream(custom_objects_api().list_namespaced_custom_object,
+                    namespace=RAY_NAMESPACE,
+                    group="cluster.ray.io",
+                    version="v1",
+                    plural="rayclusters")
 
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:

@@ -44,11 +44,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
            ray_connect_handler (Callable): Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
-        self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
-            dict)
+        self.object_refs: Dict[str, Dict[bytes,
+                                         ray.ObjectRef]] = defaultdict(dict)
         # Stores client_id -> (client_ref_id -> ref_id (in self.object_refs))
-        self.client_side_ref_map: Dict[str, Dict[bytes, bytes]] = defaultdict(
-            dict)
+        self.client_side_ref_map: Dict[str, Dict[bytes,
+                                                 bytes]] = defaultdict(dict)
         self.function_refs = {}
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
@@ -85,7 +85,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 f"current one {current_job_config.runtime_env.uris}")
         return ray_client_pb2.InitResponse(ok=True)
 
-    def PrepRuntimeEnv(self, request,
+    def PrepRuntimeEnv(self,
+                       request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
         job_config = ray.worker.global_worker.core_worker.get_job_config()
         missing_uris = self._prepare_runtime_env(job_config.runtime_env)
@@ -115,14 +116,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 request.prefix)
         return ray_client_pb2.KVListResponse(keys=keys)
 
-    def KVExists(self, request,
+    def KVExists(self,
+                 request,
                  context=None) -> ray_client_pb2.KVExistsResponse:
         with disable_client_hook():
             exists = ray.experimental.internal_kv._internal_kv_exists(
                 request.key)
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
-    def ClusterInfo(self, request,
+    def ClusterInfo(self,
+                    request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
         resp.type = request.type
@@ -230,10 +233,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 object_ref = \
                         self.object_refs[req.client_id][req.task_object.id]
                 with disable_client_hook():
-                    ray.cancel(
-                        object_ref,
-                        force=req.task_object.force,
-                        recursive=req.task_object.recursive)
+                    ray.cancel(object_ref,
+                               force=req.task_object.force,
+                               recursive=req.task_object.recursive)
             except Exception as e:
                 return_exception_in_context(e, context)
         elif req.WhichOneof("terminate_type") == "actor":
@@ -261,12 +263,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             with disable_client_hook():
                 item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
-            return ray_client_pb2.GetResponse(
-                valid=False, error=cloudpickle.dumps(e))
+            return ray_client_pb2.GetResponse(valid=False,
+                                              error=cloudpickle.dumps(e))
         item_ser = dumps_from_server(item, client_id, self)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
-    def PutObject(self, request: ray_client_pb2.PutRequest,
+    def PutObject(self,
+                  request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject
         """
@@ -315,8 +318,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             # TODO(ameer): improve exception messages.
             logger.error(f"Exception {e}")
             return ray_client_pb2.WaitResponse(valid=False)
-        logger.debug("wait: %s %s" % (str(ready_object_refs),
-                                      str(remaining_object_refs)))
+        logger.debug("wait: %s %s" %
+                     (str(ready_object_refs), str(remaining_object_refs)))
         ready_object_ids = [
             ready_object_ref.binary() for ready_object_ref in ready_object_refs
         ]
@@ -331,9 +334,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
-            "schedule: %s %s" % (task.name,
-                                 ray_client_pb2.ClientTask.RemoteExecType.Name(
-                                     task.type)))
+            "schedule: %s %s" %
+            (task.name, ray_client_pb2.ClientTask.RemoteExecType.Name(
+                task.type)))
         try:
             with disable_client_hook():
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
@@ -353,10 +356,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return result
         except Exception as e:
             logger.debug(f"Caught schedule exception, returning: {e}")
-            return ray_client_pb2.ClientTaskTicket(
-                valid=False, error=cloudpickle.dumps(e))
+            return ray_client_pb2.ClientTaskTicket(valid=False,
+                                                   error=cloudpickle.dumps(e))
 
-    def _schedule_method(self, task: ray_client_pb2.ClientTask,
+    def _schedule_method(self,
+                         task: ray_client_pb2.ClientTask,
                          context=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
@@ -371,7 +375,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         ids = self.unify_and_track_outputs(output, task.client_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
-    def _schedule_actor(self, task: ray_client_pb2.ClientTask,
+    def _schedule_actor(self,
+                        task: ray_client_pb2.ClientTask,
                         context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(
             task.payload_id, task.client_id,
@@ -388,7 +393,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(
             return_ids=[actor._actor_id.binary()])
 
-    def _schedule_function(self, task: ray_client_pb2.ClientTask,
+    def _schedule_function(self,
+                           task: ray_client_pb2.ClientTask,
                            context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(
             task.payload_id, task.client_id,
@@ -567,8 +573,8 @@ def init_and_serve(connection_str, *args, **kwargs):
         else:
             return ray.init(job_config=job_config, *args, **kwargs)
 
-    server_handle = serve(
-        connection_str, ray_connect_handler=ray_connect_handler)
+    server_handle = serve(connection_str,
+                          ray_connect_handler=ray_connect_handler)
     return (server_handle, info)
 
 
@@ -582,10 +588,9 @@ def create_ray_handler(redis_address, redis_password):
     def ray_connect_handler(job_config: JobConfig = None):
         if redis_address:
             if redis_password:
-                ray.init(
-                    address=redis_address,
-                    _redis_password=redis_password,
-                    job_config=job_config)
+                ray.init(address=redis_address,
+                         _redis_password=redis_password,
+                         job_config=job_config)
             else:
                 ray.init(address=redis_address, job_config=job_config)
         else:
@@ -597,20 +602,23 @@ def create_ray_handler(redis_address, redis_password):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
-    parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
-    parser.add_argument(
-        "--redis-address",
-        required=False,
-        type=str,
-        help="Address to use to connect to Ray")
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        help="Password for connecting to Redis")
+    parser.add_argument("--host",
+                        type=str,
+                        default="0.0.0.0",
+                        help="Host IP to bind to")
+    parser.add_argument("-p",
+                        "--port",
+                        type=int,
+                        default=50051,
+                        help="Port to bind to")
+    parser.add_argument("--redis-address",
+                        required=False,
+                        type=str,
+                        help="Address to use to connect to Ray")
+    parser.add_argument("--redis-password",
+                        required=False,
+                        type=str,
+                        help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 

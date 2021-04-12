@@ -16,7 +16,6 @@ def loss(config, reporter):
 
 class ConvergenceTest(unittest.TestCase):
     """Test convergence in gaussian process."""
-
     @classmethod
     def setUpClass(cls) -> None:
         ray.init(local_mode=False, num_cpus=1, num_gpus=0)
@@ -35,8 +34,9 @@ class ConvergenceTest(unittest.TestCase):
             loss,
             metric="loss",
             mode="min",
-            stop=ExperimentPlateauStopper(
-                metric="loss", top=top, patience=patience),
+            stop=ExperimentPlateauStopper(metric="loss",
+                                          top=top,
+                                          patience=patience),
             search_alg=searcher,
             config=space,
             num_samples=100,  # Number of iterations

@@ -89,11 +89,12 @@ class Worker:
         ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(
-                conn_str, credentials, options=grpc_options)
+            self.channel = grpc.secure_channel(conn_str,
+                                               credentials,
+                                               options=grpc_options)
         else:
-            self.channel = grpc.insecure_channel(
-                conn_str, options=grpc_options)
+            self.channel = grpc.insecure_channel(conn_str,
+                                                 options=grpc_options)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -251,13 +252,14 @@ class Worker:
         return ClientObjectRef(resp.id)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
-    def wait(self,
-             object_refs: List[ClientObjectRef],
-             *,
-             num_returns: int = 1,
-             timeout: float = None,
-             fetch_local: bool = True
-             ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
+    def wait(
+        self,
+        object_refs: List[ClientObjectRef],
+        *,
+        num_returns: int = 1,
+        timeout: float = None,
+        fetch_local: bool = True
+    ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         if not isinstance(object_refs, list):
             raise TypeError("wait() expected a list of ClientObjectRef, "
                             f"got {type(object_refs)}")
@@ -403,8 +405,9 @@ class Worker:
 
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> bool:
-        req = ray_client_pb2.KVPutRequest(
-            key=key, value=value, overwrite=overwrite)
+        req = ray_client_pb2.KVPutRequest(key=key,
+                                          value=value,
+                                          overwrite=overwrite)
         resp = self.server.KVPut(req, metadata=self.metadata)
         return resp.already_exists
 

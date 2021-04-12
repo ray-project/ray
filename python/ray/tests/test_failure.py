@@ -153,8 +153,8 @@ def temporary_helper_function():
     # Check that if we try to call the function it throws an exception and
     # does not hang.
     for _ in range(10):
-        with pytest.raises(
-                Exception, match="This function was not imported properly."):
+        with pytest.raises(Exception,
+                           match="This function was not imported properly."):
             ray.get(g.remote(1, y=2))
 
     f.close()
@@ -461,8 +461,8 @@ def test_exception_chain(ray_start_regular):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6],
+                         indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
     p = error_pubsub
     num_objects = 3
@@ -482,8 +482,8 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
         # on the one before it. The result of the first task should get
         # evicted.
         args = []
-        arg = single_dependency.remote(0, np.zeros(
-            object_size, dtype=np.uint8))
+        arg = single_dependency.remote(0, np.zeros(object_size,
+                                                   dtype=np.uint8))
         for i in range(num_objects):
             arg = single_dependency.remote(i, arg)
             args.append(arg)
@@ -509,8 +509,8 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
 
 
 @pytest.mark.skip("This test does not work yet.")
-@pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**6], indirect=True)
+@pytest.mark.parametrize("ray_start_object_store_memory", [10**6],
+                         indirect=True)
 def test_put_error2(ray_start_object_store_memory):
     # This is the same as the previous test, but it calls ray.put directly.
     num_objects = 3
@@ -603,8 +603,8 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
 
 
 def test_warning_all_tasks_blocked(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
@@ -627,8 +627,8 @@ def test_warning_all_tasks_blocked(shutdown_only):
 
 
 def test_warning_actor_waiting_on_actor(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
@@ -644,8 +644,8 @@ def test_warning_actor_waiting_on_actor(shutdown_only):
 
 
 def test_warning_task_waiting_on_actor(shutdown_only):
-    ray.init(
-        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    ray.init(num_cpus=1,
+             _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)

@@ -32,8 +32,8 @@ def ray_start_cluster_client_server_pair(address):
     def ray_connect_handler(job_config=None):
         real_ray.init(address=address)
 
-    server = ray_client_server.serve(
-        "localhost:50051", ray_connect_handler=ray_connect_handler)
+    server = ray_client_server.serve("localhost:50051",
+                                     ray_connect_handler=ray_connect_handler)
     ray.connect("localhost:50051")
     try:
         yield ray, server

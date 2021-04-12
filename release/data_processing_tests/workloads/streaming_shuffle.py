@@ -67,8 +67,9 @@ class Counter:
 # object store peak memory: O(partition size / num partitions)
 # heap memory: O(partition size / num partitions)
 @ray.remote(num_returns=num_partitions)
-def shuffle_map_streaming(
-        i, counter_handle=None) -> List["ObjectRef[np.ndarray]"]:
+def shuffle_map_streaming(i,
+                          counter_handle=None
+                          ) -> List["ObjectRef[np.ndarray]"]:
     outputs = [
         ray.put(
             np.ones((rows_per_partition // num_partitions, 2), dtype=np.int64))
@@ -132,10 +133,9 @@ def run_shuffle():
 
 
 def run_single_node():
-    address = ray.init(
-        num_cpus=num_cpus * num_nodes,
-        object_store_memory=object_store_size,
-        _system_config=system_config)
+    address = ray.init(num_cpus=num_cpus * num_nodes,
+                       object_store_memory=object_store_size,
+                       _system_config=system_config)
 
     # Run shuffle.
     print(
@@ -151,10 +151,9 @@ def run_single_node():
 
 def run_multi_nodes():
     c = Cluster()
-    c.add_node(
-        num_cpus=4,
-        object_store_memory=object_store_size,
-        _system_config=system_config)
+    c.add_node(num_cpus=4,
+               object_store_memory=object_store_size,
+               _system_config=system_config)
     ray.init(address=c.address)
     for _ in range(num_nodes - 1):  # subtract a head node.
         c.add_node(num_cpus=4, object_store_memory=object_store_size)

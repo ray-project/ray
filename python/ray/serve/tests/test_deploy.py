@@ -193,10 +193,10 @@ def test_redeploy_single_replica(serve_instance, use_handle):
         if use_handle:
             ret = ray.get(serve.get_handle(name).remote(block=str(block)))
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+            ret = requests.get(f"http://localhost:8000/{name}",
+                               params={
+                                   "block": block
+                               }).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -275,10 +275,10 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             handle = serve.get_handle(name, missing_ok=True)
             ret = ray.get(handle.remote(block=str(block)))
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+            ret = requests.get(f"http://localhost:8000/{name}",
+                               params={
+                                   "block": block
+                               }).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -326,10 +326,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # ref2 will block a single replica until the signal is sent. Check that
     # some requests are now blocking.
     ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses2, blocking2 = make_nonblocking_calls({"1": 1},
+                                                   expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
     # Redeploy new version. Since there is one replica blocking, only one new
@@ -337,10 +335,8 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     v2 = v1.options(backend_def=v2, version="2")
     goal_ref = v2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
-    responses3, blocking3 = make_nonblocking_calls(
-        {
-            "1": 1
-        }, expect_blocking=True)
+    responses3, blocking3 = make_nonblocking_calls({"1": 1},
+                                                   expect_blocking=True)
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -370,10 +366,10 @@ def test_redeploy_scale_down(serve_instance, use_handle):
             handle = v1.get_handle()
             ret = ray.get(handle.remote(block=str(block)))
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+            ret = requests.get(f"http://localhost:8000/{name}",
+                               params={
+                                   "block": block
+                               }).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -426,10 +422,10 @@ def test_redeploy_scale_up(serve_instance, use_handle):
             handle = v1.get_handle()
             ret = ray.get(handle.remote(block=str(block)))
         else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={
-                    "block": block
-                }).text
+            ret = requests.get(f"http://localhost:8000/{name}",
+                               params={
+                                   "block": block
+                               }).text
 
         return ret.split("|")[0], ret.split("|")[1]
 
@@ -766,8 +762,8 @@ class TestGetDeployment:
 
         def check_num_replicas(num):
             handle = self.get_deployment(name, use_list_api).get_handle()
-            assert len(set(ray.get(
-                [handle.remote() for _ in range(50)]))) == num
+            assert len(set(ray.get([handle.remote()
+                                    for _ in range(50)]))) == num
 
         d.deploy()
         check_num_replicas(1)

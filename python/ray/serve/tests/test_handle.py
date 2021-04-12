@@ -90,17 +90,15 @@ def test_handle_http_args(serve_instance):
         }
     }
 
-    resp_web = requests.post(
-        "http://127.0.0.1:8000/Endpoint?arg1=1&arg2=2",
-        headers=ground_truth["headers"],
-        json=ground_truth["json"]).json()
+    resp_web = requests.post("http://127.0.0.1:8000/Endpoint?arg1=1&arg2=2",
+                             headers=ground_truth["headers"],
+                             json=ground_truth["json"]).json()
 
     handle = Endpoint.get_handle()
     resp_handle = ray.get(
-        handle.options(
-            http_method=ground_truth["method"],
-            http_headers=ground_truth["headers"]).remote(
-                ground_truth["json"], **ground_truth["args"]))
+        handle.options(http_method=ground_truth["method"],
+                       http_headers=ground_truth["headers"]).remote(
+                           ground_truth["json"], **ground_truth["args"]))
 
     for resp in [resp_web, resp_handle]:
         for field in ["args", "method", "json"]:

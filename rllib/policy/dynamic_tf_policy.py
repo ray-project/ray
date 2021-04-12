@@ -49,34 +49,33 @@ class DynamicTFPolicy(TFPolicy):
         model (TorchModel): TF model instance
         dist_class (type): TF action distribution class
     """
-
     @DeveloperAPI
     def __init__(
             self,
             obs_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
             config: TrainerConfigDict,
-            loss_fn: Callable[[
-                Policy, ModelV2, Type[TFActionDistribution], SampleBatch
-            ], TensorType],
+            loss_fn: Callable[
+                [Policy, ModelV2, Type[TFActionDistribution], SampleBatch],
+                TensorType],
             *,
-            stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
-                str, TensorType]]] = None,
-            grad_stats_fn: Optional[Callable[[
-                Policy, SampleBatch, ModelGradients
-            ], Dict[str, TensorType]]] = None,
+            stats_fn: Optional[Callable[[Policy, SampleBatch],
+                                        Dict[str, TensorType]]] = None,
+            grad_stats_fn: Optional[
+                Callable[[Policy, SampleBatch, ModelGradients],
+                         Dict[str, TensorType]]] = None,
             before_loss_init: Optional[Callable[[
                 Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
             ], None]] = None,
             make_model: Optional[Callable[[
                 Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
             ], ModelV2]] = None,
-            action_sampler_fn: Optional[Callable[[
-                TensorType, List[TensorType]
-            ], Tuple[TensorType, TensorType]]] = None,
-            action_distribution_fn: Optional[Callable[[
-                Policy, ModelV2, TensorType, TensorType, TensorType
-            ], Tuple[TensorType, type, List[TensorType]]]] = None,
+            action_sampler_fn: Optional[Callable[
+                [TensorType, List[TensorType]], Tuple[TensorType,
+                                                      TensorType]]] = None,
+            action_distribution_fn: Optional[
+                Callable[[Policy, ModelV2, TensorType, TensorType, TensorType],
+                         Tuple[TensorType, type, List[TensorType]]]] = None,
             existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
             existing_model: Optional[ModelV2] = None,
             get_batch_divisibility_req: Optional[Callable[[Policy],
@@ -137,8 +136,8 @@ class DynamicTFPolicy(TFPolicy):
                 sample batches. If None, will assume a value of 1.
         """
         if obs_include_prev_action_reward != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="obs_include_prev_action_reward", error=False)
+            deprecation_warning(old="obs_include_prev_action_reward",
+                                error=False)
         self.observation_space = obs_space
         self.action_space = action_space
         self.config = config
@@ -219,15 +218,18 @@ class DynamicTFPolicy(TFPolicy):
                     dict({SampleBatch.ACTIONS: action_ph},
                          **prev_action_ph))
             # Placeholder for (sampling steps) timestep (int).
-            timestep = tf1.placeholder_with_default(
-                tf.zeros((), dtype=tf.int64), (), name="timestep")
+            timestep = tf1.placeholder_with_default(tf.zeros((),
+                                                             dtype=tf.int64),
+                                                    (),
+                                                    name="timestep")
             # Placeholder for `is_exploring` flag.
-            explore = tf1.placeholder_with_default(
-                True, (), name="is_exploring")
+            explore = tf1.placeholder_with_default(True, (),
+                                                   name="is_exploring")
 
         # Placeholder for RNN time-chunk valid lengths.
-        self._seq_lens = tf1.placeholder(
-            dtype=tf.int32, shape=[None], name="seq_lens")
+        self._seq_lens = tf1.placeholder(dtype=tf.int32,
+                                         shape=[None],
+                                         name="seq_lens")
         # Placeholder for `is_training` flag.
         self._input_dict["is_training"] = self._get_is_training_placeholder()
 
@@ -370,16 +372,17 @@ class DynamicTFPolicy(TFPolicy):
             [(k, existing_inputs[i])
              for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] +
             rnn_inputs)
-        instance = self.__class__(
-            self.observation_space,
-            self.action_space,
-            self.config,
-            existing_inputs=input_dict,
-            existing_model=[
-                self.model,
-                ("target_q_model", getattr(self, "target_q_model", None)),
-                ("target_model", getattr(self, "target_model", None)),
-            ])
+        instance = self.__class__(self.observation_space,
+                                  self.action_space,
+                                  self.config,
+                                  existing_inputs=input_dict,
+                                  existing_model=[
+                                      self.model,
+                                      ("target_q_model",
+                                       getattr(self, "target_q_model", None)),
+                                      ("target_model",
+                                       getattr(self, "target_model", None)),
+                                  ])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)
@@ -449,7 +452,8 @@ class DynamicTFPolicy(TFPolicy):
         return input_dict, dummy_batch
 
     def _initialize_loss_from_dummy_batch(
-            self, auto_remove_unneeded_view_reqs: bool = True,
+            self,
+            auto_remove_unneeded_view_reqs: bool = True,
             stats_fn=None) -> None:
 
         # Create the optimizer/exploration optimizer here. Some initialization
@@ -481,8 +485,8 @@ class DynamicTFPolicy(TFPolicy):
         # Add new columns automatically to (loss) input_dict.
         for key in dummy_batch.added_keys:
             if key not in self._input_dict:
-                self._input_dict[key] = get_placeholder(
-                    value=dummy_batch[key], name=key)
+                self._input_dict[key] = get_placeholder(value=dummy_batch[key],
+                                                        name=key)
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
@@ -510,10 +514,12 @@ class DynamicTFPolicy(TFPolicy):
             dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
-        TFPolicy._initialize_loss(self, loss, [
-            (k, v) for k, v in train_batch.items() if k in all_accessed_keys
-        ] + ([("seq_lens", train_batch.seq_lens)]
-             if train_batch.seq_lens is not None else []))
+        TFPolicy._initialize_loss(
+            self, loss,
+            [(k, v)
+             for k, v in train_batch.items() if k in all_accessed_keys] + ([
+                 ("seq_lens", train_batch.seq_lens)
+             ] if train_batch.seq_lens is not None else []))
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]

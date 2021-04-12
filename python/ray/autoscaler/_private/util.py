@@ -19,8 +19,8 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = os.path.join(
-    os.path.dirname(ray.autoscaler.__file__), "ray-schema.json")
+RAY_SCHEMA_PATH = os.path.join(os.path.dirname(ray.autoscaler.__file__),
+                               "ray-schema.json")
 
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
@@ -202,10 +202,10 @@ def merge_legacy_yaml_with_defaults(
 
 
 def merge_setup_commands(config):
-    config["head_setup_commands"] = (
-        config["setup_commands"] + config["head_setup_commands"])
-    config["worker_setup_commands"] = (
-        config["setup_commands"] + config["worker_setup_commands"])
+    config["head_setup_commands"] = (config["setup_commands"] +
+                                     config["head_setup_commands"])
+    config["worker_setup_commands"] = (config["setup_commands"] +
+                                       config["worker_setup_commands"])
     return config
 
 
@@ -449,9 +449,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
         failure_lines.append(line)
-    failure_lines = failure_lines[:
-                                  -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:
-                                  -1]
+    failure_lines = failure_lines[:-constants.
+                                  AUTOSCALER_MAX_FAILURES_DISPLAYED:-1]
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

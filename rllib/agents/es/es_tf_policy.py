@@ -46,8 +46,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac, _, _ = policy.compute_actions(
-            [observation], add_noise=add_noise, update=True)
+        ac, _, _ = policy.compute_actions([observation],
+                                          add_noise=add_noise,
+                                          update=True)
         ac = ac[0]
         observation, r, done, _ = env.step(ac)
         if offset != 0.0:
@@ -63,9 +64,8 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
 def make_session(single_threaded):
     if not single_threaded:
         return tf1.Session()
-    return tf1.Session(
-        config=tf1.ConfigProto(
-            inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
+    return tf1.Session(config=tf1.ConfigProto(inter_op_parallelism_threads=1,
+                                              intra_op_parallelism_threads=1))
 
 
 class ESTFPolicy(Policy):
@@ -79,8 +79,8 @@ class ESTFPolicy(Policy):
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
-            self.inputs = tf1.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+            self.inputs = tf1.placeholder(tf.float32, [None] +
+                                          list(self.preprocessor.shape))
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -132,8 +132,8 @@ class ESTFPolicy(Policy):
             actions = tree.map_structure(lambda a: a.numpy(), actions)
         # Graph mode.
         else:
-            actions = self.sess.run(
-                self.sampler, feed_dict={self.inputs: observation})
+            actions = self.sess.run(self.sampler,
+                                    feed_dict={self.inputs: observation})
 
         if add_noise:
             actions = tree.map_structure(self._add_noise, actions,

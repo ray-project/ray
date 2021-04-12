@@ -14,7 +14,6 @@ class TrialExecutor:
     Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
-
     def __init__(self, queue_trials: bool = False):
         """Initializes a new TrialExecutor.
 

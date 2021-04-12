@@ -50,17 +50,16 @@ def test_replica_config_validation():
         ReplicaConfig(Class())
 
     # Check ray_actor_options validation.
-    ReplicaConfig(
-        Class,
-        ray_actor_options={
-            "num_cpus": 1.0,
-            "num_gpus": 10,
-            "resources": {
-                "abc": 1.0
-            },
-            "memory": 1000000.0,
-            "object_store_memory": 1000000,
-        })
+    ReplicaConfig(Class,
+                  ray_actor_options={
+                      "num_cpus": 1.0,
+                      "num_gpus": 10,
+                      "resources": {
+                          "abc": 1.0
+                      },
+                      "memory": 1000000.0,
+                      "object_store_memory": 1000000,
+                  })
     with pytest.raises(TypeError):
         ReplicaConfig(Class, ray_actor_options=1.0)
     with pytest.raises(TypeError):
@@ -78,8 +77,8 @@ def test_replica_config_validation():
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"memory": -1})
     with pytest.raises(TypeError):
-        ReplicaConfig(
-            Class, ray_actor_options={"object_store_memory": "hello"})
+        ReplicaConfig(Class,
+                      ray_actor_options={"object_store_memory": "hello"})
     with pytest.raises(ValueError):
         ReplicaConfig(Class, ray_actor_options={"object_store_memory": -1})
     with pytest.raises(TypeError):

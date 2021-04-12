@@ -55,7 +55,6 @@ class _ExperimentCheckpointManager:
     (19/20) will be used to handle the rest of the training loop.
 
     """
-
     def __init__(self, checkpoint_dir: str,
                  checkpoint_period: Union[int, float, str], start_time: float,
                  session_str: str, syncer: CloudSyncer):
@@ -117,8 +116,8 @@ class _ExperimentCheckpointManager:
                 json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
 
             os.replace(tmp_file_name, checkpoint_file)
-            search_alg.save_to_dir(
-                self._checkpoint_dir, session_str=self._session_str)
+            search_alg.save_to_dir(self._checkpoint_dir,
+                                   session_str=self._session_str)
 
         checkpoint_time_start = time.monotonic()
         _serialize_and_write()
@@ -448,8 +447,9 @@ class TrialRunner:
             new_trial = Trial(trial_cp["trainable_name"])
             new_trial.__setstate__(trial_cp)
             trials += [new_trial]
-        for trial in sorted(
-                trials, key=lambda t: t.last_update_time, reverse=True):
+        for trial in sorted(trials,
+                            key=lambda t: t.last_update_time,
+                            reverse=True):
             if run_errored_only and trial.status == Trial.ERROR:
                 new_trial = trial.reset()
                 self.add_trial(new_trial)
@@ -474,8 +474,8 @@ class TrialRunner:
         with warn_if_slow("on_step_begin"):
             self.trial_executor.on_step_begin(self)
         with warn_if_slow("callbacks.on_step_begin"):
-            self._callbacks.on_step_begin(
-                iteration=self._iteration, trials=self._trials)
+            self._callbacks.on_step_begin(iteration=self._iteration,
+                                          trials=self._trials)
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
@@ -497,10 +497,9 @@ class TrialRunner:
             """Helper function to start trial and call callbacks"""
             with warn_if_slow("start_trial"):
                 if self.trial_executor.start_trial(trial):
-                    self._callbacks.on_trial_start(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
+                    self._callbacks.on_trial_start(iteration=self._iteration,
+                                                   trials=self._trials,
+                                                   trial=trial)
                     return True
                 return False
 
@@ -543,8 +542,8 @@ class TrialRunner:
         with warn_if_slow("on_step_end"):
             self.trial_executor.on_step_end(self)
         with warn_if_slow("callbacks.on_step_end"):
-            self._callbacks.on_step_end(
-                iteration=self._iteration, trials=self._trials)
+            self._callbacks.on_step_end(iteration=self._iteration,
+                                        trials=self._trials)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -642,18 +641,16 @@ class TrialRunner:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
                 with warn_if_slow("callbacks.on_trial_restore"):
-                    self._callbacks.on_trial_restore(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
+                    self._callbacks.on_trial_restore(iteration=self._iteration,
+                                                     trials=self._trials,
+                                                     trial=trial)
             elif trial.is_saving:
                 with warn_if_slow("process_trial_save") as _profile:
                     self._process_trial_save(trial)
                 with warn_if_slow("callbacks.on_trial_save"):
-                    self._callbacks.on_trial_save(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial)
+                    self._callbacks.on_trial_save(iteration=self._iteration,
+                                                  trials=self._trials,
+                                                  trial=trial)
                 if _profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
@@ -755,21 +752,21 @@ class TrialRunner:
 
             # Hook into scheduler
             self._scheduler_alg.on_trial_complete(self, trial, flat_result)
-            self._search_alg.on_trial_complete(
-                trial.trial_id, result=flat_result)
+            self._search_alg.on_trial_complete(trial.trial_id,
+                                               result=flat_result)
 
             # If this is not a duplicate result, the callbacks should
             # be informed about the result.
             if not is_duplicate:
                 with warn_if_slow("callbacks.on_trial_result"):
-                    self._callbacks.on_trial_result(
-                        iteration=self._iteration,
-                        trials=self._trials,
-                        trial=trial,
-                        result=result.copy())
+                    self._callbacks.on_trial_result(iteration=self._iteration,
+                                                    trials=self._trials,
+                                                    trial=trial,
+                                                    result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            self._callbacks.on_trial_complete(iteration=self._iteration,
+                                              trials=self._trials,
+                                              trial=trial)
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -780,15 +777,14 @@ class TrialRunner:
             with warn_if_slow("search_alg.on_trial_result"):
                 self._search_alg.on_trial_result(trial.trial_id, flat_result)
             with warn_if_slow("callbacks.on_trial_result"):
-                self._callbacks.on_trial_result(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial,
-                    result=result.copy())
+                self._callbacks.on_trial_result(iteration=self._iteration,
+                                                trials=self._trials,
+                                                trial=trial,
+                                                result=result.copy())
             if decision == TrialScheduler.STOP:
                 with warn_if_slow("search_alg.on_trial_complete"):
-                    self._search_alg.on_trial_complete(
-                        trial.trial_id, result=flat_result)
+                    self._search_alg.on_trial_complete(trial.trial_id,
+                                                       result=flat_result)
                 with warn_if_slow("callbacks.on_trial_complete"):
                     self._callbacks.on_trial_complete(
                         iteration=self._iteration,
@@ -888,11 +884,10 @@ class TrialRunner:
         if checkpoint_value:
             try:
                 trial.saving_to.value = checkpoint_value
-                self._callbacks.on_checkpoint(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial,
-                    checkpoint=trial.saving_to)
+                self._callbacks.on_checkpoint(iteration=self._iteration,
+                                              trials=self._trials,
+                                              trial=trial,
+                                              checkpoint=trial.saving_to)
                 trial.on_checkpoint(trial.saving_to)
                 self.trial_executor.try_checkpoint_metadata(trial)
             except Exception:
@@ -941,12 +936,12 @@ class TrialRunner:
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
-                self.trial_executor.stop_trial(
-                    trial, error=True, error_msg=error_msg)
+                self._callbacks.on_trial_error(iteration=self._iteration,
+                                               trials=self._trials,
+                                               trial=trial)
+                self.trial_executor.stop_trial(trial,
+                                               error=True,
+                                               error_msg=error_msg)
 
     def _queue_decision(self, trial, decision):
         # Get old decision, setting it to the current decision if it isn't set
@@ -999,8 +994,9 @@ class TrialRunner:
         if trial.is_restoring:
             # Restore was unsuccessful, try again without checkpoint.
             trial.clear_checkpoint()
-        self.trial_executor.stop_trial(
-            trial, error=error_msg is not None, error_msg=error_msg)
+        self.trial_executor.stop_trial(trial,
+                                       error=error_msg is not None,
+                                       error_msg=error_msg)
 
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
@@ -1019,10 +1015,9 @@ class TrialRunner:
                     self.trial_executor.stop_trial(trial, error=True)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                self._callbacks.on_trial_error(iteration=self._iteration,
+                                               trials=self._trials,
+                                               trial=trial)
             else:
                 logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
@@ -1055,7 +1050,8 @@ class TrialRunner:
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
 
-    def _update_trial_queue(self, blocking: bool = False,
+    def _update_trial_queue(self,
+                            blocking: bool = False,
                             timeout: int = 600) -> bool:
         """Adds next trials to queue if possible.
 
@@ -1117,29 +1113,28 @@ class TrialRunner:
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
             self._search_alg.on_trial_complete(trial.trial_id)
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            self._callbacks.on_trial_complete(iteration=self._iteration,
+                                              trials=self._trials,
+                                              trial=trial)
         elif trial.status is Trial.RUNNING:
             try:
                 results = self.trial_executor.fetch_result(trial)
                 result = results[-1]
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._search_alg.on_trial_complete(
-                    trial.trial_id, result=result)
-                self._callbacks.on_trial_complete(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                self._search_alg.on_trial_complete(trial.trial_id,
+                                                   result=result)
+                self._callbacks.on_trial_complete(iteration=self._iteration,
+                                                  trials=self._trials,
+                                                  trial=trial)
             except Exception:
                 error_msg = traceback.format_exc()
                 logger.exception("Error processing event.")
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                self._callbacks.on_trial_error(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial)
+                self._callbacks.on_trial_error(iteration=self._iteration,
+                                               trials=self._trials,
+                                               trial=trial)
                 error = True
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 

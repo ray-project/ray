@@ -67,8 +67,9 @@ class KubernetesTest(unittest.TestCase):
         # ray-legacy-*-node_type.)
         log_cmd = "tail -n 100 /tmp/ray/session_latest/logs/monitor*"
         while True:
-            monitor_output = sdk.run_on_cluster(
-                config, cmd=log_cmd, with_output=True).decode()
+            monitor_output = sdk.run_on_cluster(config,
+                                                cmd=log_cmd,
+                                                with_output=True).decode()
             if ("head-node" in monitor_output
                     and "worker-node" in monitor_output):
                 break
@@ -79,11 +80,15 @@ class KubernetesTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w") as test_file:
             test_file.write("test")
             test_file.flush()
-            sdk.rsync(
-                config, source=test_file.name, target="~/in_pod", down=False)
+            sdk.rsync(config,
+                      source=test_file.name,
+                      target="~/in_pod",
+                      down=False)
         with tempfile.NamedTemporaryFile() as test_file:
-            sdk.rsync(
-                config, target=test_file.name, source="~/in_pod", down=True)
+            sdk.rsync(config,
+                      target=test_file.name,
+                      source="~/in_pod",
+                      down=True)
             contents = open(test_file.name).read()
         assert contents == "test"
 

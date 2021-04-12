@@ -105,12 +105,11 @@ def test_log_rotation(shutdown_only):
 
 
 def test_periodic_asio_stats(shutdown_only):
-    ray.init(
-        num_cpus=1,
-        _system_config={
-            "asio_stats_print_interval_ms": 100,
-            "asio_event_loop_stats_collection_enabled": True
-        })
+    ray.init(num_cpus=1,
+             _system_config={
+                 "asio_stats_print_interval_ms": 100,
+                 "asio_event_loop_stats_collection_enabled": True
+             })
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
     log_dir_path = session_path / "logs"

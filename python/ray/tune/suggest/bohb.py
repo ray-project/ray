@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 class _BOHBJobWrapper():
     """Mock object for HpBandSter to process."""
-
     def __init__(self, loss: float, budget: float, config: Dict):
         self.result = {"loss": loss}
         self.kwargs = {"budget": budget, "config": config.copy()}
@@ -108,16 +107,16 @@ class TuneBOHB(Searcher):
         run(my_trainable, scheduler=bohb, search_alg=algo)
 
     """
-
-    def __init__(self,
-                 space: Optional[Union[
-                     Dict, "ConfigSpace.ConfigurationSpace"]] = None,
-                 bohb_config: Optional[Dict] = None,
-                 max_concurrent: int = 10,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[Dict]] = None,
-                 seed: Optional[int] = None):
+    def __init__(
+            self,
+            space: Optional[Union[Dict,
+                                  "ConfigSpace.ConfigurationSpace"]] = None,
+            bohb_config: Optional[Dict] = None,
+            max_concurrent: int = 10,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None,
+            points_to_evaluate: Optional[List[Dict]] = None,
+            seed: Optional[int] = None):
         assert BOHB is not None, """HpBandSter must be installed!
             You can install HpBandSter with the command:
             `pip install hpbandster ConfigSpace`."""
@@ -135,8 +134,8 @@ class TuneBOHB(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space",
+                                                   cls=type(self)))
                 space = self.convert_search_space(space)
 
         self._space = space
@@ -185,15 +184,14 @@ class TuneBOHB(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
 
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
 
         if len(self.running) < self._max_concurrent:
             if self._points_to_evaluate:
@@ -252,8 +250,9 @@ class TuneBOHB(Searcher):
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
-        def resolve_value(par: str, domain: Domain
-                          ) -> ConfigSpace.hyperparameters.Hyperparameter:
+        def resolve_value(
+                par: str,
+                domain: Domain) -> ConfigSpace.hyperparameters.Hyperparameter:
             quantize = None
 
             sampler = domain.get_sampler()
@@ -268,16 +267,22 @@ class TuneBOHB(Searcher):
                     if quantize:
                         lower = math.ceil(domain.lower / quantize) * quantize
                         upper = math.floor(domain.upper / quantize) * quantize
-                    return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=True)
+                    return ConfigSpace.UniformFloatHyperparameter(par,
+                                                                  lower=lower,
+                                                                  upper=upper,
+                                                                  q=quantize,
+                                                                  log=True)
                 elif isinstance(sampler, Uniform):
                     lower = domain.lower
                     upper = domain.upper
                     if quantize:
                         lower = math.ceil(domain.lower / quantize) * quantize
                         upper = math.floor(domain.upper / quantize) * quantize
-                    return ConfigSpace.UniformFloatHyperparameter(
-                        par, lower=lower, upper=upper, q=quantize, log=False)
+                    return ConfigSpace.UniformFloatHyperparameter(par,
+                                                                  lower=lower,
+                                                                  upper=upper,
+                                                                  q=quantize,
+                                                                  log=False)
                 elif isinstance(sampler, Normal):
                     return ConfigSpace.NormalFloatHyperparameter(
                         par,

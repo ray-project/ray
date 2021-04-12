@@ -231,8 +231,9 @@ def execution_plan(workers: WorkerSet,
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
                 samples.policy_batches[policy_id].set_get_interceptor(None)
-                prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .get("batch_indexes"), td_error)
+                prio_dict[policy_id] = (
+                    samples.policy_batches[policy_id].get("batch_indexes"),
+                    td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
@@ -262,11 +263,10 @@ def execution_plan(workers: WorkerSet,
 
     # Alternate deterministically between (1) and (2). Only return the output
     # of (2) since training metrics are not available until (2) runs.
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode="round_robin",
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
+    train_op = Concurrently([store_op, replay_op],
+                            mode="round_robin",
+                            output_indexes=[1],
+                            round_robin_weights=calculate_rr_weights(config))
 
     return StandardMetricsReporting(train_op, workers, config)
 
@@ -276,8 +276,8 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     if not config["training_intensity"]:
         return [1, 1]
     # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
+    native_ratio = (config["train_batch_size"] /
+                    config["rollout_fragment_length"])
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]
@@ -300,13 +300,12 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 # Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
 # may build on top of it.
-GenericOffPolicyTrainer = build_trainer(
-    name="GenericOffPolicyAlgorithm",
-    default_policy=None,
-    get_policy_class=get_policy_class,
-    default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+GenericOffPolicyTrainer = build_trainer(name="GenericOffPolicyAlgorithm",
+                                        default_policy=None,
+                                        get_policy_class=get_policy_class,
+                                        default_config=DEFAULT_CONFIG,
+                                        validate_config=validate_config,
+                                        execution_plan=execution_plan)
 
 # Build a DQN trainer, which uses the framework specific Policy
 # determined in `get_policy_class()` above.

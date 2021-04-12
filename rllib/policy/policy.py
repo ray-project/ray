@@ -50,7 +50,6 @@ class Policy(metaclass=ABCMeta):
         exploration (Exploration): The exploration object to use for
             computing actions, or None.
     """
-
     @DeveloperAPI
     def __init__(self, observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, config: TrainerConfigDict):
@@ -202,20 +201,18 @@ class Policy(metaclass=ABCMeta):
             episodes = [episode]
         if state is not None:
             state_batch = [
-                s.unsqueeze(0)
-                if torch and isinstance(s, torch.Tensor) else np.expand_dims(
-                    s, 0) for s in state
+                s.unsqueeze(0) if torch and isinstance(s, torch.Tensor) else
+                np.expand_dims(s, 0) for s in state
             ]
 
-        out = self.compute_actions(
-            [obs],
-            state_batch,
-            prev_action_batch=prev_action_batch,
-            prev_reward_batch=prev_reward_batch,
-            info_batch=info_batch,
-            episodes=episodes,
-            explore=explore,
-            timestep=timestep)
+        out = self.compute_actions([obs],
+                                   state_batch,
+                                   prev_action_batch=prev_action_batch,
+                                   prev_reward_batch=prev_reward_batch,
+                                   info_batch=info_batch,
+                                   episodes=episodes,
+                                   explore=explore,
+                                   timestep=timestep)
 
         # Some policies don't return a tuple, but always just a single action.
         # E.g. ES and ARS.
@@ -291,14 +288,14 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def compute_log_likelihoods(
-            self,
-            actions: Union[List[TensorType], TensorType],
-            obs_batch: Union[List[TensorType], TensorType],
-            state_batches: Optional[List[TensorType]] = None,
-            prev_action_batch: Optional[Union[List[TensorType],
-                                              TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+        self,
+        actions: Union[List[TensorType], TensorType],
+        obs_batch: Union[List[TensorType], TensorType],
+        state_batches: Optional[List[TensorType]] = None,
+        prev_action_batch: Optional[Union[List[TensorType],
+                                          TensorType]] = None,
+        prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None
+    ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -324,8 +321,9 @@ class Policy(metaclass=ABCMeta):
     def postprocess_trajectory(
             self,
             sample_batch: SampleBatch,
-            other_agent_batches: Optional[Dict[AgentID, Tuple[
-                "Policy", SampleBatch]]] = None,
+            other_agent_batches: Optional[Dict[AgentID,
+                                               Tuple["Policy",
+                                                     SampleBatch]]] = None,
             episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
@@ -561,8 +559,8 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(
-                space=self.observation_space, used_for_compute_actions=True),
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space,
+                                             used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
@@ -588,9 +586,9 @@ class Policy(metaclass=ABCMeta):
         }
 
     def _initialize_loss_from_dummy_batch(
-            self,
-            auto_remove_unneeded_view_reqs: bool = True,
-            stats_fn=None,
+        self,
+        auto_remove_unneeded_view_reqs: bool = True,
+        stats_fn=None,
     ) -> None:
         """Performs test calls through policy's model and loss.
 
@@ -703,8 +701,9 @@ class Policy(metaclass=ABCMeta):
                         else:
                             del self.view_requirements[key]
 
-    def _get_dummy_batch_from_view_requirements(
-            self, batch_size: int = 1) -> SampleBatch:
+    def _get_dummy_batch_from_view_requirements(self,
+                                                batch_size: int = 1
+                                                ) -> SampleBatch:
         """Creates a numpy dummy batch based on the Policy's view requirements.
 
         Args:
@@ -769,8 +768,8 @@ class Policy(metaclass=ABCMeta):
                 "state_out_{}".format(i),
                 shift=-1,
                 used_for_compute_actions=True,
-                batch_repeat_value=self.config.get("model", {}).get(
-                    "max_seq_len", 1),
+                batch_repeat_value=self.config.get("model",
+                                                   {}).get("max_seq_len", 1),
                 space=space)
             view_reqs["state_out_{}".format(i)] = ViewRequirement(
                 space=space, used_for_training=True)
@@ -788,7 +787,6 @@ def clip_action(action, action_space):
     Returns:
         List[np.ndarray]: Flattened list of single clipped "primitive" actions.
     """
-
     def map_(a, s):
         if isinstance(s, gym.spaces.Box):
             a = np.clip(a, s.low, s.high)

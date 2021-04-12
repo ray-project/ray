@@ -30,8 +30,9 @@ def test_memory_request():
         # fits first 2
         a = Actor.remote()
         b = Actor.remote()
-        ok, _ = ray.wait(
-            [a.ping.remote(), b.ping.remote()], timeout=60.0, num_returns=2)
+        ok, _ = ray.wait([a.ping.remote(), b.ping.remote()],
+                         timeout=60.0,
+                         num_returns=2)
         assert len(ok) == 2
         # does not fit
         c = Actor.remote()

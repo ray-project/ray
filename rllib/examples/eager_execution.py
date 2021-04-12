@@ -27,7 +27,6 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
     Here `compute_penalty` prints the actions and rewards for debugging, and
     also computes a (dummy) penalty term to add to the loss.
     """
-
     def compute_penalty(actions, rewards):
         assert tf.executing_eagerly()
         penalty = tf.reduce_mean(tf.cast(actions, tf.float32))
@@ -40,8 +39,8 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
 
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS]
-    penalty = tf.py_function(
-        compute_penalty, [actions, rewards], Tout=tf.float32)
+    penalty = tf.py_function(compute_penalty, [actions, rewards],
+                             Tout=tf.float32)
 
     return penalty - tf.reduce_mean(action_dist.logp(actions) * rewards)
 

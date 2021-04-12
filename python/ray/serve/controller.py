@@ -63,7 +63,6 @@ class ServeController:
           to have been. The client should retry in this case. Note that this
           requires all implementations here to be idempotent.
     """
-
     async def __init__(self,
                        controller_name: str,
                        http_config: HTTPOptions,
@@ -173,11 +172,11 @@ class ServeController:
                                                proportion)
 
     async def create_endpoint(
-            self,
-            endpoint: str,
-            traffic_dict: Dict[str, float],
-            route: Optional[str],
-            methods: List[str],
+        self,
+        endpoint: str,
+        traffic_dict: Dict[str, float],
+        route: Optional[str],
+        methods: List[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -212,12 +211,11 @@ class ServeController:
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
-                version=RESERVED_VERSION_TAG,
-                backend_config=backend_config,
-                replica_config=replica_config)
+            backend_info = BackendInfo(worker_class=create_backend_replica(
+                replica_config.backend_def),
+                                       version=RESERVED_VERSION_TAG,
+                                       backend_config=backend_config,
+                                       replica_config=replica_config)
             return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     async def delete_backend(self,
@@ -298,22 +296,18 @@ class ServeController:
                 python_methods.append(method_name)
 
         async with self.write_lock:
-            backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
-                version=version,
-                backend_config=backend_config,
-                replica_config=replica_config)
+            backend_info = BackendInfo(worker_class=create_backend_replica(
+                replica_config.backend_def),
+                                       version=version,
+                                       backend_config=backend_config,
+                                       replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.update_endpoint(
-                name,
-                http_route,
-                http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
-                python_methods=python_methods)
+            self.endpoint_state.update_endpoint(name,
+                                                http_route,
+                                                http_methods,
+                                                TrafficPolicy({name: 1.0}),
+                                                python_methods=python_methods)
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

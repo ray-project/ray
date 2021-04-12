@@ -26,13 +26,12 @@ parser.add_argument("--num-cpus", type=int, default=0)
 
 class MyKerasModel(TFModelV2):
     """Custom model for policy gradient algorithms."""
-
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         super(MyKerasModel, self).__init__(obs_space, action_space,
                                            num_outputs, model_config, name)
-        self.inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+        self.inputs = tf.keras.layers.Input(shape=obs_space.shape,
+                                            name="observations")
         layer_1 = tf.keras.layers.Dense(
             128,
             name="my_layer1",
@@ -63,16 +62,16 @@ class MyKerasModel(TFModelV2):
 
 class MyKerasQModel(DistributionalQTFModel):
     """Custom model for DQN."""
-
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, **kw):
-        super(MyKerasQModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name, **kw)
+        super(MyKerasQModel,
+              self).__init__(obs_space, action_space, num_outputs,
+                             model_config, name, **kw)
 
         # Define the core model layers which will be used by the other
         # output heads of DistributionalQModel
-        self.inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+        self.inputs = tf.keras.layers.Input(shape=obs_space.shape,
+                                            name="observations")
         layer_1 = tf.keras.layers.Dense(
             128,
             name="my_layer1",
@@ -98,11 +97,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model(
-        "keras_model", MyVisionNetwork
-        if args.use_vision_network else MyKerasModel)
+        "keras_model",
+        MyVisionNetwork if args.use_vision_network else MyKerasModel)
     ModelCatalog.register_custom_model(
-        "keras_q_model", MyVisionNetwork
-        if args.use_vision_network else MyKerasQModel)
+        "keras_q_model",
+        MyVisionNetwork if args.use_vision_network else MyKerasQModel)
 
     # Tests https://github.com/ray-project/ray/issues/7293
     def check_has_custom_metric(result):

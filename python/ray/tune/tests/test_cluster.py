@@ -46,15 +46,14 @@ def _get_running_trials(runner):
 
 
 def _start_new_cluster():
-    cluster = Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
-            "num_cpus": 1,
-            "_system_config": {
-                "num_heartbeats_timeout": 10
-            }
-        })
+    cluster = Cluster(initialize_head=True,
+                      connect=True,
+                      head_node_args={
+                          "num_cpus": 1,
+                          "_system_config": {
+                              "num_heartbeats_timeout": 10
+                          }
+                      })
     # Pytest doesn't play nicely with imports
     register_trainable("__fake_remote", MockRemoteTrainer)
     register_trainable("__fake_durable", MockDurableTrainer)
@@ -63,16 +62,16 @@ def _start_new_cluster():
 
 
 class _PerTrialSyncerCallback(SyncerCallback):
-    def __init__(
-            self,
-            get_sync_fn: Callable[["Trial"], Union[None, bool, Callable]]):
+    def __init__(self, get_sync_fn: Callable[["Trial"], Union[None, bool,
+                                                              Callable]]):
         self._get_sync_fn = get_sync_fn
         super(_PerTrialSyncerCallback, self).__init__(None)
 
     def _create_trial_syncer(self, trial: "Trial"):
         sync_fn = self._get_sync_fn(trial)
-        return get_node_syncer(
-            trial.logdir, remote_dir=trial.logdir, sync_function=sync_fn)
+        return get_node_syncer(trial.logdir,
+                               remote_dir=trial.logdir,
+                               sync_function=sync_fn)
 
 
 @pytest.fixture
@@ -89,15 +88,14 @@ def start_connected_cluster():
 @pytest.fixture
 def start_connected_emptyhead_cluster():
     """Starts head with no resources."""
-    cluster = Cluster(
-        initialize_head=True,
-        connect=True,
-        head_node_args={
-            "num_cpus": 0,
-            "_system_config": {
-                "num_heartbeats_timeout": 10
-            }
-        })
+    cluster = Cluster(initialize_head=True,
+                      connect=True,
+                      head_node_args={
+                          "num_cpus": 0,
+                          "_system_config": {
+                              "num_heartbeats_timeout": 10
+                          }
+                      })
     # Pytest doesn't play nicely with imports
     _register_all()
     register_trainable("__fake_remote", MockRemoteTrainer)
@@ -402,8 +400,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
     time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
-    assert all(
-        t.status == Trial.PENDING for t in trials), runner.debug_string()
+    assert all(t.status == Trial.PENDING
+               for t in trials), runner.debug_string()
 
     if not with_pg:
         # Only raises if placement groups are not used
@@ -491,10 +489,9 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     dirpath = str(tmpdir)
     syncer_callback = _PerTrialSyncerCallback(
         lambda trial: trial.trainable_name == "__fake")
-    runner = TrialRunner(
-        local_checkpoint_dir=dirpath,
-        checkpoint_period=0,
-        callbacks=[syncer_callback])
+    runner = TrialRunner(local_checkpoint_dir=dirpath,
+                         checkpoint_period=0,
+                         callbacks=[syncer_callback])
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 2
@@ -556,8 +553,9 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
     exp1_args = base_dict
     exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
-    exp4_args = dict(
-        base_dict.items(), config=dict(mock_error=True), checkpoint_freq=1)
+    exp4_args = dict(base_dict.items(),
+                     config=dict(mock_error=True),
+                     checkpoint_freq=1)
 
     all_experiments = {
         "exp1": exp1_args,
@@ -577,8 +575,9 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
         cluster.shutdown()
         cluster = _start_new_cluster()
 
-        trials = tune.run_experiments(
-            all_experiments, resume=True, raise_on_failed_trial=False)
+        trials = tune.run_experiments(all_experiments,
+                                      resume=True,
+                                      raise_on_failed_trial=False)
 
     assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
@@ -608,8 +607,7 @@ tune.run(
     max_failures=1,
     dict(experiment=kwargs),
     raise_on_failed_trial=False)
-""".format(
-        address=cluster.address, checkpoint_dir=dirpath)
+""".format(address=cluster.address, checkpoint_dir=dirpath)
     run_string_as_driver_nonblocking(script)
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
@@ -618,8 +616,8 @@ tune.run(
     for i in range(100):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL",
+                                 local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration"):
@@ -662,7 +660,6 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
     # Needs to be in scope for pytest
     class _Mock(tune.Trainable):
         """Finishes on the 4th iteration."""
-
         def setup(self, config):
             self.state = {"hi": 0}
 
@@ -701,11 +698,10 @@ tune.run(
     checkpoint_freq=1,
     max_failures=1,
     raise_on_failed_trial=False)
-""".format(
-        address=cluster.address,
-        checkpoint_dir=dirpath,
-        fail_class_code=reformatted,
-        fail_class=_Mock.__name__)
+""".format(address=cluster.address,
+           checkpoint_dir=dirpath,
+           fail_class_code=reformatted,
+           fail_class=_Mock.__name__)
     run_string_as_driver_nonblocking(script)
 
     # Wait until the right checkpoint is saved.
@@ -715,8 +711,8 @@ tune.run(
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            runner = TrialRunner(resume="LOCAL",
+                                 local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             last_res = trials[0].last_result
             if last_res and last_res.get("training_iteration") == 3:
@@ -732,8 +728,8 @@ tune.run(
     Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner(
-        resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+    runner = TrialRunner(resume="LOCAL",
+                         local_checkpoint_dir=local_checkpoint_dir)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING

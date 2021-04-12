@@ -27,7 +27,6 @@ def test_presubmit_shortcircuit(ray_start_regular_shared):
     Test that presubmit return short-circuits task submission, and that task's
     result is set to the presubmit return value.
     """
-
     class PresubmitShortcircuitCallback(RayDaskCallback):
         def _ray_presubmit(self, task, key, deps):
             return 0
@@ -48,7 +47,6 @@ def test_pretask_posttask_shared_state(ray_start_regular_shared):
     Test that pretask return value is passed to corresponding posttask
     callback.
     """
-
     class PretaskPosttaskCallback(RayDaskCallback):
         def _ray_pretask(self, key, object_refs):
             return key
@@ -67,7 +65,6 @@ def test_postsubmit(ray_start_regular_shared):
     """
     Test that postsubmit is called after each task.
     """
-
     class PostsubmitCallback(RayDaskCallback):
         def __init__(self, postsubmit_actor):
             self.postsubmit_actor = postsubmit_actor
@@ -100,7 +97,6 @@ def test_postsubmit_all(ray_start_regular_shared):
     """
     Test that postsubmit_all is called once.
     """
-
     class PostsubmitAllCallback(RayDaskCallback):
         def __init__(self, postsubmit_all_actor):
             self.postsubmit_all_actor = postsubmit_all_actor
@@ -132,7 +128,6 @@ def test_finish(ray_start_regular_shared):
     """
     Test that finish callback is called once.
     """
-
     class FinishCallback(RayDaskCallback):
         def __init__(self, finish_actor):
             self.finish_actor = finish_actor
@@ -164,7 +159,6 @@ def test_multiple_callbacks(ray_start_regular_shared):
     """
     Test that multiple callbacks are supported.
     """
-
     class PostsubmitCallback(RayDaskCallback):
         def __init__(self, postsubmit_actor):
             self.postsubmit_actor = postsubmit_actor
@@ -201,7 +195,6 @@ def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     Test that pretask return values are passed to the correct corresponding
     posttask callbacks when multiple callbacks are given.
     """
-
     class PretaskPosttaskCallback(RayDaskCallback):
         def __init__(self, suffix):
             self.suffix = suffix
@@ -235,7 +228,6 @@ def test_pretask_posttask_shared_state_multi_client(ray_start_regular_shared):
     """
     Repeat the last test with Ray client.
     """
-
     class PretaskPosttaskCallback(RayDaskCallback):
         def __init__(self, suffix):
             self.suffix = suffix

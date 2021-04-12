@@ -14,8 +14,10 @@ from ray.tune.utils.mock import MyTrainableClass
 class ExperimentAnalysisSuite(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(
-            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+        ray.init(num_cpus=4,
+                 num_gpus=0,
+                 local_mode=True,
+                 include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -48,19 +50,18 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             })
 
     def nan_test_exp(self):
-        nan_ea = tune.run(
-            lambda x: nan,
-            name="testing_nan",
-            local_dir=self.test_dir,
-            stop={"training_iteration": 1},
-            checkpoint_freq=1,
-            num_samples=self.num_samples,
-            config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+        nan_ea = tune.run(lambda x: nan,
+                          name="testing_nan",
+                          local_dir=self.test_dir,
+                          stop={"training_iteration": 1},
+                          checkpoint_freq=1,
+                          num_samples=self.num_samples,
+                          config={
+                              "width": tune.sample_from(
+                                  lambda spec: 10 + int(90 * random.random())),
+                              "height": tune.sample_from(
+                                  lambda spec: int(100 * random.random())),
+                          })
         return nan_ea
 
     def testDataframe(self):
@@ -140,24 +141,24 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
-        best_checkpoint = self.ea.get_best_checkpoint(
-            best_trial, self.metric, mode="max")
+        best_checkpoint = self.ea.get_best_checkpoint(best_trial,
+                                                      self.metric,
+                                                      mode="max")
         assert expected_path == best_checkpoint
 
     def testGetLastCheckpoint(self):
         # one more experiment with 2 iterations
-        new_ea = tune.run(
-            MyTrainableClass,
-            name=self.test_name,
-            local_dir=self.test_dir,
-            stop={"training_iteration": 2},
-            checkpoint_freq=1,
-            config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+        new_ea = tune.run(MyTrainableClass,
+                          name=self.test_name,
+                          local_dir=self.test_dir,
+                          stop={"training_iteration": 2},
+                          checkpoint_freq=1,
+                          config={
+                              "width": tune.sample_from(
+                                  lambda spec: 10 + int(90 * random.random())),
+                              "height": tune.sample_from(
+                                  lambda spec: int(100 * random.random())),
+                          })
 
         # check if it's loaded correctly
         last_checkpoint = new_ea.get_last_checkpoint()
@@ -165,19 +166,18 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert "checkpoint_000002" in last_checkpoint
 
         # test restoring the checkpoint and running for another iteration
-        tune.run(
-            MyTrainableClass,
-            name=self.test_name,
-            local_dir=self.test_dir,
-            restore=last_checkpoint,
-            stop={"training_iteration": 3},
-            checkpoint_freq=1,
-            config={
-                "width": tune.sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(
-                    lambda spec: int(100 * random.random())),
-            })
+        tune.run(MyTrainableClass,
+                 name=self.test_name,
+                 local_dir=self.test_dir,
+                 restore=last_checkpoint,
+                 stop={"training_iteration": 3},
+                 checkpoint_freq=1,
+                 config={
+                     "width": tune.sample_from(
+                         lambda spec: 10 + int(90 * random.random())),
+                     "height": tune.sample_from(
+                         lambda spec: int(100 * random.random())),
+                 })
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
@@ -212,11 +212,10 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
                     pass
                 tune.report(res=config["base"] + i)
 
-        ea = tune.run(
-            train,
-            config={"base": tune.grid_search([100, 200, 300])},
-            metric="res",
-            mode="max")
+        ea = tune.run(train,
+                      config={"base": tune.grid_search([100, 200, 300])},
+                      metric="res",
+                      mode="max")
 
         trials = ea.trials
 

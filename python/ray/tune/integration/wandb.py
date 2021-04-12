@@ -48,12 +48,11 @@ def _clean_log(obj: Any):
     # Else
     try:
         pickle.dumps(obj)
-        yaml.dump(
-            obj,
-            Dumper=yaml.SafeDumper,
-            default_flow_style=False,
-            allow_unicode=True,
-            encoding="utf-8")
+        yaml.dump(obj,
+                  Dumper=yaml.SafeDumper,
+                  default_flow_style=False,
+                  allow_unicode=True,
+                  encoding="utf-8")
         return obj
     except Exception:
         # give up, similar to _SafeFallBackEncoder
@@ -183,7 +182,6 @@ class _WandbLoggingProcess(Process):
     We need a `multiprocessing.Process` to allow multiple concurrent
     wandb logging instances locally.
     """
-
     def __init__(self, queue: Queue, exclude: List[str], to_config: List[str],
                  *args, **kwargs):
         super(_WandbLoggingProcess, self).__init__()
@@ -340,15 +338,14 @@ class WandbLoggerCallback(LoggerCallback):
         # remove unpickleable items!
         config = _clean_log(config)
 
-        wandb_init_kwargs = dict(
-            id=trial_id,
-            name=trial_name,
-            resume=True,
-            reinit=True,
-            allow_val_change=True,
-            group=wandb_group,
-            project=wandb_project,
-            config=config)
+        wandb_init_kwargs = dict(id=trial_id,
+                                 name=trial_name,
+                                 resume=True,
+                                 reinit=True,
+                                 allow_val_change=True,
+                                 group=wandb_group,
+                                 project=wandb_project,
+                                 config=config)
         wandb_init_kwargs.update(self.kwargs)
 
         self._trial_queues[trial] = Queue()
@@ -548,15 +545,14 @@ class WandbTrainableMixin:
         # remove unpickleable items!
         _config = _clean_log(_config)
 
-        wandb_init_kwargs = dict(
-            id=trial_id,
-            name=trial_name,
-            resume=True,
-            reinit=True,
-            allow_val_change=True,
-            group=wandb_group,
-            project=wandb_project,
-            config=_config)
+        wandb_init_kwargs = dict(id=trial_id,
+                                 name=trial_name,
+                                 resume=True,
+                                 reinit=True,
+                                 allow_val_change=True,
+                                 group=wandb_group,
+                                 project=wandb_project,
+                                 config=_config)
         wandb_init_kwargs.update(wandb_config)
 
         self.wandb = self._wandb.init(**wandb_init_kwargs)

@@ -171,8 +171,8 @@ def validate_config(config: TrainerConfigDict) -> None:
         raise ValueError("`num_gpus` > 1 not yet supported for SAC!")
 
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['use_state_preprocessor']", error=False)
+        deprecation_warning(old="config['use_state_preprocessor']",
+                            error=False)
         config["use_state_preprocessor"] = DEPRECATED_VALUE
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:

@@ -14,6 +14,7 @@ from ray.test_utils import (run_string_as_driver,
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
 from time import sleep
+
 driver_script = """
 from time import sleep
 import sys
@@ -358,9 +359,8 @@ def conda_envs():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+@pytest.mark.skipif(os.environ.get("CONDA_DEFAULT_ENV") is None,
+                    reason="must be run from within a conda environment")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -376,9 +376,8 @@ def test_task_conda_env(conda_envs, shutdown_only):
         assert ray.get(task.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+@pytest.mark.skipif(os.environ.get("CONDA_DEFAULT_ENV") is None,
+                    reason="must be run from within a conda environment")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -395,9 +394,8 @@ def test_actor_conda_env(conda_envs, shutdown_only):
         assert ray.get(actor.get_tf_version.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+@pytest.mark.skipif(os.environ.get("CONDA_DEFAULT_ENV") is None,
+                    reason="must be run from within a conda environment")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -424,9 +422,8 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
         assert ray.get(actor.get_tf_version.remote()) == tf_version
 
 
-@pytest.mark.skipif(
-    os.environ.get("CONDA_DEFAULT_ENV") is None,
-    reason="must be run from within a conda environment")
+@pytest.mark.skipif(os.environ.get("CONDA_DEFAULT_ENV") is None,
+                    reason="must be run from within a conda environment")
 def test_job_config_conda_env(conda_envs):
     import tensorflow as tf
 
@@ -486,9 +483,8 @@ def test_get_conda_env_dir(tmp_path):
 def test_experimental_package(shutdown_only):
     ray.init(num_cpus=2)
     pkg = ray.experimental.load_package(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+        os.path.join(os.path.dirname(__file__),
+                     "../experimental/packaging/example_pkg/ray_pkg.yaml"))
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"
     assert ray.get(pkg.my_func.remote()) == "hello world"
@@ -497,9 +493,8 @@ def test_experimental_package(shutdown_only):
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 def test_experimental_package_lazy(shutdown_only):
     pkg = ray.experimental.load_package(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../experimental/packaging/example_pkg/ray_pkg.yaml"))
+        os.path.join(os.path.dirname(__file__),
+                     "../experimental/packaging/example_pkg/ray_pkg.yaml"))
     ray.init(num_cpus=2)
     a = pkg.MyActor.remote()
     assert ray.get(a.f.remote()) == "hello world"

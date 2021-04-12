@@ -15,7 +15,6 @@ class EndpointState:
     This class is *not* thread safe, so any state-modifying methods should be
     called with a lock held.
     """
-
     def __init__(self, kv_store: RayInternalKVStore,
                  long_poll_host: LongPollHost):
         self._kv_store = kv_store
@@ -35,8 +34,8 @@ class EndpointState:
     def _checkpoint(self):
         self._kv_store.put(
             CHECKPOINT_KEY,
-            pickle.dumps((self._routes, self._traffic_policies,
-                          self._python_methods)))
+            pickle.dumps(
+                (self._routes, self._traffic_policies, self._python_methods)))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
@@ -148,9 +147,9 @@ class EndpointState:
     def shadow_traffic(self, endpoint: EndpointTag, backend: BackendTag,
                        proportion: float):
         if endpoint not in self._traffic_policies:
-            raise ValueError("Attempted to shadow traffic from an "
-                             "endpoint '{}' that is not registered."
-                             .format(endpoint))
+            raise ValueError(
+                "Attempted to shadow traffic from an "
+                "endpoint '{}' that is not registered.".format(endpoint))
 
         self._traffic_policies[endpoint].set_shadow(backend, proportion)
 

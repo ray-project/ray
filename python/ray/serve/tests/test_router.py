@@ -65,9 +65,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 
     # Propogate configs
     await mock_controller.set_traffic.remote(
-        "svc", TrafficPolicy({
-            "backend-single-prod": 1.0
-        }))
+        "svc", TrafficPolicy({"backend-single-prod": 1.0}))
     await mock_controller.add_new_replica.remote("backend-single-prod",
                                                  task_runner_mock_actor)
 
@@ -88,9 +86,7 @@ async def test_changing_backend(ray_instance, mock_controller,
     q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
-        "svc", TrafficPolicy({
-            "backend-alter": 1
-        }))
+        "svc", TrafficPolicy({"backend-alter": 1}))
     await mock_controller.add_new_replica.remote("backend-alter",
                                                  task_runner_mock_actor)
 
@@ -100,9 +96,7 @@ async def test_changing_backend(ray_instance, mock_controller,
     assert got_work.args[0] == 1
 
     await mock_controller.set_traffic.remote(
-        "svc", TrafficPolicy({
-            "backend-alter-2": 1
-        }))
+        "svc", TrafficPolicy({"backend-alter-2": 1}))
     await mock_controller.add_new_replica.remote("backend-alter-2",
                                                  task_runner_mock_actor)
     await (await q.assign_request.remote(
@@ -158,9 +152,8 @@ async def test_shard_key(ray_instance, mock_controller,
     shard_keys = [get_random_letters() for _ in range(100)]
     for shard_key in shard_keys:
         await (await q.assign_request.remote(
-            RequestMetadata(
-                get_random_letters(10), "svc", shard_key=shard_key),
-            shard_key))
+            RequestMetadata(get_random_letters(10), "svc",
+                            shard_key=shard_key), shard_key))
 
     # Log the shard keys that were assigned to each backend.
     runner_shard_keys = defaultdict(set)
@@ -173,9 +166,8 @@ async def test_shard_key(ray_instance, mock_controller,
     # Send queries with the same shard keys a second time.
     for shard_key in shard_keys:
         await (await q.assign_request.remote(
-            RequestMetadata(
-                get_random_letters(10), "svc", shard_key=shard_key),
-            shard_key))
+            RequestMetadata(get_random_letters(10), "svc",
+                            shard_key=shard_key), shard_key))
 
     # Check that the requests were all mapped to the same backends.
     for i, runner in enumerate(runners):

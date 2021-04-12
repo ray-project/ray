@@ -20,15 +20,14 @@ assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
 
 cluster = Cluster()
 for i in range(num_nodes):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=4,
-        num_gpus=0,
-        resources={str(i): 5},
-        object_store_memory=object_store_memory,
-        redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0")
+    cluster.add_node(redis_port=6379 if i == 0 else None,
+                     num_redis_shards=num_redis_shards if i == 0 else None,
+                     num_cpus=4,
+                     num_gpus=0,
+                     resources={str(i): 5},
+                     object_store_memory=object_store_memory,
+                     redis_max_memory=redis_max_memory,
+                     dashboard_host="0.0.0.0")
 ray.init(address=cluster.address)
 
 # Run the workload.
@@ -73,9 +72,10 @@ def run_driver():
 
 iteration = 0
 running_ids = [
-    run_driver._remote(
-        args=[], kwargs={}, num_cpus=0, resources={str(i): 0.01})
-    for i in range(num_nodes)
+    run_driver._remote(args=[],
+                       kwargs={},
+                       num_cpus=0,
+                       resources={str(i): 0.01}) for i in range(num_nodes)
 ]
 start_time = time.time()
 previous_time = start_time
@@ -85,18 +85,18 @@ while True:
     ray.get(ready_id)
 
     running_ids.append(
-        run_driver._remote(
-            args=[],
-            kwargs={},
-            num_cpus=0,
-            resources={str(iteration % num_nodes): 0.01}))
+        run_driver._remote(args=[],
+                           kwargs={},
+                           num_cpus=0,
+                           resources={str(iteration % num_nodes): 0.01}))
 
     new_time = time.time()
     print("Iteration {}:\n"
           "  - Iteration time: {}.\n"
           "  - Absolute time: {}.\n"
-          "  - Total elapsed time: {}.".format(
-              iteration, new_time - previous_time, new_time,
-              new_time - start_time))
+          "  - Total elapsed time: {}.".format(iteration,
+                                               new_time - previous_time,
+                                               new_time,
+                                               new_time - start_time))
     previous_time = new_time
     iteration += 1

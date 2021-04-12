@@ -13,8 +13,8 @@ def request_with_retries(endpoint, timeout=30):
     start = time.time()
     while True:
         try:
-            return requests.get(
-                "http://127.0.0.1:8000" + endpoint, timeout=timeout)
+            return requests.get("http://127.0.0.1:8000" + endpoint,
+                                timeout=timeout)
         except requests.RequestException:
             if time.time() - start > timeout:
                 raise TimeoutError
@@ -29,8 +29,8 @@ def test_controller_failure(serve_instance):
 
     function.deploy()
 
-    assert request_with_retries(
-        "/controller_failure", timeout=1).text == "hello1"
+    assert request_with_retries("/controller_failure",
+                                timeout=1).text == "hello1"
 
     for _ in range(10):
         response = request_with_retries("/controller_failure", timeout=30)

@@ -46,18 +46,18 @@ def setup_worker(name,
 
 
 async def add_servable_to_router(
-        servable,
-        controller_name,
-        controller_actor,
-        **kwargs,
+    servable,
+    controller_name,
+    controller_actor,
+    **kwargs,
 ):
-    worker = setup_worker(
-        "backend", servable, controller_name=controller_name, **kwargs)
+    worker = setup_worker("backend",
+                          servable,
+                          controller_name=controller_name,
+                          **kwargs)
     await controller_actor.set_traffic.remote(
         "endpoint",
-        TrafficPolicy({
-            "backend": 1.0
-        }),
+        TrafficPolicy({"backend": 1.0}),
     )
     await controller_actor.add_new_replica.remote(
         "backend", worker, kwargs.get("backend_config", BackendConfig()))
@@ -71,8 +71,9 @@ async def add_servable_to_router(
 
 
 def make_request_param(call_method="__call__"):
-    return RequestMetadata(
-        get_random_letters(10), "endpoint", call_method=call_method)
+    return RequestMetadata(get_random_letters(10),
+                           "endpoint",
+                           call_method=call_method)
 
 
 async def test_runner_wraps_error():
@@ -101,8 +102,9 @@ async def test_servable_class(serve_instance, mock_controller_with_name):
         def __call__(self, request):
             return request.query_params["i"] + self.increment
 
-    worker, router = await add_servable_to_router(
-        MyAdder, *mock_controller_with_name, init_args=(3, ))
+    worker, router = await add_servable_to_router(MyAdder,
+                                                  *mock_controller_with_name,
+                                                  init_args=(3, ))
 
     for query in [333, 444, 555]:
         query_param = make_request_param()
@@ -157,11 +159,12 @@ async def test_task_runner_perform_async(serve_instance,
         await barrier.wait.remote()
         return "done!"
 
-    config = BackendConfig(
-        max_concurrent_queries=10, internal_metadata=BackendMetadata())
+    config = BackendConfig(max_concurrent_queries=10,
+                           internal_metadata=BackendMetadata())
 
-    worker, router = await add_servable_to_router(
-        wait_and_go, *mock_controller_with_name, backend_config=config)
+    worker, router = await add_servable_to_router(wait_and_go,
+                                                  *mock_controller_with_name,
+                                                  backend_config=config)
 
     query_param = make_request_param()
 
@@ -184,13 +187,14 @@ async def test_user_config_update(serve_instance, mock_controller_with_name):
         def reconfigure(self, config):
             self.retval = config["return_val"]
 
-    config = BackendConfig(
-        num_replicas=2, user_config={
-            "return_val": "original",
-            "b": 2
-        })
-    worker, router = await add_servable_to_router(
-        Customizable, *mock_controller_with_name, backend_config=config)
+    config = BackendConfig(num_replicas=2,
+                           user_config={
+                               "return_val": "original",
+                               "b": 2
+                           })
+    worker, router = await add_servable_to_router(Customizable,
+                                                  *mock_controller_with_name,
+                                                  backend_config=config)
 
     query_param = make_request_param()
 
@@ -232,10 +236,9 @@ async def test_graceful_shutdown(serve_instance, mock_controller_with_name):
     backend_worker, router = await add_servable_to_router(
         KeepInflight,
         *mock_controller_with_name,
-        backend_config=BackendConfig(
-            num_replicas=1,
-            internal_metadata=BackendMetadata(),
-            user_config={"release": False}))
+        backend_config=BackendConfig(num_replicas=1,
+                                     internal_metadata=BackendMetadata(),
+                                     user_config={"release": False}))
 
     query_param = make_request_param()
 

@@ -11,6 +11,7 @@ from ray.serve.utils import ServeRequest
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
 import ray.worker
+
 ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [

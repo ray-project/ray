@@ -35,8 +35,9 @@ parser.add_argument("--stop-reward", type=float, default=150)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
-parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+parser.add_argument("--framework",
+                    choices=["tf2", "tf", "tfe", "torch"],
+                    default="tf")
 
 if __name__ == "__main__":
     args = parser.parse_args()

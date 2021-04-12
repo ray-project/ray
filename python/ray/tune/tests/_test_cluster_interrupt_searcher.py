@@ -8,8 +8,9 @@ from ray.tune.suggest.suggestion import ConcurrencyLimiter
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="PyTorch Example (FOR TEST ONLY)")
-    parser.add_argument(
-        "--resume", action="store_true", help="Resuming from checkpoint.")
+    parser.add_argument("--resume",
+                        action="store_true",
+                        help="Resuming from checkpoint.")
     parser.add_argument("--local-dir", help="Checkpoint path")
     parser.add_argument("--searcher", help="Search Algorithm")
     parser.add_argument(
@@ -34,8 +35,8 @@ if __name__ == "__main__":
             # "activation": "tanh"  # Activation will be tanh
         }
     ]
-    algo = tune.create_searcher(
-        args.searcher, points_to_evaluate=current_best_params)
+    algo = tune.create_searcher(args.searcher,
+                                points_to_evaluate=current_best_params)
     algo = ConcurrencyLimiter(algo, max_concurrent=1)
     from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)

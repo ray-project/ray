@@ -107,12 +107,11 @@ def test_hybrid_policy(ray_start_cluster):
 def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
-    cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "scheduler_loadbalance_spillback": True,
-            "scheduler_hybrid_scheduling": False
-        })
+    cluster.add_node(num_cpus=0,
+                     _system_config={
+                         "scheduler_loadbalance_spillback": True,
+                         "scheduler_hybrid_scheduling": False
+                     })
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -158,11 +157,10 @@ def test_local_scheduling_first(ray_start_cluster):
     cluster = ray_start_cluster
     num_cpus = 8
     # Disable worker caching.
-    cluster.add_node(
-        num_cpus=num_cpus,
-        _system_config={
-            "worker_lease_timeout_milliseconds": 0,
-        })
+    cluster.add_node(num_cpus=num_cpus,
+                     _system_config={
+                         "worker_lease_timeout_milliseconds": 0,
+                     })
     cluster.add_node(num_cpus=num_cpus)
     ray.init(address=cluster.address)
 
@@ -212,8 +210,8 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+@pytest.mark.skipif(platform.system() == "Windows",
+                    reason="Failing on Windows. Multi node.")
 def test_load_balancing_under_constrained_memory(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -223,15 +221,13 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     object_size = 4e7
     num_tasks = 100
     for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus,
-            memory=(num_cpus - 2) * object_size,
-            object_store_memory=(num_cpus - 2) * object_size)
-    cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        memory=(num_tasks + 1) * object_size,
-        object_store_memory=(num_tasks + 1) * object_size)
+        cluster.add_node(num_cpus=num_cpus,
+                         memory=(num_cpus - 2) * object_size,
+                         object_store_memory=(num_cpus - 2) * object_size)
+    cluster.add_node(num_cpus=0,
+                     resources={"custom": 1},
+                     memory=(num_tasks + 1) * object_size,
+                     object_store_memory=(num_tasks + 1) * object_size)
     ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=0, resources={"custom": 1})
@@ -258,27 +254,25 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     ray.get(tasks)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
+@pytest.mark.skipif(platform.system() == "Windows",
+                    reason="Failing on Windows. Multi node.")
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
     cluster = ray_start_cluster
     object_size = 1e8
-    cluster.add_node(
-        num_cpus=1,
-        memory=1e9,
-        object_store_memory=object_size * 2,
-        _system_config={
-            "automatic_object_spilling_enabled": False,
-            "locality_aware_leasing_enabled": False,
-        })
+    cluster.add_node(num_cpus=1,
+                     memory=1e9,
+                     object_store_memory=object_size * 2,
+                     _system_config={
+                         "automatic_object_spilling_enabled": False,
+                         "locality_aware_leasing_enabled": False,
+                     })
     ray.init(address=cluster.address)
-    cluster.add_node(
-        num_cpus=1,
-        resources={"custom": 1},
-        memory=1e9,
-        object_store_memory=object_size * 2)
+    cluster.add_node(num_cpus=1,
+                     resources={"custom": 1},
+                     memory=1e9,
+                     object_store_memory=object_size * 2)
 
     @ray.remote(resources={"custom": 1})
     def create_remote_object():
@@ -341,13 +335,12 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
 
     # Disable worker caching so worker leases are not reused, and disable
     # inlining of return objects so return objects are always put into Plasma.
-    cluster.add_node(
-        num_cpus=1,
-        _system_config={
-            "worker_lease_timeout_milliseconds": 0,
-            "max_direct_call_object_size": 0,
-            "ownership_based_object_directory_enabled": True,
-        })
+    cluster.add_node(num_cpus=1,
+                     _system_config={
+                         "worker_lease_timeout_milliseconds": 0,
+                         "max_direct_call_object_size": 0,
+                         "ownership_based_object_directory_enabled": True,
+                     })
     # Use a custom resource for pinning tasks to a node.
     cluster.add_node(num_cpus=1, resources={"pin_worker1": 1})
     worker2 = cluster.add_node(num_cpus=1, resources={"pin_worker2": 1})
@@ -383,13 +376,12 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # Disable worker caching so worker leases are not reused, and disable
     # inlining of return objects so return objects are always put into Plasma.
-    cluster.add_node(
-        num_cpus=1,
-        resources={"pin_head": 1},
-        _system_config={
-            "worker_lease_timeout_milliseconds": 0,
-            "max_direct_call_object_size": 0,
-        })
+    cluster.add_node(num_cpus=1,
+                     resources={"pin_head": 1},
+                     _system_config={
+                         "worker_lease_timeout_milliseconds": 0,
+                         "max_direct_call_object_size": 0,
+                     })
     # Use a custom resource for pinning tasks to a node.
     worker_node = cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
     ray.init(address=cluster.address)

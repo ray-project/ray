@@ -115,11 +115,10 @@ class TuneInterruptionTest(unittest.TestCase):
                 for i in range(7):
                     tune.report(val=i)
 
-            tune.run(
-                _train,
-                local_dir=local_dir,
-                name="interrupt",
-                callbacks=[SteppingCallback()])
+            tune.run(_train,
+                     local_dir=local_dir,
+                     name="interrupt",
+                     callbacks=[SteppingCallback()])
 
         local_dir = tempfile.mkdtemp()
         process = multiprocessing.Process(target=_run, args=(local_dir, ))
@@ -161,7 +160,6 @@ class TuneInterruptionTest(unittest.TestCase):
 class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
-
         def __init__(self, steps=20):
             self._step = 0
             self.steps = steps
@@ -175,7 +173,6 @@ class TuneFailResumeGridTest(unittest.TestCase):
 
     class CheckStateCallback(Callback):
         """Checks state for the experiment initialization."""
-
         def __init__(self, expected_trials=20):
             self.expected_trials = expected_trials
             self._checked = False
@@ -208,28 +205,25 @@ class TuneFailResumeGridTest(unittest.TestCase):
     def testFailResumeGridSearch(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
-        config = dict(
-            num_samples=3,
-            fail_fast=True,
-            config={
-                "test": tune.grid_search([1, 2, 3]),
-                "test2": tune.grid_search([1, 2, 3]),
-            },
-            stop={"training_iteration": 2},
-            local_dir=self.logdir,
-            verbose=1)
+        config = dict(num_samples=3,
+                      fail_fast=True,
+                      config={
+                          "test": tune.grid_search([1, 2, 3]),
+                          "test2": tune.grid_search([1, 2, 3]),
+                      },
+                      stop={"training_iteration": 2},
+                      local_dir=self.logdir,
+                      verbose=1)
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback()],
-                **config)
+            tune.run("trainable",
+                     callbacks=[self.FailureInjectorCallback()],
+                     **config)
 
-        analysis = tune.run(
-            "trainable",
-            resume=True,
-            callbacks=[self.CheckStateCallback()],
-            **config)
+        analysis = tune.run("trainable",
+                            resume=True,
+                            callbacks=[self.CheckStateCallback()],
+                            **config)
         assert len(analysis.trials) == 27
         test_counter = Counter([t.config["test"] for t in analysis.trials])
         assert all(v == 9 for v in test_counter.values())
@@ -259,11 +253,10 @@ class TuneFailResumeGridTest(unittest.TestCase):
             local_dir=self.logdir,
             verbose=1)
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback(5)],
-                search_alg=search_alg,
-                **config)
+            tune.run("trainable",
+                     callbacks=[self.FailureInjectorCallback(5)],
+                     search_alg=search_alg,
+                     **config)
 
         analysis = tune.run(
             "trainable",
@@ -303,11 +296,10 @@ class TuneFailResumeGridTest(unittest.TestCase):
             verbose=1)
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                "trainable",
-                callbacks=[self.FailureInjectorCallback(15)],
-                search_alg=search_alg,
-                **config)
+            tune.run("trainable",
+                     callbacks=[self.FailureInjectorCallback(15)],
+                     search_alg=search_alg,
+                     **config)
 
         analysis = tune.run(
             "trainable",
@@ -329,21 +321,19 @@ class TuneFailResumeGridTest(unittest.TestCase):
         experiments = []
         for i in range(3):
             experiments.append(
-                tune.Experiment(
-                    run=MyTrainableClass,
-                    name="trainable",
-                    num_samples=2,
-                    config={
-                        "test": tune.grid_search([1, 2, 3]),
-                    },
-                    stop={"training_iteration": 1},
-                    local_dir=self.logdir))
+                tune.Experiment(run=MyTrainableClass,
+                                name="trainable",
+                                num_samples=2,
+                                config={
+                                    "test": tune.grid_search([1, 2, 3]),
+                                },
+                                stop={"training_iteration": 1},
+                                local_dir=self.logdir))
 
         with self.assertRaises(RuntimeError):
-            tune.run(
-                experiments,
-                callbacks=[self.FailureInjectorCallback(10)],
-                fail_fast=True)
+            tune.run(experiments,
+                     callbacks=[self.FailureInjectorCallback(10)],
+                     fail_fast=True)
 
         analysis = tune.run(
             experiments,
@@ -353,26 +343,24 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert len(analysis.trials) == 18
 
     def testWarningLargeGrid(self):
-        config = dict(
-            num_samples=3,
-            fail_fast=True,
-            config={
-                "test": tune.grid_search(list(range(20))),
-                "test2": tune.grid_search(list(range(20))),
-                "test3": tune.grid_search(list(range(20))),
-                "test4": tune.grid_search(list(range(20))),
-                "test5": tune.grid_search(list(range(20))),
-            },
-            stop={"training_iteration": 2},
-            local_dir=self.logdir,
-            verbose=1)
+        config = dict(num_samples=3,
+                      fail_fast=True,
+                      config={
+                          "test": tune.grid_search(list(range(20))),
+                          "test2": tune.grid_search(list(range(20))),
+                          "test3": tune.grid_search(list(range(20))),
+                          "test4": tune.grid_search(list(range(20))),
+                          "test5": tune.grid_search(list(range(20))),
+                      },
+                      stop={"training_iteration": 2},
+                      local_dir=self.logdir,
+                      verbose=1)
         with self.assertWarnsRegex(UserWarning,
                                    "exceeds the serialization threshold"):
             with self.assertRaises(RuntimeError):
-                tune.run(
-                    "trainable",
-                    callbacks=[self.FailureInjectorCallback(10)],
-                    **config)
+                tune.run("trainable",
+                         callbacks=[self.FailureInjectorCallback(10)],
+                         **config)
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -437,13 +425,12 @@ class AbstractWarmStartTest:
         np.random.seed(162)
         search_alg, cost = self.set_basic_conf()
         search_alg = ConcurrencyLimiter(search_alg, 1)
-        results_exp_1 = tune.run(
-            cost,
-            num_samples=5,
-            search_alg=search_alg,
-            verbose=0,
-            name=self.experiment_name,
-            local_dir=self.tmpdir)
+        results_exp_1 = tune.run(cost,
+                                 num_samples=5,
+                                 search_alg=search_alg,
+                                 verbose=0,
+                                 name=self.experiment_name,
+                                 local_dir=self.tmpdir)
         checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
         search_alg.save(checkpoint_path)
         return results_exp_1, np.random.get_state(), checkpoint_path
@@ -453,13 +440,12 @@ class AbstractWarmStartTest:
         search_alg = ConcurrencyLimiter(search_alg, 1)
         search_alg.restore_from_dir(
             os.path.join(self.tmpdir, self.experiment_name))
-        results = tune.run(
-            cost,
-            num_samples=5,
-            search_alg=search_alg,
-            verbose=0,
-            name=self.experiment_name,
-            local_dir=self.tmpdir)
+        results = tune.run(cost,
+                           num_samples=5,
+                           search_alg=search_alg,
+                           verbose=0,
+                           name=self.experiment_name,
+                           local_dir=self.tmpdir)
         return results
 
     def run_explicit_restore(self, random_state, checkpoint_path):
@@ -473,8 +459,10 @@ class AbstractWarmStartTest:
         np.random.seed(162)
         search_alg3, cost = self.set_basic_conf()
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
-        return tune.run(
-            cost, num_samples=10, search_alg=search_alg3, verbose=0)
+        return tune.run(cost,
+                        num_samples=10,
+                        search_alg=search_alg3,
+                        verbose=0)
 
     def testWarmStart(self):
         results_exp_1, r_state, checkpoint_path = self.run_part_from_scratch()
@@ -526,8 +514,10 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
-        search_alg = BayesOptSearch(
-            space, metric="loss", mode="min", analysis=analysis)
+        search_alg = BayesOptSearch(space,
+                                    metric="loss",
+                                    mode="min",
+                                    analysis=analysis)
         return search_alg, cost
 
     def testBootStrapAnalysis(self):
@@ -587,8 +577,10 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
-        search_alg = OptunaSearch(
-            space, sampler=TPESampler(seed=10), metric="loss", mode="min")
+        search_alg = OptunaSearch(space,
+                                  sampler=TPESampler(seed=10),
+                                  metric="loss",
+                                  mode="min")
         return search_alg, cost
 
 
@@ -707,13 +699,12 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             },
         ]
 
-        search_alg = SigOptSearch(
-            space,
-            name="SigOpt Example Experiment",
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            points_to_evaluate=points)
+        search_alg = SigOptSearch(space,
+                                  name="SigOpt Example Experiment",
+                                  max_concurrent=1,
+                                  metric="loss",
+                                  mode="min",
+                                  points_to_evaluate=points)
         return search_alg, cost
 
     def testWarmStart(self):
@@ -771,8 +762,10 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         def cost(param, reporter):
             reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
 
-        search_alg = HEBOSearch(
-            space=space, metric="loss", mode="min", random_state_seed=5)
+        search_alg = HEBOSearch(space=space,
+                                metric="loss",
+                                mode="min",
+                                random_state_seed=5)
 
         return search_alg, cost
 

@@ -18,7 +18,6 @@ class RayAPIStub:
     _client_worker. As parts of the ray API are covered, they are piped through
     here or on the client worker API.
     """
-
     def __init__(self):
         from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
@@ -63,11 +62,10 @@ class RayAPIStub:
             ray._private.client_mode_hook._explicitly_enable_client_mode()
 
         try:
-            self.client_worker = Worker(
-                conn_str,
-                secure=secure,
-                metadata=metadata,
-                connection_retries=connection_retries)
+            self.client_worker = Worker(conn_str,
+                                        secure=secure,
+                                        metadata=metadata,
+                                        connection_retries=connection_retries)
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()

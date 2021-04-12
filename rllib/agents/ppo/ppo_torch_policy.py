@@ -49,10 +49,9 @@ def ppo_surrogate_loss(
     if state:
         B = len(train_batch["seq_lens"])
         max_seq_len = logits.shape[0] // B
-        mask = sequence_mask(
-            train_batch["seq_lens"],
-            max_seq_len,
-            time_major=model.is_time_major())
+        mask = sequence_mask(train_batch["seq_lens"],
+                             max_seq_len,
+                             time_major=model.is_time_major())
         mask = torch.reshape(mask, [-1])
         num_valid = torch.sum(mask)
 
@@ -78,9 +77,9 @@ def ppo_surrogate_loss(
 
     surrogate_loss = torch.min(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
-            logp_ratio, 1 - policy.config["clip_param"],
-            1 + policy.config["clip_param"]))
+        train_batch[Postprocessing.ADVANTAGES] *
+        torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
+                    1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
     if policy.config["use_gae"]:
@@ -95,10 +94,11 @@ def ppo_surrogate_loss(
             vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+        total_loss = reduce_mean_valid(-surrogate_loss +
+                                       policy.kl_coeff * action_kl +
+                                       policy.config["vf_loss_coeff"] *
+                                       vf_loss -
+                                       policy.entropy_coeff * curr_entropy)
     else:
         mean_vf_loss = 0.0
         total_loss = reduce_mean_valid(-surrogate_loss +
@@ -178,7 +178,6 @@ class KLCoeffMixin:
     coefficient after each learning step based on `config.kl_target` and
     the measured KL value (from the train_batch).
     """
-
     def __init__(self, config):
         # The current KL value (as python float).
         self.kl_coeff = config["kl_coeff"]
@@ -205,7 +204,6 @@ class ValueNetworkMixin:
     the result of the most recent forward pass is being used to return an
     already calculated tensor.
     """
-
     def __init__(self, obs_space, action_space, config):
         # When doing GAE, we need the value function estimate on the
         # observation.

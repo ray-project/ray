@@ -41,12 +41,12 @@ class ServeStarletteEndpoint:
                 methods=methods)
         app = starlette.applications.Starlette(routes=[route])
     """
-
     def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
         self.endpoint_tag = endpoint_tag
         self.path_prefix = path_prefix
-        self.handle = serve.get_handle(
-            self.endpoint_tag, sync=False, missing_ok=True)
+        self.handle = serve.get_handle(self.endpoint_tag,
+                                       sync=False,
+                                       missing_ok=True)
 
     async def __call__(self, scope, receive, send):
         http_body_bytes = await self.receive_http_body(scope, receive, send)
@@ -95,8 +95,8 @@ class ServeStarletteEndpoint:
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
-            await Response(
-                error_message, status_code=500).send(scope, receive, send)
+            await Response(error_message,
+                           status_code=500).send(scope, receive, send)
         elif isinstance(result, starlette.responses.Response):
             await result(scope, receive, send)
         else:
@@ -121,7 +121,6 @@ class HTTPProxy:
     >>> import uvicorn
     >>> uvicorn.run(HTTPProxy(controller_name))
     """
-
     def __init__(self, controller_name: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
@@ -167,12 +166,13 @@ class HTTPProxy:
         # Routes are sorted in order of descending length to enable longest
         # prefix matching (Starlette evaluates the routes in order).
         routes = [
-            starlette.routing.Route(
-                route,
-                ServeStarletteEndpoint(endpoint_tag,
-                                       _strip_wildcard_suffix(route)),
-                methods=methods) for route, (endpoint_tag, methods) in sorted(
-                    route_table.items(), key=lambda x: len(x[0]), reverse=True)
+            starlette.routing.Route(route,
+                                    ServeStarletteEndpoint(
+                                        endpoint_tag,
+                                        _strip_wildcard_suffix(route)),
+                                    methods=methods)
+            for route, (endpoint_tag, methods) in sorted(
+                route_table.items(), key=lambda x: len(x[0]), reverse=True)
             if not self._is_headless(route)
         ]
 
@@ -220,12 +220,13 @@ class HTTPProxy:
 
 @ray.remote(num_cpus=0)
 class HTTPProxyActor:
-    def __init__(self,
-                 host: str,
-                 port: int,
-                 controller_name: str,
-                 http_middlewares: List[
-                     "starlette.middleware.Middleware"] = []):  # noqa: F821
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        controller_name: str,
+        http_middlewares: List["starlette.middleware.Middleware"] = []
+    ):  # noqa: F821
         self.host = host
         self.port = port
 
@@ -283,12 +284,11 @@ Please make sure your http-host and http-port are specified correctly.""")
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
-        config = uvicorn.Config(
-            self.wrapped_app,
-            host=self.host,
-            port=self.port,
-            lifespan="off",
-            access_log=False)
+        config = uvicorn.Config(self.wrapped_app,
+                                host=self.host,
+                                port=self.port,
+                                lifespan="off",
+                                access_log=False)
         server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in

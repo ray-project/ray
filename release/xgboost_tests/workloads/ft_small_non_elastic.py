@@ -80,12 +80,11 @@ if __name__ == "__main__":
 
     failure_state = FailureState.remote()
 
-    ray_params = RayParams(
-        elastic_training=False,
-        max_actor_restarts=2,
-        num_actors=4,
-        cpus_per_actor=4,
-        gpus_per_actor=0)
+    ray_params = RayParams(elastic_training=False,
+                           max_actor_restarts=2,
+                           num_actors=4,
+                           cpus_per_actor=4,
+                           gpus_per_actor=0)
 
     _, additional_results, _ = train_ray(
         path="/data/classification.parquet",
@@ -98,10 +97,14 @@ if __name__ == "__main__":
         xgboost_params=None,
         callbacks=[
             TrackingCallback(),
-            FailureInjection(
-                id="first_fail", state=failure_state, ranks=[2], iteration=14),
-            FailureInjection(
-                id="second_fail", state=failure_state, ranks=[0], iteration=34)
+            FailureInjection(id="first_fail",
+                             state=failure_state,
+                             ranks=[2],
+                             iteration=14),
+            FailureInjection(id="second_fail",
+                             state=failure_state,
+                             ranks=[0],
+                             iteration=34)
         ])
 
     actor_1_world_size = set(additional_results["callback_returns"][1])

@@ -68,8 +68,9 @@ def wait_for_job(job_pod):
     print(">>>Checking job logs.")
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
     try:
-        out = subprocess.check_output(
-            cmd, shell=True, stderr=subprocess.STDOUT).decode()
+        out = subprocess.check_output(cmd,
+                                      shell=True,
+                                      stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as e:
         print(">>>Failed to check job logs.")
         print(e.output.decode())
@@ -101,9 +102,8 @@ class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
 
         # Validate terminate_node error handling
-        provider = KubernetesNodeProvider({
-            "namespace": NAMESPACE
-        }, "default_cluster_name")
+        provider = KubernetesNodeProvider({"namespace": NAMESPACE},
+                                          "default_cluster_name")
         # 404 caught, no error
         provider.terminate_node("no-such-node")
 
@@ -133,10 +133,11 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Fill image fields
             podTypes = example_cluster_config["spec"]["podTypes"]
             podTypes2 = example_cluster2_config["spec"]["podTypes"]
-            pod_specs = ([operator_config[-1]["spec"]] + [
-                job_config["spec"]["template"]["spec"]
-            ] + [podType["podConfig"]["spec"] for podType in podTypes
-                 ] + [podType["podConfig"]["spec"] for podType in podTypes2])
+            pod_specs = (
+                [operator_config[-1]["spec"]] +
+                [job_config["spec"]["template"]["spec"]] +
+                [podType["podConfig"]["spec"] for podType in podTypes] +
+                [podType["podConfig"]["spec"] for podType in podTypes2])
             for pod_spec in pod_specs:
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY

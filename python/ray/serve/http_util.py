@@ -53,7 +53,6 @@ class Response:
 
     >>> await Response({"k": "v"}).send(scope, receive, send)
     """
-
     def __init__(self, content=None, status_code=200):
         """Construct a HTTP Response based on input type.
 
@@ -76,8 +75,8 @@ class Response:
         else:
             # Delayed import since utils depends on http_util
             from ray.serve.utils import ServeEncoder
-            self.body = json.dumps(
-                content, cls=ServeEncoder, indent=2).encode()
+            self.body = json.dumps(content, cls=ServeEncoder,
+                                   indent=2).encode()
             self.set_content_type("json")
 
     def set_content_type(self, content_type):

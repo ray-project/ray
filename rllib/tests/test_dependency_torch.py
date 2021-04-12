@@ -15,11 +15,11 @@ def test_dependency_torch():
         "Torch initially present, when it shouldn't."
 
     # note: no ray.init(), to test it works without Ray
-    trainer = A2CTrainer(
-        env="CartPole-v0", config={
-            "framework": "tf",
-            "num_workers": 0
-        })
+    trainer = A2CTrainer(env="CartPole-v0",
+                         config={
+                             "framework": "tf",
+                             "num_workers": 0
+                         })
     trainer.train()
 
     assert "torch" not in sys.modules, "Torch should not be imported"

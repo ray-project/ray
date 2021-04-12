@@ -147,12 +147,11 @@ def test_fastapi_features(serve_instance):
 
     @app.exception_handler(ValueError)
     async def custom_handler(_: Request, exc: ValueError):
-        return JSONResponse(
-            status_code=500,
-            content={
-                "custom_error": "true",
-                "message": str(exc)
-            })
+        return JSONResponse(status_code=500,
+                            content={
+                                "custom_error": "true",
+                                "message": str(exc)
+                            })
 
     def run_background(background_tasks: BackgroundTasks):
         path = tempfile.mktemp()
@@ -237,20 +236,19 @@ def test_fastapi_features(serve_instance):
     resp = requests.get(f"{url}/path_arg")
     assert resp.status_code == 422  # Malformed input
 
-    resp = requests.get(
-        f"{url}/path_arg",
-        json={
-            "name": "serve",
-            "price": 12,
-            "nests": {
-                "val": 1
-            }
-        },
-        params={
-            "query_arg": "query_arg",
-            "query_arg_valid": "at-least-three-chars",
-            "q": "common_arg",
-        })
+    resp = requests.get(f"{url}/path_arg",
+                        json={
+                            "name": "serve",
+                            "price": 12,
+                            "nests": {
+                                "val": 1
+                            }
+                        },
+                        params={
+                            "query_arg": "query_arg",
+                            "query_arg_valid": "at-least-three-chars",
+                            "q": "common_arg",
+                        })
     assert resp.status_code == 201, resp.text
     assert resp.json()["ok"]
     assert resp.json()["vals"] == [
@@ -270,33 +268,31 @@ def test_fastapi_features(serve_instance):
     ]
     assert open(resp.json()["file_path"]).read() == "hello"
 
-    resp = requests.get(
-        f"{url}/path_arg",
-        json={
-            "name": "serve",
-            "price": 12,
-            "nests": {
-                "val": 1
-            }
-        },
-        params={
-            "query_arg": "query_arg",
-            "query_arg_valid": "at-least-three-chars",
-            "q": "common_arg",
-            "do_error": "true"
-        })
+    resp = requests.get(f"{url}/path_arg",
+                        json={
+                            "name": "serve",
+                            "price": 12,
+                            "nests": {
+                                "val": 1
+                            }
+                        },
+                        params={
+                            "query_arg": "query_arg",
+                            "query_arg_valid": "at-least-three-chars",
+                            "q": "common_arg",
+                            "do_error": "true"
+                        })
     assert resp.status_code == 500
     assert resp.json()["custom_error"] == "true"
 
     resp = requests.get(f"{url}/prefix/subpath")
     assert resp.status_code == 200
 
-    resp = requests.get(
-        f"{url}/docs",
-        headers={
-            "Access-Control-Request-Method": "GET",
-            "Origin": "https://googlebot.com"
-        })
+    resp = requests.get(f"{url}/docs",
+                        headers={
+                            "Access-Control-Request-Method": "GET",
+                            "Origin": "https://googlebot.com"
+                        })
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 

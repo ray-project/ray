@@ -39,17 +39,16 @@ if __name__ == "__main__":
 
     ray.init(address="auto")
 
-    ray_params = RayParams(
-        elastic_training=False,
-        max_actor_restarts=2,
-        num_actors=4,
-        cpus_per_actor=1,
-        gpus_per_actor=0)
+    ray_params = RayParams(elastic_training=False,
+                           max_actor_restarts=2,
+                           num_actors=4,
+                           cpus_per_actor=1,
+                           gpus_per_actor=0)
 
-    analysis = tune.run(
-        tune.with_parameters(train_wrapper, ray_params=ray_params),
-        config=search_space,
-        num_samples=4,
-        resources_per_trial=ray_params.get_tune_resources())
+    analysis = tune.run(tune.with_parameters(train_wrapper,
+                                             ray_params=ray_params),
+                        config=search_space,
+                        num_samples=4,
+                        resources_per_trial=ray_params.get_tune_resources())
 
     print("PASSED.")

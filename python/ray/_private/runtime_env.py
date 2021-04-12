@@ -58,7 +58,6 @@ class RuntimeEnvDict:
             Examples:
                 {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
     """
-
     def __init__(self, runtime_env_json: dict):
         if "conda" in runtime_env_json:
             self.conda = runtime_env_json["conda"]

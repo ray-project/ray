@@ -40,8 +40,8 @@ class RayOutOfMemoryError(Exception):
         for pid in pids:
             try:
                 proc = psutil.Process(pid)
-                proc_stats.append((get_rss(proc.memory_info()), pid,
-                                   proc.cmdline()))
+                proc_stats.append(
+                    (get_rss(proc.memory_info()), pid, proc.cmdline()))
             except psutil.NoSuchProcess:
                 # We should skip the process that has exited. Refer this
                 # issue for more detail:
@@ -52,17 +52,18 @@ class RayOutOfMemoryError(Exception):
             proc_str += "\n{}\t{}GiB\t{}".format(
                 pid, round(rss / (1024**3), 2),
                 " ".join(cmdline)[:100].strip())
-        return ("More than {}% of the memory on ".format(int(
-            100 * threshold)) + "node {} is used ({} / {} GB). ".format(
+        return (
+            "More than {}% of the memory on ".format(int(100 * threshold)) +
+            "node {} is used ({} / {} GB). ".format(
                 platform.node(), round(used_gb, 2), round(total_gb, 2)) +
-                f"The top 10 memory consumers are:\n\n{proc_str}" +
-                "\n\nIn addition, up to {} GiB of shared memory is ".format(
-                    round(get_shared(psutil.virtual_memory()) / (1024**3), 2))
-                + "currently being used by the Ray object store.\n---\n"
-                "--- Tip: Use the `ray memory` command to list active "
-                "objects in the cluster.\n"
-                "--- To disable OOM exceptions, set "
-                "RAY_DISABLE_MEMORY_MONITOR=1.\n---\n")
+            f"The top 10 memory consumers are:\n\n{proc_str}" +
+            "\n\nIn addition, up to {} GiB of shared memory is ".format(
+                round(get_shared(psutil.virtual_memory()) / (1024**3), 2)) +
+            "currently being used by the Ray object store.\n---\n"
+            "--- Tip: Use the `ray memory` command to list active "
+            "objects in the cluster.\n"
+            "--- To disable OOM exceptions, set "
+            "RAY_DISABLE_MEMORY_MONITOR=1.\n---\n")
 
 
 class MemoryMonitor:
@@ -78,7 +79,6 @@ class MemoryMonitor:
     The environment variable `RAY_MEMORY_MONITOR_ERROR_THRESHOLD` can be used
     to overwrite the default error_threshold setting.
     """
-
     def __init__(self, error_threshold=0.95, check_interval=1):
         # Note: it takes ~50us to check the memory usage through psutil, so
         # throttle this check at most once a second or so.

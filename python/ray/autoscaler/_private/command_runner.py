@@ -34,8 +34,8 @@ logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
 HASH_MAX_LENGTH = 10
-KUBECTL_RSYNC = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "_kubernetes/kubectl-rsync.sh")
+KUBECTL_RSYNC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "_kubernetes/kubectl-rsync.sh")
 MAX_HOME_RETRIES = 3
 HOME_RETRY_DELAY_S = 5
 
@@ -79,8 +79,8 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd: str,
-                                environment_variables: Dict[str, object]):
+def _with_environment_variables(cmd: str, environment_variables: Dict[str,
+                                                                      object]):
     """Prepend environment variables to a shell command.
 
     Args:
@@ -118,16 +118,16 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self._home_cached = None
 
     def run(
-            self,
-            cmd=None,
-            timeout=120,
-            exit_on_fail=False,
-            port_forward=None,
-            with_output=False,
-            environment_variables: Dict[str, object] = None,
-            run_env="auto",  # Unused argument.
-            ssh_options_override_ssh_key="",  # Unused argument.
-            shutdown_after_run=False,
+        self,
+        cmd=None,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",  # Unused argument.
+        ssh_options_override_ssh_key="",  # Unused argument.
+        shutdown_after_run=False,
     ):
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
@@ -172,8 +172,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             logger.info(self.log_prefix + "Running {}".format(final_cmd))
             try:
                 if with_output:
-                    return self.process_runner.check_output(
-                        final_cmd, shell=True)
+                    return self.process_runner.check_output(final_cmd,
+                                                            shell=True)
                 else:
                     self.process_runner.check_call(final_cmd, shell=True)
             except subprocess.CalledProcessError:
@@ -313,8 +313,8 @@ class SSHOptions:
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items()
-                        if v is not None) for x in y
+                        for k, v in self.arg_dict.items() if v is not None)
+            for x in y
         ]
 
 
@@ -339,10 +339,9 @@ class SSHCommandRunner(CommandRunnerInterface):
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
         self.ssh_proxy_command = auth_config.get("ssh_proxy_command", None)
-        self.ssh_options = SSHOptions(
-            self.ssh_private_key,
-            self.ssh_control_path,
-            ProxyCommand=self.ssh_proxy_command)
+        self.ssh_options = SSHOptions(self.ssh_private_key,
+                                      self.ssh_control_path,
+                                      ProxyCommand=self.ssh_proxy_command)
 
     def _get_node_ip(self):
         if self.use_internal_ip:
@@ -435,11 +434,10 @@ class SSHCommandRunner(CommandRunnerInterface):
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
-                raise ProcessRunnerError(
-                    "Command failed",
-                    "ssh_command_failed",
-                    code=e.returncode,
-                    command=joined_cmd)
+                raise ProcessRunnerError("Command failed",
+                                         "ssh_command_failed",
+                                         code=e.returncode,
+                                         command=joined_cmd)
 
             if exit_on_fail:
                 raise click.ClickException(
@@ -491,9 +489,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                         cf.bold(local), cf.bold(remote))  # todo: msg
                     ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
-        final_cmd = ssh + ssh_options.to_ssh_options_list(timeout=timeout) + [
-            "{}@{}".format(self.ssh_user, self.ssh_ip)
-        ]
+        final_cmd = ssh + ssh_options.to_ssh_options_list(
+            timeout=timeout) + ["{}@{}".format(self.ssh_user, self.ssh_ip)]
         if cmd:
             if environment_variables:
                 cmd = _with_environment_variables(cmd, environment_variables)
@@ -513,11 +510,15 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                return self._run_helper(
-                    final_cmd, with_output, exit_on_fail, silent=silent)
+                return self._run_helper(final_cmd,
+                                        with_output,
+                                        exit_on_fail,
+                                        silent=silent)
         else:
-            return self._run_helper(
-                final_cmd, with_output, exit_on_fail, silent=silent)
+            return self._run_helper(final_cmd,
+                                    with_output,
+                                    exit_on_fail,
+                                    silent=silent)
 
     def _create_rsync_filter_args(self, options):
         rsync_excludes = options.get("rsync_exclude") or []
@@ -541,8 +542,9 @@ class SSHCommandRunner(CommandRunnerInterface):
         command = ["rsync"]
         command += [
             "--rsh",
-            subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120))
+            subprocess.list2cmdline(["ssh"] +
+                                    self.ssh_options.to_ssh_options_list(
+                                        timeout=120))
         ]
         command += ["-avz"]
         command += self._create_rsync_filter_args(options=options)
@@ -558,8 +560,9 @@ class SSHCommandRunner(CommandRunnerInterface):
         command = ["rsync"]
         command += [
             "--rsh",
-            subprocess.list2cmdline(
-                ["ssh"] + self.ssh_options.to_ssh_options_list(timeout=120))
+            subprocess.list2cmdline(["ssh"] +
+                                    self.ssh_options.to_ssh_options_list(
+                                        timeout=120))
         ]
         command += ["-avz"]
         command += self._create_rsync_filter_args(options=options)
@@ -590,20 +593,20 @@ class DockerCommandRunner(CommandRunnerInterface):
         self.docker_cmd = "podman" if use_podman else "docker"
 
     def run(
-            self,
-            cmd,
-            timeout=120,
-            exit_on_fail=False,
-            port_forward=None,
-            with_output=False,
-            environment_variables: Dict[str, object] = None,
-            run_env="auto",
-            ssh_options_override_ssh_key="",
-            shutdown_after_run=False,
+        self,
+        cmd,
+        timeout=120,
+        exit_on_fail=False,
+        port_forward=None,
+        with_output=False,
+        environment_variables: Dict[str, object] = None,
+        run_env="auto",
+        ssh_options_override_ssh_key="",
+        shutdown_after_run=False,
     ):
         if run_env == "auto":
-            run_env = "host" if (not bool(cmd) or cmd.find(
-                self.docker_cmd) == 0) else self.docker_cmd
+            run_env = "host" if (not bool(cmd) or cmd.find(self.docker_cmd)
+                                 == 0) else self.docker_cmd
 
         if environment_variables:
             cmd = _with_environment_variables(cmd, environment_variables)
@@ -612,11 +615,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             cmd = self._docker_expand_user(cmd, any_char=True)
             if is_using_login_shells():
                 cmd = " ".join(_with_interactive(cmd))
-            cmd = with_docker_exec(
-                [cmd],
-                container_name=self.container_name,
-                with_interactive=is_using_login_shells(),
-                docker_cmd=self.docker_cmd)[0]
+            cmd = with_docker_exec([cmd],
+                                   container_name=self.container_name,
+                                   with_interactive=is_using_login_shells(),
+                                   docker_cmd=self.docker_cmd)[0]
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
@@ -643,19 +645,19 @@ class DockerCommandRunner(CommandRunnerInterface):
             f"{self.ssh_command_runner.ssh_user} {host_mount_location}",
             silent=is_rsync_silent())
 
-        self.ssh_command_runner.run_rsync_up(
-            source, host_destination, options=options)
+        self.ssh_command_runner.run_rsync_up(source,
+                                             host_destination,
+                                             options=options)
         if self._check_container_status() and not options.get(
                 "docker_mount_if_possible", False):
             if os.path.isdir(source):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
-            self.ssh_command_runner.run(
-                "{} cp {} {}:{}".format(self.docker_cmd, host_destination,
-                                        self.container_name,
-                                        self._docker_expand_user(target)),
-                silent=is_rsync_silent())
+            self.ssh_command_runner.run("{} cp {} {}:{}".format(
+                self.docker_cmd, host_destination, self.container_name,
+                self._docker_expand_user(target)),
+                                        silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
@@ -672,13 +674,13 @@ class DockerCommandRunner(CommandRunnerInterface):
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
-            self.ssh_command_runner.run(
-                "{} cp {}:{} {}".format(self.docker_cmd, self.container_name,
-                                        self._docker_expand_user(source),
-                                        host_source),
-                silent=is_rsync_silent())
-        self.ssh_command_runner.run_rsync_down(
-            host_source, target, options=options)
+            self.ssh_command_runner.run("{} cp {}:{} {}".format(
+                self.docker_cmd, self.container_name,
+                self._docker_expand_user(source), host_source),
+                                        silent=is_rsync_silent())
+        self.ssh_command_runner.run_rsync_down(host_source,
+                                               target,
+                                               options=options)
 
     def remote_shell_command_str(self):
         inner_str = self.ssh_command_runner.remote_shell_command_str().replace(
@@ -740,19 +742,19 @@ class DockerCommandRunner(CommandRunnerInterface):
     def _check_if_container_restart_is_needed(
             self, image: str, cleaned_bind_mounts: Dict[str, str]) -> bool:
         re_init_required = False
-        running_image = self.run(
-            check_docker_image(self.container_name, self.docker_cmd),
-            with_output=True,
-            run_env="host").decode("utf-8").strip()
+        running_image = self.run(check_docker_image(self.container_name,
+                                                    self.docker_cmd),
+                                 with_output=True,
+                                 run_env="host").decode("utf-8").strip()
         if running_image != image:
             cli_logger.error(
                 "A container with name {} is running image {} instead " +
                 "of {} (which was provided in the YAML)", self.container_name,
                 running_image, image)
-        mounts = self.run(
-            check_bind_mounts_cmd(self.container_name, self.docker_cmd),
-            with_output=True,
-            run_env="host").decode("utf-8").strip()
+        mounts = self.run(check_bind_mounts_cmd(self.container_name,
+                                                self.docker_cmd),
+                          with_output=True,
+                          run_env="host").decode("utf-8").strip()
         try:
             active_mounts = json.loads(mounts)
             active_remote_mounts = {
@@ -764,8 +766,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self._docker_expand_user(remote).strip("/")
                 for remote in cleaned_bind_mounts.keys()
             }
-            unfulfilled_mounts = (
-                requested_remote_mounts - active_remote_mounts)
+            unfulfilled_mounts = (requested_remote_mounts -
+                                  active_remote_mounts)
             if unfulfilled_mounts:
                 re_init_required = True
                 cli_logger.warning(
@@ -792,9 +794,8 @@ class DockerCommandRunner(CommandRunnerInterface):
         if self.docker_config.get("pull_before_run", True):
             assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
-            self.run(
-                "{} pull {}".format(self.docker_cmd, specific_image),
-                run_env="host")
+            self.run("{} pull {}".format(self.docker_cmd, specific_image),
+                     run_env="host")
         else:
 
             self.run(f"{self.docker_cmd} image inspect {specific_image} "
@@ -815,9 +816,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             requires_re_init = self._check_if_container_restart_is_needed(
                 specific_image, cleaned_bind_mounts)
             if requires_re_init:
-                self.run(
-                    f"{self.docker_cmd} stop {self.container_name}",
-                    run_env="host")
+                self.run(f"{self.docker_cmd} stop {self.container_name}",
+                         run_env="host")
 
         if (not container_running) or requires_re_init:
             # Get home directory

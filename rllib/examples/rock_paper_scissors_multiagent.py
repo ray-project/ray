@@ -54,7 +54,6 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     can perform better is since it can distinguish between the always_same vs
     beat_last heuristics.
     """
-
     def select_policy(agent_id):
         if agent_id == "player1":
             return "learned"
@@ -111,7 +110,6 @@ def run_with_custom_entropy_loss(args, stop):
     """Example of customizing the loss function of an existing policy.
 
     This performs about the same as the default loss does."""
-
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
         logits, _ = model.from_batch(train_batch)
         action_dist = dist_class(logits, model)

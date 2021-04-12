@@ -44,12 +44,11 @@ class Query:
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
-
     def __init__(
-            self,
-            controller_handle,
-            backend_tag,
-            event_loop: asyncio.AbstractEventLoop,
+        self,
+        controller_handle,
+        backend_tag,
+        event_loop: asyncio.AbstractEventLoop,
     ):
         self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
@@ -75,9 +74,8 @@ class ReplicaSet:
                 "The current number of queries to this backend waiting"
                 " to be assigned to a replica."),
             tag_keys=("backend", "endpoint"))
-        self.num_queued_queries_gauge.set_default_tags({
-            "backend": self.backend_tag
-        })
+        self.num_queued_queries_gauge.set_default_tags(
+            {"backend": self.backend_tag})
 
         self.long_poll_client = LongPollClient(
             controller_handle,
@@ -156,8 +154,8 @@ class ReplicaSet:
         """
         endpoint = query.metadata.endpoint
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint})
+        self.num_queued_queries_gauge.set(self.num_queued_queries,
+                                          tags={"endpoint": endpoint})
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug("Failed to assign a replica for "
@@ -170,26 +168,26 @@ class ReplicaSet:
             if num_finished == 0:
                 logger.debug(
                     "All replicas are busy, waiting for a free replica.")
-                await asyncio.wait(
-                    self._all_query_refs + [self.config_updated_event.wait()],
-                    return_when=asyncio.FIRST_COMPLETED)
+                await asyncio.wait(self._all_query_refs +
+                                   [self.config_updated_event.wait()],
+                                   return_when=asyncio.FIRST_COMPLETED)
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
         self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries, tags={"endpoint": endpoint})
+        self.num_queued_queries_gauge.set(self.num_queued_queries,
+                                          tags={"endpoint": endpoint})
         return assigned_ref
 
 
 class EndpointRouter:
     def __init__(
-            self,
-            controller_handle: ActorHandle,
-            endpoint_tag: EndpointTag,
-            loop: asyncio.BaseEventLoop = None,
+        self,
+        controller_handle: ActorHandle,
+        endpoint_tag: EndpointTag,
+        loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: choose backend, and assign replica.
 
@@ -241,10 +239,10 @@ class EndpointRouter:
         return self.backend_replicas[tag]
 
     async def assign_request(
-            self,
-            request_meta: RequestMetadata,
-            *request_args,
-            **request_kwargs,
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
     ):
         """Assign a query and returns an object ref represent the result"""
         endpoint = request_meta.endpoint
@@ -272,8 +270,8 @@ class EndpointRouter:
         result_ref = await self._get_or_create_replica_set(
             chosen_backend).assign_replica(query)
         for backend in shadow_backends:
-            (await self._get_or_create_replica_set(backend)
-             .assign_replica(query))
+            (await
+             self._get_or_create_replica_set(backend).assign_replica(query))
 
         self.num_router_requests.inc(tags={"endpoint": endpoint})
 

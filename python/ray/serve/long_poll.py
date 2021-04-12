@@ -47,12 +47,11 @@ class LongPollClient:
           to post the callback into. The callbacks were called within a cpp
           core worker thread if the event loop is not passed in.
     """
-
     def __init__(
-            self,
-            host_actor,
-            key_listeners: Dict[KeyType, UpdateStateCallable],
-            call_in_event_loop: Optional[AbstractEventLoop] = None,
+        self,
+        host_actor,
+        key_listeners: Dict[KeyType, UpdateStateCallable],
+        call_in_event_loop: Optional[AbstractEventLoop] = None,
     ) -> None:
         assert len(key_listeners) > 0
 
@@ -146,7 +145,6 @@ class LongPollHost:
     up-to-date verison, then the listen_for_change call will only return when
     the object is updated.
     """
-
     def __init__(self):
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
@@ -154,12 +152,12 @@ class LongPollHost:
         # Map object_key -> object
         self.object_snapshots: Dict[KeyType, Any] = dict()
         # Map object_key -> set(asyncio.Event waiting for updates)
-        self.notifier_events: DefaultDict[KeyType, Set[
-            asyncio.Event]] = defaultdict(set)
+        self.notifier_events: DefaultDict[
+            KeyType, Set[asyncio.Event]] = defaultdict(set)
 
     async def listen_for_change(
-            self,
-            keys_to_snapshot_ids: Dict[KeyType, int],
+        self,
+        keys_to_snapshot_ids: Dict[KeyType, int],
     ) -> Dict[KeyType, UpdatedObject]:
         """Listen for changed objects.
 
@@ -208,9 +206,9 @@ class LongPollHost:
         }
 
     def notify_changed(
-            self,
-            object_key: KeyType,
-            updated_object: Any,
+        self,
+        object_key: KeyType,
+        updated_object: Any,
     ):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object

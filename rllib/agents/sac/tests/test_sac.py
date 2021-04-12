@@ -107,8 +107,8 @@ class TestSAC(unittest.TestCase):
                 # Test making the Q-model a custom one for CartPole, otherwise,
                 # use the default model.
                 config["Q_model"]["custom_model"] = "batch_norm{}".format(
-                    "_torch"
-                    if fw == "torch" else "") if env == "CartPole-v0" else None
+                    "_torch" if fw ==
+                    "torch" else "") if env == "CartPole-v0" else None
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
@@ -204,8 +204,9 @@ class TestSAC(unittest.TestCase):
         tf_updated_weights = []
         # History of input batches used.
         tf_inputs = []
-        for fw, sess in framework_iterator(
-                config, frameworks=("tf", "torch"), session=True):
+        for fw, sess in framework_iterator(config,
+                                           frameworks=("tf", "torch"),
+                                           session=True):
             # Generate Trainer and get its default Policy object.
             trainer = sac.SACTrainer(config=config, env=env)
             policy = trainer.get_policy()
@@ -289,8 +290,8 @@ class TestSAC(unittest.TestCase):
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
                 assert all(v.grad is None for v in policy.model.q_variables())
-                assert all(
-                    v.grad is None for v in policy.model.policy_variables())
+                assert all(v.grad is None
+                           for v in policy.model.policy_variables())
                 assert policy.model.log_alpha.grad is None
                 a.backward()
                 # `actor_loss` depends on Q-net vars (but these grads must
@@ -324,8 +325,8 @@ class TestSAC(unittest.TestCase):
                     torch.mean(v.grad) == 0
                     for v in policy.model.q_variables() if v.grad is not None)
                 assert not all(
-                    torch.min(v.grad) == 0 for v in policy.model.q_variables()
-                    if v.grad is not None)
+                    torch.min(v.grad) == 0
+                    for v in policy.model.q_variables() if v.grad is not None)
                 assert policy.model.log_alpha.grad is None
                 # Compare with tf ones.
                 torch_c_grads = [v.grad for v in policy.model.q_variables()]
@@ -374,11 +375,10 @@ class TestSAC(unittest.TestCase):
                     updated_weights = policy.get_weights()
                     # Net must have changed.
                     if tf_updated_weights:
-                        check(
-                            updated_weights["default_policy/fc_1/kernel"],
-                            tf_updated_weights[-1][
-                                "default_policy/fc_1/kernel"],
-                            false=True)
+                        check(updated_weights["default_policy/fc_1/kernel"],
+                              tf_updated_weights[-1]
+                              ["default_policy/fc_1/kernel"],
+                              false=True)
                     tf_updated_weights.append(updated_weights)
 
                 # Compare with updated tf-weights. Must all be the same.
@@ -397,10 +397,9 @@ class TestSAC(unittest.TestCase):
                         tf_var = tf_weights[tf_key]
                         torch_var = policy.model.state_dict()[map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(
-                                tf_var,
-                                np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                            check(tf_var,
+                                  np.transpose(torch_var.detach().cpu()),
+                                  rtol=0.07)
                         else:
                             check(tf_var, torch_var, rtol=0.07)
                     # And alpha.
@@ -411,13 +410,12 @@ class TestSAC(unittest.TestCase):
                         if not re.search("_[23]", tf_key):
                             continue
                         tf_var = tf_weights[tf_key]
-                        torch_var = policy.target_model.state_dict()[map_[
-                            tf_key]]
+                        torch_var = policy.target_model.state_dict()[
+                            map_[tf_key]]
                         if tf_var.shape != torch_var.shape:
-                            check(
-                                tf_var,
-                                np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                            check(tf_var,
+                                  np.transpose(torch_var.detach().cpu()),
+                                  rtol=0.07)
                         else:
                             check(tf_var, torch_var, rtol=0.07)
 
@@ -426,8 +424,8 @@ class TestSAC(unittest.TestCase):
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
-            SampleBatch.DONES: np.random.choice(
-                [True, False], size=(batch_size, )),
+            SampleBatch.DONES: np.random.choice([True, False],
+                                                size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.random.random(size=(batch_size, )),
         }
@@ -492,52 +490,48 @@ class TestSAC(unittest.TestCase):
 
         # Q-values for the actually selected actions.
         # get_q_values
-        q_t = fc(
-            relu(
-                fc(np.concatenate(
-                    [model_out_t, train_batch[SampleBatch.ACTIONS]], -1),
-                   weights[ks[3]],
-                   weights[ks[2]],
-                   framework=fw)),
-            weights[ks[11]],
-            weights[ks[10]],
-            framework=fw)
+        q_t = fc(relu(
+            fc(np.concatenate([model_out_t, train_batch[SampleBatch.ACTIONS]],
+                              -1),
+               weights[ks[3]],
+               weights[ks[2]],
+               framework=fw)),
+                 weights[ks[11]],
+                 weights[ks[10]],
+                 framework=fw)
 
         # Q-values for current policy in given current state.
         # get_q_values
-        q_t_det_policy = fc(
-            relu(
-                fc(np.concatenate([model_out_t, policy_t], -1),
-                   weights[ks[3]],
-                   weights[ks[2]],
-                   framework=fw)),
-            weights[ks[11]],
-            weights[ks[10]],
-            framework=fw)
+        q_t_det_policy = fc(relu(
+            fc(np.concatenate([model_out_t, policy_t], -1),
+               weights[ks[3]],
+               weights[ks[2]],
+               framework=fw)),
+                            weights[ks[11]],
+                            weights[ks[10]],
+                            framework=fw)
 
         # Target q network evaluation.
         # target_model.get_q_values
         if fw == "tf":
-            q_tp1 = fc(
-                relu(
-                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                       weights[ks[7]],
-                       weights[ks[6]],
-                       framework=fw)),
-                weights[ks[15]],
-                weights[ks[14]],
-                framework=fw)
+            q_tp1 = fc(relu(
+                fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                   weights[ks[7]],
+                   weights[ks[6]],
+                   framework=fw)),
+                       weights[ks[15]],
+                       weights[ks[14]],
+                       framework=fw)
         else:
             assert fw == "tfe"
-            q_tp1 = fc(
-                relu(
-                    fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
-                       weights[ks[7]],
-                       weights[ks[6]],
-                       framework=fw)),
-                weights[ks[9]],
-                weights[ks[8]],
-                framework=fw)
+            q_tp1 = fc(relu(
+                fc(np.concatenate([target_model_out_tp1, policy_tp1], -1),
+                   weights[ks[7]],
+                   weights[ks[6]],
+                   framework=fw)),
+                       weights[ks[9]],
+                       weights[ks[8]],
+                       framework=fw)
 
         q_t_selected = np.squeeze(q_t, axis=-1)
         q_tp1 -= alpha * log_pis_tp1
@@ -564,8 +558,8 @@ class TestSAC(unittest.TestCase):
     def _translate_weights_to_torch(self, weights_dict, map_):
         model_dict = {
             map_[k]: convert_to_torch_tensor(
-                np.transpose(v) if re.search("kernel", k) else np.array([v])
-                if re.search("log_alpha", k) else v)
+                np.transpose(v) if re.search("kernel", k) else np.
+                array([v]) if re.search("log_alpha", k) else v)
             for i, (k, v) in enumerate(weights_dict.items()) if i < 13
         }
 

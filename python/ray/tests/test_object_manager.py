@@ -34,12 +34,11 @@ def ray_start_cluster_with_resource():
     cluster.shutdown()
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{
-        "num_cpus": 0,
-        "object_store_memory": 75 * 1024 * 1024,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster_head", [{
+    "num_cpus": 0,
+    "object_store_memory": 75 * 1024 * 1024,
+}],
+                         indirect=True)
 def test_object_transfer_during_oom(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(object_store_memory=75 * 1024 * 1024)
@@ -154,11 +153,10 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             pass
 
     actors = [
-        Actor._remote(
-            args=[],
-            kwargs={},
-            num_cpus=0.01,
-            resources={str(i % num_nodes): 1}) for i in range(30)
+        Actor._remote(args=[],
+                      kwargs={},
+                      num_cpus=0.01,
+                      resources={str(i % num_nodes): 1}) for i in range(30)
     ]
 
     # Wait for the actors to start up.
@@ -242,8 +240,9 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
                 if i == j:
                     continue
                 ids.append(
-                    f._remote(
-                        args=id_lists[j], kwargs={}, resources={str(i): 1}))
+                    f._remote(args=id_lists[j],
+                              kwargs={},
+                              resources={str(i): 1}))
 
         # Wait for all of the transfers to finish.
         ray.get(ids)
@@ -303,15 +302,15 @@ def test_pull_bundles_admission_control(shutdown_only):
     num_objects = 10
     num_tasks = 10
     # Head node can fit all of the objects at once.
-    cluster.add_node(
-        num_cpus=0,
-        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.add_node(num_cpus=0,
+                     object_store_memory=2 * num_tasks * num_objects *
+                     object_size)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Worker node can only fit 1 task at a time.
-    cluster.add_node(
-        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.add_node(num_cpus=1,
+                     object_store_memory=1.5 * num_objects * object_size)
     cluster.wait_for_nodes()
 
     @ray.remote
@@ -340,15 +339,15 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     num_objects = 10
     num_tasks = 10
     # Head node can fit all of the objects at once.
-    cluster.add_node(
-        num_cpus=0,
-        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.add_node(num_cpus=0,
+                     object_store_memory=2 * num_tasks * num_objects *
+                     object_size)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Worker node can fit 2 tasks at a time.
-    cluster.add_node(
-        num_cpus=1, object_store_memory=2.5 * num_objects * object_size)
+    cluster.add_node(num_cpus=1,
+                     object_store_memory=2.5 * num_objects * object_size)
     cluster.wait_for_nodes()
 
     @ray.remote
@@ -378,12 +377,11 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
 @pytest.mark.timeout(30)
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
-    cluster.add_node(
-        num_cpus=0,
-        object_store_memory=200 * 1024 * 1024,
-        _system_config={
-            "max_task_args_memory_fraction": 0.7,
-        })
+    cluster.add_node(num_cpus=0,
+                     object_store_memory=200 * 1024 * 1024,
+                     _system_config={
+                         "max_task_args_memory_fraction": 0.7,
+                     })
     ray.init(address=cluster.address)
     cluster.add_node(num_cpus=3, object_store_memory=100 * 1024 * 1024)
 
@@ -414,14 +412,14 @@ def test_ray_get_task_args_deadlock(shutdown_only):
     object_size = int(6e6)
     num_objects = 10
     # Head node can fit all of the objects at once.
-    cluster.add_node(
-        num_cpus=0, object_store_memory=4 * num_objects * object_size)
+    cluster.add_node(num_cpus=0,
+                     object_store_memory=4 * num_objects * object_size)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Worker node can only fit 1 task at a time.
-    cluster.add_node(
-        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.add_node(num_cpus=1,
+                     object_store_memory=1.5 * num_objects * object_size)
     cluster.wait_for_nodes()
 
     @ray.remote

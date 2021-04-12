@@ -31,12 +31,11 @@ def main():
 
     max_runtime = 800
 
-    timed_tune_run(
-        name="bookkeeping overhead",
-        num_samples=num_samples,
-        results_per_second=results_per_second,
-        trial_length_s=trial_length_s,
-        max_runtime=max_runtime)
+    timed_tune_run(name="bookkeeping overhead",
+                   num_samples=num_samples,
+                   results_per_second=results_per_second,
+                   trial_length_s=trial_length_s,
+                   max_runtime=max_runtime)
 
 
 if __name__ == "__main__":

@@ -58,11 +58,10 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             # Set the controller name so that serve.connect() in the user's
             # backend code will connect to the instance that this backend is
             # running in.
-            ray.serve.api._set_internal_replica_context(
-                backend_tag,
-                replica_tag,
-                controller_name,
-                servable_object=None)
+            ray.serve.api._set_internal_replica_context(backend_tag,
+                                                        replica_tag,
+                                                        controller_name,
+                                                        servable_object=None)
             if is_function:
                 _callable = backend
             else:
@@ -93,10 +92,10 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
 
         @ray.method(num_returns=2)
         async def handle_request(
-                self,
-                request_metadata: RequestMetadata,
-                *request_args,
-                **request_kwargs,
+            self,
+            request_metadata: RequestMetadata,
+            *request_args,
+            **request_kwargs,
         ):
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
@@ -136,7 +135,6 @@ def wrap_to_ray_error(function_name: str,
 
 class RayServeReplica:
     """Handles requests with the provided callable."""
-
     def __init__(self, _callable: Callable, backend_config: BackendConfig,
                  is_function: bool, controller_handle: ActorHandle) -> None:
         self.backend_tag = ray.serve.api.get_replica_context().backend_tag

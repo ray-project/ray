@@ -140,11 +140,11 @@ class BayesOptSearch(Searcher):
         if self._patience <= 0:
             raise ValueError("patience must be set to a value greater than 0!")
         self._skip_duplicate = skip_duplicate
-        super(BayesOptSearch, self).__init__(
-            metric=metric,
-            mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+        super(BayesOptSearch,
+              self).__init__(metric=metric,
+                             mode=mode,
+                             max_concurrent=max_concurrent,
+                             use_early_stopped_trials=use_early_stopped_trials)
 
         if utility_kwargs is None:
             # The defaults arguments are the same
@@ -175,8 +175,8 @@ class BayesOptSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space",
+                                                   cls=type(self)))
                 space = self.convert_search_space(space, join=True)
 
         self._space = space
@@ -234,15 +234,14 @@ class BayesOptSearch(Searcher):
         """
         if not self.optimizer:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
 
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
 
         # If we have more active trials than the allowed maximum
         total_live_trials = len(self._live_trial_mapping)

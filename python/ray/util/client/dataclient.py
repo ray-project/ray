@@ -56,10 +56,10 @@ class DataClient:
 
     def _data_main(self) -> None:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
-        resp_stream = stub.Datapath(
-            iter(self.request_queue.get, None),
-            metadata=[("client_id", self._client_id)] + self._metadata,
-            wait_for_ready=True)
+        resp_stream = stub.Datapath(iter(self.request_queue.get, None),
+                                    metadata=[("client_id", self._client_id)] +
+                                    self._metadata,
+                                    wait_for_ready=True)
         try:
             for response in resp_stream:
                 if response.req_id == 0:
@@ -95,8 +95,9 @@ class DataClient:
         if self.data_thread is not None:
             self.data_thread.join()
 
-    def _blocking_send(self, req: ray_client_pb2.DataRequest
-                       ) -> ray_client_pb2.DataResponse:
+    def _blocking_send(
+            self,
+            req: ray_client_pb2.DataRequest) -> ray_client_pb2.DataResponse:
         req_id = self._next_id()
         req.req_id = req_id
         self.request_queue.put(req)
@@ -117,7 +118,8 @@ class DataClient:
         req.req_id = req_id
         self.request_queue.put(req)
 
-    def Init(self, request: ray_client_pb2.InitRequest,
+    def Init(self,
+             request: ray_client_pb2.InitRequest,
              context=None) -> ray_client_pb2.InitResponse:
         datareq = ray_client_pb2.DataRequest(init=request, )
         resp = self._blocking_send(datareq)
@@ -137,13 +139,15 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.connection_info
 
-    def GetObject(self, request: ray_client_pb2.GetRequest,
+    def GetObject(self,
+                  request: ray_client_pb2.GetRequest,
                   context=None) -> ray_client_pb2.GetResponse:
         datareq = ray_client_pb2.DataRequest(get=request, )
         resp = self._blocking_send(datareq)
         return resp.get
 
-    def PutObject(self, request: ray_client_pb2.PutRequest,
+    def PutObject(self,
+                  request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
         datareq = ray_client_pb2.DataRequest(put=request, )
         resp = self._blocking_send(datareq)

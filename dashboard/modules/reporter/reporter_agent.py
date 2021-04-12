@@ -98,8 +98,9 @@ METRICS_GAUGES = {
                                "bytes", ["ip"]),
     "node_network_received": Gauge("node_network_received",
                                    "Total network received", "bytes", ["ip"]),
-    "node_network_send_speed": Gauge(
-        "node_network_send_speed", "Network send speed", "bytes/sec", ["ip"]),
+    "node_network_send_speed": Gauge("node_network_send_speed",
+                                     "Network send speed", "bytes/sec",
+                                     ["ip"]),
     "node_network_receive_speed": Gauge("node_network_receive_speed",
                                         "Network receive speed", "bytes/sec",
                                         ["ip"]),
@@ -126,7 +127,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config
     """
-
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
@@ -243,8 +243,10 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                x: psutil._common.sdiskusage(
-                    total=1, used=0, free=1, percent=0.0)
+                x: psutil._common.sdiskusage(total=1,
+                                             used=0,
+                                             free=1,
+                                             percent=0.0)
                 for x in dirs
             }
         else:
@@ -350,10 +352,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
             for node_type, active_node_count in active_nodes.items():
                 records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_active_nodes"],
-                        value=active_node_count,
-                        tags={"node_type": node_type}))
+                    Record(gauge=METRICS_GAUGES["cluster_active_nodes"],
+                           value=active_node_count,
+                           tags={"node_type": node_type}))
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict = {}
@@ -365,10 +366,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
             for node_type, failed_node_count in failed_nodes_dict.items():
                 records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_failed_nodes"],
-                        value=failed_node_count,
-                        tags={"node_type": node_type}))
+                    Record(gauge=METRICS_GAUGES["cluster_failed_nodes"],
+                           value=failed_node_count,
+                           tags={"node_type": node_type}))
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
             pending_nodes_dict = {}
@@ -380,38 +380,33 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
             for node_type, pending_node_count in pending_nodes_dict.items():
                 records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                        value=pending_node_count,
-                        tags={"node_type": node_type}))
+                    Record(gauge=METRICS_GAUGES["cluster_pending_nodes"],
+                           value=pending_node_count,
+                           tags={"node_type": node_type}))
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
-        cpu_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_utilization"],
-            value=cpu_usage,
-            tags={"ip": ip})
+        cpu_record = Record(gauge=METRICS_GAUGES["node_cpu_utilization"],
+                            value=cpu_usage,
+                            tags={"ip": ip})
 
         cpu_count, _ = stats["cpus"]
-        cpu_count_record = Record(
-            gauge=METRICS_GAUGES["node_cpu_count"],
-            value=cpu_count,
-            tags={"ip": ip})
+        cpu_count_record = Record(gauge=METRICS_GAUGES["node_cpu_count"],
+                                  value=cpu_count,
+                                  tags={"ip": ip})
 
         # -- Mem per node --
         mem_total, mem_available, _, mem_used = stats["mem"]
-        mem_used_record = Record(
-            gauge=METRICS_GAUGES["node_mem_used"],
-            value=mem_used,
-            tags={"ip": ip})
+        mem_used_record = Record(gauge=METRICS_GAUGES["node_mem_used"],
+                                 value=mem_used,
+                                 tags={"ip": ip})
         mem_available_record = Record(
             gauge=METRICS_GAUGES["node_mem_available"],
             value=mem_available,
             tags={"ip": ip})
-        mem_total_record = Record(
-            gauge=METRICS_GAUGES["node_mem_total"],
-            value=mem_total,
-            tags={"ip": ip})
+        mem_total_record = Record(gauge=METRICS_GAUGES["node_mem_total"],
+                                  value=mem_total,
+                                  tags={"ip": ip})
 
         # -- GPU per node --
         gpus = stats["gpus"]
@@ -434,10 +429,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 gauge=METRICS_GAUGES["node_gpus_utilization"],
                 value=gpus_utilization,
                 tags={"ip": ip})
-            gram_used_record = Record(
-                gauge=METRICS_GAUGES["node_gram_used"],
-                value=gram_used,
-                tags={"ip": ip})
+            gram_used_record = Record(gauge=METRICS_GAUGES["node_gram_used"],
+                                      value=gram_used,
+                                      tags={"ip": ip})
             gram_available_record = Record(
                 gauge=METRICS_GAUGES["node_gram_available"],
                 value=gram_available,
@@ -453,14 +447,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             used += entry.used
             free += entry.free
         disk_utilization = float(used / (used + free)) * 100
-        disk_usage_record = Record(
-            gauge=METRICS_GAUGES["node_disk_usage"],
-            value=used,
-            tags={"ip": ip})
-        disk_free_record = Record(
-            gauge=METRICS_GAUGES["node_disk_free"],
-            value=free,
-            tags={"ip": ip})
+        disk_usage_record = Record(gauge=METRICS_GAUGES["node_disk_usage"],
+                                   value=used,
+                                   tags={"ip": ip})
+        disk_free_record = Record(gauge=METRICS_GAUGES["node_disk_free"],
+                                  value=free,
+                                  tags={"ip": ip})
         disk_utilization_percentage_record = Record(
             gauge=METRICS_GAUGES["node_disk_utilization_percentage"],
             value=disk_utilization,
@@ -468,10 +460,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
         # -- Network speed (send/receive) stats per node --
         network_stats = stats["network"]
-        network_sent_record = Record(
-            gauge=METRICS_GAUGES["node_network_sent"],
-            value=network_stats[0],
-            tags={"ip": ip})
+        network_sent_record = Record(gauge=METRICS_GAUGES["node_network_sent"],
+                                     value=network_stats[0],
+                                     tags={"ip": ip})
         network_received_record = Record(
             gauge=METRICS_GAUGES["node_network_received"],
             value=network_stats[1],
@@ -493,23 +484,21 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             raylet_pid = str(raylet_stats["pid"])
             # -- raylet CPU --
             raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-            raylet_cpu_record = Record(
-                gauge=METRICS_GAUGES["raylet_cpu"],
-                value=raylet_cpu_usage,
-                tags={
-                    "ip": ip,
-                    "pid": raylet_pid
-                })
+            raylet_cpu_record = Record(gauge=METRICS_GAUGES["raylet_cpu"],
+                                       value=raylet_cpu_usage,
+                                       tags={
+                                           "ip": ip,
+                                           "pid": raylet_pid
+                                       })
 
             # -- raylet mem --
             raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-            raylet_mem_record = Record(
-                gauge=METRICS_GAUGES["raylet_mem"],
-                value=raylet_mem_usage,
-                tags={
-                    "ip": ip,
-                    "pid": raylet_pid
-                })
+            raylet_mem_record = Record(gauge=METRICS_GAUGES["raylet_mem"],
+                                       value=raylet_mem_usage,
+                                       tags={
+                                           "ip": ip,
+                                           "pid": raylet_pid
+                                       })
             records_reported.extend([raylet_cpu_record, raylet_mem_record])
 
         records_reported.extend([
@@ -537,8 +526,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
-            await asyncio.sleep(
-                reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
+            await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS /
+                                1000)
 
     async def run(self, server):
         aioredis_client = await aioredis.create_redis_pool(

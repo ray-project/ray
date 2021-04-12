@@ -17,7 +17,6 @@ class HTTPState:
     This class is *not* thread safe, so any state-modifying methods should be
     called with a lock held.
     """
-
     def __init__(self, controller_name: str, detached: bool,
                  config: HTTPOptions):
         self._controller_name = controller_name
@@ -79,11 +78,10 @@ class HTTPState:
                     resources={
                         node_resource: 0.01
                     },
-                ).remote(
-                    self._config.host,
-                    self._config.port,
-                    controller_name=self._controller_name,
-                    http_middlewares=self._config.middlewares)
+                ).remote(self._config.host,
+                         self._config.port,
+                         controller_name=self._controller_name,
+                         http_middlewares=self._config.middlewares)
 
             self._proxy_actors[node_id] = proxy
 
@@ -108,7 +106,7 @@ class HTTPState:
         re-throw the TimeoutError.
         """
         await asyncio.gather(*[
-            proxy.block_until_endpoint_exists.remote(
-                endpoint, timeout_s=timeout_s)
+            proxy.block_until_endpoint_exists.remote(endpoint,
+                                                     timeout_s=timeout_s)
             for proxy in self._proxy_actors.values()
         ])

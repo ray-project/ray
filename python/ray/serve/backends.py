@@ -14,7 +14,6 @@ class ImportedBackend:
     This will import module.Class on the worker and proxy all relevant methods
     to it.
     """
-
     def __new__(cls, class_path):
         class ImportedBackend:
             def __init__(self, *args, **kwargs):

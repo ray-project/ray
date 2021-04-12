@@ -22,11 +22,11 @@ from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.test_utils import load_test_config, recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-CONFIG_PATHS = recursive_fnmatch(
-    os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
+CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"),
+                                 "*.yaml")
 
-CONFIG_PATHS += recursive_fnmatch(
-    os.path.join(RAY_PATH, "tune", "examples"), "*.yaml")
+CONFIG_PATHS += recursive_fnmatch(os.path.join(RAY_PATH, "tune", "examples"),
+                                  "*.yaml")
 
 
 def ignore_k8s_operator_configs(paths):
@@ -58,8 +58,8 @@ class AutoscalingConfigTest(unittest.TestCase):
                 self.fail(
                     f"Config {config_path} did not pass validation test!")
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"), reason="Fails on Windows.")
+    @pytest.mark.skipif(sys.platform.startswith("win"),
+                        reason="Fails on Windows.")
     def testValidateDefaultConfigMinMaxWorkers(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
@@ -85,8 +85,8 @@ class AutoscalingConfigTest(unittest.TestCase):
         except Exception:
             self.fail("Config did not pass validation test!")
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"), reason="Fails on Windows.")
+    @pytest.mark.skipif(sys.platform.startswith("win"),
+                        reason="Fails on Windows.")
     def testValidateDefaultConfigAWSMultiNodeTypes(self):
         aws_config_path = os.path.join(
             RAY_PATH, "autoscaler/aws/example-multi-node-type.yaml")
@@ -95,11 +95,11 @@ class AutoscalingConfigTest(unittest.TestCase):
         new_config = copy.deepcopy(config)
         # modify it here
         new_config["available_node_types"] = {
-            "cpu_4_ondemand": new_config["available_node_types"][
-                "cpu_4_ondemand"],
+            "cpu_4_ondemand": new_config["available_node_types"]
+            ["cpu_4_ondemand"],
             "cpu_16_spot": new_config["available_node_types"]["cpu_16_spot"],
-            "gpu_8_ondemand": new_config["available_node_types"][
-                "gpu_8_ondemand"]
+            "gpu_8_ondemand": new_config["available_node_types"]
+            ["gpu_8_ondemand"]
         }
         orig_new_config = copy.deepcopy(new_config)
         expected_available_node_types = orig_new_config["available_node_types"]
@@ -222,11 +222,10 @@ class AutoscalingConfigTest(unittest.TestCase):
                 "CidrIp": "0.0.0.0/0"
             }],
         } for port in [80, 443, 8265]]
-        config["provider"].update({
-            "security_group": {
+        config["provider"].update(
+            {"security_group": {
                 "IpPermissions": ip_permissions
-            }
-        })
+            }})
         config = prepare_config(copy.deepcopy(config))
         try:
             validate_config(config)
@@ -327,8 +326,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             "baz": "qux"
         }
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"), reason="Fails on Windows.")
+    @pytest.mark.skipif(sys.platform.startswith("win"),
+                        reason="Fails on Windows.")
     def testExampleFull(self):
         """
         Test that example-full yamls are unmodified by prepared_config,
@@ -343,8 +342,8 @@ class AutoscalingConfigTest(unittest.TestCase):
             merge_setup_commands(config_copy)
             assert config_copy == prepare_config(config)
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"), reason="Fails on Windows.")
+    @pytest.mark.skipif(sys.platform.startswith("win"),
+                        reason="Fails on Windows.")
     def testLegacyYaml(self):
         # Test correct default-merging behavior for legacy yamls.
         providers = ["aws", "gcp", "azure"]
@@ -373,8 +372,8 @@ class AutoscalingConfigTest(unittest.TestCase):
                 NODE_TYPE_LEGACY_WORKER]["node_config"] == legacy_config[
                     "worker_nodes"]
 
-    @pytest.mark.skipif(
-        sys.platform.startswith("win"), reason="Fails on Windows.")
+    @pytest.mark.skipif(sys.platform.startswith("win"),
+                        reason="Fails on Windows.")
     def testAzureKeyPair(self):
         azure_config_path = os.path.join(RAY_PATH,
                                          "autoscaler/azure/example-full.yaml")

@@ -113,7 +113,6 @@ class SkOptSearch(Searcher):
         tune.run(my_trainable, search_alg=skopt_search)
 
     """
-
     def __init__(self,
                  optimizer: Optional["sko.optimizer.Optimizer"] = None,
                  space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
@@ -130,11 +129,11 @@ class SkOptSearch(Searcher):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self.max_concurrent = max_concurrent
-        super(SkOptSearch, self).__init__(
-            metric=metric,
-            mode=mode,
-            max_concurrent=max_concurrent,
-            use_early_stopped_trials=use_early_stopped_trials)
+        super(SkOptSearch,
+              self).__init__(metric=metric,
+                             mode=mode,
+                             max_concurrent=max_concurrent,
+                             use_early_stopped_trials=use_early_stopped_trials)
 
         self._initial_points = []
         self._parameters = None
@@ -145,8 +144,8 @@ class SkOptSearch(Searcher):
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
             if domain_vars or grid_vars:
                 logger.warning(
-                    UNRESOLVED_SEARCH_SPACE.format(
-                        par="space", cls=type(self)))
+                    UNRESOLVED_SEARCH_SPACE.format(par="space",
+                                                   cls=type(self)))
                 space = self.convert_search_space(space, join=True)
 
         self._space = space
@@ -234,14 +233,13 @@ class SkOptSearch(Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._skopt_opt:
             raise RuntimeError(
-                UNDEFINED_SEARCH_SPACE.format(
-                    cls=self.__class__.__name__, space="space"))
+                UNDEFINED_SEARCH_SPACE.format(cls=self.__class__.__name__,
+                                              space="space"))
         if not self._metric or not self._mode:
             raise RuntimeError(
-                UNDEFINED_METRIC_MODE.format(
-                    cls=self.__class__.__name__,
-                    metric=self._metric,
-                    mode=self._mode))
+                UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__,
+                                             metric=self._metric,
+                                             mode=self._mode))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
@@ -314,17 +312,21 @@ class SkOptSearch(Searcher):
 
             if isinstance(domain, Float):
                 if isinstance(domain.sampler, LogUniform):
-                    return sko.space.Real(
-                        domain.lower, domain.upper, prior="log-uniform")
-                return sko.space.Real(
-                    domain.lower, domain.upper, prior="uniform")
+                    return sko.space.Real(domain.lower,
+                                          domain.upper,
+                                          prior="log-uniform")
+                return sko.space.Real(domain.lower,
+                                      domain.upper,
+                                      prior="uniform")
 
             elif isinstance(domain, Integer):
                 if isinstance(domain.sampler, LogUniform):
-                    return sko.space.Integer(
-                        domain.lower, domain.upper, prior="log-uniform")
-                return sko.space.Integer(
-                    domain.lower, domain.upper, prior="uniform")
+                    return sko.space.Integer(domain.lower,
+                                             domain.upper,
+                                             prior="log-uniform")
+                return sko.space.Integer(domain.lower,
+                                         domain.upper,
+                                         prior="uniform")
 
             elif isinstance(domain, Categorical):
                 return domain.categories

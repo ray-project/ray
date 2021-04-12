@@ -62,13 +62,12 @@ def before_init(policy, observation_space, action_space, config):
         if isinstance(obs_batch, list) and len(obs_batch) == 1:
             obs_batch = obs_batch[0]
         observation = policy.preprocessor.transform(obs_batch)
-        observation = policy.observation_filter(
-            observation[None], update=update)
+        observation = policy.observation_filter(observation[None],
+                                                update=update)
 
         observation = convert_to_torch_tensor(observation, policy.device)
-        dist_inputs, _ = policy.model({
-            SampleBatch.CUR_OBS: observation
-        }, [], None)
+        dist_inputs, _ = policy.model({SampleBatch.CUR_OBS: observation}, [],
+                                      None)
         dist = policy.dist_class(dist_inputs, policy.model)
         action = dist.sample()
 
@@ -115,12 +114,11 @@ def make_model_and_action_dist(policy, observation_space, action_space,
         config["model"],  # model_options
         dist_type="deterministic",
         framework="torch")
-    model = ModelCatalog.get_model_v2(
-        policy.preprocessor.observation_space,
-        action_space,
-        num_outputs=dist_dim,
-        model_config=config["model"],
-        framework="torch")
+    model = ModelCatalog.get_model_v2(policy.preprocessor.observation_space,
+                                      action_space,
+                                      num_outputs=dist_dim,
+                                      model_config=config["model"],
+                                      framework="torch")
     # Make all model params not require any gradients.
     for p in model.parameters():
         p.requires_grad = False

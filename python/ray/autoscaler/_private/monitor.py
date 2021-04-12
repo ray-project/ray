@@ -84,15 +84,14 @@ class Monitor:
     Attributes:
         redis: A connection to the Redis server.
     """
-
     def __init__(self,
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
                  prefix_cluster_info=False):
         # Initialize the Redis clients.
-        ray.state.state._initialize_global_state(
-            redis_address, redis_password=redis_password)
+        ray.state.state._initialize_global_state(redis_address,
+                                                 redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -136,8 +135,8 @@ class Monitor:
         """Fetches resource usage data from GCS and updates load metrics."""
 
         request = gcs_service_pb2.GetAllResourceUsageRequest()
-        response = self.gcs_node_resources_stub.GetAllResourceUsage(
-            request, timeout=4)
+        response = self.gcs_node_resources_stub.GetAllResourceUsage(request,
+                                                                    timeout=4)
         resources_batch_data = response.resource_usage_data
 
         for resource_message in resources_batch_data.batch:
@@ -152,9 +151,10 @@ class Monitor:
                 resources_batch_data.placement_group_load.placement_group_data)
 
             ip = resource_message.node_manager_address
-            self.load_metrics.update(
-                ip, total_resources, available_resources, resource_load,
-                waiting_bundles, infeasible_bundles, pending_placement_groups)
+            self.load_metrics.update(ip, total_resources, available_resources,
+                                     resource_load, waiting_bundles,
+                                     infeasible_bundles,
+                                     pending_placement_groups)
 
     def update_resource_requests(self):
         """Fetches resource requests from the internal KV and updates load."""
@@ -185,8 +185,8 @@ class Monitor:
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
                 self.autoscaler.update()
-                status[
-                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
+                status["autoscaler_report"] = self.autoscaler.summary(
+                )._asdict()
 
                 for msg in self.event_summarizer.summary():
                     logger.info(":event_summary:{}".format(msg))
@@ -194,8 +194,9 @@ class Monitor:
 
             as_json = json.dumps(status)
             if _internal_kv_initialized():
-                _internal_kv_put(
-                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                _internal_kv_put(DEBUG_AUTOSCALING_STATUS,
+                                 as_json,
+                                 overwrite=True)
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
@@ -265,8 +266,9 @@ class Monitor:
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
-        push_error_to_driver_through_redis(
-            redis_client, ray_constants.MONITOR_DIED_ERROR, message)
+        push_error_to_driver_through_redis(redis_client,
+                                           ray_constants.MONITOR_DIED_ERROR,
+                                           message)
 
     def _signal_handler(self, sig, frame):
         self._handle_failure(f"Terminated with signal {sig}\n" +
@@ -289,60 +291,52 @@ class Monitor:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "monitor to connect to."))
-    parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="the address to use for Redis")
-    parser.add_argument(
-        "--autoscaling-config",
-        required=False,
-        type=str,
-        help="the path to the autoscaling config file")
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="the password to use for Redis")
-    parser.add_argument(
-        "--logging-level",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_LEVEL,
-        choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
-    parser.add_argument(
-        "--logging-format",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
-    parser.add_argument(
-        "--logging-filename",
-        required=False,
-        type=str,
-        default=ray_constants.MONITOR_LOG_FILE_NAME,
-        help="Specify the name of log file, "
-        "log to stdout if set empty, default is "
-        f"\"{ray_constants.MONITOR_LOG_FILE_NAME}\"")
+    parser = argparse.ArgumentParser(description=("Parse Redis server for the "
+                                                  "monitor to connect to."))
+    parser.add_argument("--redis-address",
+                        required=True,
+                        type=str,
+                        help="the address to use for Redis")
+    parser.add_argument("--autoscaling-config",
+                        required=False,
+                        type=str,
+                        help="the path to the autoscaling config file")
+    parser.add_argument("--redis-password",
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="the password to use for Redis")
+    parser.add_argument("--logging-level",
+                        required=False,
+                        type=str,
+                        default=ray_constants.LOGGER_LEVEL,
+                        choices=ray_constants.LOGGER_LEVEL_CHOICES,
+                        help=ray_constants.LOGGER_LEVEL_HELP)
+    parser.add_argument("--logging-format",
+                        required=False,
+                        type=str,
+                        default=ray_constants.LOGGER_FORMAT,
+                        help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument("--logging-filename",
+                        required=False,
+                        type=str,
+                        default=ray_constants.MONITOR_LOG_FILE_NAME,
+                        help="Specify the name of log file, "
+                        "log to stdout if set empty, default is "
+                        f"\"{ray_constants.MONITOR_LOG_FILE_NAME}\"")
     parser.add_argument(
         "--logs-dir",
         required=True,
         type=str,
         help="Specify the path of the temporary directory used by Ray "
         "processes.")
-    parser.add_argument(
-        "--logging-rotate-bytes",
-        required=False,
-        type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    parser.add_argument("--logging-rotate-bytes",
+                        required=False,
+                        type=int,
+                        default=ray_constants.LOGGING_ROTATE_BYTES,
+                        help="Specify the max bytes for rotating "
+                        "log file, default is "
+                        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
@@ -351,13 +345,12 @@ if __name__ == "__main__":
         help="Specify the backup count of rotated log file, default is "
         f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
-    setup_component_logger(
-        logging_level=args.logging_level,
-        logging_format=args.logging_format,
-        log_dir=args.logs_dir,
-        filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count)
+    setup_component_logger(logging_level=args.logging_level,
+                           logging_format=args.logging_format,
+                           log_dir=args.logs_dir,
+                           filename=args.logging_filename,
+                           max_bytes=args.logging_rotate_bytes,
+                           backup_count=args.logging_rotate_backup_count)
 
     logger.info(f"Starting monitor using ray installation: {ray.__file__}")
     logger.info(f"Ray version: {ray.__version__}")
@@ -369,9 +362,8 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
-    monitor = Monitor(
-        args.redis_address,
-        autoscaling_config,
-        redis_password=args.redis_password)
+    monitor = Monitor(args.redis_address,
+                      autoscaling_config,
+                      redis_password=args.redis_password)
 
     monitor.run()

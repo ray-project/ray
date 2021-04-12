@@ -61,7 +61,6 @@ class Node:
             ProcessInfo objects. All lists have length one except for the Redis
             server list, which has multiple.
     """
-
     def __init__(self,
                  ray_params,
                  head=False,
@@ -296,7 +295,6 @@ class Node:
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
-
         def merge_resources(env_dict, params_dict):
             """Separates special case params and merges two dictionaries, picking from the
             first in the event of a conflict. Also emit a warning on every
@@ -329,10 +327,9 @@ class Node:
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
-                self._ray_params.num_cpus
-                if num_cpus is None else num_cpus, self._ray_params.num_gpus
-                if num_gpus is None else num_gpus, self._ray_params.memory
-                if memory is None else memory,
+                self._ray_params.num_cpus if num_cpus is None else num_cpus,
+                self._ray_params.num_gpus if num_gpus is None else num_gpus,
+                self._ray_params.memory if memory is None else memory,
                 self._ray_params.object_store_memory
                 if object_store_memory is None else object_store_memory,
                 resources, self._ray_params.redis_max_memory).resolve(
@@ -530,10 +527,12 @@ class Node:
         """
 
         if unique:
-            log_stdout = self._make_inc_temp(
-                suffix=".out", prefix=name, directory_name=self._logs_dir)
-            log_stderr = self._make_inc_temp(
-                suffix=".err", prefix=name, directory_name=self._logs_dir)
+            log_stdout = self._make_inc_temp(suffix=".out",
+                                             prefix=name,
+                                             directory_name=self._logs_dir)
+            log_stderr = self._make_inc_temp(suffix=".err",
+                                             prefix=name,
+                                             directory_name=self._logs_dir)
         else:
             log_stdout = os.path.join(self._logs_dir, f"{name}.out")
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
@@ -583,8 +582,8 @@ class Node:
                           f":{self._get_unused_port()[0]}")
         else:
             if socket_path is None:
-                result = self._make_inc_temp(
-                    prefix=default_prefix, directory_name=self._sockets_dir)
+                result = self._make_inc_temp(prefix=default_prefix,
+                                             directory_name=self._sockets_dir)
             else:
                 try_to_create_directory(os.path.dirname(socket_path))
 
@@ -676,8 +675,8 @@ class Node:
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
              port_denylist=self._ray_params.reserved_ports)
-        assert (
-            ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
+        assert (ray_constants.PROCESS_TYPE_REDIS_SERVER
+                not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
             process_infos)
 
@@ -729,8 +728,8 @@ class Node:
     def start_gcs_server(self):
         """Start the gcs server.
         """
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "gcs_server", unique=True)
+        stdout_file, stderr_file = self.get_log_file_handles("gcs_server",
+                                                             unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
             stdout_file=stdout_file,
@@ -741,8 +740,8 @@ class Node:
             gcs_server_port=self._ray_params.gcs_server_port,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             node_ip_address=self._node_ip_address)
-        assert (
-            ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
+        assert (ray_constants.PROCESS_TYPE_GCS_SERVER
+                not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
@@ -760,8 +759,8 @@ class Node:
             use_profiler (bool): True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "raylet", unique=True)
+        stdout_file, stderr_file = self.get_log_file_handles("raylet",
+                                                             unique=True)
         process_info = ray._private.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
@@ -809,8 +808,8 @@ class Node:
         any modification to these files may break existing
         cluster launching commands.
         """
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "monitor", unique=True)
+        stdout_file, stderr_file = self.get_log_file_handles("monitor",
+                                                             unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
             self._logs_dir,
@@ -835,8 +834,8 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
-        assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
-                self.all_processes)
+        assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER
+                not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
             process_info
         ]
@@ -912,11 +911,10 @@ class Node:
 
         # Ensure thread safety
         with self.removal_lock:
-            self._kill_process_impl(
-                process_type,
-                allow_graceful=allow_graceful,
-                check_alive=check_alive,
-                wait=wait)
+            self._kill_process_impl(process_type,
+                                    allow_graceful=allow_graceful,
+                                    check_alive=check_alive,
+                                    wait=wait)
 
     def _kill_process_impl(self,
                            process_type,
@@ -936,8 +934,8 @@ class Node:
                 if check_alive:
                     raise RuntimeError(
                         "Attempting to kill a process of type "
-                        "'{}', but this process is already dead."
-                        .format(process_type))
+                        "'{}', but this process is already dead.".format(
+                            process_type))
                 else:
                     continue
 
@@ -989,8 +987,8 @@ class Node:
             check_alive (bool): Raise an exception if any of the processes
                 were already dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_REDIS_SERVER,
+                                check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.
@@ -999,8 +997,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_RAYLET, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_RAYLET,
+                                check_alive=check_alive)
 
     def kill_log_monitor(self, check_alive=True):
         """Kill the log monitor.
@@ -1009,8 +1007,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_LOG_MONITOR, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_LOG_MONITOR,
+                                check_alive=check_alive)
 
     def kill_reporter(self, check_alive=True):
         """Kill the reporter.
@@ -1019,8 +1017,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_REPORTER,
+                                check_alive=check_alive)
 
     def kill_dashboard(self, check_alive=True):
         """Kill the dashboard.
@@ -1029,8 +1027,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_DASHBOARD, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_DASHBOARD,
+                                check_alive=check_alive)
 
     def kill_monitor(self, check_alive=True):
         """Kill the monitor.
@@ -1039,8 +1037,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_MONITOR, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_MONITOR,
+                                check_alive=check_alive)
 
     def kill_gcs_server(self, check_alive=True):
         """Kill the gcs server.
@@ -1048,8 +1046,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_GCS_SERVER,
+                                check_alive=check_alive)
 
     def kill_reaper(self, check_alive=True):
         """Kill the reaper process.
@@ -1058,8 +1056,8 @@ class Node:
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive)
+        self._kill_process_type(ray_constants.PROCESS_TYPE_REAPER,
+                                check_alive=check_alive)
 
     def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
@@ -1077,16 +1075,14 @@ class Node:
         # store (or Redis) first, that could cause the raylet to exit
         # ungracefully, leading to more verbose output from the workers.
         if ray_constants.PROCESS_TYPE_RAYLET in self.all_processes:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_RAYLET,
-                check_alive=check_alive,
-                allow_graceful=allow_graceful)
+            self._kill_process_type(ray_constants.PROCESS_TYPE_RAYLET,
+                                    check_alive=check_alive,
+                                    allow_graceful=allow_graceful)
 
         if ray_constants.PROCESS_TYPE_GCS_SERVER in self.all_processes:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_GCS_SERVER,
-                check_alive=check_alive,
-                allow_graceful=allow_graceful)
+            self._kill_process_type(ray_constants.PROCESS_TYPE_GCS_SERVER,
+                                    check_alive=check_alive,
+                                    allow_graceful=allow_graceful)
 
         # We call "list" to copy the keys because we are modifying the
         # dictionary while iterating over it.
@@ -1094,16 +1090,14 @@ class Node:
             # Need to kill the reaper process last in case we die unexpectedly
             # while cleaning up.
             if process_type != ray_constants.PROCESS_TYPE_REAPER:
-                self._kill_process_type(
-                    process_type,
-                    check_alive=check_alive,
-                    allow_graceful=allow_graceful)
+                self._kill_process_type(process_type,
+                                        check_alive=check_alive,
+                                        allow_graceful=allow_graceful)
 
         if ray_constants.PROCESS_TYPE_REAPER in self.all_processes:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_REAPER,
-                check_alive=check_alive,
-                allow_graceful=allow_graceful)
+            self._kill_process_type(ray_constants.PROCESS_TYPE_REAPER,
+                                    check_alive=check_alive,
+                                    allow_graceful=allow_graceful)
 
     def live_processes(self):
         """Return a list of the live processes.

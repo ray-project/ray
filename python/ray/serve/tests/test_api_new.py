@@ -28,8 +28,8 @@ def test_e2e(serve_instance):
 def test_starlette_response(serve_instance):
     @serve.deployment(name="basic")
     def basic(_):
-        return starlette.responses.Response(
-            "Hello, world!", media_type="text/plain")
+        return starlette.responses.Response("Hello, world!",
+                                            media_type="text/plain")
 
     basic.deploy()
     assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
@@ -57,8 +57,8 @@ def test_starlette_response(serve_instance):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     json.deploy()
-    assert requests.get("http://127.0.0.1:8000/json").json()[
-        "hello"] == "world"
+    assert requests.get(
+        "http://127.0.0.1:8000/json").json()["hello"] == "world"
 
     @serve.deployment(name="redirect")
     def redirect(_):
@@ -76,8 +76,9 @@ def test_starlette_response(serve_instance):
                 yield str(number)
                 await asyncio.sleep(0.01)
 
-        return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain", status_code=418)
+        return starlette.responses.StreamingResponse(slow_numbers(),
+                                                     media_type="text/plain",
+                                                     status_code=418)
 
     streaming.deploy()
     resp = requests.get("http://127.0.0.1:8000/streaming")
@@ -86,11 +87,12 @@ def test_starlette_response(serve_instance):
 
 
 def test_backend_user_config(serve_instance):
-    @serve.deployment(
-        "counter", num_replicas=2, user_config={
-            "count": 123,
-            "b": 2
-        })
+    @serve.deployment("counter",
+                      num_replicas=2,
+                      user_config={
+                          "count": 123,
+                          "b": 2
+                      })
     class Counter:
         def __init__(self):
             self.count = 10
@@ -133,10 +135,9 @@ def test_call_method(serve_instance):
     CallMethod.deploy()
 
     # Test HTTP path.
-    resp = requests.get(
-        "http://127.0.0.1:8000/method",
-        timeout=1,
-        headers={"X-SERVE-CALL-METHOD": "method"})
+    resp = requests.get("http://127.0.0.1:8000/method",
+                        timeout=1,
+                        headers={"X-SERVE-CALL-METHOD": "method"})
     assert resp.text == "hello"
 
     # Test serve handle path.

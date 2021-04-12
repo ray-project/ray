@@ -34,15 +34,15 @@ def _convert_to_tf(x, dtype=None):
         return x
     # Special handling of "Repeated" values.
     elif isinstance(x, RepeatedValues):
-        return RepeatedValues(
-            tf.nest.map_structure(_convert_to_tf, x.values), x.lengths,
-            x.max_len)
+        return RepeatedValues(tf.nest.map_structure(_convert_to_tf, x.values),
+                              x.lengths, x.max_len)
 
     if x is not None:
         d = dtype
         x = tf.nest.map_structure(
-            lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
-            else tf.convert_to_tensor(f, d) if f is not None else None, x)
+            lambda f: _convert_to_tf(f, d)
+            if isinstance(f, RepeatedValues) else tf.convert_to_tensor(f, d)
+            if f is not None else None, x)
     return x
 
 
@@ -67,8 +67,8 @@ def convert_eager_inputs(func):
             args = [_convert_to_tf(x) for x in args]
             # TODO: (sven) find a way to remove key-specific hacks.
             kwargs = {
-                k: _convert_to_tf(
-                    v, dtype=tf.int64 if k == "timestep" else None)
+                k: _convert_to_tf(v,
+                                  dtype=tf.int64 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }
@@ -99,7 +99,6 @@ def traced_eager_policy(eager_policy_cls):
     """Wrapper that enables tracing for all eager policy methods.
 
     This is enabled by the --trace / "eager_tracing" config."""
-
     class TracedEagerPolicy(eager_policy_cls):
         def __init__(self, *args, **kwargs):
             self._traced_learn_on_batch = None
@@ -146,9 +145,11 @@ def traced_eager_policy(eager_policy_cls):
                     autograph=False,
                     experimental_relax_shapes=True)
 
-            return self._traced_compute_actions(
-                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, timestep, **kwargs)
+            return self._traced_compute_actions(obs_batch, state_batches,
+                                                prev_action_batch,
+                                                prev_reward_batch, info_batch,
+                                                episodes, explore, timestep,
+                                                **kwargs)
 
         @override(eager_policy_cls)
         @convert_eager_inputs
@@ -219,10 +220,9 @@ def build_eager_tf_policy(
     base = add_mixins(Policy, mixins)
 
     if extra_action_fetches_fn is not None:
-        deprecation_warning(
-            old="extra_action_fetches_fn",
-            new="extra_action_out_fn",
-            error=False)
+        deprecation_warning(old="extra_action_fetches_fn",
+                            new="extra_action_out_fn",
+                            error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
@@ -336,10 +336,9 @@ def build_eager_tf_policy(
         def learn_on_batch(self, postprocessed_batch):
             # Callback handling.
             learn_stats = {}
-            self.callbacks.on_learn_on_batch(
-                policy=self,
-                train_batch=postprocessed_batch,
-                result=learn_stats)
+            self.callbacks.on_learn_on_batch(policy=self,
+                                             train_batch=postprocessed_batch,
+                                             result=learn_stats)
 
             if not isinstance(postprocessed_batch, SampleBatch) or \
                     not postprocessed_batch.zero_padded:
@@ -422,11 +421,11 @@ def build_eager_tf_policy(
 
         @override(Policy)
         def compute_actions_from_input_dict(
-                self,
-                input_dict: Dict[str, TensorType],
-                explore: bool = None,
-                timestep: Optional[int] = None,
-                **kwargs
+            self,
+            input_dict: Dict[str, TensorType],
+            explore: bool = None,
+            timestep: Optional[int] = None,
+            **kwargs
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
             if not tf1.executing_eagerly():
@@ -475,8 +474,8 @@ def build_eager_tf_policy(
                         episodes=episodes)
                 else:
                     # Exploration hook before each forward pass.
-                    self.exploration.before_compute_actions(
-                        timestep=timestep, explore=explore)
+                    self.exploration.before_compute_actions(timestep=timestep,
+                                                            explore=explore)
 
                     if action_distribution_fn:
 
@@ -680,8 +679,9 @@ def build_eager_tf_policy(
             if apply_gradients_fn:
                 apply_gradients_fn(self, self._optimizer, grads_and_vars)
             else:
-                self._optimizer.apply_gradients(
-                    [(g, v) for g, v in grads_and_vars if g is not None])
+                self._optimizer.apply_gradients([(g, v)
+                                                 for g, v in grads_and_vars
+                                                 if g is not None])
 
         @with_lock
         def _compute_gradients(self, samples):

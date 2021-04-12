@@ -27,14 +27,15 @@ def one_worker_100MiB(request):
         "object_timeout_milliseconds": 1000,
         "automatic_object_spilling_enabled": False
     }
-    yield ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config=config)
+    yield ray.init(num_cpus=1,
+                   object_store_memory=100 * 1024 * 1024,
+                   _system_config=config)
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=40,
+def _fill_object_store_and_get(obj,
+                               succeed=True,
+                               object_MiB=40,
                                num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
@@ -46,9 +47,8 @@ def _fill_object_store_and_get(obj, succeed=True, object_MiB=40,
         wait_for_condition(
             lambda: ray.worker.global_worker.core_worker.object_exists(obj))
     else:
-        wait_for_condition(
-            lambda: not ray.worker.global_worker.core_worker.object_exists(obj)
-        )
+        wait_for_condition(lambda: not ray.worker.global_worker.core_worker.
+                           object_exists(obj))
 
 
 # Test that an object containing object refs within it pins the inner IDs
@@ -70,8 +70,8 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
     signal = SignalActor.remote()
 
     max_depth = 5
-    array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    array_oid = put_object(np.zeros(40 * 1024 * 1024, dtype=np.uint8),
+                           use_ray_put)
     nested_oid = array_oid
     for _ in range(max_depth):
         nested_oid = ray.put([nested_oid])
@@ -109,8 +109,7 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+            put_object(np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
         ]
 
     @ray.remote(max_retries=1)
@@ -149,8 +148,7 @@ def test_pass_returned_object_ref(one_worker_100MiB, use_ray_put, failure):
     @ray.remote
     def return_an_id():
         return [
-            put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+            put_object(np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
         ]
 
     # TODO(edoakes): this fails with an ActorError with max_retries=1.
@@ -197,8 +195,8 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
                                               failure):
     @ray.remote
     def return_an_id():
-        return put_object(
-            np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        return put_object(np.zeros(40 * 1024 * 1024, dtype=np.uint8),
+                          use_ray_put)
 
     @ray.remote(max_retries=1)
     def recursive(ref, signal, max_depth, depth=0):
@@ -260,9 +258,8 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     @ray.remote
     def recursive(num_tasks_left):
         if num_tasks_left == 0:
-            return put_object(
-                np.zeros(40 * 1024 * 1024, dtype=np.uint8),
-                use_ray_put), os.getpid()
+            return put_object(np.zeros(40 * 1024 * 1024, dtype=np.uint8),
+                              use_ray_put), os.getpid()
 
         return ray.get(recursive.remote(num_tasks_left - 1))
 
@@ -341,27 +338,25 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
     ray.get(borrower.resolve_ref.remote())
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"],
+                    reason="Failing on Windows.")
 def test_object_unpin(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
-    head_node = cluster.add_node(
-        num_cpus=0,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "num_heartbeats_timeout": 10,
-            "subscriber_timeout_ms": 100
-        })
+    head_node = cluster.add_node(num_cpus=0,
+                                 object_store_memory=100 * 1024 * 1024,
+                                 _system_config={
+                                     "num_heartbeats_timeout": 10,
+                                     "subscriber_timeout_ms": 100
+                                 })
     ray.init(address=cluster.address)
 
     # Add worker nodes.
     for i in range(2):
         nodes.append(
-            cluster.add_node(
-                num_cpus=1,
-                resources={f"node_{i}": 1},
-                object_store_memory=100 * 1024 * 1024))
+            cluster.add_node(num_cpus=1,
+                             resources={f"node_{i}": 1},
+                             object_store_memory=100 * 1024 * 1024))
     cluster.wait_for_nodes()
 
     one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)
@@ -400,13 +395,13 @@ def test_object_unpin(ray_start_cluster):
 
     def check_memory(mb):
         return ((f"Plasma memory usage {mb} "
-                 "MiB" in memory_summary(
-                     address=head_node.address, stats_only=True)))
+                 "MiB" in memory_summary(address=head_node.address,
+                                         stats_only=True)))
 
     def wait_until_node_dead(node):
         for n in ray.nodes():
-            if (n["ObjectStoreSocketName"] == node.address_info[
-                    "object_store_address"]):
+            if (n["ObjectStoreSocketName"] ==
+                    node.address_info["object_store_address"]):
                 return not n["Alive"]
         return False
 
@@ -447,24 +442,22 @@ def test_object_unpin(ray_start_cluster):
     wait_for_condition(lambda: check_memory(0))
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Windows"], reason="Failing on Windows.")
+@pytest.mark.skipif(platform.system() in ["Windows"],
+                    reason="Failing on Windows.")
 def test_object_unpin_stress(ray_start_cluster):
     nodes = []
     cluster = ray_start_cluster
-    cluster.add_node(
-        num_cpus=1,
-        resources={"head": 1},
-        object_store_memory=1000 * 1024 * 1024)
+    cluster.add_node(num_cpus=1,
+                     resources={"head": 1},
+                     object_store_memory=1000 * 1024 * 1024)
     ray.init(address=cluster.address)
 
     # Add worker nodes.
     for i in range(2):
         nodes.append(
-            cluster.add_node(
-                num_cpus=1,
-                resources={f"node_{i}": 1},
-                object_store_memory=1000 * 1024 * 1024))
+            cluster.add_node(num_cpus=1,
+                             resources={f"node_{i}": 1},
+                             object_store_memory=1000 * 1024 * 1024))
     cluster.wait_for_nodes()
 
     one_mb_array = np.ones(1 * 1024 * 1024, dtype=np.uint8)

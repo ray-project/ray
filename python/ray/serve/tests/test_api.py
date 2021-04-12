@@ -18,8 +18,10 @@ def test_e2e(serve_instance):
         return {"method": starlette_request.method}
 
     serve.create_backend("echo:v1", function)
-    serve.create_endpoint(
-        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint",
+                          backend="echo:v1",
+                          route="/api",
+                          methods=["GET", "POST"])
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
@@ -30,12 +32,13 @@ def test_e2e(serve_instance):
 
 def test_starlette_response(serve_instance):
     def basic_response(_):
-        return starlette.responses.Response(
-            "Hello, world!", media_type="text/plain")
+        return starlette.responses.Response("Hello, world!",
+                                            media_type="text/plain")
 
     serve.create_backend("basic_response", basic_response)
-    serve.create_endpoint(
-        "basic_response", backend="basic_response", route="/basic_response")
+    serve.create_endpoint("basic_response",
+                          backend="basic_response",
+                          route="/basic_response")
     assert requests.get(
         "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
 
@@ -44,8 +47,9 @@ def test_starlette_response(serve_instance):
             "<html><body><h1>Hello, world!</h1></body></html>")
 
     serve.create_backend("html_response", html_response)
-    serve.create_endpoint(
-        "html_response", backend="html_response", route="/html_response")
+    serve.create_endpoint("html_response",
+                          backend="html_response",
+                          route="/html_response")
     assert requests.get(
         "http://127.0.0.1:8000/html_response"
     ).text == "<html><body><h1>Hello, world!</h1></body></html>"
@@ -54,10 +58,9 @@ def test_starlette_response(serve_instance):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
     serve.create_backend("plain_text_response", plain_text_response)
-    serve.create_endpoint(
-        "plain_text_response",
-        backend="plain_text_response",
-        route="/plain_text_response")
+    serve.create_endpoint("plain_text_response",
+                          backend="plain_text_response",
+                          route="/plain_text_response")
     assert requests.get(
         "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
 
@@ -65,20 +68,20 @@ def test_starlette_response(serve_instance):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     serve.create_backend("json_response", json_response)
-    serve.create_endpoint(
-        "json_response", backend="json_response", route="/json_response")
-    assert requests.get("http://127.0.0.1:8000/json_response").json()[
-        "hello"] == "world"
+    serve.create_endpoint("json_response",
+                          backend="json_response",
+                          route="/json_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/json_response").json()["hello"] == "world"
 
     def redirect_response(_):
         return starlette.responses.RedirectResponse(
             url="http://127.0.0.1:8000/basic_response")
 
     serve.create_backend("redirect_response", redirect_response)
-    serve.create_endpoint(
-        "redirect_response",
-        backend="redirect_response",
-        route="/redirect_response")
+    serve.create_endpoint("redirect_response",
+                          backend="redirect_response",
+                          route="/redirect_response")
     assert requests.get(
         "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
 
@@ -88,14 +91,14 @@ def test_starlette_response(serve_instance):
                 yield str(number)
                 await asyncio.sleep(0.01)
 
-        return starlette.responses.StreamingResponse(
-            slow_numbers(), media_type="text/plain", status_code=418)
+        return starlette.responses.StreamingResponse(slow_numbers(),
+                                                     media_type="text/plain",
+                                                     status_code=418)
 
     serve.create_backend("streaming_response", streaming_response)
-    serve.create_endpoint(
-        "streaming_response",
-        backend="streaming_response",
-        route="/streaming_response")
+    serve.create_endpoint("streaming_response",
+                          backend="streaming_response",
+                          route="/streaming_response")
     resp = requests.get("http://127.0.0.1:8000/streaming_response")
     assert resp.text == "123"
     assert resp.status_code == 418
@@ -145,10 +148,9 @@ def test_call_method(serve_instance):
     serve.create_endpoint("endpoint", backend="backend", route="/api")
 
     # Test HTTP path.
-    resp = requests.get(
-        "http://127.0.0.1:8000/api",
-        timeout=1,
-        headers={"X-SERVE-CALL-METHOD": "method"})
+    resp = requests.get("http://127.0.0.1:8000/api",
+                        timeout=1,
+                        headers={"X-SERVE-CALL-METHOD": "method"})
     assert resp.text == "hello"
 
     # Test serve handle path.
@@ -200,8 +202,9 @@ def test_reject_duplicate_endpoint(serve_instance):
     endpoint_name = "foo"
     serve.create_endpoint(endpoint_name, backend="backend", route="/ok")
     with pytest.raises(ValueError):
-        serve.create_endpoint(
-            endpoint_name, backend="backend", route="/different")
+        serve.create_endpoint(endpoint_name,
+                              backend="backend",
+                              route="/different")
 
 
 def test_reject_duplicate_endpoint_and_route(serve_instance):
@@ -301,8 +304,9 @@ def test_delete_backend(serve_instance):
         return "hello"
 
     serve.create_backend("delete:v1", function)
-    serve.create_endpoint(
-        "delete_backend", backend="delete:v1", route="/delete-backend")
+    serve.create_endpoint("delete_backend",
+                          backend="delete:v1",
+                          route="/delete-backend")
 
     assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
 
@@ -384,8 +388,10 @@ def test_list_endpoints(serve_instance):
     serve.create_backend("backend", f)
     serve.create_backend("backend2", f)
     serve.create_backend("backend3", f)
-    serve.create_endpoint(
-        "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint",
+                          backend="backend",
+                          route="/api",
+                          methods=["GET", "POST"])
     serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
     serve.shadow_traffic("endpoint", "backend3", 0.5)
 
@@ -533,8 +539,10 @@ def test_starlette_request(serve_instance):
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
 
     serve.create_backend("echo:v1", echo_body)
-    serve.create_endpoint(
-        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+    serve.create_endpoint("endpoint",
+                          backend="echo:v1",
+                          route="/api",
+                          methods=["GET", "POST"])
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
@@ -548,8 +556,9 @@ def test_variable_routes(serve_instance):
     serve.create_endpoint("basic", backend="f", route="/api/{username}")
 
     # Test multiple variables and test type conversion
-    serve.create_endpoint(
-        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+    serve.create_endpoint("complex",
+                          backend="f",
+                          route="/api/{user_id:int}/{number:float}")
 
     assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
         "username": "scaly"

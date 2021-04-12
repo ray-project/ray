@@ -26,7 +26,6 @@ ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 class ServeMultiDict(UserDict):
     """Compatible data structure to simulate Starlette Request query_args."""
-
     def getlist(self, key):
         """Return the list of items for a given key."""
         return self.data.get(key, [])
@@ -42,7 +41,6 @@ class ServeRequest:
     To use the full Starlette Request interface with ServeHandle, you may
     instead directly pass in a Starlette Request object to the ServeHandle.
     """
-
     def __init__(self, data, kwargs, headers, method):
         self._data = data
         self._kwargs = ServeMultiDict(kwargs)
@@ -122,7 +120,6 @@ class ServeEncoder(json.JSONEncoder):
         - Exceptions
         - numpy.ndarray
     """
-
     def default(self, o):  # pylint: disable=E0202
         if isinstance(o, bytes):
             return o.decode("utf-8")
@@ -236,7 +233,6 @@ class MockImportedBackend:
     processes. We could instead mock out importlib but doing so is messier and
     reduces confidence in the test (it isn't truly end-to-end).
     """
-
     def __init__(self, arg):
         self.arg = arg
         self.config = None
@@ -333,8 +329,7 @@ def register_custom_serializers():
                 "field_info": o.field_info,
             },
             deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
-        )
-    )
+        ))
 
     # FastAPI's app.state object is not serializable
     # because it overrides __getattr__
@@ -343,13 +338,11 @@ def register_custom_serializers():
             starlette.datastructures.State,
             serializer=lambda s: s._state,
             deserializer=lambda s: starlette.datastructures.State(s),
-        )
-    )
+        ))
 
 
 class ASGIHTTPSender:
     """Implement the interface for ASGI sender, build Starlette Response"""
-
     def __init__(self) -> None:
         self.status_code: Optional[int] = 200
         self.header: Dict[str, str] = {}
@@ -367,10 +360,9 @@ class ASGIHTTPSender:
                              "http.responses.{body,start}.")
 
     def build_starlette_response(self) -> starlette.responses.Response:
-        return starlette.responses.Response(
-            b"".join(self.buffer),
-            status_code=self.status_code,
-            headers=dict(self.header))
+        return starlette.responses.Response(b"".join(self.buffer),
+                                            status_code=self.status_code,
+                                            headers=dict(self.header))
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:

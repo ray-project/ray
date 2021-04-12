@@ -113,14 +113,13 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     ray.get([actor.ping.remote() for actor in actors])
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "resources": {
-            "actor": 1
-        },
-        "num_cpus": 2,
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{
+    "resources": {
+        "actor": 1
+    },
+    "num_cpus": 2,
+}],
+                         indirect=True)
 def test_deleted_actor_no_restart(ray_start_regular):
     @ray.remote(resources={"actor": 1}, max_restarts=3)
     class Actor:
@@ -669,8 +668,8 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(TypeError):
         DetachedActor._remote(lifetime="detached", name=1)
 
-    with pytest.raises(
-            ValueError, match="Actor name cannot be an empty string"):
+    with pytest.raises(ValueError,
+                       match="Actor name cannot be an empty string"):
         DetachedActor._remote(lifetime="detached", name="")
 
     d = DetachedActor._remote(lifetime="detached", name="d_actor")
@@ -730,8 +729,8 @@ def test_detached_actor_cleanup(ray_start_regular):
 
     def create_and_kill_actor(actor_name):
         # Make sure same name is creatable after killing it.
-        detached_actor = DetachedActor.options(
-            lifetime="detached", name=actor_name).remote()
+        detached_actor = DetachedActor.options(lifetime="detached",
+                                               name=actor_name).remote()
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         del detached_actor
@@ -790,10 +789,10 @@ while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
     create_and_kill_actor(dup_actor_name)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "local_mode": True
-    }], indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{
+    "local_mode": True
+}],
+                         indirect=True)
 def test_detached_actor_local_mode(ray_start_regular):
     RETURN_VALUE = 3
 
@@ -811,15 +810,14 @@ def test_detached_actor_local_mode(ray_start_regular):
         ray.get_actor("test")
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_cpus": 3,
-        "num_nodes": 1,
-        "resources": {
-            "first_node": 5
-        }
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_cluster", [{
+    "num_cpus": 3,
+    "num_nodes": 1,
+    "resources": {
+        "first_node": 5
+    }
+}],
+                         indirect=True)
 def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     cluster = ray_start_cluster
     node = cluster.add_node(resources={"second_node": 1})
@@ -855,9 +853,9 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         resources = {"second_node": 1}\
                         if schedule_in_second_node\
                         else {"first_node": 1}
-        actor_handle = DetachedActor.options(
-            lifetime="detached", name=actor_name,
-            resources=resources).remote()
+        actor_handle = DetachedActor.options(lifetime="detached",
+                                             name=actor_name,
+                                             resources=resources).remote()
         # Wait for detached actor creation.
         assert ray.get(actor_handle.ping.remote()) == "pong"
         return actor_handle
@@ -932,14 +930,13 @@ def test_actor_creation_task_crash(ray_start_regular):
     ray.get(ra.f.remote())
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "num_cpus": 2,
-        "resources": {
-            "a": 1
-        }
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{
+    "num_cpus": 2,
+    "resources": {
+        "a": 1
+    }
+}],
+                         indirect=True)
 def test_pending_actor_removed_by_owner(ray_start_regular):
     # Verify when an owner of pending actors is killed, the actor resources
     # are correctly returned.
@@ -1073,8 +1070,8 @@ def test_actor_resource_demand(shutdown_only):
         resource_usages.resource_load_by_shape.resource_demands[0].shape == {
             "CPU": 80.0
         })
-    assert (resource_usages.resource_load_by_shape.resource_demands[0]
-            .num_infeasible_requests_queued == 1)
+    assert (resource_usages.resource_load_by_shape.resource_demands[0].
+            num_infeasible_requests_queued == 1)
 
     actors.append(Actor2.remote())
     time.sleep(1)
@@ -1083,8 +1080,8 @@ def test_actor_resource_demand(shutdown_only):
     message = global_state_accessor.get_all_resource_usage()
     resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
     assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
-    assert (resource_usages.resource_load_by_shape.resource_demands[0]
-            .num_infeasible_requests_queued == 2)
+    assert (resource_usages.resource_load_by_shape.resource_demands[0].
+            num_infeasible_requests_queued == 2)
 
     global_state_accessor.disconnect()
 

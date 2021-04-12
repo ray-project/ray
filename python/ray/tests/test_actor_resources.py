@@ -14,8 +14,9 @@ import ray.cluster_utils
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
-    ray.init(
-        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
+    ray.init(num_cpus=1,
+             num_gpus=1,
+             object_store_memory=int(150 * 1024 * 1024))
 
     # When an actor that uses a GPU exits, make sure that the GPU resources
     # are released.
@@ -85,8 +86,8 @@ def test_actor_gpus(ray_start_cluster):
     num_nodes = 3
     num_gpus_per_raylet = 4
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+        cluster.add_node(num_cpus=10 * num_gpus_per_raylet,
+                         num_gpus=num_gpus_per_raylet)
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
@@ -124,8 +125,8 @@ def test_actor_multiple_gpus(ray_start_cluster):
     num_nodes = 3
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+        cluster.add_node(num_cpus=10 * num_gpus_per_raylet,
+                         num_gpus=num_gpus_per_raylet)
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
@@ -310,8 +311,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     num_nodes = 3
     num_gpus_per_raylet = 2
     for i in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+        cluster.add_node(num_cpus=num_gpus_per_raylet,
+                         num_gpus=num_gpus_per_raylet)
     ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
@@ -420,10 +421,9 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # are given different GPUs
     num_gpus = 4
 
-    ray.init(
-        num_cpus=(num_gpus + 1),
-        num_gpus=num_gpus,
-        object_store_memory=int(150 * 1024 * 1024))
+    ray.init(num_cpus=(num_gpus + 1),
+             num_gpus=num_gpus,
+             object_store_memory=int(150 * 1024 * 1024))
 
     # The point of this actor is to record which GPU IDs have been seen. We
     # can't just return them from the tasks, because the tasks don't return
@@ -486,8 +486,9 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
 
 def test_blocking_actor_task(shutdown_only):
-    ray.init(
-        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
+    ray.init(num_cpus=1,
+             num_gpus=1,
+             object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -557,17 +558,18 @@ def test_lifetime_and_transient_resources(ray_start_regular):
 
     actor2s = [Actor2.remote() for _ in range(2)]
     results = [a.method.remote() for a in actor2s]
-    ready_ids, remaining_ids = ray.wait(
-        results, num_returns=len(results), timeout=5.0)
+    ready_ids, remaining_ids = ray.wait(results,
+                                        num_returns=len(results),
+                                        timeout=5.0)
     assert len(ready_ids) == 1
 
 
 def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
-    custom_resource1_node = cluster.add_node(
-        num_cpus=2, resources={"CustomResource1": 2})
-    custom_resource2_node = cluster.add_node(
-        num_cpus=2, resources={"CustomResource2": 2})
+    custom_resource1_node = cluster.add_node(num_cpus=2,
+                                             resources={"CustomResource1": 2})
+    custom_resource2_node = cluster.add_node(num_cpus=2,
+                                             resources={"CustomResource2": 2})
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
