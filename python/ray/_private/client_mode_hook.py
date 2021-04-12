@@ -28,6 +28,11 @@ def _explicitly_enable_client_mode():
     client_mode_enabled = True
 
 
+def _explicitly_disable_client_mode():
+    global client_mode_enabled
+    client_mode_enabled = False
+
+
 @contextmanager
 def disable_client_hook():
     val = _disable_client_hook()
@@ -38,12 +43,12 @@ def disable_client_hook():
 
 
 @contextmanager
-def enable_client_hook():
-    _enable_client_hook(True)
+def enable_client_mode():
+    _explicitly_enable_client_mode()
     try:
         yield None
     finally:
-        _disable_client_hook()
+        _explicitly_disable_client_mode()
 
 
 def client_mode_hook(func):
