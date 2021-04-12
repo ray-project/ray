@@ -82,7 +82,7 @@ class TestPPO(unittest.TestCase):
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
-        # Use default-native keras model whenever possible.
+        # Use default-native keras models whenever possible.
         config["model"]["_use_default_native_models"] = True
 
         config["train_batch_size"] = 128
@@ -91,7 +91,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
+            for env in ["MsPacmanNoFrameskip-v4", "CartPole-v0"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
                     print("LSTM={}".format(lstm))

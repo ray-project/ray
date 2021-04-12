@@ -39,8 +39,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # If True, try to use a native (tf.keras.Model or torch.Module) default
     # model instead of our built-in ModelV2 defaults.
     # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for framework != torch AND fully
-    # connected default networks.
+    # Note that this currently only works for:
+    # 1) framework != torch AND
+    # 2) fully connected or CNN default networks.
     "_use_default_native_models": False,
 
     # === Built-in options ===
@@ -759,13 +760,15 @@ class ModelCatalog:
         VisionNet = None
         ComplexNet = None
         Keras_FCNet = None
+        Keras_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet, \
                 Keras_FullyConnectedNetwork as Keras_FCNet
             from ray.rllib.models.tf.visionnet import \
-                VisionNetwork as VisionNet
+                VisionNetwork as VisionNet, \
+                Keras_VisionNetwork as Keras_VisionNet
             from ray.rllib.models.tf.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "torch":
@@ -802,7 +805,7 @@ class ModelCatalog:
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
-            # Keras native requested AND no auto-rnn-wrapping AND .
+            # Keras native requested AND no auto-rnn-wrapping.
             if model_config.get("_use_default_native_models") and \
                     Keras_FCNet and not model_config.get("use_lstm") and \
                     not model_config.get("use_attention"):
@@ -815,6 +818,10 @@ class ModelCatalog:
             raise NotImplementedError("No non-FC default net for JAX yet!")
 
         # Last resort: Conv2D stack for single image spaces.
+        if model_config.get("_use_default_native_models") and \
+                Keras_VisionNet and not model_config.get("use_lstm") and \
+                not model_config.get("use_attention"):
+            return Keras_VisionNet
         return VisionNet
 
     @staticmethod
