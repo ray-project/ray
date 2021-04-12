@@ -1,9 +1,5 @@
-Running script
---------------
-There are 2 types of tests. 
-
 Data processing test
-====================
+--------------------
 There are 2 workloads. Each workerload requires a different cluster.yaml.
 
 Make sure to copy & paste both drivers.
@@ -23,8 +19,16 @@ ray up dask_on_ray.yaml -y
 This process is required because ulimit is not permitted for images that we are using. Ulimit is necessary for large cluster testing like this.
 Check out https://discuss.ray.io/t/setting-ulimits-on-ec2-instances/590/2 for more details
 
+Success Criteria
+================
+For `streaming_shuffle.py`, make sure to include the output string to the release logs.
+
+For `dask_on_ray_large_scale_test.py`, make sure the test runs for at least for an hour. This test should succeed, otherwise, it is a release blocker.
+Check out https://github.com/ray-project/ray/pull/14340#discussion_r599271079 to learn the success condition of this test.
+
+
 Dask on Ray compatibility test
-==============================
+------------------------------
 It tests the compatibility to last N dask versions.
 
 Please follow the steps below. Note that the test is only working in MacOS with Python 3.7 right now. Feel free to contribute.
@@ -34,15 +38,5 @@ Please follow the steps below. Note that the test is only working in MacOS with 
 3. `./dask-on-ray-test.sh`
 
 Success Criteria
-----------------
-
-Data processing test
-====================
-For `streaming_shuffle.py`, make sure to include the output string to the release logs.
-
-For `dask_on_ray_large_scale_test.py`, make sure the test runs for at least for an hour. This test should succeed, otherwise, it is a release blocker.
-Check out https://github.com/ray-project/ray/pull/14340#discussion_r599271079 to learn the success condition of this test.
-
-Dask on Ray compatibility test
-==============================
+================
 Make sure all tests are passing on all dask versions.

@@ -2,7 +2,6 @@
 # NOTE: Only working for Python 3.7 on MacOS.
 # NOTE: Please modify the wheel URL.
 DASK_VERSION=("2021.4.0" "2021.3.1" "2021.2.0" "2021.1.1" "2020.12.0")
-# DASK_VERSION=("2021.4.0")
 
 unset RAY_ADDRESS
 
