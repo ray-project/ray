@@ -126,9 +126,9 @@ class ConvergenceTest(unittest.TestCase):
 
         # This assertion is much weaker than in the BO case, but TPE
         # don't converge too close. It is still unlikely to get to this
-        # tolerance with random search (5 * 0.05 = 0.25% chance)
+        # tolerance with random search (5 * 0.1 = 0.5% chance)
         assert len(analysis.trials) < 100
-        assert math.isclose(analysis.best_config["x"], 0, abs_tol=5e-2)
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-1)
 
     def testConvergenceSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
