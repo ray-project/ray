@@ -182,11 +182,13 @@ def test_exclusion(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
+
     def create_file(p):
         if not p.parent.exists():
             p.parent.mkdir()
         with p.open("w") as f:
             f.write("Test")
+
     create_file(working_path / "tmp_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "test_2")
     create_file(working_path / "tmp_dir" / "test_3")
@@ -215,21 +217,28 @@ def test_exclusion(working_dir, ray_start_cluster_head, client_mode):
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     # Test it works before
-    assert out.strip().split("\n")[-1] == "Test,Test,Test,Test,Test,Test,Test,Test"
+    assert out.strip().split("\n")[-1] == \
+        "Test,Test,Test,Test,Test,Test,Test,Test"
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
         "excludes": [
-            r"{tmp_dir_test_3}", # exclude by absolute path
-            r"{str(working_path / "test2")}", # exclude by relative path
-            r"{str(working_path / "tmp_dir" / "sub_dir")}", # exclude by dir
-            r"{str(working_path / "tmp_dir" / "test_1")}", # exclude part of the dir
-            r"{str(working_path / "tmp_dir" / "test_2")}", # exclude part of the dir
+            # exclude by absolute path
+            r"{tmp_dir_test_3}",
+            # exclude by relative path
+            r"{str(working_path / "test2")}",
+            # exclude by dir
+            r"{str(working_path / "tmp_dir" / "sub_dir")}",
+            # exclude part of the dir
+            r"{str(working_path / "tmp_dir" / "test_1")}",
+            # exclude part of the dir
+            r"{str(working_path / "tmp_dir" / "test_2")}",
         ]
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     # Test it works before
-    assert out.strip().split("\n")[-1] == "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
+    assert out.strip().split("\n")[-1] == \
+        "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
