@@ -181,7 +181,7 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
 
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
+    data_dir = "~/data"
 
     if args.tune:
         raise NotImplementedError("Using Tune + Pytorch Lightning with "
