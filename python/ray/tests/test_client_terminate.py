@@ -1,5 +1,6 @@
 import pytest
 import sys
+import time
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -86,6 +87,38 @@ def test_cancel_chain(ray_start_regular, use_force):
 
         signaler2.send.remote()
         ray.get(obj1)
+
+
+def test_kill_cancel_metadata(ray_start_regular):
+    """
+    Verify that client worker's terminate_actor and terminate_task methods
+    pass worker's metadata attribute server grpc stub's Terminate method.
+    """
+    with ray_start_client_server(metadata=[("foo", "bar")]) as ray:
+
+        @ray.remote
+        class A:
+            pass
+
+        @ray.remote
+        def f():
+            time.sleep(1000)
+
+        actor = A.remote()
+        task_ref = f.remote()
+
+        def mock_terminate(term, metadata):
+            raise Exception(metadata[0][0])
+
+        ray.api.worker.server.Terminate = mock_terminate
+
+        with pytest.raises(Exception) as e:
+            ray.kill(actor)
+        assert str(e.value) == "foo"
+
+        with pytest.raises(Exception) as e:
+            ray.cancel(task_ref)
+        assert str(e.value) == "foo"
 
 
 if __name__ == "__main__":
