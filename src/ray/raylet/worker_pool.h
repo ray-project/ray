@@ -39,6 +39,22 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
+/// TODO(archit):
+/// 1. Add runtime_env dict in the task_spec to the RuntimeEnv cache
+///    key below once it's implemented.
+/// 2. Make this compile by making the RuntimeEnv type hashable. This will
+///    include making the dicts passed in ordered (we should sort them in
+///    Python and pass them as tuples or something?).
+/// 3. Fix tests and add new ones to worker_pool_test.cc.
+/// 4. Eventually we should unify the two codepaths for when these options are
+///    and aren't set instead of having a "special" codepath for it.
+
+/// Tuple of (TaskID, DynamicWorkerOptions, OverrideEnvironmentVariables)
+/// that's used as a cache key for workers. DynamicWorkerOptions and
+/// OverrideEnvironmentVariables will be unified into RuntimeEnv in the future.
+using RuntimeEnv = std::tuple<TaskID, std::vector<std::string>>,
+      std::unordered_map<std::string, std::string> > ;
+
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -309,14 +325,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
-  /// Whether there is a pending worker for the given task.
-  /// Note that, this is only used for actor creation task with dynamic options.
+  /// Whether there is a pending worker for the given environment.
   /// And if the worker registered but isn't assigned a task,
   /// the worker also is in pending state, and this'll return true.
   ///
   /// \param language The required language.
-  /// \param task_id The task that we want to query.
-  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
+  /// \param env The environment that we want to query.
+  bool HasPendingWorkerForEnv(const Language &language, const RuntimeEnv &env);
 
   /// Get the set of active object IDs from all workers in the worker pool.
   /// \return A set containing the active object IDs.
@@ -382,9 +397,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The pool of dedicated workers for actor creation tasks
-    /// with prefix or suffix worker command.
-    std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
+    /// The pool of dedicated workers for tasks with a non-empty runtime
+    /// environment.
+    std::unordered_map<RuntimeEnv, std::shared_ptr<WorkerInterface>>
+        idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
@@ -406,9 +422,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<Process, int> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
-    /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    std::unordered_map<Process, RuntimeEnv> dedicated_workers_to_env;
+    /// A map for speeding up looking up the pending worker for the given env.
+    std::unordered_map<RuntimeEnv, Process> envs_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -521,7 +537,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
 
-  /// The umber of initial Python workers to wait for the first job before the driver
+  /// The number of initial Python workers to wait for the first job before the driver
   /// receives RegisterClientReply.
   int first_job_driver_wait_num_python_workers_;
 

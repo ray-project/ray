@@ -645,12 +645,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
-  if (it != state.dedicated_workers_to_tasks.end()) {
+  auto it = state.dedicated_workers_to_env.find(worker->GetProcess());
+  if (it != state.dedicated_workers_to_env.end()) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
-    const auto task_id = it->second;
-    state.idle_dedicated_workers[task_id] = worker;
+    const auto env = it->second;
+    state.idle_dedicated_workers[env] = worker;
   } else {
     // The worker is not used for the actor creation task with dynamic options.
     // Put the worker to the idle pool.
@@ -805,40 +805,40 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
-  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0) {
-    // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options, or any task with environment variable overrides.
+  if (task_spec.IsActorTask()) {
+    RAY_CHECK(false) << "Direct call shouldn't reach here.";
+  } else if ((!task_spec.DynamicWorkerOptions().empty()) ||
+             task_spec.OverrideEnvironmentVariables().size() > 0) {
+    std::vector<std::string> dynamic_options = {};
+    if (task_spec.IsActorCreationTask()) {
+      dynamic_options = task_spec.DynamicWorkerOptions();
+    }
+    RuntimeEnv env = std::make_tuple(task_spec.TaskId(), dynamic_options,
+                                     task_spec.OverrideEnvironmentVariables());
+    // Code path of task that needs a dedicated worker.
     // Try to pop it from idle dedicated pool.
-    auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
+    auto it = state.idle_dedicated_workers.find(env);
     if (it != state.idle_dedicated_workers.end()) {
       // There is an idle dedicated worker for this task.
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
       // Because we found a worker that can perform this task,
-      // we can remove it from dedicated_workers_to_tasks.
-      state.dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
-    } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
+      // we can remove it from dedicated_workers_to_env.
+      state.dedicated_workers_to_env.erase(worker->GetProcess());
+      state.envs_to_dedicated_workers.erase(env);
+    } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), env)) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      std::vector<std::string> dynamic_options = {};
-      if (task_spec.IsActorCreationTask()) {
-        dynamic_options = task_spec.DynamicWorkerOptions();
-      }
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                 task_spec.JobId(), dynamic_options,
                                 task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
-        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
+        state.dedicated_workers_to_env[proc] = env;
+        state.envs_to_dedicated_workers[env] = proc;
       }
     }
-  } else if (task_spec.IsActorTask()) {
-    // Code path of actor task.
-    RAY_CHECK(false) << "Direct call shouldn't reach here.";
   } else {
-    // Code path of normal task or actor creation task without dynamic worker options.
+    // Code path for tasks without runtime environment options.
     // Find an available worker which is already assigned to this job.
     // Try to pop the most recently pushed worker.
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
@@ -879,7 +879,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                                  int64_t backlog_size) {
   // Code path of task that needs a dedicated worker: an actor creation task with
   // dynamic worker options, or any task with environment variable overrides.
-  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+  if ((!task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0) {
     return;  // Not handled.
   }
@@ -1053,11 +1053,10 @@ void WorkerPool::WarnAboutSize() {
   }
 }
 
-bool WorkerPool::HasPendingWorkerForTask(const Language &language,
-                                         const TaskID &task_id) {
+bool WorkerPool::HasPendingWorkerForEnv(const Language &language, const RuntimeEnv &env) {
   auto &state = GetStateForLanguage(language);
-  auto it = state.tasks_to_dedicated_workers.find(task_id);
-  return it != state.tasks_to_dedicated_workers.end();
+  auto it = state.envs_to_dedicated_workers.find(env);
+  return it != state.envs_to_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {
