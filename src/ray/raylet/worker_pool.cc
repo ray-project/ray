@@ -114,7 +114,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms());
+        RayConfig::instance().kill_idle_workers_interval_ms(),
+        "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 }
 
