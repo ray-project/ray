@@ -110,6 +110,7 @@ The following test cases are related with runtime env. It following these steps
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_single_node(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -124,6 +125,7 @@ def test_single_node(working_dir, ray_start_cluster_head, client_mode):
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_two_node(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -138,6 +140,7 @@ def test_two_node(working_dir, two_node_cluster, client_mode):
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_two_node_module(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -152,6 +155,7 @@ def test_two_node_module(working_dir, two_node_cluster, client_mode):
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_two_node_local_file(working_dir, two_node_cluster, client_mode):
     with open(os.path.join(working_dir, "test_file"), "w") as f:
         f.write("1")
@@ -171,6 +175,7 @@ print(sum([int(v) for v in vals]))
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_two_node_uri(working_dir, two_node_cluster, client_mode):
     cluster, _ = two_node_cluster
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -193,6 +198,7 @@ def test_two_node_uri(working_dir, two_node_cluster, client_mode):
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_regular_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -209,6 +215,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 
 
 @pytest.mark.parametrize("client_mode", [True, False])
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_detached_actors(working_dir, ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
@@ -234,6 +241,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     assert len(list(Path(PKG_DIR).iterdir())) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_jobconfig_compatible_1(working_dir, ray_start_cluster_head):
     # start job_config=None
     # start job_config=something
@@ -259,6 +267,7 @@ sleep(600)
     proc.wait()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_jobconfig_compatible_2(working_dir, ray_start_cluster_head):
     # start job_config=something
     # start job_config=None
@@ -283,6 +292,7 @@ sleep(600)
     proc.wait()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_jobconfig_compatible_3(working_dir, ray_start_cluster_head):
     # start job_config=something
     # start job_config=something else

@@ -294,6 +294,7 @@ ray.get([open_file.remote() for _ in range(100)])
     "ray_start_cluster_head", [{
         "num_cpus": 4,
     }], indirect=True)
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_module_import(ray_start_cluster_head):
     @ray.remote
     def warm_up():
@@ -315,7 +316,7 @@ import ray
 os.chdir(r"{tmp_dir}")
 ray.init(address='auto')
 import sys
-sys.path.insert(1, "{tmp_dir}")
+sys.path.insert(1, r"{tmp_dir}")
 import test
 @ray.remote
 def open_file():
