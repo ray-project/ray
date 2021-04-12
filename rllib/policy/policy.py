@@ -561,7 +561,8 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.OBS: ViewRequirement(
+                space=self.observation_space, used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
@@ -612,20 +613,25 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(
-            {k: v
-             for k, v in self._dummy_batch.items()})
+        self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict, explore=False)
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False)
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
                     used_for_compute_actions=False)
+        for key in self._dummy_batch.accessed_keys:
+            if key not in self.view_requirements:
+                self.view_requirements[key] = ViewRequirement()
+            self.view_requirements[key].used_for_compute_actions = True
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -645,7 +651,7 @@ class Policy(metaclass=ABCMeta):
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         if seq_lens is not None:
-            train_batch["seq_lens"] = seq_lens
+            train_batch.seq_lens = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -762,6 +768,7 @@ class Policy(metaclass=ABCMeta):
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
+                used_for_compute_actions=True,
                 batch_repeat_value=self.config.get("model", {}).get(
                     "max_seq_len", 1),
                 space=space)

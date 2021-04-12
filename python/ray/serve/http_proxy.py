@@ -1,5 +1,6 @@
 import asyncio
 import socket
+import time
 from typing import List, Dict, Tuple
 
 import uvicorn
@@ -14,11 +15,17 @@ from ray.serve.constants import WILDCARD_PATH_SUFFIX
 from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
-from ray.serve.http_util import Response, build_starlette_request
+from ray.serve.http_util import HTTPRequestWrapper, Response
 from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
-MAX_ACTOR_FAILURE_RETRIES = 10
+MAX_REPLICA_FAILURE_RETRIES = 10
+
+
+def _strip_wildcard_suffix(path):
+    if path.endswith(WILDCARD_PATH_SUFFIX):
+        path = path[:-len(WILDCARD_PATH_SUFFIX)]
+    return path
 
 
 class ServeStarletteEndpoint:
@@ -35,8 +42,9 @@ class ServeStarletteEndpoint:
         app = starlette.applications.Starlette(routes=[route])
     """
 
-    def __init__(self, endpoint_tag: EndpointTag):
+    def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
         self.endpoint_tag = endpoint_tag
+        self.path_prefix = path_prefix
         self.handle = serve.get_handle(
             self.endpoint_tag, sync=False, missing_ok=True)
 
@@ -45,25 +53,41 @@ class ServeStarletteEndpoint:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
+        # scope["router"] and scope["endpoint"] contain references to a router
+        # and endpoint object, respectively, which each in turn contain a
+        # reference to the Serve client, which cannot be serialized.
+        # The solution is to delete these from scope, as they will not be used.
+        del scope["router"]
+        del scope["endpoint"]
+
+        # Modify the path and root path so that reverse lookups and redirection
+        # work as expected. We do this here instead of in replicas so it can be
+        # changed without restarting the replicas.
+        scope["path"] = scope["path"].replace(self.path_prefix, "", 1)
+        scope["root_path"] = self.path_prefix
+        handle = self.handle.options(
+            method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                    DEFAULT.VALUE),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
+            http_method=scope["method"].upper(),
+            http_headers=headers)
+
+        # NOTE(edoakes): it's important that we defer building the starlette
+        # request until it reaches the backend replica to avoid unnecessary
+        # serialization cost, so we use a simple dataclass here.
+        request = HTTPRequestWrapper(scope, http_body_bytes)
+
         retries = 0
         backoff_time_s = 0.05
-        while retries < MAX_ACTOR_FAILURE_RETRIES:
-            object_ref = await self.handle.options(
-                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
-                                        DEFAULT.VALUE),
-                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
-                                      DEFAULT.VALUE),
-                http_method=scope["method"].upper(),
-                http_headers=headers).remote(
-                    build_starlette_request(scope, http_body_bytes))
-
+        while retries < MAX_REPLICA_FAILURE_RETRIES:
+            object_ref = await handle.remote(request)
             try:
                 result = await object_ref
                 break
             except RayActorError:
                 logger.warning(
-                    "Request failed due to actor failure. There are "
-                    f"{MAX_ACTOR_FAILURE_RETRIES - retries} retries "
+                    "Request failed due to replica failure. There are "
+                    f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                     "remaining.")
                 await asyncio.sleep(backoff_time_s)
                 backoff_time_s *= 2
@@ -122,17 +146,33 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        start = time.time()
+        while True:
+            if time.time() - start > timeout_s:
+                raise TimeoutError(
+                    f"Waited {timeout_s} for {endpoint} to propogate.")
+            endpoints: List[EndpointTag] = [
+                tag for tag, _methods in self.route_table.values()
+            ]
+            if endpoint in endpoints:
+                return
+            await asyncio.sleep(0.2)
+
     def _update_route_table(self, route_table: Dict[str, List[str]]):
-        logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
+        logger.debug(f"HTTP Proxy: Got updated route table: {route_table}.")
         self.route_table = route_table
 
         # Routes are sorted in order of descending length to enable longest
         # prefix matching (Starlette evaluates the routes in order).
         routes = [
             starlette.routing.Route(
-                route, ServeStarletteEndpoint(endpoint_tag), methods=methods)
-            for route, (endpoint_tag, methods) in sorted(
-                route_table.items(), key=lambda x: len(x[0]), reverse=True)
+                route,
+                ServeStarletteEndpoint(endpoint_tag,
+                                       _strip_wildcard_suffix(route)),
+                methods=methods) for route, (endpoint_tag, methods) in sorted(
+                    route_table.items(), key=lambda x: len(x[0]), reverse=True)
             if not self._is_headless(route)
         ]
 
@@ -154,12 +194,10 @@ class HTTPProxy:
         # TODO(edoakes): once we deprecate the old ingress support, we could
         # just add the wildcard when we add routes to the Router instead of in
         # the route table.
-        stripped = {}
-        for path, (endpoint, methods) in self.route_table.items():
-            if path.endswith(WILDCARD_PATH_SUFFIX):
-                path = path[:-len(WILDCARD_PATH_SUFFIX)]
-            stripped[path] = (endpoint, methods)
-        return starlette.responses.JSONResponse(stripped)
+        return starlette.responses.JSONResponse({
+            _strip_wildcard_suffix(path): (endpoint, methods)
+            for path, (endpoint, methods) in self.route_table.items()
+        })
 
     def _is_headless(self, route: str):
         """Returns True if `route` corresponds to a headless endpoint."""
@@ -220,6 +258,10 @@ class HTTPProxyActor:
 
         # Return None, or re-throw the exception from self.running_task.
         return await done_set.pop()
+
+    async def block_until_endpoint_exists(self, endpoint: EndpointTag,
+                                          timeout_s: float):
+        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
         sock = socket.socket()

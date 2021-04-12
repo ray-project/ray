@@ -243,7 +243,7 @@ class LogMonitor:
                     lines_to_publish.append(next_line)
                 except Exception:
                     logger.error(
-                        f"Error: Reading file: {file_info.full_path}, "
+                        f"Error: Reading file: {file_info.filename}, "
                         f"position: {file_info.file_info.file_handle.tell()} "
                         "failed.")
                     raise

@@ -19,7 +19,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
-#include "ray/raylet/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -34,12 +34,12 @@ namespace raylet {
 
 using ::testing::_;
 
-class MockSubscriber : public SubscriberInterface {
+class MockSubscriber : public pubsub::SubscriberInterface {
  public:
   void SubcribeObject(
       const rpc::Address &owner_address, const ObjectID &object_id,
-      SubscriptionCallback subscription_callback,
-      SubscriptionFailureCallback subscription_failure_callback) override {
+      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(std::make_pair(object_id, subscription_callback));
   }
 
@@ -59,7 +59,7 @@ class MockSubscriber : public SubscriberInterface {
 
   bool AssertNoLeak() const override { return true; }
 
-  std::deque<std::pair<ObjectID, SubscriptionCallback>> callbacks;
+  std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
 };
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {

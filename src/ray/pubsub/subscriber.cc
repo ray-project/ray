@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/pubsub/subscriber.h"
+#include "ray/pubsub/subscriber.h"
 
 namespace ray {
+
+namespace pubsub {
 
 void Subscriber::SubcribeObject(
     const rpc::Address &publisher_address, const ObjectID &object_id,
@@ -183,5 +185,7 @@ bool Subscriber::AssertNoLeak() const {
   }
   return subscription_map_.size() == 0;
 }
+
+}  // namespace pubsub
 
 }  // namespace ray
