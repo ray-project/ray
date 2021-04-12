@@ -91,6 +91,41 @@ class MnistTrainingOperator(FLAXTrainingOperator):
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
+
+def make_ar_trainer(args):
+    trainer = AllReduceStrategy(
+        training_operator_cls=MnistTrainingOperator,
+        world_size=2,
+        operator_config={
+            "lr": 0.1,
+           "test_mode": args.smoke_test,  # subset the data
+            # this will be split across workers.
+            "batch_size": 64,
+            "num_classes": 10,
+        },
+        use_tqdm=True,
+        )
+    return trainer
+
+
+def make_ps_trainer(args):
+    trainer = ParameterServerStrategy(
+        training_operator_cls=MnistTrainingOperator,
+        world_size=2,
+        num_workers=1,
+        num_ps=1,
+        operator_config={
+            "lr": 0.1,
+           "test_mode": args.smoke_test,  # subset the data
+            # this will be split across workers.
+            "batch_size": 64,
+            "num_classes": 10,
+        },
+        use_tqdm=True,
+        )
+    return trainer
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -131,32 +166,22 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    trainer1 = AllReduceStrategy(
-        training_operator_cls=MnistTrainingOperator,
-        world_size=args.num_workers,
-        operator_config={
-            "lr": 0.01,
-            "test_mode": args.smoke_test,  # subset the data
-            # this will be split across workers.
-            "batch_size": 128,
-            "num_classes": 10,
-            "use_tqdm": True,
-        },
-        )
+    # trainer = make_ar(args)
+    trainer = make_ps_trainer(args)
 
-    trainer1.load_parameters("jax_checkpoint.db")
+    trainer.load_parameters("jax_checkpoint.db")
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
-        trainer1.train(max_retries=1, info=info)
-        val_stats = trainer1.validate()
+        trainer.train(max_retries=1, info=info)
+        val_stats = trainer.validate()
         print("validate", val_stats)
         info.update(val_acc=val_stats["val_accuracy"]) 
         # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
-        trainer1.save_parameters("jax_checkpoint.db")
+        trainer.save_parameters("jax_checkpoint.db")
 
-    trainer1.shutdown()
+    trainer.shutdown()
     print("success!")

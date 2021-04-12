@@ -286,7 +286,7 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         
         for key in keys:
             to_recv = self.params[key]
-            print(key)
+            # print(key)
             recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
 
         for i in range(len(keys)):

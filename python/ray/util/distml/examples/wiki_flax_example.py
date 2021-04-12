@@ -144,7 +144,7 @@ def make_ps(args):
             "lr": 0.1,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 2,
+            "batch_size": 8,
         },
         use_tqdm=True,
         max_iteration=300000,
@@ -191,8 +191,8 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = train_ar(args)
-    trainer = make_ps(args)
+    trainer = train_ar(args)
+    # trainer = make_ps(args)
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

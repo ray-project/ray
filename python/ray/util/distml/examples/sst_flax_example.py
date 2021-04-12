@@ -104,6 +104,7 @@ def train():
         return loss, aux
 
     optimizer_def = optim.Adam(learning_rate=lr) # Choose the method
+    optimizer_def = optim.Gradien(learning_rate=lr) # Choose the method
     optimizer = optimizer_def.create(params) # Create the wrapping optimizer with initial parameters
     loss_grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
     
