@@ -1,0 +1,8 @@
+Iteration 14037:
+  - Iteration time: 19.436712741851807.
+  - Absolute time: 1618216752.7022543.
+  - Total elapsed time: 238657.3068778515.
+Iteration 14038:
+  - Iteration time: 16.245043992996216.
+  - Absolute time: 1618216768.9472983.
+  - Total elapsed time: 238673.55192184448.
