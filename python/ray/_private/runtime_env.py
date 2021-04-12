@@ -109,9 +109,11 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
     return left or right
 
 
-def _dir_travel(path: Path,
-                excludes: Set[Path],
-                handler: Callable,):
+def _dir_travel(
+        path: Path,
+        excludes: Set[Path],
+        handler: Callable,
+):
     if path in excludes:
         return
     handler(path)
@@ -120,11 +122,10 @@ def _dir_travel(path: Path,
             _dir_travel(sub_path, excludes, handler)
 
 
-def _zip_module(root: Path,
-                relative_path: Path,
-                excludes: Set[Path],
+def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
                 zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
+
     def handler(path: Path):
         # Pack this path if it's an empty directory or it's a file.
         if path.is_dir() and next(path.iterdir()) is None or path.is_file():
@@ -135,10 +136,15 @@ def _zip_module(root: Path,
                     "Consider excluding this file from the working directory.")
             to_path = path.relative_to(relative_path)
             zip_handler.write(path, to_path)
+
     _dir_travel(root, excludes, handler)
 
 
-def _hash_modules(root: Path, relative_path: Path, excludes: Set[Path],) -> bytes:
+def _hash_modules(
+        root: Path,
+        relative_path: Path,
+        excludes: Set[Path],
+) -> bytes:
     """Helper function to create hash of a directory.
 
     It'll go through all the files in the directory and xor
@@ -146,6 +152,7 @@ def _hash_modules(root: Path, relative_path: Path, excludes: Set[Path],) -> byte
     """
     hash_val = None
     BUF_SIZE = 4096 * 1024
+
     def handler(path: Path):
         md5 = hashlib.md5()
         md5.update(str(path.relative_to(relative_path)).encode())
@@ -157,6 +164,7 @@ def _hash_modules(root: Path, relative_path: Path, excludes: Set[Path],) -> byte
                     data = f.read(BUF_SIZE)
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
+
     _dir_travel(root, excludes, handler)
     return hash_val
 
@@ -174,11 +182,8 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(
-    working_dir: str,
-    py_modules: List[str],
-    excludes: List[str]
-) -> str:
+def get_project_package_name(working_dir: str, py_modules: List[str],
+                             excludes: List[str]) -> str:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
@@ -211,16 +216,17 @@ def get_project_package_name(
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
         working_dir = Path(working_dir).absolute()
-        hash_val = _xor_bytes(hash_val, _hash_modules(working_dir, working_dir, excludes))
+        hash_val = _xor_bytes(
+            hash_val, _hash_modules(working_dir, working_dir, excludes))
     for py_module in py_modules or []:
         module_dir = Path(py_module).absolute()
-        hash_val = _xor_bytes(hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
+        hash_val = _xor_bytes(
+            hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
 def create_project_package(working_dir: str, py_modules: List[str],
-                           excludes: List[str],
-                           output_path: str) -> None:
+                           excludes: List[str], output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working directory
@@ -370,11 +376,8 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             logger.info(f"{pkg_uri} doesn't exist. Create new package with"
                         f" {working_dir} and {py_modules}")
             if not pkg_file.exists():
-                create_project_package(
-                    working_dir,
-                    py_modules,
-                    excludes,
-                    file_path)
+                create_project_package(working_dir, py_modules, excludes,
+                                       file_path)
             # Push the data to remote storage
             pkg_size = push_package(pkg_uri, pkg_file)
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
