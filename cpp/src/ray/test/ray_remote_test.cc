@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include <ray/api/serializer.h>
+
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
 #include "ray/core.h"
@@ -36,6 +37,26 @@ int NotRegisteredFunc(int x) { return x; }
 
 void ExceptionFunc(int x) { throw std::invalid_argument(std::to_string(x)); }
 
+class DummyObject {
+ public:
+  int count;
+
+  MSGPACK_DEFINE(count);
+  DummyObject() = default;
+  DummyObject(int init) {
+    std::cout << "construct DummyObject\n";
+    count = init;
+  }
+
+  int Add(int x, int y) { return x + y; }
+
+  ~DummyObject() { std::cout << "destruct DummyObject\n"; }
+
+  static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
+};
+RAY_REMOTE(DummyObject::FactoryCreate);
+RAY_REMOTE(&DummyObject::Add);
+
 RAY_REMOTE(PlusOne);
 RAY_REMOTE(PlusTwo);
 RAY_REMOTE(VoidFuncNoArgs);
@@ -47,11 +68,10 @@ TEST(RayApiTest, DuplicateRegister) {
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
-  EXPECT_FALSE(r1);
-
-  bool r2 = FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne);
-  EXPECT_FALSE(r2);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
+               RayException);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
+               RayException);
 }
 
 TEST(RayApiTest, NormalTask) {
@@ -60,7 +80,7 @@ TEST(RayApiTest, NormalTask) {
   auto r = Ray::Task(Return).Remote();
   EXPECT_EQ(1, *(r.Get()));
 
-  auto r1 = Ray::Task(PlusOne, 1).Remote();
+  auto r1 = Ray::Task(PlusOne).Remote(1);
   EXPECT_EQ(2, *(r1.Get()));
 }
 
@@ -69,17 +89,17 @@ TEST(RayApiTest, VoidFunction) {
   r2.Get();
   EXPECT_EQ(1, out_for_void_func);
 
-  auto r3 = Ray::Task(VoidFuncWithArgs, 1, 2).Remote();
+  auto r3 = Ray::Task(VoidFuncWithArgs).Remote(1, 2);
   r3.Get();
   EXPECT_EQ(3, out_for_void_func_no_args);
 }
 
 TEST(RayApiTest, CallWithObjectRef) {
   auto rt0 = Ray::Task(Return).Remote();
-  auto rt1 = Ray::Task(PlusOne, rt0).Remote();
-  auto rt2 = Ray::Task(PlusTwo, rt1, 3).Remote();
-  auto rt3 = Ray::Task(PlusOne, 3).Remote();
-  auto rt4 = Ray::Task(PlusTwo, rt2, rt3).Remote();
+  auto rt1 = Ray::Task(PlusOne).Remote(rt0);
+  auto rt2 = Ray::Task(PlusTwo).Remote(rt1, 3);
+  auto rt3 = Ray::Task(PlusOne).Remote(3);
+  auto rt4 = Ray::Task(PlusTwo).Remote(rt2, rt3);
 
   int return0 = *(rt0.Get());
   int return1 = *(rt1.Get());
@@ -100,22 +120,9 @@ TEST(RayApiTest, NotExistFunction) {
   EXPECT_THROW(Ray::Task(NotRegisteredFunc), RayException);
 }
 
-TEST(RayApiTest, ArgumentsNotMatch) {
-  /// Arguments number is not match.
-  auto r = Ray::Task(PlusOne).Remote();
-  EXPECT_THROW(r.Get(), RayException);
-
-  auto r1 = Ray::Task(PlusOne, 1, 2).Remote();
-  EXPECT_THROW(r1.Get(), RayException);
-
-  auto r2 = Ray::Task(ExceptionFunc).Remote();
-  EXPECT_THROW(r2.Get(), RayException);
-
-  auto r3 = Ray::Task(ExceptionFunc, 1, 2).Remote();
-  EXPECT_THROW(r3.Get(), RayException);
-
+TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
-  auto r4 = Ray::Task(ExceptionFunc, 2).Remote();
+  auto r4 = Ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), RayException);
 
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;

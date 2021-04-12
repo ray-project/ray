@@ -1,7 +1,6 @@
 from collections import OrderedDict
 import gym
 import logging
-import numpy as np
 import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
@@ -465,7 +464,7 @@ class DynamicTFPolicy(TFPolicy):
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False, timestep=0)
         for key, value in extra_fetches.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
@@ -494,14 +493,16 @@ class DynamicTFPolicy(TFPolicy):
             dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
-            train_batch["seq_lens"] = self._seq_lens
+            train_batch.seq_lens = self._seq_lens
+            self._loss_input_dict.update({"seq_lens": train_batch.seq_lens})
+
+        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
 
         if log_once("loss_init"):
             logger.debug(
                 "Initializing loss function with dummy input:\n\n{}\n".format(
                     summarize(train_batch)))
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
         loss = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
@@ -509,9 +510,10 @@ class DynamicTFPolicy(TFPolicy):
             dummy_batch.added_keys | set(
                 self.model.view_requirements.keys())
 
-        TFPolicy._initialize_loss(self, loss, [(k, v)
-                                               for k, v in train_batch.items()
-                                               if k in all_accessed_keys])
+        TFPolicy._initialize_loss(self, loss, [
+            (k, v) for k, v in train_batch.items() if k in all_accessed_keys
+        ] + ([("seq_lens", train_batch.seq_lens)]
+             if train_batch.seq_lens is not None else []))
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]
