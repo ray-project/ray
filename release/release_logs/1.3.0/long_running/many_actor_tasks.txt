@@ -1,0 +1,4 @@
+Iteration 52081:
+  - Iteration time: 5.863003969192505.
+  - Absolute time: 1618216741.8627865.
+  - Total elapsed time: 238645.21975135803.
