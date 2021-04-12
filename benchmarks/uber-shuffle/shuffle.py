@@ -865,6 +865,11 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     batches_per_round = args.batches_per_round
     num_rows = num_row_groups * num_rows_per_group
+    num_rounds = max(
+        num_rows / num_trainers / batch_size / batches_per_round, 1)
+    # Assert even division (no remainders, uneven rounds).
+    assert num_rounds % 1 == 0
+    num_rounds = int(num_rounds)
 
     # warmup_trials = 2
     # print(f"\nRunning {warmup_trials} warmup trials.")
@@ -908,9 +913,10 @@ if __name__ == "__main__":
     stats_dir = args.stats_dir
     hr_num_row_groups = human_readable_big_num(num_row_groups)
     hr_num_rows_per_group = human_readable_big_num(num_rows_per_group)
+    hr_batch_size = human_readable_big_num(batch_size)
     filename = (
         f"trial_stats_{shuffle_type}_{hr_num_row_groups}_"
-        f"{hr_num_rows_per_group}.csv")
+        f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
     filename = os.path.join(stats_dir, filename)
     write_header = (
         overwrite_stats or not os.path.exists(filename) or
@@ -923,31 +929,48 @@ if __name__ == "__main__":
             "row_groups_per_file",
             "num_trainers",
             "batches_per_round",
+            "num_rounds",
             "trial",
             "duration",
             "row_throughput",
             "batch_throughput",
             "avg_map_stage_duration",  # across rounds
             "std_map_stage_duration",  # across rounds
+            "max_map_stage_duration",  # across rounds
+            "min_map_stage_duration",  # across rounds
             "avg_reduce_stage_duration",  # across rounds
             "std_reduce_stage_duration",  # across rounds
+            "max_reduce_stage_duration",  # across rounds
+            "min_reduce_stage_duration",  # across rounds
             "avg_map_task_duration",  # across rounds and mappers
             "std_map_task_duration",  # across rounds and mappers
+            "max_map_task_duration",  # across rounds and mappers
+            "min_map_task_duration",  # across rounds and mappers
             "avg_reduce_task_duration",  # across rounds and reducers
             "std_reduce_task_duration",  # across rounds and reducers
+            "max_reduce_task_duration",  # across rounds and reducers
+            "min_reduce_task_duration",  # across rounds and reducers
             "avg_time_to_consume",  # across rounds and consumers
-            "std_time_to_consume"]  # across rounds and consumers
+            "std_time_to_consume",  # across rounds and consumers
+            "max_time_to_consume",  # across rounds and consumers
+            "min_time_to_consume"]  # across rounds and consumers
         if use_from_disk_shuffler:
             fieldnames += [
                 "avg_read_duration",  # across rounds and mappers
-                "std_read_duration"]  # across rounds and mappers
+                "std_read_duration",  # across rounds and mappers
+                "max_read_duration",  # across rounds and mappers
+                "min_read_duration"]  # across rounds and mappers
         else:
             fieldnames += [
                 "cache_map_stage_duration",
                 "avg_cache_map_task_duration",  # across mappers
                 "std_cache_map_task_duration",  # across mappers
+                "max_cache_map_task_duration",  # across mappers
+                "min_cache_map_task_duration",  # across mappers
                 "avg_read_duration",  # across rounds
-                "std_read_duration"]  # across rounds
+                "std_read_duration",  # across rounds
+                "max_read_duration",  # across rounds
+                "min_read_duration"]  # across rounds
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
@@ -956,6 +979,7 @@ if __name__ == "__main__":
             "row_groups_per_file": num_row_groups_per_file,
             "num_trainers": num_trainers,
             "batches_per_round": batches_per_round,
+            "num_rounds": num_rounds,
         }
         for trial, stats in enumerate(all_stats):
             row["trial"] = trial
@@ -988,14 +1012,24 @@ if __name__ == "__main__":
             # Calculate the trial stats.
             row["avg_map_stage_duration"] = np.mean(map_stage_durations)
             row["std_map_stage_duration"] = np.std(map_stage_durations)
+            row["max_map_stage_duration"] = np.max(map_stage_durations)
+            row["min_map_stage_duration"] = np.min(map_stage_durations)
             row["avg_reduce_stage_duration"] = np.mean(reduce_stage_durations)
             row["std_reduce_stage_duration"] = np.std(reduce_stage_durations)
+            row["max_reduce_stage_duration"] = np.max(reduce_stage_durations)
+            row["min_reduce_stage_duration"] = np.min(reduce_stage_durations)
             row["avg_map_task_duration"] = np.mean(map_task_durations)
             row["std_map_task_duration"] = np.std(map_task_durations)
+            row["max_map_task_duration"] = np.max(map_task_durations)
+            row["min_map_task_duration"] = np.min(map_task_durations)
             row["avg_reduce_task_duration"] = np.mean(reduce_task_durations)
             row["std_reduce_task_duration"] = np.std(reduce_task_durations)
+            row["max_reduce_task_duration"] = np.max(reduce_task_durations)
+            row["min_reduce_task_duration"] = np.min(reduce_task_durations)
             row["avg_time_to_consume"] = np.mean(consume_times)
             row["std_time_to_consume"] = np.std(consume_times)
+            row["max_time_to_consume"] = np.max(consume_times)
+            row["min_time_to_consume"] = np.min(consume_times)
             if not use_from_disk_shuffler:
                 cache_map_stats = stats.cache_map_stats
                 row["cache_map_stage_duration"] = (
@@ -1004,17 +1038,23 @@ if __name__ == "__main__":
                     cache_map_stats.task_durations)
                 row["std_cache_map_task_duration"] = np.std(
                     cache_map_stats.task_durations)
+                row["max_cache_map_task_duration"] = np.max(
+                    cache_map_stats.task_durations)
+                row["min_cache_map_task_duration"] = np.min(
+                    cache_map_stats.task_durations)
                 for duration in cache_map_stats.read_durations:
                     read_durations.append(duration)
             row["avg_read_duration"] = np.mean(read_durations)
             row["std_read_duration"] = np.std(read_durations)
+            row["max_read_duration"] = np.max(read_durations)
+            row["min_read_duration"] = np.min(read_durations)
             writer.writerow(row)
 
     if not args.no_round_stats:
         # TODO(Clark): Add per-round granularity for stats.
         filename = (
             f"round_stats_{shuffle_type}_{hr_num_row_groups}_"
-            f"{hr_num_rows_per_group}.csv")
+            f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
         filename = os.path.join(stats_dir, filename)
         write_header = (
             overwrite_stats or not os.path.exists(filename) or
@@ -1027,20 +1067,29 @@ if __name__ == "__main__":
                 "row_groups_per_file",
                 "num_trainers",
                 "batches_per_round",
+                "num_rounds",
                 "trial",
                 "round",
                 "map_stage_duration",
                 "reduce_stage_duration",
                 "avg_map_task_duration",  # across mappers
                 "std_map_task_duration",  # across mappers
+                "max_map_task_duration",  # across mappers
+                "min_map_task_duration",  # across mappers
                 "avg_reduce_task_duration",  # across reducers
                 "std_reduce_task_duration",  # across reducers
+                "max_reduce_task_duration",  # across reducers
+                "min_reduce_task_duration",  # across reducers
                 "avg_time_to_consume",  # across consumers
-                "std_time_to_consume"]  # across consumers
+                "std_time_to_consume",  # across consumers
+                "max_time_to_consume",  # across consumers
+                "min_time_to_consume"]  # across consumers
             if use_from_disk_shuffler:
                 fieldnames += [
                     "avg_read_duration",  # across mappers
-                    "std_read_duration"]  # across mappers
+                    "std_read_duration",  # across mappers
+                    "max_read_duration",  # across mappers
+                    "min_read_duration"]  # across mappers
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
                 writer.writeheader()
@@ -1049,6 +1098,7 @@ if __name__ == "__main__":
                 "row_groups_per_file": num_row_groups_per_file,
                 "num_trainers": num_trainers,
                 "batches_per_round": batches_per_round,
+                "num_rounds": num_rounds,
             }
             for trial, trial_stats in enumerate(all_stats):
                 row["trial"] = trial
@@ -1061,18 +1111,34 @@ if __name__ == "__main__":
                         stats.map_stats.task_durations)
                     row["std_map_task_duration"] = np.std(
                         stats.map_stats.task_durations)
+                    row["max_map_task_duration"] = np.max(
+                        stats.map_stats.task_durations)
+                    row["min_map_task_duration"] = np.min(
+                        stats.map_stats.task_durations)
                     row["avg_reduce_task_duration"] = np.mean(
                         stats.reduce_stats.task_durations)
                     row["std_reduce_task_duration"] = np.std(
+                        stats.reduce_stats.task_durations)
+                    row["max_reduce_task_duration"] = np.max(
+                        stats.reduce_stats.task_durations)
+                    row["min_reduce_task_duration"] = np.min(
                         stats.reduce_stats.task_durations)
                     row["avg_time_to_consume"] = np.mean(
                         stats.consume_stats.consume_times)
                     row["std_time_to_consume"] = np.std(
                         stats.consume_stats.consume_times)
+                    row["max_time_to_consume"] = np.max(
+                        stats.consume_stats.consume_times)
+                    row["min_time_to_consume"] = np.min(
+                        stats.consume_stats.consume_times)
                     if use_from_disk_shuffler:
                         row["avg_read_duration"] = np.mean(
                             stats.map_stats.read_durations)
                         row["std_read_duration"] = np.std(
+                            stats.map_stats.read_durations)
+                        row["max_read_duration"] = np.max(
+                            stats.map_stats.read_durations)
+                        row["min_read_duration"] = np.min(
                             stats.map_stats.read_durations)
                     writer.writerow(row)
     if not args.no_consume_stats:
@@ -1080,7 +1146,7 @@ if __name__ == "__main__":
         # TODO(Clark): Add per-round granularity for stats.
         filename = (
             f"consume_stats_{shuffle_type}_{hr_num_row_groups}_"
-            f"{hr_num_rows_per_group}.csv")
+            f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
         filename = os.path.join(stats_dir, filename)
         write_header = (
             overwrite_stats or not os.path.exists(filename) or
@@ -1091,6 +1157,7 @@ if __name__ == "__main__":
                 "row_groups_per_file",
                 "num_trainers",
                 "batches_per_round",
+                "num_rounds",
                 "trial",
                 "round",
                 "consumer",
@@ -1103,6 +1170,7 @@ if __name__ == "__main__":
                 "row_groups_per_file": num_row_groups_per_file,
                 "num_trainers": num_trainers,
                 "batches_per_round": batches_per_round,
+                "num_rounds": num_rounds,
             }
             for trial, trial_stats in enumerate(all_stats):
                 row["trial"] = trial
