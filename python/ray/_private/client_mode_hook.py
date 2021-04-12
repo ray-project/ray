@@ -37,6 +37,15 @@ def disable_client_hook():
         _enable_client_hook(val)
 
 
+@contextmanager
+def enable_client_hook():
+    _enable_client_hook(True)
+    try:
+        yield None
+    finally:
+        _disable_client_hook()
+
+
 def client_mode_hook(func):
     """Decorator for ray module methods to delegate to ray client"""
     from ray.util.client import ray
