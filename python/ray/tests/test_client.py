@@ -9,6 +9,7 @@ import _thread
 import ray.util.client.server.server as ray_client_server
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -498,7 +499,15 @@ def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
 
-    with ray_start_client_server() as ray:
+    _explicitly_enable_client_mode()
+    # No client connection.
+    with pytest.raises(Exception) as e:
+        ray.get_gpu_ids()
+    assert str(e.value) == "Ray Client is not connected."\
+        " Please connect by calling `ray.connect`."
+
+    with ray_start_client_server():
+        # Now have a client connection.
         assert ray.get_gpu_ids() == []
 
 

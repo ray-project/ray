@@ -1093,7 +1093,10 @@ class ServeDeployment:
             init_args = self.init_args
 
         if route_prefix is None:
-            route_prefix = self.route_prefix
+            if self.route_prefix == f"/{self.name}":
+                route_prefix = None
+            else:
+                route_prefix = self.route_prefix
 
         if ray_actor_options is None:
             ray_actor_options = self.ray_actor_options

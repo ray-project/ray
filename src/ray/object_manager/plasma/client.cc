@@ -49,7 +49,7 @@ using fb::PlasmaError;
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class RAY_NO_EXPORT PlasmaBuffer : public SharedMemoryBuffer {
+class PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 

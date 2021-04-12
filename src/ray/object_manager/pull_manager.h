@@ -50,11 +50,14 @@ class PullManager {
   /// preceding this one, is within the capacity of the local object store.
   ///
   /// \param object_refs The bundle of objects that must be made local.
+  /// \param is_worker_req Whether this is a request from a worker executing a
+  /// task, versus the arguments of a queued task. Worker requests are
   /// \param objects_to_locate The objects whose new locations the caller
   /// should subscribe to, and call OnLocationChange for.
+  /// prioritized over queued task arguments.
   /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                std::vector<rpc::ObjectReference> *objects_to_locate);
+                bool is_worker_req, std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Update the pull requests that are currently being pulled, according to
   /// the current capacity. The PullManager will choose the objects to pull by
@@ -149,6 +152,8 @@ class PullManager {
     }
   };
 
+  using Queue = std::map<uint64_t, PullBundleRequest>;
+
   /// Try to make an object local, by restoring the object from external
   /// storage or by fetching the object from one of its expected client
   /// locations. This does nothing if the object is not needed by any pull
@@ -172,15 +177,21 @@ class PullManager {
 
   /// Activate the next pull request in the queue. This will start pulls for
   /// any objects in the request that are not already being pulled.
-  bool ActivateNextPullBundleRequest(
-      const std::map<uint64_t, PullBundleRequest>::iterator &next_request_it,
-      std::vector<ObjectID> *objects_to_pull);
+  ///
+  /// Returns whether the request was successfully activated. If this returns
+  /// false, then there are no more requests in the queue that can be activated
+  /// (because we have reached the end of the queue or because there is missing
+  /// size information).
+  bool ActivateNextPullBundleRequest(const Queue &bundles,
+                                     uint64_t *highest_req_id_being_pulled,
+                                     std::vector<ObjectID> *objects_to_pull);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
-  void DeactivatePullBundleRequest(
-      const std::map<uint64_t, PullBundleRequest>::iterator &request_it,
-      std::unordered_set<ObjectID> *objects_to_cancel);
+  void DeactivatePullBundleRequest(const Queue &bundles,
+                                   const Queue::iterator &request_it,
+                                   uint64_t *highest_req_id_being_pulled,
+                                   std::unordered_set<ObjectID> *objects_to_cancel);
 
   /// Trigger out-of-memory handling if the first request in the queue needs
   /// more space than the bytes available. This is needed to make room for the
@@ -203,7 +214,17 @@ class PullManager {
   /// The currently active pull requests. Each request is a bundle of objects
   /// that must be made local. The key is the ID that was assigned to that
   /// request, which can be used by the caller to cancel the request.
-  std::map<uint64_t, PullBundleRequest> pull_request_bundles_;
+  ///
+  /// The pull requests are split into requests made by workers (`ray.get` or
+  /// `ray.wait`) and arguments of queued tasks. This is so that we prioritize
+  /// freeing resources held by workers over scheduling new tasks that may
+  /// require those resources. If we try to pull arguments for a new task
+  /// before handling a worker's request, we could deadlock.
+  ///
+  /// Queue of `ray.get` and `ray.wait` requests made by workers.
+  Queue worker_request_bundles_;
+  /// Queue of arguments of queued tasks.
+  Queue task_argument_bundles_;
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To
@@ -227,7 +248,11 @@ class PullManager {
   /// pulling. We always pull a contiguous prefix of the active pull requests.
   /// This means that all requests with a lower ID are either already canceled
   /// or their objects are also being pulled.
-  uint64_t highest_req_id_being_pulled_ = 0;
+  ///
+  /// We keep one pointer for each request queue, since we prioritize worker
+  /// requests over task argument requests.
+  uint64_t highest_worker_req_id_being_pulled_ = 0;
+  uint64_t highest_task_req_id_being_pulled_ = 0;
 
   /// The objects that this object manager has been asked to fetch from remote
   /// object managers.

@@ -47,11 +47,11 @@ ray.util.connect("{}")
 
 from ray import serve
 
+@serve.deployment(name="test1", route_prefix="/hello")
 def f(*args):
     return "hello"
 
-serve.create_backend("test1", f)
-serve.create_endpoint("test1", backend="test1", route="/hello")
+f.deploy()
 """.format(ray_client_instance)
     run_string_as_driver(deploy)
 
@@ -65,8 +65,7 @@ ray.util.connect("{}")
 
 from ray import serve
 
-serve.delete_endpoint("test1")
-serve.delete_backend("test1")
+serve.get_deployment("test1").delete()
 """.format(ray_client_instance)
     run_string_as_driver(delete)
 
