@@ -118,7 +118,7 @@ class ConvergenceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch
 
         np.random.seed(1)
-        searcher = OptunaSearch()
+        searcher = OptunaSearch(seed=1)
         analysis = self._testConvergence(
             searcher,
             top=5,
