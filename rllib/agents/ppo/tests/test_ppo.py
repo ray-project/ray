@@ -65,7 +65,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -90,10 +90,10 @@ class TestPPO(unittest.TestCase):
         config["compress_observations"] = True
         num_iterations = 2
 
-        for _ in framework_iterator(config):
-            for env in ["MsPacmanNoFrameskip-v4", "CartPole-v0"]:
+        for _ in framework_iterator(config, frameworks="tf"):#TODO:all
+            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm

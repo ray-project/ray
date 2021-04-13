@@ -902,8 +902,8 @@ class TFPolicy(Policy):
                 feature_keys=list(self._loss_input_dict_no_rnn.keys()),
                 view_requirements=self.view_requirements,
             )
-        else:
-            train_batch["seq_lens"] = train_batch.seq_lens
+        #else:
+        #    train_batch["seq_lens"] = train_batch.seq_lens
 
         # Get batch ready for RNNs, if applicable.
 

@@ -366,7 +366,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(self.buffers, _seq_lens=self.seq_lens)
+        batch = SampleBatch(self.buffers, seq_lens=self.seq_lens)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset agent steps to 0 and seq-lens to empty list.

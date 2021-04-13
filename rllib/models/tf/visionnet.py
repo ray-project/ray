@@ -257,7 +257,7 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
             self,
             input_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
-            num_outputs: int,
+            num_outputs: Optional[int] = None,
             *,
             name: str = "",
             conv_filters: Optional[Sequence[Sequence[int]]] = None,
@@ -385,11 +385,10 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
                         "1, {} (`num_outputs`)] shape (but in {})! Please "
                         "adjust your Conv2D stack such that the dims 1 and 2 "
                         "are both 1.".format(self.model_config["conv_filters"],
-                                             self.num_outputs,
+                                             num_outputs,
                                              list(last_cnn.shape)))
 
-            # num_outputs not known -> Flatten, then set self.num_outputs
-            # to the resulting number of nodes.
+            # num_outputs not known -> Flatten.
             else:
                 self.last_layer_is_flattened = True
                 last_layer = tf.keras.layers.Flatten(
@@ -402,7 +401,7 @@ class Keras_VisionNetwork(tf.keras.Model if tf else object):
                         name="post_fcnet_{}".format(i),
                         activation=post_fcnet_activation,
                         kernel_initializer=normc_initializer(1.0))(last_layer)
-                self.num_outputs = last_layer.shape[1]
+                #self.num_outputs = last_layer.shape[1]
         logits_out = last_layer
 
         # Build the value layers

@@ -46,6 +46,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
+                #"custom_model": [some user specified "RLlib ModelV2" class],
                 "use_lstm": True,
                 "lstm_use_prev_action": args.use_prev_action,
                 "lstm_use_prev_reward": args.use_prev_reward,

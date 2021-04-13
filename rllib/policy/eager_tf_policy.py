@@ -4,6 +4,7 @@ It supports both traced and non-traced eager execution modes."""
 
 import functools
 import logging
+import numpy as np
 import threading
 from typing import Dict, List, Optional, Tuple
 
@@ -27,8 +28,8 @@ logger = logging.getLogger(__name__)
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        if x.seq_lens is not None:
-            dict_["seq_lens"] = x.seq_lens
+        #if x.seq_lens is not None:
+        #    dict_["seq_lens"] = x.seq_lens
         return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
@@ -350,8 +351,8 @@ def build_eager_tf_policy(
                     batch_divisibility_req=self.batch_divisibility_req,
                     view_requirements=self.view_requirements,
                 )
-            else:
-                postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
+            #else:
+            #    postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
             self._is_training = True
             postprocessed_batch["is_training"] = True
@@ -512,6 +513,9 @@ def build_eager_tf_policy(
                                 raise e
                     elif isinstance(self.model, tf.keras.Model):
                         input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                        if state_batches and "state_in_0" not in input_dict:
+                            for i, s in enumerate(state_batches):
+                                input_dict[f"state_in_{i}"] = s
                         self._lazy_tensor_dict(input_dict)
                         dist_inputs, state_out, extra_fetches = \
                             self.model(input_dict)

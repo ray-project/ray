@@ -296,7 +296,7 @@ class DynamicTFPolicy(TFPolicy):
             # Pass through model. E.g., PG, PPO.
             else:
                 if isinstance(self.model, tf.keras.Model):
-                    dist_inputs, self._state_out, self._extra_action_fetches =\
+                    dist_inputs, self._state_out, self._extra_action_fetches = \
                         self.model(self._input_dict)
                 else:
                     dist_inputs, self._state_out = self.model(
@@ -456,7 +456,7 @@ class DynamicTFPolicy(TFPolicy):
         dummy_batch = self._get_dummy_batch_from_view_requirements(
             batch_size=32)
 
-        return SampleBatch(input_dict, _seq_lens=self._seq_lens), dummy_batch
+        return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
     def _initialize_loss_from_dummy_batch(
             self, auto_remove_unneeded_view_reqs: bool = True,
@@ -503,7 +503,7 @@ class DynamicTFPolicy(TFPolicy):
             dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
-            train_batch.seq_lens = self._seq_lens
+            train_batch["seq_lens"] = self._seq_lens
             self._loss_input_dict.update({"seq_lens": train_batch.seq_lens})
 
         self._loss_input_dict.update({k: v for k, v in train_batch.items()})
@@ -522,8 +522,8 @@ class DynamicTFPolicy(TFPolicy):
 
         TFPolicy._initialize_loss(self, loss, [
             (k, v) for k, v in train_batch.items() if k in all_accessed_keys
-        ] + ([("seq_lens", train_batch.seq_lens)]
-             if train_batch.seq_lens is not None else []))
+        ] + ([("seq_lens", train_batch["seq_lens"])]
+             if "seq_lens" in train_batch else []))
 
         if "is_training" in self._loss_input_dict:
             del self._loss_input_dict["is_training"]

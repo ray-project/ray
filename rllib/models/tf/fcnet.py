@@ -139,7 +139,7 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
             self,
             input_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
-            num_outputs: int,
+            num_outputs: Optional[int] = None,
             *,
             name: str = "",
             fcnet_hiddens: Optional[Sequence[int]] = (),
@@ -210,10 +210,10 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
                     name="fc_out",
                     activation=None,
                     kernel_initializer=normc_initializer(0.01))(last_layer)
-            # Adjust num_outputs to be the number of nodes in the last layer.
-            else:
-                self.num_outputs = (
-                    [int(np.product(input_space.shape))] + hiddens[-1:])[-1]
+            ## Adjust num_outputs to be the number of nodes in the last layer.
+            #else:
+            #    self.num_outputs = (
+            #        [int(np.product(input_space.shape))] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std and logits_out is not None:
@@ -252,7 +252,8 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):
-        model_out, value_out = self.base_model(input_dict["obs"])
-        return model_out, [], {
+        model_out, value_out = self.base_model(input_dict[SampleBatch.OBS])
+        extra_outs = {
             SampleBatch.VF_PREDS: tf.reshape(value_out, [-1])
         }
+        return model_out, [], extra_outs

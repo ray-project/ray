@@ -421,8 +421,8 @@ class TorchPolicy(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
-        else:
-            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
+        #else:
+        #    postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
@@ -658,7 +658,7 @@ class TorchPolicy(Policy):
         # Provide dummy state inputs if not an RNN (torch cannot jit with
         # returned empty internal states list).
         if "state_in_0" not in dummy_inputs:
-            dummy_inputs["state_in_0"] = dummy_inputs.seq_lens = np.array(
+            dummy_inputs["state_in_0"] = dummy_inputs["seq_lens"] = np.array(
                 [1.0])
         seq_lens = dummy_inputs["seq_lens"]
 

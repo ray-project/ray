@@ -210,7 +210,7 @@ class ModelV2:
             restored = input_dict.copy(shallow=True)
             # Backward compatibility.
             if seq_lens is None:
-                seq_lens = input_dict.seq_lens
+                seq_lens = input_dict["seq_lens"]
             if not state:
                 state = []
                 i = 0
