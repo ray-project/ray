@@ -233,7 +233,7 @@ class ActorPool:
         """
         return len(self._idle_actors) > 0 and len(self._pending_submits) == 0
 
-    def pop(self):
+    def pop_idle(self):
         """Removes an idle actor from the pool.
 
         Returns:
@@ -244,11 +244,11 @@ class ActorPool:
             >>> a1 = Actor.remote()
             >>> pool = ActorPool([a1])
             >>> pool.submit(lambda a, v: a.double.remote(v), 1)
-            >>> print(pool.pop())
+            >>> print(pool.pop_idle())
             None
             >>> print(pool.get_next())
             2
-            >>> print(pool.pop())
+            >>> print(pool.pop_idle())
             <ptr to a1>
         """
         if self.has_free():
@@ -265,7 +265,7 @@ class ActorPool:
             >>> print(pool.get_next())
             2
             >>> pool2 = ActorPool([b1])
-            >>> pool2.push(pool.pop())
+            >>> pool2.push(pool.pop_idle())
         """
         busy_actors = []
         if self._future_to_actor.values():

@@ -145,7 +145,7 @@ def test_get_next_unordered_timeout(init):
         pool.get_next_unordered(timeout=0.1)
 
 
-def test_pop(init):
+def test_pop_idle(init):
     @ray.remote
     class MyActor:
         def __init__(self):
@@ -161,11 +161,11 @@ def test_pop(init):
     pool = ActorPool(actors)
 
     pool.submit(lambda a, v: a.double.remote(v), 1)
-    assert pool.pop() is None
+    assert pool.pop_idle() is None
     assert pool.has_free() is False  # actor is busy
     assert pool.get_next() == 2
     assert pool.has_free()
-    pool.pop()  # removes actor from pool
+    pool.pop_idle()  # removes actor from pool
     assert pool.has_free() is False  # no more actors in pool
 
 
