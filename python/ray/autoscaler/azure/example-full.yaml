@@ -155,7 +155,7 @@ setup_commands:
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - pip install azure-cli-core==2.4.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.1.0
+    - pip install azure-cli-core==2.22.0 azure-mgmt-compute==20.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==18.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
