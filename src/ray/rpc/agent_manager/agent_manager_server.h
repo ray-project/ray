@@ -15,16 +15,12 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/rpc/server_call.h"
+#include "ray/rpc/grpc_callback_server.h"
 #include "src/ray/protobuf/agent_manager.grpc.pb.h"
 #include "src/ray/protobuf/agent_manager.pb.h"
 
 namespace ray {
 namespace rpc {
-
-#define RAY_AGENT_MANAGER_RPC_HANDLERS \
-  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent, -1)
 
 /// Implementations of the `AgentManagerGrpcService`, check interface in
 /// `src/ray/protobuf/agent_manager.proto`.
@@ -43,32 +39,10 @@ class AgentManagerServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `AgentManagerGrpcService`.
-class AgentManagerGrpcService : public GrpcService {
- public:
-  /// Construct a `AgentManagerGrpcService`.
-  ///
-  /// \param[in] port See `GrpcService`.
-  /// \param[in] handler The service handler that actually handle the requests.
-  AgentManagerGrpcService(instrumented_io_context &io_service,
-                          AgentManagerServiceHandler &service_handler)
-      : GrpcService(io_service), service_handler_(service_handler){};
+#define RAY_AGENT_MANAGER_RPC_HANDLERS \
+  UNARY_CALLBACK_RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent)
 
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    RAY_AGENT_MANAGER_RPC_HANDLERS
-  }
-
- private:
-  /// The grpc async service object.
-  AgentManagerService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  AgentManagerServiceHandler &service_handler_;
-};
+CALLBACK_SERVICE(AgentManagerService, RAY_AGENT_MANAGER_RPC_HANDLERS)
 
 }  // namespace rpc
 }  // namespace ray

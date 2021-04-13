@@ -37,7 +37,6 @@ class GcsServerAddressUpdater {
   /// Update gcs server address.
   void UpdateGcsServerAddress();
 
-  rpc::ClientCallManager client_call_manager_;
   /// A client connection to the raylet.
   raylet::RayletClient raylet_client_;
   std::function<void(std::string, int)> update_func_;

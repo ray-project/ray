@@ -662,14 +662,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
-  rpc::GrpcServer node_manager_server_;
+  rpc::GrpcCallbackServer node_manager_server_;
 
   /// The node manager RPC service.
-  rpc::NodeManagerGrpcService node_manager_service_;
+  rpc::NodeManagerServiceWithCallbacks node_manager_service_;
 
   /// The agent manager RPC service.
   std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
-  rpc::AgentManagerGrpcService agent_manager_service_;
+  rpc::AgentManagerServiceWithCallbacks agent_manager_service_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

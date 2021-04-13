@@ -183,9 +183,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   std::thread thread([&] {
     instrumented_io_context io_service;
     boost::asio::io_service::work work(io_service);
-    rpc::ClientCallManager client_call_manager(io_service);
     auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
+        options_.raylet_ip_address, options_.node_manager_port, io_service);
     raylet::RayletClient raylet_client(grpc_client);
 
     std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,

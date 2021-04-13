@@ -2423,7 +2423,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
   // Fetch from remote nodes.
   for (const auto &entry : remote_node_manager_addresses_) {
     auto client = std::make_unique<rpc::NodeManagerClient>(
-        entry.second.first, entry.second.second, client_call_manager_);
+        entry.second.first, entry.second.second, io_service_);
     client->GetNodeStats(
         stats_req, [replies, store_reply](const ray::Status &status,
                                           const rpc::GetNodeStatsReply &r) {

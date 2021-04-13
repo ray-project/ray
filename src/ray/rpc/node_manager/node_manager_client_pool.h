@@ -32,8 +32,6 @@ using RayletClientFactoryFn =
     std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class NodeManagerClientPool {
  public:
-  NodeManagerClientPool() = delete;
-
   /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
   optional<shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(ray::NodeID id);
@@ -49,8 +47,8 @@ class NodeManagerClientPool {
   /// be open until it's no longer used, at which time it will disconnect.
   void Disconnect(ray::NodeID id);
 
-  NodeManagerClientPool(rpc::ClientCallManager &ccm)
-      : client_factory_(defaultClientFactory(ccm)){};
+  NodeManagerClientPool(instrumented_io_context &io_context)
+      : client_factory_(defaultClientFactory(io_context)){};
 
   NodeManagerClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(client_factory){};
@@ -59,9 +57,10 @@ class NodeManagerClientPool {
   /// Provides the default client factory function. Providing this function to the
   /// construtor aids migration but is ultimately a thing that should be
   /// deprecated and brought internal to the pool, so this is our bridge.
-  RayletClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
+  RayletClientFactoryFn defaultClientFactory(instrumented_io_context &io_context) const {
     return [&](const rpc::Address &addr) {
-      auto nm_client = NodeManagerWorkerClient::make(addr.ip_address(), addr.port(), ccm);
+      auto nm_client =
+          NodeManagerWorkerClient::make(addr.ip_address(), addr.port(), io_context);
       std::shared_ptr<ray::RayletClientInterface> raylet_client =
           std::make_shared<ray::raylet::RayletClient>(nm_client);
       return raylet_client;
