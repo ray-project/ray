@@ -71,9 +71,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
-  // Init KV Manager
-  InitKVManager();
-
   // Init gcs resource scheduler.
   InitGcsResourceScheduler();
 
@@ -82,6 +79,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
+
+  // Init KV Manager
+  InitKVManager();
 
   // Init RuntimeENv manager
   InitRuntimeEnvManager();
@@ -106,9 +106,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init stats handler.
   InitStatsHandler();
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
