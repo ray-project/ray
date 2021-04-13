@@ -257,11 +257,11 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         self.grad_counts = [0] * self.num_workers
 
     def _init_grad_buffer(self):
-        if hasattr(self, "grad_buffer"):
-            self.grad_buffer = {k:v*0 for k, v in self.grad_buffer.items()}
-        else:
-            self.grad_buffer = {k:self.training_operator.zeros_like(v, cpu=False) 
-                                for k, v in self.params.items()}
+        # if hasattr(self, "grad_buffer"):
+        #     self.grad_buffer = {k:v*0 for k, v in self.grad_buffer.items()}
+        # else:
+        self.grad_buffer = {k:self.training_operator.zeros_like(v, cpu=False) 
+                            for k, v in self.params.items()}
 
     def get_params(self):
         return self.params

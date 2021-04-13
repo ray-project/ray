@@ -61,7 +61,7 @@ class Dataloader:
 
     def __len__(self):
         return self.num_batches
-        
+
         
 class MnistTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
@@ -112,7 +112,7 @@ def make_ar_trainer(args):
         record_config={
             "batch_size": 128,
             "num_workers": args.num_workers,
-            "job_name": "mnist_resnet18_allreduce_2workers",
+            "job_name": f"mnist_resnet18_allreduce_{args.num_workers}workers",
             "save_freq": 50,
         },
         )
@@ -136,7 +136,7 @@ def make_ps_trainer(args):
         record_config={
             "batch_size": 128,
             "num_workers": args.num_workers//2,
-            "job_name": "mnist_resnet18_ps_2workers",
+            "job_name": f"mnist_resnet18_{args.num_workers//2}ps_{args.num_workers//2}workers",
             "save_freq": 50,
         },
         )
