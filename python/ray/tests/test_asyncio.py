@@ -256,6 +256,7 @@ def test_async_function_errored(ray_start_regular_shared):
         ray.get(ref)
 
 
+@pytest.mark.asyncio
 async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     @ray.remote
     def f():
