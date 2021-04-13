@@ -1015,7 +1015,10 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
     assert len(errors) == 0
 
     # Create an infeasible pg which memory resource was specified in bundles.
-    pg = ray.util.placement_group([{"memory": 50 * 1024 * 1024}] * 2, strategy="STRICT_PACK")
+    pg = ray.util.placement_group(
+        [{
+            "memory": 50 * 1024 * 1024
+        }] * 2, strategy="STRICT_PACK")
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(pg.ready(), timeout=0.5)
 
