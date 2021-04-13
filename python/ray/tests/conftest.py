@@ -265,6 +265,7 @@ file_system_object_spilling_config = {
         "directory_path": spill_local_path
     }
 }
+
 # Since we have differet protocol for a local external storage (e.g., fs)
 # and distributed external storage (e.g., S3), we need to test both cases.
 # This mocks the distributed fs with cluster utils.
@@ -281,6 +282,12 @@ smart_open_object_spilling_config = {
     }
 }
 
+unstable_object_spilling_config = {
+    "type": "unstable_fs",
+    "params": {
+        "directory_path": spill_local_path,
+    }
+}
 
 def create_object_spilling_config(request, tmp_path):
     temp_folder = tmp_path / "spill"
@@ -309,4 +316,11 @@ def object_spilling_config(request, tmp_path):
         mock_distributed_fs_object_spilling_config
     ])
 def multi_node_object_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+@pytest.fixture(
+    scope="function", params=[
+        unstable_object_spilling_config,
+    ])
+def unstable_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
