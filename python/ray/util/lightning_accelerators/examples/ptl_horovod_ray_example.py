@@ -1,7 +1,4 @@
 """Example using Pytorch Lightning with a Horovod on Ray Accelerator."""
-import os
-import tempfile
-
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import random_split, DataLoader
