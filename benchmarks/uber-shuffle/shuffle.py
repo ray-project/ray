@@ -13,12 +13,28 @@ import ray
 
 
 # TODOs:
-# - Instrument profiling:
+# - Add task graph for from memory shuffler to external doc.
+# - Create throughput stability graph for 3 or 4 of the best round
+#   configurations, including both from memory and from disk shuffler results.
+# - Show that number of trainers doesn't degrade throughput.
+# - Explain 40+ second overhead and that training runs need to be at least
+#   as long as that.
+# - Note what memory footprint should be, and that it's dependent on how
+#   aggressively rounds and epochs are pipelined.
+# - Think about backpressure: calculate how many rounds we can do concurrently,
+#   apply application-level backpressure with ray.wait().
+# - Conclusions attached to those graphs.
+# - Explore streaming implementation of cache map stage, where we sample and
+#   pop one round partition at a time.
+
+
+# TODOs:
+# - [DONE] Instrument profiling:
 #   - Get some basic metrics: disk read time, shuffle time between map and
 #     reduce tasks, average map/reduce task duration.
-# - Plot the results.
-# - Run on a large machine with the full dataset size
+# - [DONE] Plot the results.
 # - [DONE] Compute number of rounds based on batch size.
+# - [DONE] Run on a large machine with the full dataset size
 # - Scale past memory capacity of the cluster (long-term)
 
 # Dataset info:
@@ -1178,6 +1194,8 @@ if __name__ == "__main__":
                     row["round"] = round_idx
                     for consumer, consume_time in enumerate(
                             stats.consume_stats.consume_times):
+                        # NOTE: Consumer identifiers are not consistent across
+                        # rounds.
                         row["consumer"] = consumer
                         row["consume_time"] = consume_time
                         writer.writerow(row)
