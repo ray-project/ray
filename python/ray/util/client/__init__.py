@@ -150,10 +150,6 @@ class RayAPIStub:
                                                _exiting_interpreter)
         self._server = None
 
-    # Client process isn't assigned any GPUs.
-    def get_gpu_ids(self) -> list:
-        return []
-
 
 ray = RayAPIStub()
 

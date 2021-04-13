@@ -13,6 +13,24 @@ RAY_REMOTE(Return1);
 RAY_REMOTE(Plus1);
 RAY_REMOTE(Plus);
 
+class DummyObject {
+ public:
+  int count;
+
+  MSGPACK_DEFINE(count);
+  DummyObject() { count = 0; };
+  DummyObject(int init) { count = init; }
+
+  static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
+
+  int Add(int x) {
+    count += x;
+    return count;
+  }
+};
+RAY_REMOTE(DummyObject::FactoryCreate);
+RAY_REMOTE(&DummyObject::Add);
+
 std::string lib_name = "";
 
 std::string redis_ip = "";
@@ -63,6 +81,47 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result4, 2);
   EXPECT_EQ(result5, 3);
   EXPECT_EQ(result6, 12);
+
+  /// create actor and actor function remote call with args passed by value
+  ActorHandle<DummyObject> actor4 = Ray::Actor(DummyObject::FactoryCreate).Remote(10);
+  auto r7 = actor4.Task(&DummyObject::Add).Remote(5);
+  auto r8 = actor4.Task(&DummyObject::Add).Remote(1);
+  auto r9 = actor4.Task(&DummyObject::Add).Remote(3);
+  auto r10 = actor4.Task(&DummyObject::Add).Remote(8);
+
+  int result7 = *(Ray::Get(r7));
+  int result8 = *(Ray::Get(r8));
+  int result9 = *(Ray::Get(r9));
+  int result10 = *(Ray::Get(r10));
+  EXPECT_EQ(result7, 15);
+  EXPECT_EQ(result8, 16);
+  EXPECT_EQ(result9, 19);
+  EXPECT_EQ(result10, 27);
+
+  /// create actor and task function remote call with args passed by reference
+  ActorHandle<DummyObject> actor5 = Ray::Actor(DummyObject::FactoryCreate).Remote(r10);
+
+  auto r11 = actor5.Task(&DummyObject::Add).Remote(r0);
+  auto r12 = actor5.Task(&DummyObject::Add).Remote(r11);
+  auto r13 = actor5.Task(&DummyObject::Add).Remote(r10);
+  auto r14 = actor5.Task(&DummyObject::Add).Remote(r13);
+  // auto r15 = Ray::Task(Plus).Remote(r0, r11);
+  // auto r16 = Ray::Task(Plus1).Remote(r15);
+
+  int result12 = *(Ray::Get(r12));
+  int result14 = *(Ray::Get(r14));
+  int result11 = *(Ray::Get(r11));
+  int result13 = *(Ray::Get(r13));
+  // int result16 = *(Ray::Get(r16));
+  // int result15 = *(Ray::Get(r15));
+
+  EXPECT_EQ(result11, 28);
+  EXPECT_EQ(result12, 56);
+  EXPECT_EQ(result13, 83);
+  EXPECT_EQ(result14, 166);
+  // EXPECT_EQ(result15, 29);
+  // EXPECT_EQ(result16, 30);
+
   ray::api::RayConfig::GetInstance()->use_ray_remote = false;
   Ray::Shutdown();
 }
