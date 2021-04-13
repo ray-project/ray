@@ -46,10 +46,7 @@ def ppo_surrogate_loss(
             of loss tensors.
     """
     if isinstance(model, tf.keras.Model):
-        try:#TODO
-            logits, state, extra_outs = model(train_batch)
-        except Exception as e:
-            raise e
+        logits, state, extra_outs = model(train_batch)
         value_fn_out = extra_outs[SampleBatch.VF_PREDS]
     else:
         logits, state = model.from_batch(train_batch)

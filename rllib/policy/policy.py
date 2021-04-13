@@ -774,7 +774,10 @@ class Policy(metaclass=ABCMeta):
         else:
             # Add this functionality automatically for new native model API.
             if tf and isinstance(model, tf.keras.Model):
-                obj.get_initial_state = lambda: [np.zeros_like(view_req.space.sample()) for k, view_req in model.view_requirements.items() if k.startswith("state_in_")]
+                obj.get_initial_state = lambda: [
+                    np.zeros_like(view_req.space.sample())
+                    for k, view_req in model.view_requirements.items()
+                    if k.startswith("state_in_")]
             else:
                 obj.get_initial_state = lambda: []
         for i, state in enumerate(init_state):

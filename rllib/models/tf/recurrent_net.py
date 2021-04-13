@@ -238,27 +238,26 @@ class LSTMWrapper(RecurrentNetwork):
 
 
 class Keras_LSTMWrapper(tf.keras.Model if tf else object):
-    """A tf keras auto-LSTM wrapper used then `use_lstm`=True.
-    """
+    """A tf keras auto-LSTM wrapper used when `use_lstm`=True."""
 
-    def __init__(self,
-                 input_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: Optional[int] = None,
-                 *,
-                 name: str,
-                 wrapped_cls: Type["tf.keras.Model"],
-                 max_seq_len: int = 20,
-                 lstm_cell_size: int = 256,
-                 lstm_use_prev_action: bool = False,
-                 lstm_use_prev_reward: bool = False,
-                 **kwargs,
-                 ):
+    def __init__(
+            self,
+            input_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: Optional[int] = None,
+            *,
+            name: str,
+            wrapped_cls: Type["tf.keras.Model"],
+            max_seq_len: int = 20,
+            lstm_cell_size: int = 256,
+            lstm_use_prev_action: bool = False,
+            lstm_use_prev_reward: bool = False,
+            **kwargs,
+    ):
 
         super().__init__(name=name)
         self.wrapped_keras_model = wrapped_cls(
-            input_space, action_space, None,
-            name="wrapped_"+name, **kwargs)
+            input_space, action_space, None, name="wrapped_" + name, **kwargs)
 
         self.action_space = action_space
         self.max_seq_len = max_seq_len
@@ -271,8 +270,10 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
         # observation space.
         if self.wrapped_keras_model.layers:
             assert self.wrapped_keras_model.layers[-1].outputs
-            assert len(self.wrapped_keras_model.layers[-1].outputs[0].shape) == 2
-            wrapped_num_outputs = int(self.wrapped_keras_model.layers[-1].outputs[0].shape[1])
+            assert len(
+                self.wrapped_keras_model.layers[-1].outputs[0].shape) == 2
+            wrapped_num_outputs = int(
+                self.wrapped_keras_model.layers[-1].outputs[0].shape[1])
         else:
             wrapped_num_outputs = int(np.product(self.obs_space.shape))
 
@@ -290,17 +291,19 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
             self.action_dim = int(len(self.action_space))
 
         # Add prev-action/reward nodes to input to LSTM.
-        #if self.lstm_use_prev_action:
-        #    wrapped_num_outputs += self.action_dim
-        #if self.lstm_use_prev_reward:
-        #    wrapped_num_outputs += 1
+        if self.lstm_use_prev_action:
+            wrapped_num_outputs += self.action_dim
+        if self.lstm_use_prev_reward:
+            wrapped_num_outputs += 1
 
         # Define input layers.
         input_layer = tf.keras.layers.Input(
             shape=(None, wrapped_num_outputs), name="inputs")
 
-        state_in_h = tf.keras.layers.Input(shape=(self.lstm_cell_size, ), name="h")
-        state_in_c = tf.keras.layers.Input(shape=(self.lstm_cell_size, ), name="c")
+        state_in_h = tf.keras.layers.Input(
+            shape=(self.lstm_cell_size, ), name="h")
+        state_in_c = tf.keras.layers.Input(
+            shape=(self.lstm_cell_size, ), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
 
         # Preprocess observation with a hidden layer and send to LSTM cell
@@ -351,7 +354,8 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
         for i in range(2):
             space = Box(-1.0, 1.0, shape=(self.lstm_cell_size, ))
             self.view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement("state_out_{}".format(i),
+                ViewRequirement(
+                    "state_out_{}".format(i),
                     shift=-1,
                     used_for_compute_actions=True,
                     batch_repeat_value=max_seq_len,
@@ -361,42 +365,37 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):
-        #assert input_dict.get("seq_lens") is not None
+        assert input_dict.get("seq_lens") is not None
         # Push obs through underlying (wrapped) model first.
         wrapped_out, _, _ = self.wrapped_keras_model(input_dict)
 
         # Concat. prev-action/reward if required.
-        #prev_a_r = []
-        #if self.lstm_use_prev_action:
-        #    prev_a = input_dict[SampleBatch.PREV_ACTIONS]
-        #    if isinstance(self.action_space, (Discrete, MultiDiscrete)):
-        #        prev_a = one_hot(prev_a, self.action_space)
-        #    prev_a_r.append(
-        #        tf.reshape(tf.cast(prev_a, tf.float32), [-1, self.action_dim]))
-        #if self.lstm_use_prev_reward:
-        #    prev_a_r.append(
-        #        tf.reshape(
-        #            tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
-        #            [-1, 1]))
+        prev_a_r = []
+        if self.lstm_use_prev_action:
+            prev_a = input_dict[SampleBatch.PREV_ACTIONS]
+            if isinstance(self.action_space, (Discrete, MultiDiscrete)):
+                prev_a = one_hot(prev_a, self.action_space)
+            prev_a_r.append(
+                tf.reshape(tf.cast(prev_a, tf.float32), [-1, self.action_dim]))
+        if self.lstm_use_prev_reward:
+            prev_a_r.append(
+                tf.reshape(
+                    tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
+                    [-1, 1]))
 
-        #if prev_a_r:
-        #    wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
+        if prev_a_r:
+            wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
-        # Then through our LSTM.
-        #input_dict["obs_flat"] = wrapped_out
-        #return super().forward(input_dict, state, seq_lens)
-
-        max_seq_len = tf.shape(wrapped_out)[0] // tf.shape(input_dict["seq_lens"])[0]
+        max_seq_len = tf.shape(wrapped_out)[0] // tf.shape(
+            input_dict["seq_lens"])[0]
         wrapped_out_plus_time_dim = add_time_dimension(
             wrapped_out, max_seq_len=max_seq_len, framework="tf")
-        #seq_lens = input_dict["seq_lens"]
-        #states = [input_dict["state_in_0"], input_dict["state_in_1"]]
-        seq_lens = tf.ones(shape=(tf.shape(input_dict["seq_lens"])[0]), dtype=tf.int32)
-        states = [tf.zeros(shape=(tf.shape(input_dict["seq_lens"])[0], 10), dtype=tf.float32), tf.zeros(shape=(tf.shape(input_dict["seq_lens"])[0], 10), dtype=tf.float32)]
         model_out, value_out, h, c = self._rnn_model([
-            wrapped_out_plus_time_dim, seq_lens] + states
-        )
+            wrapped_out_plus_time_dim, input_dict["seq_lens"],
+            input_dict["state_in_0"], input_dict["state_in_1"]
+        ])
         model_out_no_time_dim = tf.reshape(
-            model_out, [-1] + list(tf.shape(model_out)[2:]))
-        return model_out_no_time_dim, [h, c], \
-               {SampleBatch.VF_PREDS: tf.reshape(value_out, [-1])}
+            model_out, tf.concat([[-1], tf.shape(model_out)[2:]], axis=0))
+        return model_out_no_time_dim, [h, c], {
+            SampleBatch.VF_PREDS: tf.reshape(value_out, [-1])
+        }

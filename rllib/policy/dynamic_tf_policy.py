@@ -296,7 +296,7 @@ class DynamicTFPolicy(TFPolicy):
             # Pass through model. E.g., PG, PPO.
             else:
                 if isinstance(self.model, tf.keras.Model):
-                    dist_inputs, self._state_out, self._extra_action_fetches = \
+                    dist_inputs, self._state_out, self._extra_action_fetches =\
                         self.model(self._input_dict)
                 else:
                     dist_inputs, self._state_out = self.model(
@@ -504,7 +504,7 @@ class DynamicTFPolicy(TFPolicy):
 
         if self._state_inputs:
             train_batch["seq_lens"] = self._seq_lens
-            self._loss_input_dict.update({"seq_lens": train_batch.seq_lens})
+            self._loss_input_dict.update({"seq_lens": train_batch["seq_lens"]})
 
         self._loss_input_dict.update({k: v for k, v in train_batch.items()})
 

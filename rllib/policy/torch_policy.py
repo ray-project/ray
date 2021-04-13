@@ -421,8 +421,6 @@ class TorchPolicy(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
-        #else:
-        #    postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

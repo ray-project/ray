@@ -419,19 +419,21 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or \
                         model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import \
-                        AttentionWrapper
-                    from ray.rllib.models.tf.recurrent_net import LSTMWrapper, \
-                        Keras_LSTMWrapper
+                        AttentionWrapper, Keras_AttentionWrapper
+                    from ray.rllib.models.tf.recurrent_net import \
+                        LSTMWrapper, Keras_LSTMWrapper
 
                     wrapped_cls = model_cls
                     if issubclass(wrapped_cls, tf.keras.Model):
-                        model_cls = Keras_LSTMWrapper
+                        model_cls = Keras_LSTMWrapper if \
+                            model_config.get("use_lstm") else \
+                            Keras_AttentionWrapper
                         model_config["wrapped_cls"] = wrapped_cls
                     else:
                         forward = wrapped_cls.forward
                         model_cls = ModelCatalog._wrap_if_needed(
-                            wrapped_cls, LSTMWrapper
-                            if model_config.get("use_lstm") else AttentionWrapper)
+                            wrapped_cls, LSTMWrapper if
+                            model_config.get("use_lstm") else AttentionWrapper)
                         model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
@@ -567,7 +569,7 @@ class ModelCatalog:
                     model_config.get("use_attention"):
 
                 from ray.rllib.models.tf.attention_net import \
-                    AttentionWrapper
+                    AttentionWrapper, Keras_AttentionWrapper
                 from ray.rllib.models.tf.recurrent_net import LSTMWrapper, \
                     Keras_LSTMWrapper
 
@@ -581,9 +583,13 @@ class ModelCatalog:
                             wrapped_cls, LSTMWrapper)
                         v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, AttentionWrapper)
-                    v2_class._wrapped_forward = wrapped_cls.forward
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        v2_class = Keras_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, AttentionWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
@@ -596,7 +602,6 @@ class ModelCatalog:
                     name=name,
                     **dict(model_kwargs, **model_config),
                 )
-                #logger.info(model.summary())
                 return model
 
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -818,8 +823,7 @@ class ModelCatalog:
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
             # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and \
-                    Keras_FCNet and not model_config.get("use_attention"):
+            if model_config.get("_use_default_native_models") and Keras_FCNet:
                 return Keras_FCNet
             # Classic ModelV2 FCNet.
             else:
@@ -829,8 +833,7 @@ class ModelCatalog:
             raise NotImplementedError("No non-FC default net for JAX yet!")
 
         # Last resort: Conv2D stack for single image spaces.
-        if model_config.get("_use_default_native_models") and \
-                Keras_VisionNet and not model_config.get("use_attention"):
+        if model_config.get("_use_default_native_models") and Keras_VisionNet:
             return Keras_VisionNet
         return VisionNet
 

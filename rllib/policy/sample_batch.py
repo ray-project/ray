@@ -315,7 +315,10 @@ class SampleBatch(dict):
                     for k, v in self.items() if k != "seq_lens"
                 }
             else:
-                data = {k: v[start:end] for k, v in self.items() if k != "seq_lens"}
+                data = {
+                    k: v[start:end]
+                    for k, v in self.items() if k != "seq_lens"
+                }
             # Fix state_in_x data.
             count = 0
             state_start = None
@@ -348,7 +351,7 @@ class SampleBatch(dict):
             )
         else:
             try:
-                sb= SampleBatch(
+                sb = SampleBatch(
                     {k: v[start:end]
                      for k, v in self.items()},
                     _is_training=self.is_training,
