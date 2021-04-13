@@ -1,10 +1,17 @@
 import asyncio
+from dataclasses import dataclass
 import json
-from typing import Callable, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import starlette.requests
 
 from ray.serve.exceptions import RayServeException
+
+
+@dataclass
+class HTTPRequestWrapper:
+    scope: Dict[Any, Any]
+    body: bytes
 
 
 def build_starlette_request(scope, serialized_body: bytes):
@@ -35,16 +42,7 @@ def build_starlette_request(scope, serialized_body: bytes):
             "more_body": False
         }
 
-    # scope["router"] and scope["endpoint"] contain references to a router and
-    # endpoint object, respectively, which each in turn contain a reference to
-    # the Serve client, which cannot be serialized.
-    # The solution is to delete these from scope, as they will not be used.
-    # Per ASGI recommendation, copy scope before passing to child.
-    child_scope = scope.copy()
-    del child_scope["router"]
-    del child_scope["endpoint"]
-
-    return starlette.requests.Request(child_scope, mock_receive)
+    return starlette.requests.Request(scope, mock_receive)
 
 
 class Response:

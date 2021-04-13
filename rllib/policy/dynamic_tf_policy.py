@@ -1,7 +1,6 @@
 from collections import OrderedDict
 import gym
 import logging
-import numpy as np
 import re
 from typing import Callable, Dict, List, Optional, Tuple, Type
 
@@ -465,7 +464,7 @@ class DynamicTFPolicy(TFPolicy):
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False, timestep=0)
         for key, value in extra_fetches.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
