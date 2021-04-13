@@ -34,7 +34,7 @@ class ParameterServerStrategy(BaseTrainer):
     def _init_strategy(self):
         """Do initialization for the distributed strategy."""
         # All sync with worker 0
-        init_weights_id = self.worker_group.get_parameters(cpu=True)
+        init_weights_id = self.worker_group.get_named_parameters(cpu=True)
     
         self._round_robin_sharding()
 
@@ -44,7 +44,7 @@ class ParameterServerStrategy(BaseTrainer):
         # all workers get synced
         for i, worker in enumerate(self.worker_group.actors):
             if i != 0:
-                ray.wait([worker.set_parameters.remote(init_weights_id)])
+                ray.get([worker.set_parameters.remote(init_weights_id)])
 
         # now spawn parameter server actors
         shard_ids = self.worker_group.split_parameters(self.assignments)
@@ -52,7 +52,7 @@ class ParameterServerStrategy(BaseTrainer):
         # TODO(HUI): use scatter to send parameters
         for server_idx, server in enumerate(self.server_group.actors):
             this_shard_ref = self.worker_group.actors[0].index_shard.remote(shard_ids, server_idx)
-            ray.wait([server.set_params.remote(this_shard_ref)])
+            ray.get([server.set_params.remote(this_shard_ref)])
 
     def _start_workers(self, world_size):
         """Create worker(actor), maybe need worker group to manager these workers.
@@ -247,11 +247,13 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         # params should in GPU when calling this function.
         for k, v in params.items():
             self.params[k] = self.training_operator.asarray(v)
-        self.training_operator.reset_optimizer_for_params(list(self.params.values()))
+
+        # param is a dict, if needed list, should convert in operator.
+        self.training_operator.reset_optimizer_for_params(self.params)
         # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
 
-    def apply_updates(self, grad_buffer_list):
-        self.training_operator.apply_updates(grad_buffer_list, self.num_workers)
+    def apply_updates(self, grad_buffer):
+        self.training_operator.apply_updates(grad_buffer, self.num_workers)
         self.params = self.training_operator.get_named_parameters(cpu=False)
 
     def get_grad_buffer(self):
@@ -286,7 +288,6 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         
         for key in keys:
             to_recv = self.params[key]
-            # print(key)
             recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
 
         for i in range(len(keys)):
@@ -391,7 +392,7 @@ class Worker(object):
     # def updates_transform(self, updates):
     #     return self.training_operator.updates_transform(updates)
 
-    def compute_gradients(self, params, named=True):
+    def compute_gradients(self, params):
         """
         update worker parameters that received from server. compute gradients and return named gradients.
         """
@@ -402,13 +403,11 @@ class Worker(object):
         except StopIteration and NameError:
             self.iterator = iter(self.training_operator.train_loader)
             batch = next(self.iterator)
+
         # different from original core ps. 
         # Here derive_updates return loss_val and graident in order.
-
         loss_val, grads = self.training_operator.derive_updates(batch)
-        
-        if named and isinstance(grads, list):
-            grads = {f"{idx}":g for idx, g in enumerate(grads)}
+        assert isinstance(grads, dict)
 
         return loss_val, grads
 

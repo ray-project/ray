@@ -8,6 +8,7 @@ import flax
 import flax.traverse_util as traverse_util
 from flax.core import FrozenDict, unfreeze, freeze
 from flax import serialization
+from flax.optim.base import Optimizer
 
 from ray.util.distml.jax_operator import JAXTrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
@@ -52,18 +53,20 @@ class FLAXTrainingOperator(JAXTrainingOperator):
 
     def derive_updates(self, batch):
         loss_val, gradient = self._calculate_gradient(self.optimizer, batch)
-        return loss_val.item(), tree_flatten(gradient)[0]
+        gradient_dict = traverse_util.flatten_dict(unfreeze(gradient))
+        return loss_val.item(), gradient_dict
 
     def apply_updates(self, gradient, num_workers):
-        if not hasattr(self, "tree"):
-            self.tree = tree_flatten(self.optimizer.target)[1]
-    
-        if isinstance(gradient, dict):
-            gradient = freeze(traverse_util.unflatten_dict(gradient))
-        else:
-            gradient = tree_unflatten(self.tree, gradient)
+        assert isinstance(gradient, dict)
+
+        gradient = freeze(traverse_util.unflatten_dict(gradient))
+
         gradient = tree_map(lambda x: x/num_workers, gradient)
 
+        param_flat, treedef = tree_flatten(self.optimizer.target)
+        gardient_falt, grad_treedef = tree_flatten(gradient)
+
+        grads_flat = treedef.flatten_up_to(gradient)
         hyper_params = {}
         if hasattr(self, "lr_schedulers"):
             hyper_params["learning_rate"] = self.lr_schedulers.step()
@@ -131,12 +134,9 @@ class FLAXTrainingOperator(JAXTrainingOperator):
         self.optimizer = optimizer
 
     def get_parameters(self, cpu):
-        params = self.optimizer.target
-        flatten_params, tree = tree_flatten(params)
-
-        if cpu:
-            flatten_params = list(map(np.asarray, flatten_params))
-        return flatten_params
+        named_parameters = self.get_named_parameters(cpu)
+        self.parmas_keys = list(named_parameters.keys())
+        return list(named_parameters.values())
 
     def get_named_parameters(self, cpu):
         params = self.optimizer.target
@@ -155,6 +155,13 @@ class FLAXTrainingOperator(JAXTrainingOperator):
 
         self.optimizer = serialization.from_state_dict(optimizer, states)
 
+    def _param_list2dict(self, param):
+        if not hasattr(self, "parmas_keys"):
+            self.parmas_keys = list(traverse_util.flatten_dict(self.optimizer.target).keys())
+        param = {k:v for k,v in zip(self.parmas_keys, param)}
+        return param
+
     def reset_optimizer_for_params(self, params):
-        self.tree = tree_flatten(params)[1]
-        self.optimizer = self.optimizer.init_param_state(params)
+        assert isinstance(params, dict)
+        params = traverse_util.unflatten_dict(params)
+        self.optimizer = self.optimizer.optimizer_def.create(freeze(params))

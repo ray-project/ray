@@ -8,6 +8,7 @@ from tqdm import trange
 import ray
 from ray.util.distml.jax_operator import JAXTrainingOperator
 from ray.util.distml.allreduce_strategy import AllReduceStrategy
+from ray.util.distml.ps_strategy import ParameterServerStrategy
 
 from ray.util.sgd.utils import BATCH_SIZE, override
 
@@ -68,8 +69,8 @@ class MnistTrainingOperator(JAXTrainingOperator):
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, batch_size)
         lr = kwargs["lr"]
-        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        # init_fun, predict_fun = ToyModel(kwargs["num_classes"])
+        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
         _, init_params = init_fun(rng_key, input_shape)
             
@@ -106,10 +107,10 @@ def make_ar_trainer(args):
         training_operator_cls=MnistTrainingOperator,
         world_size=2,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64,
+            "batch_size": 128,
             "num_classes": 10,
         },
         use_tqdm=True,
@@ -120,14 +121,14 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=2,
-        num_workers=1,
-        num_ps=1,
+        world_size=4,
+        num_workers=2,
+        num_ps=2,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64,
+            "batch_size": 128,
             "num_classes": 10,
         },
         use_tqdm=True,
@@ -168,15 +169,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,7"
-    os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
+    # os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None
-    ray.init(num_gpus=2, num_cpus=num_cpus, log_to_driver=True)
+    ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = make_ar(args)
-    trainer = make_ps_trainer(args)
+    trainer = make_ar_trainer(args)
+    # trainer = make_ps_trainer(args)
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

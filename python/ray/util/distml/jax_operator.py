@@ -107,11 +107,19 @@ class JAXTrainingOperator(TrainingOperator):
 
     def derive_updates(self, batch):
         loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
-        return loss_val.item(), tree_flatten(gradient)[0]
+        gradient_dict, tree = tree_flatten(gradient)
+        assert tree == self.opt_state[1]
+
+        if hasattr(self, "preset_keys"):
+            gradient_dict = {k:g for k, g in zip(self.preset_keys, gradient_dict)}
+        else:
+            gradient_dict = {f"{idx}":g for idx, g in enumerate(gradient_dict)}
+        return loss_val.item(), gradient_dict
         
     def apply_updates(self, gradient, num_workers):
-        if isinstance(gradient, dict):
-            gradient = list(gradient.values())
+        assert isinstance(gradient, dict)
+        keys, gradient = unzip2(sorted(gradient.items(), key=lambda d: int(d[0])))
+
         gradient = tree_unflatten(self.opt_state[1], gradient)
         gradient = tree_map(lambda x: x/num_workers, gradient)
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
@@ -176,7 +184,9 @@ class JAXTrainingOperator(TrainingOperator):
             "samples_num": samples_num
         }
 
+    # TODO(HUI)
     def save_parameters(self, checkpoint):
+        raise
         # save model
         if jax2tf_available:
             if not getattr(self, "input_signatures"):
@@ -192,7 +202,9 @@ class JAXTrainingOperator(TrainingOperator):
         else:
             raise RuntimeError("jax2tf is not available.")
 
+    # TODO(HUI)
     def load_parameters(self, checkpoint):
+        raise
         print("Warning: Jax not support loading checkpoint. ")
         if jax2tf_available:
             restored_model = load_params_from_tf(checkpoint)
@@ -207,9 +219,6 @@ class JAXTrainingOperator(TrainingOperator):
 
         if cpu:
             flatten_params = list(map(np.asarray, flatten_params))
-        else:
-            flatten_params = flatten_params
-            # flatten_params = list(map(self.to_cupy, flatten_params))
         return flatten_params
 
     def get_named_parameters(self, cpu):
@@ -221,9 +230,10 @@ class JAXTrainingOperator(TrainingOperator):
         return dict_params
 
     def set_parameters(self, new_params):
-        if isinstance(new_params, dict):
-            keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: int(d[0])))
-            self.preset_keys = keys
+        assert isinstance(new_params, dict)
+
+        keys, new_params = unzip2(sorted(new_params.items(), key=lambda d: int(d[0])))
+        self.preset_keys = keys
 
         if not hasattr(self, "tree"):
             self.tree = tree_structure(self.get_params(self.opt_state)) 
@@ -237,21 +247,23 @@ class JAXTrainingOperator(TrainingOperator):
             return new_state
 
         new_states = map(update, new_params, states)
-        new_state_flat, new_subtrees = unzip2(map(tree_flatten, new_states))
 
+        new_states_flat, new_subtrees = unzip2(map(tree_flatten, new_states))
+
+        if not new_subtrees:
+            raise RuntimeError("subtrees of new params is empty.")
         for idx, (subtree, new_subtree) in enumerate(zip(subtrees, new_subtrees)):
             if new_subtree != subtree:
                 msg = ("input structur did not match the save params struture. "
                        "input {} and output {}.")
                 raise TypeError(msg.format(subtree, new_subtree))
 
-        self.opt_state = OptimizerState(new_state_flat, tree, subtrees)
+        self.opt_state = OptimizerState(new_states_flat, tree, new_subtrees)
 
     def reset_optimizer_for_params(self, params):
+        keys, params = unzip2(sorted(params.items(), key=lambda d: int(d[0])))
         self.tree = tree_structure(params)
         self.opt_state = self.opt_init(params)
-        params2 = self.get_params(self.opt_state)
-        assert params == params2
 
     # some operation for this ml system.
     def ones(self, shape, cpu=True):

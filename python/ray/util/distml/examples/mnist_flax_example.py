@@ -8,6 +8,7 @@ from tqdm import trange
 import ray
 from ray.util.distml.flax_operator import FLAXTrainingOperator
 from ray.util.distml.allreduce_strategy import AllReduceStrategy
+from ray.util.distml.ps_strategy import ParameterServerStrategy
 from ray.util.sgd.utils import BATCH_SIZE, override
 
 import numpy as np
@@ -53,7 +54,7 @@ class Dataloader:
         perm = rng.permutation(num_imgs) if self.shuffle else np.arange(num_imgs)
         for i in range(self.num_batches):
             batch_idx = perm[i * self.batch_size:(i + 1) * self.batch_size]
-            img_batch = self.data[batch_idx, :, :, :]
+            img_batch = self.data[batch_idx]
             label_batch = self.target[batch_idx]
             yield img_batch, label_batch
 
@@ -63,6 +64,7 @@ class Dataloader:
     def __len__(self):
         return self.num_batches
         
+
 class MnistTrainingOperator(FLAXTrainingOperator):
     @override(FLAXTrainingOperator)
     def setup(self, *args, **kwargs):
@@ -95,12 +97,12 @@ class MnistTrainingOperator(FLAXTrainingOperator):
 def make_ar_trainer(args):
     trainer = AllReduceStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=2,
+        world_size=3,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64,
+            "batch_size": 128,
             "num_classes": 10,
         },
         use_tqdm=True,
@@ -111,14 +113,14 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=2,
-        num_workers=1,
-        num_ps=1,
+        world_size=4,
+        num_workers=2,
+        num_ps=2,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 64,
+            "batch_size": 128,
             "num_classes": 10,
         },
         use_tqdm=True,
@@ -137,7 +139,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=2,
+        default=4,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
@@ -159,17 +161,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,7"
-    os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = make_ar(args)
+    # trainer = make_ar_trainer(args)
     trainer = make_ps_trainer(args)
 
-    trainer.load_parameters("jax_checkpoint.db")
+    # trainer.load_parameters("jax_checkpoint.db")
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):
@@ -181,7 +182,7 @@ if __name__ == "__main__":
         print("validate", val_stats)
         info.update(val_acc=val_stats["val_accuracy"]) 
         # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
-        trainer.save_parameters("jax_checkpoint.db")
+        # trainer.save_parameters("jax_checkpoint.db")
 
     trainer.shutdown()
     print("success!")

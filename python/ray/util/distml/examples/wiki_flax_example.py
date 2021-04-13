@@ -119,7 +119,7 @@ class WikiTrainingOperator(FLAXTrainingOperator):
         return loss
 
 
-def train_ar(args):
+def make_ar_trainer(args):
     trainer = AllReduceStrategy(
         training_operator_cls=WikiTrainingOperator,
         world_size=args.num_workers,
@@ -127,21 +127,21 @@ def train_ar(args):
             "lr": 0.01,
             "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
-            "batch_size": 1,
+            "batch_size": 8,
         },
         use_tqdm= True,
         max_iteration= 300000,
         )
     return trainer
 
-def make_ps(args):
+def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=WikiTrainingOperator,
-        world_size=2,
-        num_workers=1,
-        num_ps=1,
+        world_size=4,
+        num_workers=2,
+        num_ps=2,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 8,
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=2,
+        default=4,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
@@ -185,14 +185,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2,3,4,5"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    trainer = train_ar(args)
-    # trainer = make_ps(args)
+    # trainer = make_ar_trainer(args)
+    trainer = make_ps_trainer(args)
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

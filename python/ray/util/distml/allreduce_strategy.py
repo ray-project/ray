@@ -1,6 +1,8 @@
 import ray
-from ray.util.distml.base_trainer import BaseTrainer
 import ray.util.collective as col
+
+from ray.util.distml.base_trainer import BaseTrainer
+from ray.util.distml.util import ThroughoutCollection
 
 import cupy as cp
 import numpy as np
@@ -18,6 +20,8 @@ class AllReduceStrategy(BaseTrainer):
         self._fusion = fusion
         self._use_tqdm = use_tqdm
         self._max_iteration = max_iteration
+        # self.collector = ThroughoutCollection()
+        
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
 
     def _init_strategy(self):
@@ -43,12 +47,17 @@ class AllReduceStrategy(BaseTrainer):
 
         self.data_parallel_group.start_iteration()
         for idx in range(total):
+            # with timers.record("train_batch"):
             metrics = self.data_parallel_group.train_batch()
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
                 if "train_loss" in metrics:
                     postfix.update(loss=metrics["train_loss"])
                 _progress_bar.set_postfix(postfix)
+
+        # if "debug" in info.keys() and info["debug"]:
+        #     train_time = timers._timers["train_batch"]
+        #     info.update({f"train_epoch_{epoch_idx}":timers._timers["train_batch"].mean})
         return info
 
     def validate(self, *info):
@@ -157,9 +166,11 @@ class Replica:
 
         # loss_val should be in cpu, this convertion should be done in operator.
         loss_val, updates = self.derive_updates(batch)
+        assert isinstance(updates, dict)
+
         metrics["train_loss"] = loss_val
 
-        for g in updates:
+        for _, g in updates.items():
             cg = self.training_operator.to_cupy(g)
             col.allreduce(cg)
 

@@ -151,7 +151,7 @@ def make_ar_trainer(args):
         training_operator_cls=SstTrainingOperator,
         world_size=2,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 64,
@@ -169,7 +169,7 @@ def make_ps_trainer(args):
         num_workers=1,
         num_ps=1,
         operator_config={
-            "lr": 0.1,
+            "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 64,
