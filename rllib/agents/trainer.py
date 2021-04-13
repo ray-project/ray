@@ -641,7 +641,7 @@ class Trainer(Trainable):
                             "known gym/PyBullet/VizdoomEnv environment "
                             "specifier or b) not registered! To register your "
                             "custom envs, do `from ray import tune; "
-                            "tune.register('[name]', lambda cfg: [return "
+                            "tune.register_env('[name]', lambda cfg: [return "
                             "actual env from here using cfg])`. Then you can "
                             "use [name] as your config['env'].".format(env))
 
