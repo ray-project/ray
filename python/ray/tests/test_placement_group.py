@@ -1014,6 +1014,15 @@ def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
         p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
     assert len(errors) == 0
 
+    # Create an infeasible pg which memory resource was specified in bundles.
+    pg = ray.util.placement_group([{"memory": 50 * 1024 * 1024}] * 2, strategy="STRICT_PACK")
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=0.5)
+
+    errors = get_error_message(
+        p, 1, ray.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1)
+    assert len(errors) == 0
+
 
 def test_automatic_cleanup_job(ray_start_cluster):
     # Make sure the placement groups created by a
