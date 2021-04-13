@@ -52,6 +52,7 @@ def test_auto_local_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.skip(reason="Temporarily disabled due to flakyniess.")
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):
