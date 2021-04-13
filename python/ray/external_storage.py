@@ -445,13 +445,19 @@ class UnstableFileStorage(FileSystemStorage):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._failure_rate = 0.1
+        self._partial_failure_ratio = 0.2
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
-        failed = random.random() < self._failure_rate
+        r = random.random() < self._failure_rate
+        failed = r < self._failure_rate
+        partial_failed = r < partial_failure_ratio
         if failed:
             raise IOError("Spilling object failed")
-        logger.info(self._failure_rate)
-        return super().spill_objects(object_refs, owner_addresses)
+        elif partial_failed:
+            i = random.choice(range(len(object_refs)))
+            return super().spill_objects(object_refs[:i], owner_address)
+        else:
+            return super().spill_objects(object_refs, owner_addresses)
 
 
 def setup_external_storage(config):
