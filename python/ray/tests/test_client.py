@@ -124,6 +124,25 @@ def test_put_get(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_put_failure_get(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        class DeSerializationFailure:
+            def __getstate__(self):
+                return ""
+
+            def __setstate__(self, i):
+                raise ZeroDivisionError
+
+        dsf = DeSerializationFailure()
+        with pytest.raises(ZeroDivisionError):
+            ray.put(dsf)
+
+        # Ensure Ray Client is still connected
+        assert ray.get(ray.put(100)) == 100
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_wait(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
