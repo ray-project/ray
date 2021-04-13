@@ -254,6 +254,9 @@ void LocalObjectManager::SpillObjectsInternal(
               }
               io_worker_pool_.PushSpillWorker(io_worker);
               size_t num_objects_spilled = r.spilled_objects_url_size();
+              // Object spilling is always done in the order of the request.
+              // For example, if an object succeeded, it'll guarentee that all objects
+              // before this will succeed.
               RAY_CHECK(num_objects_spilled <= objects_to_spill.size());
               if (!status.ok() || num_objects_spilled < objects_to_spill.size()) {
                 auto failed_num = objects_to_spill.size() - num_objects_spilled;
