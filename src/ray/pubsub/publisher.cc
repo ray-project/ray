@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/pubsub/publisher.h"
+#include "ray/pubsub/publisher.h"
 
 namespace ray {
+
+namespace pubsub {
+
+namespace pub_internal {
 
 void SubscriptionIndex::AddEntry(const ObjectID &object_id,
                                  const SubscriberID &subscriber_id) {
@@ -153,6 +157,8 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
 
+}  // namespace pub_internal
+
 void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
                                     LongPollConnectCallback long_poll_connect_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
@@ -163,8 +169,8 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
   if (it == subscribers_.end()) {
     it = subscribers_
              .emplace(subscriber_id,
-                      std::make_shared<Subscriber>(get_time_ms_, subscriber_timeout_ms_,
-                                                   publish_batch_size_))
+                      std::make_shared<pub_internal::Subscriber>(
+                          get_time_ms_, subscriber_timeout_ms_, publish_batch_size_))
              .first;
   }
   auto &subscriber = it->second;
@@ -181,9 +187,9 @@ void Publisher::RegisterSubscription(const SubscriberID &subscriber_id,
 
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_id) == 0) {
-    subscribers_.emplace(
-        subscriber_id, std::make_shared<Subscriber>(get_time_ms_, subscriber_timeout_ms_,
-                                                    publish_batch_size_));
+    subscribers_.emplace(subscriber_id,
+                         std::make_shared<pub_internal::Subscriber>(
+                             get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
   subscription_index_.AddEntry(object_id, subscriber_id);
 }
@@ -258,5 +264,7 @@ bool Publisher::AssertNoLeak() const {
   }
   return subscription_index_.AssertNoLeak();
 }
+
+}  // namespace pubsub
 
 }  // namespace ray

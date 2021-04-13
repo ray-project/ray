@@ -5,6 +5,7 @@
 import aiohttp
 import asyncio
 import time
+import requests
 
 import ray
 from ray import serve
@@ -35,8 +36,9 @@ async def timeit(name, fn, multiplier=1):
 
 
 async def fetch(session, data):
-    async with session.get("http://127.0.0.1:8000/api", data=data) as response:
-        await response.text()
+    async with session.get("http://localhost:8000/api", data=data) as response:
+        response = await response.text()
+        assert response == "ok", response
 
 
 @ray.remote
@@ -74,9 +76,11 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
                 return await self.handle.remote()
 
         ForwardActor.deploy()
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert "/api" in routes, routes
 
     @serve.deployment(
-        deployment_name,
+        name=deployment_name,
         num_replicas=num_replicas,
         max_concurrent_queries=max_concurrent_queries)
     class Backend:
@@ -91,6 +95,8 @@ async def trial(intermediate_handles, num_replicas, max_batch_size,
                 return b"ok"
 
     Backend.deploy()
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert f"/{deployment_name}" in routes, routes
 
     if data_size == "small":
         data = None

@@ -19,6 +19,7 @@ import pydantic
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.exceptions import RayServeException
+from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -89,13 +90,15 @@ def parse_request_item(request_item):
     # it in ServeRequest.
     if isinstance(arg, starlette.requests.Request):
         return arg
-
-    return ServeRequest(
-        arg,
-        request_item.kwargs,
-        headers=request_item.metadata.http_headers,
-        method=request_item.metadata.http_method,
-    )
+    elif isinstance(arg, HTTPRequestWrapper):
+        return build_starlette_request(arg.scope, arg.body)
+    else:
+        return ServeRequest(
+            arg,
+            request_item.kwargs,
+            headers=request_item.metadata.http_headers,
+            method=request_item.metadata.http_method,
+        )
 
 
 def _get_logger():

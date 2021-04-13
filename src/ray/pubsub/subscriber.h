@@ -20,6 +20,8 @@
 
 namespace ray {
 
+namespace pubsub {
+
 using SubscriberID = UniqueID;
 using PublisherID = UniqueID;
 using SubscriptionCallback = std::function<void(const ObjectID &)>;
@@ -148,5 +150,7 @@ class Subscriber : public SubscriberInterface {
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;
 };
+
+}  // namespace pubsub
 
 }  // namespace ray
