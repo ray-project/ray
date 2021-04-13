@@ -40,14 +40,12 @@ void GcsInternalKVManager::HandleInternalKVDel(
   });
 }
 
-void GcsInternalKVManager::InternalKVDelAsync(
-    const std::string &key,
-    std::function<void(int)> cb) {
+void GcsInternalKVManager::InternalKVDelAsync(const std::string &key,
+                                              std::function<void(int)> cb) {
   std::vector<std::string> cmd = {"HDEL", key, "value"};
   redis_client_->GetPrimaryContext()->RunArgvAsync(
       cmd, [cb](auto redis_reply) { cb(redis_reply->ReadAsInteger()); });
 }
-
 
 void GcsInternalKVManager::HandleInternalKVExists(
     const rpc::InternalKVExistsRequest &request, rpc::InternalKVExistsReply *reply,

@@ -49,7 +49,6 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback);
 
-
  private:
   std::shared_ptr<RedisClient> redis_client_;
 };
