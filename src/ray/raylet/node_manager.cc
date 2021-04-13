@@ -131,7 +131,8 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
   last_heartbeat_at_ms_ = current_time_ms();
   heartbeat_runner_->RunFnPeriodically(
       [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      "NodeManager.deadline_timer.heartbeat");
 }
 
 HeartbeatSender::~HeartbeatSender() {
@@ -247,8 +248,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
           /*core_worker_subscriber_=*/
-          std::make_shared<Subscriber>(self_node_id_, config.node_manager_address,
-                                       config.node_manager_port, worker_rpc_pool_)),
+          std::make_shared<pubsub::Subscriber>(self_node_id_, config.node_manager_address,
+                                               config.node_manager_port,
+                                               worker_rpc_pool_)),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -395,24 +397,29 @@ ray::Status NodeManager::RegisterGcs() {
         DumpDebugState();
         WarnResourceDeadlock();
       },
-      RayConfig::instance().debug_dump_period_milliseconds());
+      RayConfig::instance().debug_dump_period_milliseconds(),
+      "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
   last_metrics_recorded_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_ms_);
+                                       record_metrics_period_ms_,
+                                       "NodeManager.deadline_timer.record_metrics");
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
-        RayConfig::instance().free_objects_period_milliseconds());
+        RayConfig::instance().free_objects_period_milliseconds(),
+        "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
-                                       report_resources_period_ms_);
+  periodical_runner_.RunFnPeriodically(
+      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
+      "NodeManager.deadline_timer.report_resource_usage");
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
   periodical_runner_.RunFnPeriodically(
       [this] { GetObjectManagerProfileInfo(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
   const auto asio_stats_print_interval_ms =
@@ -423,7 +430,8 @@ ray::Status NodeManager::RegisterGcs() {
         [this] {
           RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
-        asio_stats_print_interval_ms);
+        asio_stats_print_interval_ms,
+        "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
   return ray::Status::OK();
@@ -1244,7 +1252,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
     cb(true);
   }
 
-  auto from_path = resource_path / boost::filesystem::path(uri.substr(pos + sep.size()));
+  auto from_path =
+      resource_path / boost::filesystem::path(uri.substr(pos + sep.size())).stem();
   if (!boost::filesystem::exists(from_path)) {
     RAY_LOG(ERROR) << uri << " doesn't exist locally: " << from_path;
     cb(true);
@@ -2268,26 +2277,15 @@ void NodeManager::RecordMetrics() {
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
   }
-  // Last recorded time will be reset in the caller side.
-  uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
 
-  // Record average number of tasks information per second.
-  stats::AvgNumScheduledTasks.Record((double)metrics_num_task_scheduled_ *
-                                     (1000.0 / (double)duration_ms));
-  metrics_num_task_scheduled_ = 0;
-  stats::AvgNumExecutedTasks.Record((double)metrics_num_task_executed_ *
-                                    (1000.0 / (double)duration_ms));
-  metrics_num_task_executed_ = 0;
-  stats::AvgNumSpilledBackTasks.Record((double)metrics_num_task_spilled_back_ *
-                                       (1000.0 / (double)duration_ms));
-  metrics_num_task_spilled_back_ = 0;
-
-  object_directory_->RecordMetrics(duration_ms);
+  cluster_task_manager_->RecordMetrics();
   object_manager_.RecordMetrics();
   local_object_manager_.RecordObjectSpillingStats();
 
+  uint64_t current_time = current_time_ms();
+  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
+  object_directory_->RecordMetrics(duration_ms);
 }
 
 void NodeManager::PublishInfeasibleTaskError(const Task &task) const {

@@ -98,7 +98,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                        bool is_worker_request) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
@@ -217,10 +218,9 @@ class ObjectManager : public ObjectManagerInterface,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
-      SpillObjectsCallback spill_objects_callback = nullptr,
-      std::function<void()> object_store_full_callback = nullptr,
-      AddObjectCallback add_object_callback = nullptr,
-      DeleteObjectCallback delete_object_callback = nullptr);
+      SpillObjectsCallback spill_objects_callback,
+      std::function<void()> object_store_full_callback,
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
 
   ~ObjectManager();
 
@@ -248,8 +248,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// bundle local until the request is canceled with the returned ID.
   ///
   /// \param object_refs The bundle of objects that must be made local.
+  /// \param is_worker_request Whether this is a (`ray.get` or `ray.wait`)
+  /// request from a worker. If false, then it should be a request for a queued
+  /// task's arguments.
   /// \return A request ID that can be used to cancel the request.
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override;
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                bool is_worker_request) override;
 
   /// Cancels the pull request with the given ID. This cancels any fetches for
   /// objects that were passed to the original pull request, if no other pull

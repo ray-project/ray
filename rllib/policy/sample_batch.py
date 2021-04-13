@@ -450,7 +450,8 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        self.accessed_keys.add(key)
+        if not hasattr(self, key):
+            self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":

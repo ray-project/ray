@@ -41,18 +41,41 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    // Callback that is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
-      ReleaseFreedObject(object_id);
-      core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
-    };
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this](const ObjectID &object_id) {
-      ReleaseFreedObject(object_id);
-    };
-    // TODO(sang): Batch this request.
-    core_worker_subscriber_->SubcribeObject(owner_address, object_id,
-                                            subscription_callback, owner_dead_callback);
+    // Send a subscription message.
+    rpc::Address subscriber_address;
+    subscriber_address.set_raylet_id(self_node_id_.Binary());
+    subscriber_address.set_ip_address(self_node_address_);
+    subscriber_address.set_port(self_node_port_);
+    auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
+    rpc::SubscribeForObjectEvictionRequest wait_request;
+    wait_request.set_object_id(object_id.Binary());
+    wait_request.set_intended_worker_id(owner_address.worker_id());
+    wait_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
+    owner_client->SubscribeForObjectEviction(
+        wait_request,
+        [this, owner_address, object_id](
+            Status status, const rpc::SubscribeForObjectEvictionReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(DEBUG)
+                << "Subscription request to Evicted objects have failed. Object id:"
+                << object_id << " status:" << status.ToString();
+            ReleaseFreedObject(object_id);
+            return;
+          }
+
+          // If the subscription succeeds, register the subscription callback.
+          // Callback that is invoked when the owner publishes the object to evict.
+          auto subscription_callback = [this, owner_address](const ObjectID &object_id) {
+            ReleaseFreedObject(object_id);
+            core_worker_subscriber_->UnsubscribeObject(owner_address, object_id);
+          };
+          // Callback that is invoked when the owner of the object id is dead.
+          auto owner_dead_callback = [this](const ObjectID &object_id) {
+            ReleaseFreedObject(object_id);
+          };
+          core_worker_subscriber_->SubcribeObject(
+              owner_address, object_id, subscription_callback, owner_dead_callback);
+        });
   }
 }
 

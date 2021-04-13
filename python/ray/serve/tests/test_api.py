@@ -11,7 +11,6 @@ import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
 from ray.serve.config import BackendConfig
-from ray.serve.utils import get_random_letters
 
 
 def test_e2e(serve_instance):
@@ -271,11 +270,10 @@ def test_updating_config(serve_instance):
         def __init__(self):
             self.count = 0
 
-        @serve.accept_batch
         def __call__(self, request):
-            return [1] * len(request)
+            return 1
 
-    config = BackendConfig(max_batch_size=2, num_replicas=3)
+    config = BackendConfig(max_concurrent_queries=2, num_replicas=3)
     serve.create_backend("bsimple:v1", BatchSimple, config=config)
     serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
@@ -283,7 +281,7 @@ def test_updating_config(serve_instance):
     old_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
-    update_config = BackendConfig(max_batch_size=5)
+    update_config = BackendConfig(max_concurrent_queries=5)
     serve.update_backend_config("bsimple:v1", update_config)
     new_replica_tag_list = list(
         ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
@@ -379,45 +377,6 @@ def test_delete_endpoint(serve_instance, route):
         assert ray.get(handle.remote()) == "hello"
 
 
-@pytest.mark.parametrize("route", [None, "/shard"])
-def test_shard_key(serve_instance, route):
-    # Create five backends that return different integers.
-    num_backends = 5
-    traffic_dict = {}
-    for i in range(num_backends):
-
-        def function(_):
-            return i
-
-        backend_name = "backend-split-" + str(i)
-        traffic_dict[backend_name] = 1.0 / num_backends
-        serve.create_backend(backend_name, function)
-
-    serve.create_endpoint(
-        "endpoint", backend=list(traffic_dict.keys())[0], route=route)
-    serve.set_traffic("endpoint", traffic_dict)
-
-    def do_request(shard_key):
-        if route is not None:
-            url = "http://127.0.0.1:8000" + route
-            headers = {"X-SERVE-SHARD-KEY": shard_key}
-            result = requests.get(url, headers=headers).text
-        else:
-            handle = serve.get_handle("endpoint").options(shard_key=shard_key)
-            result = ray.get(handle.options(shard_key=shard_key).remote())
-        return result
-
-    # Send requests with different shard keys and log the backends they go to.
-    shard_keys = [get_random_letters() for _ in range(20)]
-    results = {}
-    for shard_key in shard_keys:
-        results[shard_key] = do_request(shard_key)
-
-    # Check that the shard keys are mapped to the same backends.
-    for shard_key in shard_keys:
-        assert do_request(shard_key) == results[shard_key]
-
-
 def test_list_endpoints(serve_instance):
     def f():
         pass
@@ -463,16 +422,15 @@ def test_list_endpoints(serve_instance):
 
 
 def test_list_backends(serve_instance):
-    @serve.accept_batch
     def f():
         pass
 
-    config1 = BackendConfig(max_batch_size=10)
+    config1 = BackendConfig(max_concurrent_queries=10)
     serve.create_backend("backend", f, config=config1)
     backends = serve.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
-    assert backends["backend"].max_batch_size == 10
+    assert backends["backend"].max_concurrent_queries == 10
 
     config2 = BackendConfig(num_replicas=10)
     serve.create_backend("backend2", f, config=config2)

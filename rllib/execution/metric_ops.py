@@ -80,7 +80,7 @@ class CollectMetrics:
         orig_episodes = list(episodes)
         missing = self.min_history - len(episodes)
         if missing > 0:
-            episodes.extend(self.episode_history[-missing:])
+            episodes = self.episode_history[-missing:] + episodes
             assert len(episodes) <= self.min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]

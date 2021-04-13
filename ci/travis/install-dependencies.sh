@@ -273,7 +273,7 @@ install_dependencies() {
   fi
 
   # Install modules needed in all jobs.
-  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
     # Remove this entire section once RLlib and Serve dependencies are fixed.
