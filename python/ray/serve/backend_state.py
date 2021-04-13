@@ -57,6 +57,7 @@ class ActorReplicaWrapper:
         self._drain_obj_ref = None
         self._stopped = False
         self._actor_resources = None
+        self._health_check_ref = None
 
         # Storing the handles is necessary to keep the actor and PG alive in
         # the non-detached case.
@@ -101,8 +102,6 @@ class ActorReplicaWrapper:
             self._actor_handle = ray.remote(backend_info.worker_class).options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
-                max_restarts=-1,
-                max_task_retries=-1,
                 placement_group=self._placement_group,
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
@@ -155,6 +154,14 @@ class ActorReplicaWrapper:
             self._stopped = True
 
         return self._stopped
+
+    def check_health(self) -> bool:
+        """Check if the actor is healthy."""
+        if self._health_check_ref is None:
+            self._health_check_ref = self._actor_handle.run_forever.remote()
+
+        ready, _ = ray.wait([self._health_check_ref], timeout=0)
+        return len(ready) == 0
 
     def force_stop(self):
         """Force the actor to exit without shutting down gracefully."""
@@ -332,6 +339,13 @@ class BackendReplica(VersionedReplica):
 
             self._actor.force_stop()
         return False
+
+    def check_health(self) -> bool:
+        """Check if the replica is still alive.
+
+        Returns `True` if the replica is healthy, else `False`.
+        """
+        return self._actor.check_health()
 
 
 class ReplicaStateContainer:
@@ -816,17 +830,30 @@ class BackendState:
 
         transitioned_backend_tags = set()
         for backend_tag, replicas in self._replicas.items():
+            for replica in replicas.pop(states=[ReplicaState.RUNNING]):
+                if replica.check_health():
+                    replicas.add(ReplicaState.RUNNING, replica)
+                else:
+                    logger.warning(
+                        f"Replica {replica.replica_tag} of backend "
+                        f"{backend_tag} failed health check, stopping it.")
+                    replica.set_should_stop(0)
+                    replicas.add(ReplicaState.SHOULD_STOP, replica)
+
             for replica in replicas.pop(states=[ReplicaState.SHOULD_START]):
                 replica.start(self._backend_metadata[backend_tag])
                 replicas.add(ReplicaState.STARTING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
+                # This replica should be taken off handle's replica set.
                 transitioned_backend_tags.add(backend_tag)
                 replica.stop()
                 replicas.add(ReplicaState.STOPPING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.STARTING]):
                 if replica.check_started():
+                    # This replica should be now be added to handle's replica
+                    # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
                 else:

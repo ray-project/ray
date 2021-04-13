@@ -49,7 +49,7 @@ using fb::PlasmaError;
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class RAY_NO_EXPORT PlasmaBuffer : public SharedMemoryBuffer {
+class PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
@@ -138,8 +138,6 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   Status Delete(const std::vector<ObjectID> &object_ids);
 
   Status Evict(int64_t num_bytes, int64_t &num_bytes_evicted);
-
-  Status Refresh(const std::vector<ObjectID> &object_ids);
 
   Status Disconnect();
 
@@ -647,16 +645,6 @@ Status PlasmaClient::Impl::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) 
   return ReadEvictReply(buffer.data(), buffer.size(), num_bytes_evicted);
 }
 
-Status PlasmaClient::Impl::Refresh(const std::vector<ObjectID> &object_ids) {
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-
-  RAY_RETURN_NOT_OK(SendRefreshLRURequest(store_conn_, object_ids));
-  std::vector<uint8_t> buffer;
-  RAY_RETURN_NOT_OK(
-      PlasmaReceive(store_conn_, MessageType::PlasmaRefreshLRUReply, &buffer));
-  return ReadRefreshLRUReply(buffer.data(), buffer.size());
-}
-
 Status PlasmaClient::Impl::Connect(const std::string &store_socket_name,
                                    const std::string &manager_socket_name,
                                    int release_delay, int num_retries) {
@@ -789,10 +777,6 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
 
 Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
   return impl_->Evict(num_bytes, num_bytes_evicted);
-}
-
-Status PlasmaClient::Refresh(const std::vector<ObjectID> &object_ids) {
-  return impl_->Refresh(object_ids);
 }
 
 Status PlasmaClient::Disconnect() { return impl_->Disconnect(); }

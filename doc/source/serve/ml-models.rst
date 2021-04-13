@@ -64,6 +64,45 @@ That's it. Let's take a look at an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
 
+Integration with Model Registries
+=================================
+
+Ray Serve is flexible.  If you can load your model as a Python
+function or class, then you can scale it up and serve it with Ray Serve.
+
+For example, if you are using the 
+`MLflow Model Registry <https://www.mlflow.org/docs/latest/model-registry.html>`_
+to manage your models, the following wrapper
+class will allow you to load a model using its MLflow `Model URI`: 
+
+.. code-block:: python
+
+  import pandas as pd
+  import mlflow.pyfunc
+
+  class MLflowBackend:
+      def __init__(self, model_uri):
+          self.model = mlflow.pyfunc.load_model(model_uri=model_uri)
+
+      async def __call__(self, request):
+          csv_text = await request.body() # The body contains just raw csv text.
+          df = pd.read_csv(csv_text)
+          return self.model.predict(df)
+
+A Serve backend can then be created to serve the model as follows:
+
+.. code-block:: python
+
+  client.create_backend("my_backend", MLflowBackend, my_model_uri)
+
+.. tip:: 
+
+  The above approach will work for any model registry, not just MLflow.
+  Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
+
+For an even more hands-off and seamless integration with MLflow, check out the 
+`Ray Serve MLflow deployment plugin <https://github.com/ray-project/mlflow-ray-serve>`__.  A full
+tutorial is available `here <https://github.com/mlflow/mlflow/tree/master/examples/ray_serve>`__.
 
 Framework-Specific Tutorials
 ============================

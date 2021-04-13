@@ -26,18 +26,24 @@ for i in range(num_nodes):
     )
 
 ray.init(address=cluster.address, dashboard_host="0.0.0.0")
-client = serve.start()
+serve.start()
+
+NUM_REPLICAS = 7
+MAX_BATCH_SIZE = 16
 
 
-@serve.accept_batch
-def echo(requests_batch):
-    time.sleep(0.01)  # Sleep for 10ms
-    return ["hi" for _ in range(len(requests_batch))]
+@serve.deployment(name="echo", num_replicas=NUM_REPLICAS)
+class Echo:
+    @serve.batch(max_batch_size=MAX_BATCH_SIZE)
+    async def handle_batch(self, requests):
+        time.sleep(0.01)
+        return ["hi" for _ in range(len(requests))]
+
+    async def __call__(self, request):
+        return await self.handle_batch(request)
 
 
-config = {"num_replicas": 7, "max_batch_size": 16}
-client.create_backend("echo:v1", echo, config=config)
-client.create_endpoint("echo", backend="echo:v1", route="/echo")
+Echo.deploy()
 
 print("Warming up")
 for _ in range(5):
@@ -45,7 +51,7 @@ for _ in range(5):
     print(resp)
     time.sleep(0.5)
 
-connections = int(config["num_replicas"] * config["max_batch_size"] * 0.75)
+connections = int(NUM_REPLICAS * MAX_BATCH_SIZE * 0.75)
 num_threads = 2
 time_to_run = "60m"
 
