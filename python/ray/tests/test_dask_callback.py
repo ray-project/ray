@@ -2,6 +2,8 @@ import dask
 import pytest
 
 import ray
+from ray._private.client_mode_hook import enable_client_mode
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.dask import ray_dask_get, RayDaskCallback
 
 
@@ -225,6 +227,41 @@ def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     with cb1, cb2, cb3, cb4:
         z = add(2, 3)
         result = z.compute(scheduler=ray_dask_get)
+
+    assert result == 5
+
+
+def test_pretask_posttask_shared_state_multi_client(ray_start_regular_shared):
+    """
+    Repeat the last test with Ray client.
+    """
+
+    class PretaskPosttaskCallback(RayDaskCallback):
+        def __init__(self, suffix):
+            self.suffix = suffix
+
+        def _ray_pretask(self, key, object_refs):
+            return key + self.suffix
+
+        def _ray_posttask(self, key, result, pre_state):
+            assert pre_state == key + self.suffix
+
+    class PretaskOnlyCallback(RayDaskCallback):
+        def _ray_pretask(self, key, object_refs):
+            return "baz"
+
+    class PosttaskOnlyCallback(RayDaskCallback):
+        def _ray_posttask(self, key, result, pre_state):
+            assert pre_state is None
+
+    cb1 = PretaskPosttaskCallback("foo")
+    cb2 = PretaskOnlyCallback()
+    cb3 = PosttaskOnlyCallback()
+    cb4 = PretaskPosttaskCallback("bar")
+    with ray_start_client_server(), enable_client_mode():
+        with cb1, cb2, cb3, cb4:
+            z = add(2, 3)
+            result = z.compute(scheduler=ray_dask_get)
 
     assert result == 5
 
