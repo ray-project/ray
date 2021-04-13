@@ -91,11 +91,15 @@ def test_cancel_chain(ray_start_regular, use_force):
 
 def test_kill_cancel_metadata(ray_start_regular):
     """
-    Verify that client worker's terminate_actor and terminate_task methods
+    Verifies that client worker's terminate_actor and terminate_task methods
     pass worker's metadata attribute server to the grpc stub's Terminate
     method.
+
+    This is done by mocking the grpc stub's Terminate method to raise an
+    exception with argument equal to the key of the metadata. We then verify
+    that the exception is raised when calling ray.kill and ray.cancel.
     """
-    with ray_start_client_server(metadata=[("foo", "bar")]) as ray:
+    with ray_start_client_server(metadata=[("key", "value")]) as ray:
 
         @ray.remote
         class A:
@@ -105,21 +109,26 @@ def test_kill_cancel_metadata(ray_start_regular):
         def f():
             time.sleep(1000)
 
-        actor = A.remote()
-        task_ref = f.remote()
+        class MetadataIsCorrectlyPassedException(Exception):
+            pass
 
         def mock_terminate(term, metadata):
-            raise Exception(metadata[0][0])
+            raise MetadataIsCorrectlyPassedException(metadata[0][0])
 
+        # Mock stub's Terminate method to raise an exception.
         ray.api.worker.server.Terminate = mock_terminate
 
-        with pytest.raises(Exception) as e:
+        # Verify the expected exception is raised with ray.kill.
+        with pytest.raises(MetadataIsCorrectlyPassedException) as e:
+            actor = A.remote()
             ray.kill(actor)
-        assert str(e.value) == "foo"
+        assert str(e.value) == "key"
 
-        with pytest.raises(Exception) as e:
+        # Verify the expected exception is raised with ray.cancel.
+        with pytest.raises(MetadataIsCorrectlyPassedException) as e:
+            task_ref = f.remote()
             ray.cancel(task_ref)
-        assert str(e.value) == "foo"
+        assert str(e.value) == "key"
 
 
 if __name__ == "__main__":
