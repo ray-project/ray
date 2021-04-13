@@ -39,7 +39,9 @@ void GcsResourceReportPoller::Start() {
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
-  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
+  ticker_.RunFnPeriodically(
+      [this] { TryPullResourceReport(); }, 10,
+      "GcsResourceReportPoller.deadline_timer.pull_resource_report");
 }
 
 void GcsResourceReportPoller::Stop() {

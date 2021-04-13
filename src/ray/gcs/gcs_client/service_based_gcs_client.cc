@@ -91,7 +91,8 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   periodical_runner_.reset(new PeriodicalRunner(io_service));
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      "GcsClient.deadline_timer.check_gcs_service_address");
 
   is_connected_ = true;
 
