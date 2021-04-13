@@ -62,6 +62,7 @@ class Dataloader:
     def __len__(self):
         return self.num_batches
         
+        
 class MnistTrainingOperator(JAXTrainingOperator):
     @override(JAXTrainingOperator)
     def setup(self, *args, **kwargs):
@@ -69,8 +70,8 @@ class MnistTrainingOperator(JAXTrainingOperator):
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, batch_size)
         lr = kwargs["lr"]
-        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
-        init_fun, predict_fun = ToyModel(kwargs["num_classes"])
+        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        # init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
         _, init_params = init_fun(rng_key, input_shape)
             
@@ -95,17 +96,11 @@ class MnistTrainingOperator(JAXTrainingOperator):
 
         self.register_input_signatures(input_shape=input_shape)
 
-        # def accuracy_batch(outputs, targets):
-        #     predicted_class = jnp.argmax(outputs, axis=-1)
-        #     target_class = jnp.argmax(targets, axis=-1)
-        #     return np.mean(list(predicted_class == target_class))
-        # self.register_metrics({"accuracy": accuracy_batch})
-
 
 def make_ar_trainer(args):
     trainer = AllReduceStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=2,
+        world_size=args.num_workers,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
@@ -114,6 +109,12 @@ def make_ar_trainer(args):
             "num_classes": 10,
         },
         use_tqdm=True,
+        record_config={
+            "batch_size": 128,
+            "num_workers": args.num_workers,
+            "job_name": "mnist_resnet18_allreduce_2workers",
+            "save_freq": 50,
+        },
         )
     return trainer
 
@@ -121,9 +122,9 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=4,
-        num_workers=2,
-        num_ps=2,
+        world_size=args.num_workers,
+        num_workers=args.num_workers//2,
+        num_ps=args.num_workers//2,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
@@ -132,6 +133,12 @@ def make_ps_trainer(args):
             "num_classes": 10,
         },
         use_tqdm=True,
+        record_config={
+            "batch_size": 128,
+            "num_workers": args.num_workers//2,
+            "job_name": "mnist_resnet18_ps_2workers",
+            "save_freq": 50,
+        },
         )
     return trainer
 
@@ -150,7 +157,7 @@ if __name__ == "__main__":
         default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
-        "--num-epochs", type=int, default=5, help="Number of epochs to train.")
+        "--num-epochs", type=int, default=20, help="Number of epochs to train.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -168,6 +175,8 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+    parser.add_argument(
+        "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
     # os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
@@ -176,8 +185,13 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    trainer = make_ar_trainer(args)
-    # trainer = make_ps_trainer(args)
+    if args.trainer == "ar":
+        trainer = make_ar_trainer(args)
+    elif args.trainer == "ps":
+        trainer = make_ps_trainer(args)
+    else:
+        raise RuntimeError("Unrecognized trainer type. Except 'ar' or 'ps'"
+                           "Got {}".format(args.trainer))
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

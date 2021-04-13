@@ -80,14 +80,6 @@ class WikiTrainingOperator(FLAXTrainingOperator):
     
         self.register_data(train_loader=train_loader, validation_loader=None)
 
-        # for i in range(num_epoches):
-        #     for idx, batch in enumerate(train_loader):
-        #         loss_val, grad = loss_grad_fn(optimizer.target, batch)
-        #         lr = scheduler.step()
-        #         optimizer = optimizer.apply_gradient(grad, learning_rate=lr) # Return the updated optimizer with parameters.
-        #         if idx % 10 == 0:
-        #             print('Loss step {}: {}, lr {}'.format(idx, loss_val.item()))
-
     @override(FLAXTrainingOperator)
     def loss_func(self, params, batch):
         batch = tf2numpy(batch)
@@ -130,7 +122,13 @@ def make_ar_trainer(args):
             "batch_size": 8,
         },
         use_tqdm= True,
-        max_iteration= 300000,
+        max_iteration= 3000,
+        record_config={
+            "batch_size": 128,
+            "num_workers": 2,
+            "job_name": "wiki_bert_ar_2workers",
+            "save_freq": 100,
+        },
         )
     return trainer
 
@@ -147,7 +145,13 @@ def make_ps_trainer(args):
             "batch_size": 8,
         },
         use_tqdm=True,
-        max_iteration=300000,
+        max_iteration=3000,
+        record_config={
+            "batch_size": 128,
+            "num_workers": 2,
+            "job_name": "wiki_bert_ps_2workers",
+            "save_freq": 100,
+        },
         )
 
     return trainer
@@ -184,6 +188,8 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+    parser.add_argument(
+        "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
 
@@ -191,8 +197,13 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = make_ar_trainer(args)
-    trainer = make_ps_trainer(args)
+    if args.trainer == "ar":
+        trainer = make_ar_trainer(args)
+    elif args.trainer == "ps":
+        trainer = make_ps_trainer(args)
+    else:
+        raise RuntimeError("Unrecognized trainer type. Except 'ar' or 'ps'"
+                           "Got {}".format(args.trainer))
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

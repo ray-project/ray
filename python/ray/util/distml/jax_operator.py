@@ -76,6 +76,11 @@ class JAXTrainingOperator(TrainingOperator):
         self._register_optimizer(optimizer)
             
     def _register_model(self, model):
+        """Re the states to a file path.
+
+         This function shall be instantiated in framework-specific operator
+         implementations.
+         """
         self.opt_state = model[0]
         self.init_fun = model[1]
         self.predict_fun = model[2]

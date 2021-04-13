@@ -17,34 +17,9 @@ import datasets
 from resnet import ResNet18, ResNet50, ResNet101
 import os
 
+from ray.util.distml.util import ThroughoutCollection
 
-class TimeMeter:
-    def __init__(self):
-        self.world_size = None
-        self.batch_size = None
-        self.time = 0
-        self.steps = 0
-        self.data_num = 0
-
-    def set_world_size(self, world_size):
-        self.world_size = world_size
-
-    def start_timer(self):
-        self.start_time = time.time()
-
-    def stop_timer(self):
-        self.time += time.time() - self.start_time
-        self.start_time = None
-
-    def step(self, batch_size):
-        self.data_num += batch_size * self.world_size
-        self.steps += 1
-        self.time += time.time() - self.start_time
-        self.start_time = time.time()
-        if not self.steps % 200:
-            print(f"Step {self.steps} passing {self.data_num} data after {self.time} sec",
-                    "Throughout: {:.2f}".format(self.data_num/self.time))
-
+from tqdm import tqdm
 
 class Dataloader:
     def __init__(self, data, target, batch_size=128):
@@ -97,8 +72,6 @@ class Worker:
         self.predict_fun = predict_fun
 
         self.steps = 0
-        self.meter = TimeMeter()
-        self.meter.set_world_size(1)
 
         def update(i, opt_state, batch):
             params = self.get_params(opt_state)
@@ -106,6 +79,9 @@ class Worker:
             return self.opt_update(i, gradient, opt_state)
 
         self.update = update # jax.jit(update)
+
+        self.collector = ThroughoutCollection(batch_size=self.batch_size, num_workers=1,
+                                              job_name="mnist_benchmark_resnet18")
 
     def set_dataloader(self, train_dataloader, test_dataloader):
         self.train_dataloader = train_dataloader
@@ -124,19 +100,22 @@ class Worker:
 
         for epoch in range(self.num_epochs):
             start_time = time.time()
-            self.meter.start_timer()
-            for idx, batch in enumerate(self.train_dataloader):
-                self.opt_state = self.update(self.steps,
-                                             self.opt_state,
-                                             batch)
+            for idx, batch in tqdm(enumerate(self.train_dataloader)):
+                with self.collector.record("train_batch"):
+                    self.opt_state = self.update(self.steps,
+                                                self.opt_state,
+                                                batch)
                 self.steps+=1
-                self.meter.step(batch[1].shape[0])
-            self.meter.stop_timer()
+
             epoch_time = time.time() - start_time
             test_start_time = time.time()
             params = self.get_params(self.opt_state)
             # train_acc = self.accuracy(params, self.train_dataloader)
-            test_acc = self.accuracy(params, self.test_dataloader)
+            with self.collector.record("validate_epoch"):
+                test_acc = self.accuracy(params, self.test_dataloader)
+            self.collector.update("validate_epoch",val_acc=test_acc)
+            self.collector.save("validate_epoch")
+            
             test_time = time.time() - test_start_time
             print("Epoch {} in {:0.2f} sec, test time {:0.2f} sec."
                 .format(epoch, epoch_time, test_time))

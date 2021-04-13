@@ -5,6 +5,9 @@ import ray.util.collective as col
 import cupy as cp
 import numpy as np
 import ray.util.distml.util as util
+from ray.util.distml.util import ThroughoutCollection
+
+# TODO(HUI): use group start and end in send/recv
 from cupy.cuda.nccl import groupStart, groupEnd
 
 tqdm = None
@@ -16,11 +19,12 @@ except ImportError:
 import logging
 
 class ParameterServerStrategy(BaseTrainer):
-    def __init__(self, *args, num_workers=1, num_ps=1, use_tqdm=True, max_iteration=None, fusion=False, **kwargs):
+    def __init__(self, *args, fusion=False, num_workers=1, num_ps=1, use_tqdm=True, max_iteration=None, record_config=None, **kwargs):
         self.num_ps = num_ps 
         self.num_workers = num_workers
         self._fusion = fusion
         self._max_iteration = max_iteration
+        self._use_record = True if record_config else False
 
         self.assignments = None
 
@@ -30,6 +34,10 @@ class ParameterServerStrategy(BaseTrainer):
         self._use_tqdm = use_tqdm
 
         super(ParameterServerStrategy, self).__init__(*args, **kwargs)
+
+        self._collector = ThroughoutCollection(**record_config)
+        if not self._use_record:
+            self._collector.disable()
 
     def _init_strategy(self):
         """Do initialization for the distributed strategy."""
@@ -168,7 +176,8 @@ class ParameterServerStrategy(BaseTrainer):
         # train one epoch
         self.worker_group.start_iteration()
         for idx in range(total):
-            metrics = self.step()
+            with self._collector.record("train_batch"):
+                metrics = self.step()
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
                 if "train_loss" in metrics:
@@ -177,7 +186,10 @@ class ParameterServerStrategy(BaseTrainer):
         return info
 
     def validate(self, *, info={}):
-        stats = self.worker_group.validate(info=info)
+        with self._collector.record("validate_epoch"):
+            stats = self.worker_group.validate(info=info)
+        self._collector.update("validate_epoch",val_acc=stats[0]["val_accuracy"])
+        self._collector.save("validate_epoch")
         return stats[0] # validate result should be the same in all workers
 
     def step(self):
@@ -193,14 +205,15 @@ class ParameterServerStrategy(BaseTrainer):
             # and sends these gradients to every server
             loss_val = worker.compute.remote()
             loss_vals.append(loss_val)
-        loss_vals = ray.get(loss_vals)
-        train_loss_list = [d["train_loss"] for d in loss_vals]
-        metrics["train_loss"] = np.mean(train_loss_list)
 
         for worker_idx, worker in enumerate(self.worker_group.actors):
             for server in self.server_group.actors:
                 rets.append(server.update.remote(worker_idx))
+                
+        loss_vals = ray.get(loss_vals)
         ray.get(rets)
+        train_loss_list = [d["train_loss"] for d in loss_vals]
+        metrics["train_loss"] = np.mean(train_loss_list)
         return metrics
 
 
@@ -240,6 +253,16 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
             col.send(send, i, self.group_name)
         return
 
+    def _init_grad_counts(self):
+        self.grad_counts = [0] * self.num_workers
+
+    def _init_grad_buffer(self):
+        if hasattr(self, "grad_buffer"):
+            self.grad_buffer = {k:v*0 for k, v in self.grad_buffer.items()}
+        else:
+            self.grad_buffer = {k:self.training_operator.zeros_like(v, cpu=False) 
+                                for k, v in self.params.items()}
+
     def get_params(self):
         return self.params
 
@@ -250,30 +273,17 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
 
         # param is a dict, if needed list, should convert in operator.
         self.training_operator.reset_optimizer_for_params(self.params)
-        # self.optimizer = torch.optim.SGD(self.params.values(), lr=0.001)
+        self._init_grad_buffer()
 
     def apply_updates(self, grad_buffer):
         self.training_operator.apply_updates(grad_buffer, self.num_workers)
         self.params = self.training_operator.get_named_parameters(cpu=False)
 
-    def get_grad_buffer(self):
-        grad_buffer = {name:self.training_operator.zeros_like(p, cpu=False) 
-                       for name, p in self.params.items()}
-        return grad_buffer
-
     def _inc_gradients(self, gradients):
-        # We store the gradient in buffer, and apply it once when all worker graidients are collected. 
-        # gradients should be a stitched dict
-        if not hasattr(self, "grad_buffer"):
-            self.grad_buffer = self.get_grad_buffer()
-
         for name, p in self.get_params().items():
             if gradients[name] is not None:
                 self.grad_buffer[name] += gradients[name]
 
-    def _init_grad_counts(self):
-        self.grad_counts = [0] * self.num_workers
-        
     def send_params(self, dst_rank):
         """ Send this param shard to the destination worker """
         for name, v in self.params.items():
@@ -305,7 +315,7 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         if sum(self.grad_counts) == self.num_workers:
             self.apply_updates(self.grad_buffer)
 
-            self.grad_buffer = self.get_grad_buffer()
+            self._init_grad_buffer()
             self._init_grad_counts()
         return True
 
@@ -384,13 +394,6 @@ class Worker(object):
         # TODO (Hao): handling data loader next.
         # TODO (Hao): change it to derive_update and apply_update.
         return self.training_operator.derive_updates(batch)
-
-    # def apply_updates(self, updates):
-    #     assert updates
-    #     self.training_operator.apply_updates(updates, self.num_workers)
-
-    # def updates_transform(self, updates):
-    #     return self.training_operator.updates_transform(updates)
 
     def compute_gradients(self, params):
         """

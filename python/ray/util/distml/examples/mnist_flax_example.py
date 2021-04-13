@@ -106,6 +106,12 @@ def make_ar_trainer(args):
             "num_classes": 10,
         },
         use_tqdm=True,
+        record_config={
+            "batch_size": 128,
+            "num_workers": 2,
+            "job_name": "mnist_ps_2workers",
+            "save_freq": 50,
+        },
         )
     return trainer
 
@@ -124,6 +130,12 @@ def make_ps_trainer(args):
             "num_classes": 10,
         },
         use_tqdm=True,
+        record_config={
+            "batch_size": 128,
+            "num_workers": 2,
+            "job_name": "mnist_allreduce_2workers",
+            "save_freq": 50,
+        },
         )
     return trainer
 
@@ -160,6 +172,8 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+    parser.add_argument(
+        "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
 
@@ -167,8 +181,13 @@ if __name__ == "__main__":
     num_cpus = 4 if args.smoke_test else None
     ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = make_ar_trainer(args)
-    trainer = make_ps_trainer(args)
+    if args.trainer == "ar":
+        trainer = make_ar_trainer(args)
+    elif args.trainer == "ps":
+        trainer = make_ps_trainer(args)
+    else:
+        raise RuntimeError("Unrecognized trainer type. Except 'ar' or 'ps'"
+                           "Got {}".format(args.trainer))
 
     # trainer.load_parameters("jax_checkpoint.db")
 

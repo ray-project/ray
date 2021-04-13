@@ -16,13 +16,17 @@ except ImportError:
 # TODO(Hao): could make an interface class and use factory pattern to
 #            set up strategies/trainers.
 class AllReduceStrategy(BaseTrainer):
-    def __init__(self, *args, fusion=False, use_tqdm=True, max_iteration=None, **kwargs):
+    def __init__(self, *args, fusion=False, use_tqdm=True, max_iteration=None, record_config=None, **kwargs):
         self._fusion = fusion
         self._use_tqdm = use_tqdm
         self._max_iteration = max_iteration
-        # self.collector = ThroughoutCollection()
-        
+        self._use_record = True if record_config else False
+
         super(AllReduceStrategy, self).__init__(*args, **kwargs)
+
+        self._collector = ThroughoutCollection(**record_config)
+        if not self._use_record:
+            self._collector.disable()
 
     def _init_strategy(self):
         """Do initialization for the distributed strategy."""
@@ -47,21 +51,21 @@ class AllReduceStrategy(BaseTrainer):
 
         self.data_parallel_group.start_iteration()
         for idx in range(total):
-            # with timers.record("train_batch"):
-            metrics = self.data_parallel_group.train_batch()
+            with self._collector.record("train_batch"):
+                metrics = self.data_parallel_group.train_batch()
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
                 if "train_loss" in metrics:
                     postfix.update(loss=metrics["train_loss"])
                 _progress_bar.set_postfix(postfix)
 
-        # if "debug" in info.keys() and info["debug"]:
-        #     train_time = timers._timers["train_batch"]
-        #     info.update({f"train_epoch_{epoch_idx}":timers._timers["train_batch"].mean})
         return info
 
     def validate(self, *info):
-        stats = self.data_parallel_group.validate(info=info)
+        with self._collector.record("validate_epoch"):
+            stats = self.data_parallel_group.validate(info=info)
+        self._collector.update("validate_epoch",val_acc=stats[0]["val_accuracy"])
+        self._collector.save("validate_epoch")
         return stats[0] # validate result should be the same in all workers
 
     def _start_workers(self, num_workers):
