@@ -574,10 +574,10 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
 
         # Raw observation input (plus (None) time axis).
         input_layer = tf.keras.layers.Input(
-            shape=(None, self.obs_dim), name="inputs")
+            shape=(None, self.obs_dim, ), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(None, self.attention_dim),
+                shape=(None, self.attention_dim, ),
                 dtype=tf.float32,
                 name="memory_in_{}".format(i))
             for i in range(self.num_transformer_units)
@@ -651,7 +651,6 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
         inputs = tf.reshape(inputs, tf.concat([[-1, T], shape[1:]], axis=0))
 
         all_out = self.trxl_model([inputs] + memory_ins)
-        #out = all_out[0]
         out = tf.reshape(all_out[0], [-1, self.attention_dim])
         memory_outs = all_out[1:]
 

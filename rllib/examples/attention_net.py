@@ -26,7 +26,7 @@ parser.add_argument("--stop-reward", type=float, default=80)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -59,7 +59,7 @@ if __name__ == "__main__":
             "attention_head_dim": 32,
             "attention_position_wise_mlp_dim": 32,
         },
-        "framework": args.framework,
+        "framework": "tf2",#TODOargs.framework,
     }
 
     stop = {
