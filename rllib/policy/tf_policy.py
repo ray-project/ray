@@ -938,9 +938,10 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self._sess.run(
-            self.cur_lr.assign(
-                self.lr_schedule.value(global_vars["timestep"])))
+        op = self.cur_lr.assign(
+            self.lr_schedule.value(global_vars["timestep"]))
+        if self._sess:
+            self._sess.run(op)
 
     @override(TFPolicy)
     def optimizer(self):
