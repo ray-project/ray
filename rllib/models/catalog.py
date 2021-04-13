@@ -424,11 +424,15 @@ class ModelCatalog:
                         LSTMWrapper, Keras_LSTMWrapper
 
                     wrapped_cls = model_cls
+                    # Wrapped (custom) model is itself a keras Model ->
+                    # wrap with keras LSTM/GTrXL (attention) wrappers.
                     if issubclass(wrapped_cls, tf.keras.Model):
                         model_cls = Keras_LSTMWrapper if \
                             model_config.get("use_lstm") else \
                             Keras_AttentionWrapper
                         model_config["wrapped_cls"] = wrapped_cls
+                    # Wrapped (custom) model is ModelV2 ->
+                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
                     else:
                         forward = wrapped_cls.forward
                         model_cls = ModelCatalog._wrap_if_needed(

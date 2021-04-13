@@ -17,7 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=3)
-parser.add_argument("--framework", choices=["tf", "torch"], default="tf")
+parser.add_argument(
+    "--framework", choices=["tf", "tf2", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=500000)
@@ -26,7 +27,7 @@ parser.add_argument("--stop-reward", type=float, default=80)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -48,6 +49,8 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
+            # Attention net wrapping (for tf) can already use the native keras
+            # model versions. For torch, this will have no effect.
             "_use_default_native_models": True,
             "use_attention": True,
             "max_seq_len": 10,
@@ -59,7 +62,7 @@ if __name__ == "__main__":
             "attention_head_dim": 32,
             "attention_position_wise_mlp_dim": 32,
         },
-        "framework": "tf2",#TODOargs.framework,
+        "framework": args.framework,
     }
 
     stop = {

@@ -18,7 +18,6 @@ from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -574,10 +573,16 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
 
         # Raw observation input (plus (None) time axis).
         input_layer = tf.keras.layers.Input(
-            shape=(None, self.obs_dim, ), name="inputs")
+            shape=(
+                None,
+                self.obs_dim,
+            ), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(None, self.attention_dim, ),
+                shape=(
+                    None,
+                    self.attention_dim,
+                ),
                 dtype=tf.float32,
                 name="memory_in_{}".format(i))
             for i in range(self.num_transformer_units)
@@ -644,7 +649,7 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
 
     def call(self, inputs, memory_ins) -> (TensorType, List[TensorType]):
         # Add the time dim to observations.
-        B = tf.shape(inputs)[0]
+        B = tf.shape(memory_ins[0])[0]
 
         shape = tf.shape(inputs)
         T = shape[0] // B
@@ -734,7 +739,10 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             shape=(wrapped_num_outputs, ), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(None, self.attention_dim, ), name=f"memory_in_{i}")
+                shape=(
+                    None,
+                    self.attention_dim,
+                ), name=f"memory_in_{i}")
             for i in range(attention_num_transformer_units)
         ]
         # Construct GTrXL sub-module.
@@ -819,15 +827,11 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
         if prev_a_r:
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
-        #wrapped_out_plus_time_dim = add_time_dimension(
-        #    wrapped_out, max_seq_len=self.max_seq_len, framework="tf")
         memory_ins = [
             s for k, s in input_dict.items() if k.startswith("state_in_")
         ]
-        model_out, memory_outs, value_outs = self.base_model(
-            [wrapped_out] + memory_ins)
-        #model_out_no_time_dim = tf.reshape(
-        #    model_out, tf.concat([[-1], tf.shape(model_out)[2:]], axis=0))
+        model_out, memory_outs, value_outs = self.base_model([wrapped_out] +
+                                                             memory_ins)
         return model_out, memory_outs, {
             SampleBatch.VF_PREDS: tf.reshape(value_outs, [-1])
         }

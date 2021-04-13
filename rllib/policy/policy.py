@@ -773,7 +773,8 @@ class Policy(metaclass=ABCMeta):
             init_state = obj.get_initial_state()
         else:
             # Add this functionality automatically for new native model API.
-            if tf and isinstance(model, tf.keras.Model):
+            if tf and isinstance(model, tf.keras.Model) and \
+                    "state_in_0" not in view_reqs:
                 obj.get_initial_state = lambda: [
                     np.zeros_like(view_req.space.sample())
                     for k, view_req in model.view_requirements.items()
