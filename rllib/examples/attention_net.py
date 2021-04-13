@@ -48,6 +48,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
+            "_use_default_native_models": True,
             "use_attention": True,
             "max_seq_len": 10,
             "attention_num_transformer_units": 1,

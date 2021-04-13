@@ -18,6 +18,7 @@ from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -519,7 +520,6 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
     def __init__(self,
                  input_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 num_outputs: Optional[int],
                  *,
                  name: str,
                  max_seq_len: int = 20,
@@ -624,7 +624,9 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
             inputs=[input_layer] + memory_ins,
             outputs=[E_out] + memory_outs[:-1])
 
-        # __sphinx_doc_begin__
+        self.view_requirements = {
+            SampleBatch.OBS: ViewRequirement(space=input_space),
+        }
         # Setup trajectory views (`memory-inference` x past memory outs).
         for i in range(self.num_transformer_units):
             space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
@@ -639,7 +641,6 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
                 ViewRequirement(
                     space=space,
                     used_for_training=False)
-        # __sphinx_doc_end__
 
     def call(self, inputs, memory_ins) -> (TensorType, List[TensorType]):
         # Add the time dim to observations.
@@ -650,7 +651,7 @@ class Keras_GTrXLNet(tf.keras.Model if tf else object):
         inputs = tf.reshape(inputs, tf.concat([[-1, T], shape[1:]], axis=0))
 
         all_out = self.trxl_model([inputs] + memory_ins)
-
+        #out = all_out[0]
         out = tf.reshape(all_out[0], [-1, self.attention_dim])
         memory_outs = all_out[1:]
 
@@ -690,6 +691,9 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
 
         self.action_space = action_space
         self.max_seq_len = max_seq_len
+        self.use_n_prev_actions = attention_use_n_prev_actions
+        self.use_n_prev_rewards = attention_use_n_prev_rewards
+        self.attention_dim = attention_dim
 
         # Guess the number of outputs for the wrapped model by looking
         # at its first output's shape.
@@ -705,10 +709,6 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
                 self.wrapped_keras_model.layers[-1].outputs[0].shape[1])
         else:
             wrapped_num_outputs = int(np.product(self.obs_space.shape))
-
-        self.use_n_prev_actions = attention_use_n_prev_actions
-        self.use_n_prev_rewards = attention_use_n_prev_rewards
-        self.attention_dim = attention_dim
 
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
@@ -735,16 +735,13 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             shape=(wrapped_num_outputs, ), name="inputs")
         memory_ins = [
             tf.keras.layers.Input(
-                shape=(self.attention_dim, ), name=f"memory_in_{i}")
+                shape=(None, self.attention_dim, ), name=f"memory_in_{i}")
             for i in range(attention_num_transformer_units)
         ]
-        # Construct GTrXL sub-module w/ num_outputs=None (so it does not
-        # create a logits/value output; we'll do this ourselves in this wrapper
-        # here).
-        keras_gtrxl_model_out, memory_outs = Keras_GTrXLNet(
+        # Construct GTrXL sub-module.
+        self.gtrxl = Keras_GTrXLNet(
             in_space,
             action_space,
-            num_outputs=None,
             name="gtrxl",
             max_seq_len=max_seq_len,
             num_transformer_units=attention_num_transformer_units,
@@ -755,12 +752,13 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             memory_training=attention_memory_training,
             position_wise_mlp_dim=attention_position_wise_mlp_dim,
             init_gru_gate_bias=attention_init_gru_gate_bias,
-        )(input_, memory_ins)
+        )
+        keras_gtrxl_model_out, memory_outs = self.gtrxl(input_, memory_ins)
 
         # Postprocess GTrXL output with another hidden layer and compute
         # values.
         logits = tf.keras.layers.Dense(
-            self.num_outputs, activation=None)(keras_gtrxl_model_out)
+            num_outputs, activation=None)(keras_gtrxl_model_out)
 
         value_outs = tf.keras.layers.Dense(
             1, activation=None)(keras_gtrxl_model_out)
@@ -768,7 +766,7 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
             [input_, memory_ins], [logits, memory_outs, value_outs])
 
         self.view_requirements = self.gtrxl.view_requirements
-        self.view_requirements["obs"].space = self.obs_space
+        self.view_requirements["obs"].space = input_space
 
         # Add prev-a/r to this model's view, if required.
         if self.use_n_prev_actions:
@@ -822,11 +820,15 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
         if prev_a_r:
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
+        #wrapped_out_plus_time_dim = add_time_dimension(
+        #    wrapped_out, max_seq_len=self.max_seq_len, framework="tf")
         memory_ins = [
             s for k, s in input_dict.items() if k.startswith("state_in_")
         ]
-        model_out, memory_outs, value_outs = self.base_model([wrapped_out] +
-                                                             memory_ins)
+        model_out, memory_outs, value_outs = self.base_model(
+            [wrapped_out] + memory_ins)
+        #model_out_no_time_dim = tf.reshape(
+        #    model_out, tf.concat([[-1], tf.shape(model_out)[2:]], axis=0))
         return model_out, memory_outs, {
             SampleBatch.VF_PREDS: tf.reshape(value_outs, [-1])
         }
