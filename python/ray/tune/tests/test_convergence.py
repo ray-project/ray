@@ -1,6 +1,7 @@
 import math
 import numpy as np
 
+import pytest
 import ray
 from ray import tune
 from ray.tune.stopper import ExperimentPlateauStopper
@@ -113,6 +114,7 @@ class ConvergenceTest(unittest.TestCase):
 
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-3)
 
+    @pytest.mark.skip(reason="Flaky. Skip temporarily.")
     def testConvergenceOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch
 

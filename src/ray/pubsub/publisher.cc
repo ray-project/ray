@@ -12,24 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/pubsub/publisher.h"
+#include "ray/pubsub/publisher.h"
 
 namespace ray {
 
-void SubscriptionIndex::AddEntry(const ObjectID &object_id, const NodeID &subscriber_id) {
+namespace pubsub {
+
+namespace pub_internal {
+
+void SubscriptionIndex::AddEntry(const ObjectID &object_id,
+                                 const SubscriberID &subscriber_id) {
   auto &subscribing_objects = subscribers_to_objects_[subscriber_id];
   RAY_CHECK(subscribing_objects.emplace(object_id).second);
   auto &subscriber_map = objects_to_subscribers_[object_id];
   RAY_CHECK(subscriber_map.emplace(subscriber_id).second);
 }
 
-absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>
+absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
 SubscriptionIndex::GetSubscriberIdsByObjectId(const ObjectID &object_id) const {
   auto it = objects_to_subscribers_.find(object_id);
   if (it == objects_to_subscribers_.end()) {
     return absl::nullopt;
   }
-  return absl::optional<std::reference_wrapper<const absl::flat_hash_set<NodeID>>>{
+  return absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>{
       std::ref(it->second)};
 }
 
@@ -37,11 +42,11 @@ bool SubscriptionIndex::HasObjectId(const ObjectID &object_id) const {
   return objects_to_subscribers_.count(object_id);
 }
 
-bool SubscriptionIndex::HasSubscriber(const NodeID &subscriber_id) const {
+bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
   return subscribers_to_objects_.count(subscriber_id);
 }
 
-bool SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
+bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   auto subscribing_objects_it = subscribers_to_objects_.find(subscriber_id);
   if (subscribing_objects_it == subscribers_to_objects_.end()) {
     return false;
@@ -65,7 +70,7 @@ bool SubscriptionIndex::EraseSubscriber(const NodeID &subscriber_id) {
 }
 
 bool SubscriptionIndex::EraseEntry(const ObjectID &object_id,
-                                   const NodeID &subscriber_id) {
+                                   const SubscriberID &subscriber_id) {
   // Erase from subscribers_to_objects_;
   auto subscribers_to_objects_it = subscribers_to_objects_.find(subscriber_id);
   if (subscribers_to_objects_it == subscribers_to_objects_.end()) {
@@ -105,6 +110,7 @@ bool Subscriber::ConnectToSubscriber(
     LongPollConnectCallback long_polling_reply_callback) {
   if (long_polling_reply_callback_ == nullptr) {
     long_polling_reply_callback_ = long_polling_reply_callback;
+    last_connection_update_time_ms_ = get_time_ms_();
     return true;
   }
   return false;
@@ -131,6 +137,7 @@ bool Subscriber::PublishIfPossible(bool force) {
     }
     long_polling_reply_callback_(mails_to_post);
     long_polling_reply_callback_ = nullptr;
+    last_connection_update_time_ms_ = get_time_ms_();
     return true;
   }
   return false;
@@ -140,48 +147,51 @@ bool Subscriber::AssertNoLeak() const {
   return long_polling_reply_callback_ == nullptr && mailbox_.size() == 0;
 }
 
-void Publisher::ConnectToSubscriber(const NodeID &subscriber_node_id,
+bool Subscriber::IsDisconnected() const {
+  return long_polling_reply_callback_ == nullptr &&
+         get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
+}
+
+bool Subscriber::IsActiveConnectionTimedOut() const {
+  return long_polling_reply_callback_ != nullptr &&
+         get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
+}
+
+}  // namespace pub_internal
+
+void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
                                     LongPollConnectCallback long_poll_connect_callback) {
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_node_id;
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
   RAY_CHECK(long_poll_connect_callback != nullptr);
 
-  if (is_node_dead_(subscriber_node_id)) {
-    std::vector<ObjectID> empty_ids;
-    // Reply to the request so that it is properly GC'ed.
-    long_poll_connect_callback(empty_ids);
-    return;
-  }
-
   absl::MutexLock lock(&mutex_);
-  auto it = subscribers_.find(subscriber_node_id);
+  auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
-             .emplace(subscriber_node_id,
-                      std::make_shared<Subscriber>(publish_batch_size_))
+             .emplace(subscriber_id,
+                      std::make_shared<pub_internal::Subscriber>(
+                          get_time_ms_, subscriber_timeout_ms_, publish_batch_size_))
              .first;
   }
   auto &subscriber = it->second;
 
-  // Since the long polling connection is synchronous between the client and coordinator,
-  // when it connects, the connection shouldn't have existed.
+  // Since the long polling connection is synchronous between the client and
+  // coordinator, when it connects, the connection shouldn't have existed.
   RAY_CHECK(subscriber->ConnectToSubscriber(std::move(long_poll_connect_callback)));
   subscriber->PublishIfPossible();
 }
 
-void Publisher::RegisterSubscription(const NodeID &subscriber_node_id,
+void Publisher::RegisterSubscription(const SubscriberID &subscriber_id,
                                      const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by "
-                 << subscriber_node_id;
-  if (is_node_dead_(subscriber_node_id)) {
-    return;
-  }
+  RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by " << subscriber_id;
 
   absl::MutexLock lock(&mutex_);
-  if (subscribers_.count(subscriber_node_id) == 0) {
-    subscribers_.emplace(subscriber_node_id,
-                         std::make_shared<Subscriber>(publish_batch_size_));
+  if (subscribers_.count(subscriber_id) == 0) {
+    subscribers_.emplace(subscriber_id,
+                         std::make_shared<pub_internal::Subscriber>(
+                             get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
-  subscription_index_.AddEntry(object_id, subscriber_node_id);
+  subscription_index_.AddEntry(object_id, subscriber_id);
 }
 
 void Publisher::Publish(const ObjectID &object_id) {
@@ -201,11 +211,21 @@ void Publisher::Publish(const ObjectID &object_id) {
   }
 }
 
-bool Publisher::UnregisterSubscriber(const NodeID &subscriber_node_id) {
+bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
-  int erased = subscription_index_.EraseSubscriber(subscriber_node_id);
+  return UnregisterSubscriberInternal(subscriber_id);
+}
+
+bool Publisher::UnregisterSubscription(const SubscriberID &subscriber_id,
+                                       const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  return subscription_index_.EraseEntry(object_id, subscriber_id);
+}
+
+bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
+  int erased = subscription_index_.EraseSubscriber(subscriber_id);
   // Publish messages before removing the entry. Otherwise, it can have memory leak.
-  auto it = subscribers_.find(subscriber_node_id);
+  auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     return erased;
   }
@@ -216,10 +236,23 @@ bool Publisher::UnregisterSubscriber(const NodeID &subscriber_node_id) {
   return erased;
 }
 
-bool Publisher::UnregisterSubscription(const NodeID &subscriber_node_id,
-                                       const ObjectID &object_id) {
+void Publisher::CheckDeadSubscribers() {
   absl::MutexLock lock(&mutex_);
-  return subscription_index_.EraseEntry(object_id, subscriber_node_id);
+  for (const auto &it : subscribers_) {
+    const auto &subscriber = it.second;
+
+    auto disconnected = subscriber->IsDisconnected();
+    auto active_connection_timed_out = subscriber->IsActiveConnectionTimedOut();
+    RAY_CHECK(!(disconnected && active_connection_timed_out));
+
+    if (disconnected) {
+      const auto &subscriber_id = it.first;
+      UnregisterSubscriberInternal(subscriber_id);
+    } else if (active_connection_timed_out) {
+      // Refresh the long polling connection. The subscriber will send it again.
+      subscriber->PublishIfPossible(/*force*/ true);
+    }
+  }
 }
 
 bool Publisher::AssertNoLeak() const {
@@ -231,5 +264,7 @@ bool Publisher::AssertNoLeak() const {
   }
   return subscription_index_.AssertNoLeak();
 }
+
+}  // namespace pubsub
 
 }  // namespace ray
