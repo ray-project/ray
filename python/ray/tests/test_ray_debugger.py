@@ -7,6 +7,7 @@ from telnetlib import Telnet
 import pexpect
 import pytest
 import ray
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -30,7 +31,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
     session = json.loads(
         ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
     host, port = session["pdb_address"].split(":")
-    tn = Telnet(host, int(port))
+    tn = Telnet("localhost", int(port))
     tn.write(b"c\n")
 
     # This should succeed now!
@@ -132,6 +133,24 @@ def test_ray_debugger_recursive(shutdown_only):
     p.sendline("remote")
 
     ray.get(result)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_ray_client_debugger(call_ray_stop_only):
+    import ray
+    ray.init(num_cpus=2)
+
+    with ray_start_client_server() as ray:
+        @ray.remote
+        def f():
+            ray.util.pdb.set_trace()
+        f.remote()
+
+        p = pexpect.spawn("python -c 'import ray; ray.util.connect(\"localhost:50051\"); ray.util.rpdb.run_debug_loop()'")
+        p.expect("Enter breakpoint index or press enter to refresh: ")
+        p.sendline("0")
+        p.expect("(Pdb)")
 
 
 if __name__ == "__main__":

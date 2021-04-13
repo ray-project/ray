@@ -308,7 +308,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    ray.util.rpdb.connect_pdb_client(host, int(port), key)
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
