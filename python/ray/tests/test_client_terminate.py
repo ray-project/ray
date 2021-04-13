@@ -92,7 +92,8 @@ def test_cancel_chain(ray_start_regular, use_force):
 def test_kill_cancel_metadata(ray_start_regular):
     """
     Verify that client worker's terminate_actor and terminate_task methods
-    pass worker's metadata attribute server grpc stub's Terminate method.
+    pass worker's metadata attribute server to the grpc stub's Terminate
+    method.
     """
     with ray_start_client_server(metadata=[("foo", "bar")]) as ray:
 
