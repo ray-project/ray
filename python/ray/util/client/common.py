@@ -2,6 +2,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
+import asyncio
 import uuid
 import os
 import inspect
@@ -60,7 +61,17 @@ class ClientBaseRef:
 
 
 class ClientObjectRef(ClientBaseRef):
-    pass
+    def __await__(self):
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+
+        def set_value(f):
+            from ray.util.client.client_pickler import loads_from_server
+            fut.set_result(loads_from_server(f.result().get.data))
+
+        inner_future = ray._asyncio_get(self)
+        inner_future.add_done_callback(set_value)
+        return fut.__await__()
 
 
 class ClientActorRef(ClientBaseRef):

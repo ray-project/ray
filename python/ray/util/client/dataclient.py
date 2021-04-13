@@ -1,6 +1,8 @@
 """This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
+import asyncio
+
 import logging
 import queue
 import threading
@@ -35,6 +37,8 @@ class DataClient:
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self.lock = threading.RLock()
+        self._event_loop = asyncio.get_event_loop()
+        self.asyncio_waiting_data: Dict[int, asyncio.Future] = {}
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
@@ -66,9 +70,19 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
-                with self.cv:
-                    self.ready_data[response.req_id] = response
-                    self.cv.notify_all()
+                if response.req_id in self.asyncio_waiting_data:
+                    fut = self.asyncio_waiting_data[response.req_id]
+                    del self.asyncio_waiting_data[response.req_id]
+
+                    def set_data(future: asyncio.Future, data: Any):
+                        future.set_result(data)
+
+                    self._event_loop.call_soon_threadsafe(
+                        set_data, fut, response)
+                else:
+                    with self.cv:
+                        self.ready_data[response.req_id] = response
+                        self.cv.notify_all()
         except grpc.RpcError as e:
             with self.cv:
                 self._in_shutdown = True
@@ -112,6 +126,14 @@ class DataClient:
             del self.ready_data[req_id]
         return data
 
+    def _asyncio_send(self, req: ray_client_pb2.DataRequest) -> asyncio.Future:
+        req_id = self._next_id()
+        req.req_id = req_id
+        fut = self._event_loop.create_future()
+        self.asyncio_waiting_data[req_id] = fut
+        self.request_queue.put(req)
+        return fut
+
     def _async_send(self, req: ray_client_pb2.DataRequest) -> None:
         req_id = self._next_id()
         req.req_id = req_id
@@ -142,6 +164,13 @@ class DataClient:
         datareq = ray_client_pb2.DataRequest(get=request, )
         resp = self._blocking_send(datareq)
         return resp.get
+
+    def AsyncioGetObject(self,
+                         request: ray_client_pb2.GetRequest,
+                         context=None) -> asyncio.Future:
+        datareq = ray_client_pb2.DataRequest(get=request, )
+        resp = self._asyncio_send(datareq)
+        return resp
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:

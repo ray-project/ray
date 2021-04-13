@@ -2,6 +2,7 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
+import asyncio
 import base64
 import json
 import logging
@@ -165,6 +166,10 @@ class Worker:
             "ray_commit": data.ray_commit,
             "protocol_version": data.protocol_version,
         }
+
+    def asyncio_get(self, ref: ClientObjectRef) -> asyncio.Future:
+        req = ray_client_pb2.GetRequest(id=ref.id)
+        return self.data_client.AsyncioGetObject(req)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []

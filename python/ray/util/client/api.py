@@ -1,6 +1,7 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
+import asyncio
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -294,3 +295,6 @@ class ClientAPI:
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
+
+    def _asyncio_get(self, ref: "ClientObjectRef") -> asyncio.Future:
+        return self.worker.asyncio_get(ref)
