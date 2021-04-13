@@ -450,12 +450,12 @@ class UnstableFileStorage(FileSystemStorage):
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         r = random.random() < self._failure_rate
         failed = r < self._failure_rate
-        partial_failed = r < partial_failure_ratio
+        partial_failed = r < self._partial_failure_ratio
         if failed:
             raise IOError("Spilling object failed")
         elif partial_failed:
             i = random.choice(range(len(object_refs)))
-            return super().spill_objects(object_refs[:i], owner_address)
+            return super().spill_objects(object_refs[:i], owner_addresses)
         else:
             return super().spill_objects(object_refs, owner_addresses)
 

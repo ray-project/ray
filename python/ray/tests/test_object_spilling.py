@@ -3,7 +3,6 @@ import json
 import random
 import platform
 import sys
-from collections import defaultdict
 
 import numpy as np
 import pytest
@@ -14,7 +13,6 @@ from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
-
 
 # -- Smart open param --
 bucket_name = "object-spilling-test"
