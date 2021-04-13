@@ -78,11 +78,22 @@ class ClientObjectRef(ClientBaseRef):
 
             loop.call_soon_threadsafe(inner_set_value)
 
-        self._on_completed(set_value)
+        ray._register_callback(self, set_value)
         return fut.__await__()
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
-        ray._register_callback(self, py_callback)
+        def deserialize_obj(resp):
+            from ray.util.client.client_pickler import loads_from_server
+            obj = resp.get
+            data = None
+            if not obj.valid:
+                data = loads_from_server(resp.get.error)
+            else:
+                data = loads_from_server(resp.get.data)
+
+            py_callback(data)
+
+        ray._register_callback(self, deserialize_obj)
 
 
 class ClientActorRef(ClientBaseRef):
