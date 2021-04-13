@@ -117,7 +117,7 @@ class GANOperator(TrainingOperator):
 
         with FileLock(".ray.lock"):
             dataset = datasets.MNIST(
-                root="~/mnist/",
+                root="~/data/",
                 download=True,
                 transform=transforms.Compose([
                     transforms.Resize(32),
