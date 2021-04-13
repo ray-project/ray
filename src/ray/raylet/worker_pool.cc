@@ -16,7 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
-
+#include <boost/filesystem.hpp>
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -274,6 +274,20 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
+
+
+  // if conda:
+  std::vector<std::string> setup_worker_command_args = worker_command_args;
+  const std::string setup_worker_path = "/Users/archit/ray/python/ray/workers/setup_worker.py";
+  const std::string conda_env_name = "tf1";
+  // const std::string conda_yaml_path = "/Users/archit/ray/python/ray/workers/environment.yml";
+
+  worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
+  // if conda name:  else: 
+  worker_command_args.push_back("--conda-env-name=" + conda_env_name);
+  // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
+
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
@@ -340,6 +354,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
+  // Normally argv e.g. /bin/python [...]/default_worker.py --node-ip-address=192.168.1.14 ...
+
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
