@@ -2,9 +2,9 @@
 Deploying Ray Serve
 ===================
 
-In the :doc:`core-apis`, you saw some of the basics of how to write serve applications.
+In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
 This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your serve application over time.
+to deploy and update your Serve application over time.
 
 .. contents:: Deploying Ray Serve
 
@@ -168,7 +168,7 @@ With the cluster now running, we can run a simple script to start Ray Serve and 
     # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
     serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
-    def hello():
+    def hello(request):
         return "hello world"
 
     serve.create_backend("hello_backend", hello)

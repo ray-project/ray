@@ -18,7 +18,31 @@ py_test(
 )
 
 py_test(
+    name = "test_api_new",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_deploy",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_get_deployment",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_routes",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -161,6 +185,14 @@ py_test(
 
 py_test(
     name = "test_standalone",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_cluster",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],

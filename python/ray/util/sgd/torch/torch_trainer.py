@@ -10,8 +10,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.tune import Trainable
-from ray.tune.resources import Resources
+from ray.tune import PlacementGroupFactory, Trainable
 from ray.tune.utils.util import merge_dicts
 from ray.util import log_once
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
@@ -650,20 +649,21 @@ class TorchTrainer:
                 use_local = config.get("use_local",
                                        kwargs.get("use_local", False))
 
-                if use_local:
-                    remote_worker_count = num_workers - 1
-                    local_cpus = 1
-                    local_gpus = int(use_gpu)
-                else:
-                    remote_worker_count = num_workers
-                    local_cpus = 0
-                    local_gpus = 0
+                bundles = []
 
-                return Resources(
-                    cpu=int(local_cpus * num_cpus_per_worker),
-                    gpu=int(local_gpus),
-                    extra_cpu=int(remote_worker_count * num_cpus_per_worker),
-                    extra_gpu=int(int(use_gpu) * remote_worker_count))
+                if not use_local:
+                    # We need a separate bundle for the driver
+                    bundles += [{"CPU": 1}]
+
+                bundles += [
+                    # Worker bundles
+                    {
+                        "CPU": num_cpus_per_worker,
+                        "GPU": int(use_gpu)
+                    }
+                ] * num_workers
+
+                return PlacementGroupFactory(bundles, strategy="PACK")
 
             def step(self):
                 if override_tune_step is not None:

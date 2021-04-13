@@ -74,6 +74,10 @@ class TestSAC(unittest.TestCase):
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
+        # If we use default buffer size (1e6), the buffer will take up
+        # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
+        # available system memory (8.34816 GB).
+        config["buffer_size"] = 40000
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -396,9 +400,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.07)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.07)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -413,9 +417,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.07)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.07)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {

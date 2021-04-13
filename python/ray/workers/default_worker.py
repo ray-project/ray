@@ -98,13 +98,6 @@ parser.add_argument(
     default="",
     help="The configuration of object spilling. Only used by I/O workers.")
 parser.add_argument(
-    "--code-search-path",
-    default=None,
-    type=str,
-    help="A list of directories or jar files separated by colon that specify "
-    "the search path for user code. This will be used as `CLASSPATH` in "
-    "Java and `PYTHONPATH` in Python.")
-parser.add_argument(
     "--logging-rotate-bytes",
     required=False,
     type=int,
@@ -156,16 +149,6 @@ if __name__ == "__main__":
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
 
-    code_search_path = args.code_search_path
-    load_code_from_local = False
-    if code_search_path is not None:
-        load_code_from_local = True
-        for p in code_search_path.split(":"):
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.append(p)
-    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
-
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
         raylet_ip_address=raylet_ip_address,
@@ -187,6 +170,18 @@ if __name__ == "__main__":
     ray.worker._global_node = node
     ray.worker.connect(node, mode=mode)
 
+    # Add code search path to sys.path, set load_code_from_local.
+    core_worker = ray.worker.global_worker.core_worker
+    code_search_path = core_worker.get_job_config().code_search_path
+    load_code_from_local = False
+    if code_search_path:
+        load_code_from_local = True
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type))
@@ -194,7 +189,8 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE):
+    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
+          or mode == ray.UTIL_WORKER_MODE):
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

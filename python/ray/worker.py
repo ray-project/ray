@@ -396,6 +396,7 @@ class Worker:
         sys.exit(0)
 
 
+@client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
 
@@ -820,6 +821,8 @@ def shutdown(_exiting_interpreter=False):
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "gcs_client"):
+        del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         del global_worker.core_worker
 
@@ -1222,30 +1225,35 @@ def connect(node,
         serialized_job_config, node.metrics_agent_port)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
-
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
     # will use glog, which is intialized in `CoreWorker`.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
-    if mode == SCRIPT_MODE:
+    # If it's a driver and it's not coming from ray client, we'll prepare the
+    # environment here. If it's ray client, the environmen will be prepared
+    # at the server side.
+    if mode == SCRIPT_MODE and not job_config.client_job:
         runtime_env.upload_runtime_env_package_if_needed(job_config)
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        job_config = os.environ.get("RAY_RUNTIME_ENV_FILES")
-        job_config = [job_config] if job_config else \
+        uris = os.environ.get("RAY_RUNTIME_ENV_FILES")
+        uris = [uris] if uris else \
             worker.core_worker.get_job_config().runtime_env.uris
-        runtime_env.ensure_runtime_env_setup(job_config)
+        working_dir = runtime_env.ensure_runtime_env_setup(uris)
+        if working_dir is not None:
+            os.chdir(working_dir)
+
+    # Notify raylet that the core worker is ready.
+    worker.core_worker.notify_raylet()
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
             f"ray_driver_{os.getpid()}", driver_object_store_memory)
 
     # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE, UTIL_WORKER_MODE):
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped)
         worker.import_thread.start()
@@ -1278,12 +1286,15 @@ def connect(node,
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
         # are the same.
+        # In client mode, if we use runtime env, then it'll be taken care of
+        # automatically.
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        current_directory = os.path.abspath(os.path.curdir)
         worker.run_function_on_all_workers(
             lambda worker_info: sys.path.insert(1, script_directory))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, current_directory))
+        if not job_config.client_job and job_config.get_runtime_env_uris():
+            current_directory = os.path.abspath(os.path.curdir)
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, current_directory))
         # TODO(rkn): Here we first export functions to run, then remote
         # functions. The order matters. For example, one of the functions to
         # run may set the Python path, which is needed to import a module used

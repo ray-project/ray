@@ -37,7 +37,7 @@ After Branch Cut
 
 2. **Update the release branch version:** Push a commit directly to the
    newly-created release branch that increments the Python package version in
-   ``python/ray/__init__.py``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
+   ``python/ray/__init__.py``, ``build-docker.sh``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
    `sample commit for bumping the release branch version`_.
 
 3. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
@@ -350,8 +350,7 @@ this is for OSX on Python 3.7)
 The AWS s3 file hierarchy for Ray wheels can be found `here <https://s3.console.aws.amazon.com/s3/buckets/ray-wheels/?region=us-west-2&tab=objects>`_
 in case you're having trouble with the above link.
 
-.. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/12856
-.. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/pull/12856/
+.. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/commit/c589de6bc888eb26c87647f5560d6b0b21fbe537
 .. _`GitHub release`: https://github.com/ray-project/ray/releases
 .. _`Ray Readthedocs version page`: https://readthedocs.org/projects/ray/versions/
 .. _`Ray Readthedocs advanced settings page`: https://readthedocs.org/dashboard/ray/advanced/

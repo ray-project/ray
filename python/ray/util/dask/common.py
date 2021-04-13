@@ -4,15 +4,26 @@ from operator import getitem
 import uuid
 
 import ray
+from ray.util.client.common import ClientObjectRef
 
 from dask.base import quote
 from dask.core import get as get_sync
-from dask.compatibility import apply, is_dataclass, dataclass_fields
+from dask.compatibility import apply
+
+try:
+    from dataclasses import is_dataclass, fields as dataclass_fields
+except ImportError:
+    # Python < 3.7
+    def is_dataclass(x):
+        return False
+
+    def dataclass_fields(x):
+        return []
 
 
 def unpack_object_refs(*args):
     """
-    Extract `ray.ObjectRef`s from a set of potentially arbitrarily nested
+    Extract Ray object refs from a set of potentially arbitrarily nested
     Python objects.
 
     Intended use is to find all Ray object references in a set of (possibly
@@ -36,7 +47,7 @@ def unpack_object_refs(*args):
     object_refs_token = uuid.uuid4().hex
 
     def _unpack(expr):
-        if isinstance(expr, ray.ObjectRef):
+        if isinstance(expr, (ray.ObjectRef, ClientObjectRef)):
             token = expr.hex()
             repack_dsk[token] = (getitem, object_refs_token, len(object_refs))
             object_refs.append(expr)

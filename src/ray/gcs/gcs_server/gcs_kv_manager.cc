@@ -31,20 +31,15 @@ void GcsInternalKVManager::HandleInternalKVPut(
       }));
 }
 
-void GcsKVManager::AsyncInternalKVDel(const std::string &key,
-                                      std::function<void(int)> cb) {
-  std::vector<std::string> cmd = {"HDEL", key, "value"};
-  redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [cb](auto redis_reply) { cb(redis_reply->ReadAsInteger()); });
-}
-
 void GcsInternalKVManager::HandleInternalKVDel(
     const rpc::InternalKVDelRequest &request, rpc::InternalKVDelReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  AsyncInternalKVDel(request.key(), [reply, send_reply_callback](int deleted_num) {
-    reply->set_deleted_num(deleted_num);
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  });
+  std::vector<std::string> cmd = {"HDEL", request.key(), "value"};
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
+      cmd, [reply, send_reply_callback](auto redis_reply) {
+        reply->set_deleted_num(redis_reply->ReadAsInteger());
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+      }));
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(

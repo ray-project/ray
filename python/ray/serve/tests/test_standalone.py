@@ -15,6 +15,7 @@ from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
+from ray.serve.config import HTTPOptions
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
 
@@ -36,13 +37,14 @@ def ray_cluster():
 
 
 def test_shutdown(ray_shutdown):
+    ray.init(num_cpus=16)
+    serve.start(http_port=8003)
+
+    @serve.deployment
     def f():
         pass
 
-    ray.init(num_cpus=16)
-    serve.start(http_port=8003)
-    serve.create_backend("backend", f)
-    serve.create_endpoint("endpoint", backend="backend")
+    f.deploy()
 
     actor_names = [
         serve.api._global_client._controller_name,
@@ -88,9 +90,13 @@ def test_detached_deployment(ray_cluster):
     ray.init(head_node.address)
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
-    serve.create_backend("f", lambda _: "hello")
-    serve.create_endpoint("f", backend="f")
-    assert ray.get(serve.get_handle("f").remote()) == "hello"
+
+    @serve.deployment
+    def f(*args):
+        return "hello"
+
+    f.deploy()
+    assert ray.get(f.get_handle().remote()) == "hello"
 
     serve.api._global_client = None
     ray.shutdown()
@@ -99,26 +105,53 @@ def test_detached_deployment(ray_cluster):
     ray.init(head_node.address)
     assert ray.get_runtime_context().job_id != first_job_id
 
-    serve.create_backend("g", lambda _: "world")
-    serve.create_endpoint("g", backend="g")
-    assert ray.get(serve.get_handle("g").remote()) == "world"
+    @serve.deployment
+    def g(*args):
+        return "world"
+
+    g.deploy()
+    assert ray.get(g.get_handle().remote()) == "world"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("detached", [True, False])
 def test_connect(detached, ray_shutdown):
-    # Check that you can call serve.connect() from within a backend for both
+    # Check that you can make API calls from within a deployment for both
     # detached and non-detached instances.
     ray.init(num_cpus=16)
     serve.start(detached=detached)
 
-    def connect_in_backend(_):
-        serve.create_backend("backend-ception", connect_in_backend)
+    @serve.deployment
+    def connect_in_backend(*args):
+        connect_in_backend.options(name="backend-ception").deploy()
 
-    serve.create_backend("connect_in_backend", connect_in_backend)
-    serve.create_endpoint("endpoint", backend="connect_in_backend")
-    ray.get(serve.get_handle("endpoint").remote())
-    assert "backend-ception" in serve.list_backends().keys()
+    connect_in_backend.deploy()
+    ray.get(connect_in_backend.get_handle().remote())
+    assert "backend-ception" in serve.list_backends()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.parametrize("controller_cpu", [True, False])
+@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
+def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
+    cluster = ray_cluster
+    num_cluster_cpus = 8
+    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
+
+    ray.init(head_node.address)
+    wait_for_condition(
+        lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
+
+    num_cpus_used = int(controller_cpu) + num_proxy_cpus
+
+    serve.start(
+        dedicated_cpu=controller_cpu,
+        http_options=HTTPOptions(num_cpus=num_proxy_cpus))
+    available_cpus = num_cluster_cpus - num_cpus_used
+    wait_for_condition(
+        lambda: (ray.available_resources().get("CPU") == available_cpus))
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -274,13 +307,13 @@ def test_no_http(ray_shutdown):
         assert len(ray.get(controller.get_http_proxies.remote())) == 0
 
         # Test that the handle still works.
+        @serve.deployment
         def hello(*args):
             return "hello"
 
-        serve.create_backend("backend", hello)
-        serve.create_endpoint("endpoint", backend="backend")
+        hello.deploy()
 
-        assert ray.get(serve.get_handle("endpoint").remote()) == "hello"
+        assert ray.get(hello.get_handle().remote()) == "hello"
         serve.shutdown()
 
 
@@ -304,7 +337,7 @@ def test_http_head_only(ray_cluster):
         r["CPU"]
         for r in ray.state.state._available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {2, 4}
+    assert cpu_per_nodes == {4, 4}
 
 
 if __name__ == "__main__":
