@@ -10,6 +10,7 @@ from ray.util.inspect import is_cython
 import json
 import threading
 from typing import Any
+from typing import Callable
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -65,13 +66,23 @@ class ClientObjectRef(ClientBaseRef):
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
-        def set_value(f):
+        def set_value(resp):
             from ray.util.client.client_pickler import loads_from_server
-            fut.set_result(loads_from_server(f.result().get.data))
 
-        inner_future = ray._asyncio_get(self)
-        inner_future.add_done_callback(set_value)
+            def inner_set_value():
+                obj = resp.get
+                if not obj.valid:
+                    fut.set_exception(loads_from_server(resp.get.error))
+                else:
+                    fut.set_result(loads_from_server(resp.get.data))
+
+            loop.call_soon_threadsafe(inner_set_value)
+
+        self._on_completed(set_value)
         return fut.__await__()
+
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        ray._register_callback(self, py_callback)
 
 
 class ClientActorRef(ClientBaseRef):

@@ -2,7 +2,6 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
-import asyncio
 import base64
 import json
 import logging
@@ -10,6 +9,7 @@ import time
 import uuid
 from collections import defaultdict
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -167,9 +167,11 @@ class Worker:
             "protocol_version": data.protocol_version,
         }
 
-    def asyncio_get(self, ref: ClientObjectRef) -> asyncio.Future:
+    def register_callback(
+            self, ref: ClientObjectRef,
+            callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
         req = ray_client_pb2.GetRequest(id=ref.id)
-        return self.data_client.AsyncioGetObject(req)
+        self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
