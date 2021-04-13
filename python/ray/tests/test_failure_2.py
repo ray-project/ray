@@ -50,10 +50,8 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     pg.ready()
     f.options(placement_group=pg).remote()
 
-    errors = get_error_message(p,
-                               1,
-                               ray_constants.INFEASIBLE_TASK_ERROR,
-                               timeout=5)
+    errors = get_error_message(
+        p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
     assert len(errors) == 0, errors
 
 
@@ -238,8 +236,8 @@ def test_redis_module_failure(ray_start_regular):
     assert len(address) == 2
 
     def run_failure_test(expecting_message, *command):
-        with pytest.raises(Exception,
-                           match=".*{}.*".format(expecting_message)):
+        with pytest.raises(
+                Exception, match=".*{}.*".format(expecting_message)):
             client = redis.StrictRedis(
                 host=address[0],
                 port=int(address[1]),
@@ -318,10 +316,8 @@ def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     autoscaler_process.terminate()
 
     # Confirm that we receive an autoscaler failure error.
-    errors = get_error_message(error_pubsub,
-                               1,
-                               ray_constants.MONITOR_DIED_ERROR,
-                               timeout=5)
+    errors = get_error_message(
+        error_pubsub, 1, ray_constants.MONITOR_DIED_ERROR, timeout=5)
     assert len(errors) == 1
 
     # Confirm that the autoscaler failure error is stored.
@@ -378,11 +374,13 @@ def test_connect_with_disconnected_node(shutdown_only):
     p.close()
 
 
-@pytest.mark.parametrize("ray_start_cluster_head", [{
-    "num_cpus": 5,
-    "object_store_memory": 10**8,
-}],
-                         indirect=True)
+@pytest.mark.skip(reason="Temporarily disabled due to flakyniess.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 5,
+        "object_store_memory": 10**8,
+    }],
+    indirect=True)
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor:
@@ -397,9 +395,10 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head):
 
 
 def test_fill_object_store_exception(shutdown_only):
-    ray.init(num_cpus=2,
-             object_store_memory=10**8,
-             _system_config={"automatic_object_spilling_enabled": False})
+    ray.init(
+        num_cpus=2,
+        object_store_memory=10**8,
+        _system_config={"automatic_object_spilling_enabled": False})
 
     @ray.remote
     def expensive_task():
@@ -428,14 +427,15 @@ def test_fill_object_store_exception(shutdown_only):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
-@pytest.mark.parametrize("ray_start_cluster", [{
-    "num_nodes": 1,
-    "num_cpus": 2,
-}, {
-    "num_nodes": 2,
-    "num_cpus": 1,
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }],
+    indirect=True)
 def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
@@ -459,14 +459,15 @@ def test_eviction(ray_start_cluster):
         ray.get(dependent_task.remote(obj))
 
 
-@pytest.mark.parametrize("ray_start_cluster", [{
-    "num_nodes": 2,
-    "num_cpus": 1,
-}, {
-    "num_nodes": 1,
-    "num_cpus": 2,
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }, {
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }],
+    indirect=True)
 def test_serialized_id(ray_start_cluster):
     @ray.remote
     def small_object():
@@ -501,10 +502,9 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
-@pytest.mark.parametrize("use_actors,node_failure", [(False, False),
-                                                     (False, True),
-                                                     (True, False),
-                                                     (True, True)])
+@pytest.mark.parametrize("use_actors,node_failure",
+                         [(False, False), (False, True), (True, False),
+                          (True, True)])
 def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     config = {
         "num_heartbeats_timeout": 10,
@@ -584,12 +584,13 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         test_process_failure(use_actors)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{
-    "_system_config": {
-        "ping_gcs_rpc_server_max_retries": 100
-    }
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "ping_gcs_rpc_server_max_retries": 100
+        }
+    }],
+    indirect=True)
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
     p = log_pubsub
     # Get gcs server pid to send a signal.
@@ -611,12 +612,13 @@ def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
         assert data["pid"] == "gcs_server"
 
 
-@pytest.mark.parametrize("ray_start_regular", [{
-    "_system_config": {
-        "task_retry_delay_ms": 500
-    }
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "task_retry_delay_ms": 500
+        }
+    }],
+    indirect=True)
 def test_async_actor_task_retries(ray_start_regular):
     # https://github.com/ray-project/ray/issues/11683
 

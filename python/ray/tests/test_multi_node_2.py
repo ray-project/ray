@@ -8,7 +8,8 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor
+from ray.test_utils import (generate_system_config_map, wait_for_condition,
+                            SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +34,12 @@ def test_shutdown():
     assert not any(n.any_processes_alive() for n in [node, node2])
 
 
-@pytest.mark.parametrize("ray_start_cluster_head", [
-    generate_system_config_map(num_heartbeats_timeout=20,
-                               object_timeout_milliseconds=12345)
-],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=3, object_timeout_milliseconds=12345)
+    ],
+    indirect=True)
 def test_system_config(ray_start_cluster_head):
     """Checks that the internal configuration setting works.
 
@@ -53,7 +55,7 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 20
+        assert ray._config.num_heartbeats_timeout() == 3
 
     ray.get([f.remote() for _ in range(5)])
 
@@ -61,14 +63,15 @@ def test_system_config(ray_start_cluster_head):
     time.sleep(1)
     assert ray.cluster_resources()["CPU"] == 2
 
-    time.sleep(2)
-    assert ray.cluster_resources()["CPU"] == 1
+    def _node_removed():
+        return ray.cluster_resources()["CPU"] == 1
+
+    wait_for_condition(_node_removed, timeout=3)
 
 
 def setup_monitor(address):
-    monitor = Monitor(address,
-                      None,
-                      redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    monitor = Monitor(
+        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     return monitor
 
 
@@ -168,12 +171,13 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     return resource_usage
 
 
-@pytest.mark.parametrize("ray_start_cluster_head", [{
-    "num_cpus": 1,
-}, {
-    "num_cpus": 2,
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 1,
+    }, {
+        "num_cpus": 2,
+    }],
+    indirect=True)
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -244,11 +248,12 @@ def test_wait_for_nodes(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
-@pytest.mark.parametrize("call_ray_start", [
-    "ray start --head --ray-client-server-port 20000 " +
-    "--min-worker-port=0 --max-worker-port=0 --port 0"
-],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 20000 " +
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
+    ],
+    indirect=True)
 def test_ray_client(call_ray_start):
     from ray.util.client import ray
     ray.connect("localhost:20000")
