@@ -119,16 +119,16 @@ def test_kill_cancel_metadata(ray_start_regular):
         ray.api.worker.server.Terminate = mock_terminate
 
         # Verify the expected exception is raised with ray.kill.
-        with pytest.raises(MetadataIsCorrectlyPassedException) as e:
+        # Check that argument of the exception matches "key" from the
+        # metadata above.
+        with pytest.raises(MetadataIsCorrectlyPassedException, match="key"):
             actor = A.remote()
             ray.kill(actor)
-        assert str(e.value) == "key"
 
         # Verify the expected exception is raised with ray.cancel.
-        with pytest.raises(MetadataIsCorrectlyPassedException) as e:
+        with pytest.raises(MetadataIsCorrectlyPassedException, match="key"):
             task_ref = f.remote()
             ray.cancel(task_ref)
-        assert str(e.value) == "key"
 
 
 if __name__ == "__main__":
