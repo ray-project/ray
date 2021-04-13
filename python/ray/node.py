@@ -24,6 +24,7 @@ import ray._private.utils
 from ray.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
+from ray.util.importer import import_from_string
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -89,7 +90,7 @@ class Node:
                                  "cannot both be true.")
             self._register_shutdown_hooks()
 
-        logger.info(f"~~~ ray_params {ray_params.__dict__}")
+        # logger.info(f"~~~ ray_params {ray_params.__dict__}")
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support())
@@ -236,6 +237,13 @@ class Node:
                 log_warning=False))
             self._ray_params.node_manager_port = address_info[
                 "node_manager_port"]
+        logger.info(f"head processes on node {ray_params.tracing_startup_hook}")
+        if ray_params.tracing_startup_hook:
+            _setup_tracing = import_from_string(ray_params.tracing_startup_hook)
+            setup_tracing_result = _setup_tracing()
+            logger.info(setup_tracing_result)
+            assert getattr(ray, "__traced__")
+            logger.info(getattr(ray, "__traced__"))
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit

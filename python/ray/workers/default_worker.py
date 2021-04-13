@@ -5,7 +5,7 @@ import logging
 import time
 import sys
 import os
-from uvicorn import importer
+# change this to copy/pasted version because ray core cannot depend on uvicorn
 
 import ray
 import ray.actor
@@ -15,6 +15,7 @@ import ray._private.utils
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import (get_worker_log_file_name,
                                       configure_log_file)
+from ray.util.importer import import_from_string
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -94,10 +95,7 @@ parser.add_argument(
     type=int,
     help="the port of the node's metric agent.")
 parser.add_argument(
-    "--tracing-startup-hook",
-    type=str,
-    help="tracing startup hook."
-)
+    "--tracing-startup-hook", type=str, help="tracing startup hook.")
 parser.add_argument(
     "--object-spilling-config",
     required=False,
@@ -173,8 +171,11 @@ if __name__ == "__main__":
     )
 
     if args.tracing_startup_hook is not None:
-        _setup_tracing = importer.import_from_string(args.tracing_startup_hook)
+        # logger.info(
+        #     f"is tracing enabled? {ray.util.tracing.util.get_global_is_tracing_enabled()}"
+        # )
         logger.info(f"tracing startup hook name {args.tracing_startup_hook}")
+        _setup_tracing = import_from_string(args.tracing_startup_hook)
         setup_tracing_result = _setup_tracing()
         logger.info(setup_tracing_result)
         logger.info(getattr(ray, "__traced__"))
@@ -199,6 +200,18 @@ if __name__ == "__main__":
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
+
+    # TODO: set up tracing for head node here?
+    logger.info(
+        f"internal kv intialized? "
+        f"{ray.experimental.internal_kv._internal_kv_initialized()}"
+    )
+    ray.experimental.internal_kv._internal_kv_put(
+        "tracing_startup_hook", args.tracing_startup_hook)
+    logger.info(
+        f"tracing startup hook in kv "
+        f"{ray.experimental.internal_kv._internal_kv_get('tracing_startup_hook')}" # noqa
+    )
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

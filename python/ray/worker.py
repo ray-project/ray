@@ -1119,6 +1119,7 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
     """
+    # TODO:
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
