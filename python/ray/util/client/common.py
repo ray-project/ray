@@ -63,7 +63,7 @@ class ClientBaseRef:
 
 class ClientObjectRef(ClientBaseRef):
     def __await__(self):
-        return self.as_future.__await__()
+        return self.as_future().__await__()
 
     def as_future(self):
         loop = asyncio.get_event_loop()

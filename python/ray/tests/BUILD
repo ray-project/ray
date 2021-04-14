@@ -173,6 +173,7 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
+    "test_asyncio.py"
   ],
   size = "medium",
   extra_srcs = SRCS,
