@@ -542,9 +542,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<instrumented_io_context> client_io_service_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};

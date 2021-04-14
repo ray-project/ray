@@ -284,15 +284,21 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
               delete this reference.
             context: gRPC context.
         """
-        obj = loads_from_client(request.data, self)
-        with disable_client_hook():
-            objectref = ray.put(obj)
+        try:
+            obj = loads_from_client(request.data, self)
+            with disable_client_hook():
+                objectref = ray.put(obj)
+        except Exception as e:
+            logger.exception("Put failed:")
+            return ray_client_pb2.PutResponse(
+                id=b"", valid=False, error=cloudpickle.dumps(e))
+
         self.object_refs[client_id][objectref.binary()] = objectref
         if len(request.client_ref_id) > 0:
             self.client_side_ref_map[client_id][
                 request.client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
-        return ray_client_pb2.PutResponse(id=objectref.binary())
+        return ray_client_pb2.PutResponse(id=objectref.binary(), valid=True)
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []

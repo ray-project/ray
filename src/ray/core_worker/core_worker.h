@@ -302,9 +302,6 @@ class CoreWorkerProcess {
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
-  /// The global instance of `CoreWorkerProcess`.
-  static std::unique_ptr<CoreWorkerProcess> instance_;
-
   /// The various options.
   const CoreWorkerOptions options_;
 

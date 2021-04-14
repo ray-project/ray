@@ -140,6 +140,8 @@ class TFPolicy(Policy):
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            self.view_requirements[
+                SampleBatch.INFOS].used_for_compute_actions = False
 
         assert model is None or isinstance(model, ModelV2), \
             "Model classes for TFPolicy other than `ModelV2` not allowed! " \
