@@ -19,9 +19,9 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (
-    format_actor_name, get_current_node_resource_key, get_random_letters,
-    logger, make_fastapi_class_based_view, register_custom_serializers)
+from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
+                             get_random_letters, logger,
+                             make_fastapi_class_based_view)
 
 import ray
 
@@ -614,8 +614,6 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
-    register_custom_serializers()
-
     try:
         _get_global_client()
         logger.info("Connecting to existing Serve instance.")
@@ -681,8 +679,6 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
-
-    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
