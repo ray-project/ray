@@ -84,12 +84,12 @@ class OverrideDefaultResourceRequest:
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=[{
-                # Driver + Replay buffer actors.
-                # Force to be on same node to maximize data bandwidth
-                # between replay buffers and the learner (driver).
+                # Local worker + local eval worker + replay buffer actors.
+                # Force replay buffers to be on same node to maximize
+                # data bandwidth between buffers and the learner (driver).
                 # Replay buffer actors each contain one shard of the total
                 # replay buffer and use 1 CPU each.
-                "CPU": cf["num_cpus_for_driver"] +
+                "CPU": cf["num_cpus_for_driver"] + 1 +
                 cf["optimizer"]["num_replay_buffer_shards"],
                 "GPU": cf["num_gpus"]
             }] + [
@@ -100,13 +100,13 @@ class OverrideDefaultResourceRequest:
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
-                    # Evaluation workers (+1 b/c of the additional local
-                    # worker)
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"] + 1)
+                } for _ in range(cf["evaluation_num_workers"])
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 

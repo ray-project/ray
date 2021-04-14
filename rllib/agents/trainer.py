@@ -554,7 +554,7 @@ class Trainer(Trainable):
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"] + 1)
+                } for _ in range(cf["evaluation_num_workers"])
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 
@@ -1234,6 +1234,13 @@ class Trainer(Trainable):
                 "If this is too frequent, set `evaluation_interval` to some "
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
+        elif config["evaluation_num_workers"] == 0 and \
+                config["evaluation_parallel_to_training"]:
+            logger.warning(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Setting "
+                "`evaluation_parallel_to_training` to False.")
+            config["evaluation_parallel_to_training"] = False
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
