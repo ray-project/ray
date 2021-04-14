@@ -90,7 +90,7 @@ class OverrideDefaultResourceRequest:
                 # Replay buffer actors each contain one shard of the total
                 # replay buffer and use 1 CPU each.
                 "CPU": cf["num_cpus_for_driver"] +
-                config["optimizer"]["num_replay_buffer_shards"],
+                cf["optimizer"]["num_replay_buffer_shards"],
                 "GPU": cf["num_gpus"]
             }] + [
                 {
