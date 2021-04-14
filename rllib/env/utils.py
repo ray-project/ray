@@ -2,7 +2,7 @@ from ray.rllib.env.env_context import EnvContext
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
-    """Tries to create a gym env given am EnvContext object and descriptor.
+    """Tries to create a gym env given an EnvContext object and descriptor.
 
     Note: This function tries to construct the env from a string descriptor
     only using possibly installed RL env packages (such as gym, pybullet_envs,
