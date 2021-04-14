@@ -418,7 +418,8 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 }
 
 void TaskResourceInstances::ClearCPUInstances() {
-  if (!predefined_resources.empty()) {
+  if (predefined_resources.size() >= CPU) {
+    predefined_resources[CPU].clear();
     predefined_resources[CPU].clear();
   }
 }

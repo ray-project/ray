@@ -669,13 +669,11 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 }
 
 std::vector<FixedPoint> ClusterResourceScheduler::AddAvailableResourceInstances(
-    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
-    bool allow_overflow) {
+    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances) {
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     resource_instances->available[i] = resource_instances->available[i] + available[i];
     if (resource_instances->available[i] > resource_instances->total[i]) {
-      // RAY_CHECK(allow_overflow) << "Resources should never overflow";
       overflow[i] = (resource_instances->available[i] - resource_instances->total[i]);
       resource_instances->available[i] = resource_instances->total[i];
     }

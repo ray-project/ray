@@ -952,6 +952,9 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
   auto allocated_instances = worker->GetAllocatedInstances();
+  if (allocated_instances == nullptr) {
+    return;
+  }
   if (worker->IsBlocked()) {
     // If the worker is blocked, its CPU instances have already been released. We clear
     // the CPU instances to avoid double freeing.
@@ -999,6 +1002,7 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
       // negative, at most one task can "borrow" this worker's resources.
       cluster_resource_scheduler_->SubtractCPUResourceInstances(
           cpu_instances, /*allow_going_negative=*/true);
+      worker->MarkUnblocked();
       return true;
     }
   }
