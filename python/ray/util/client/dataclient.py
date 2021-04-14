@@ -34,6 +34,9 @@ class DataClient:
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self.lock = threading.RLock()
+        # NOTE: Thread safety for asyncio_waiting_data is maintained by enqueue
+        # operations happening before request_queue insertion and removals
+        # happening after rquest_queue polling.
         self.asyncio_waiting_data: Dict[int, Callable[
             [ray_client_pb2.DataResponse], None]] = {}
         self._req_id = 0
@@ -67,22 +70,16 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
-                callback = None
-                with self.cv:
-                    if response.req_id in self.asyncio_waiting_data:
-                        callback = self.asyncio_waiting_data.pop(
-                            response.req_id)
-                    else:
-                        self.ready_data[response.req_id] = response
-                        self.cv.notify_all()
-
-                # Callback should not be invoked while holding the Lock.
-                if callback:
+                if response.req_id in self.asyncio_waiting_data:
+                    cb = self.asyncio_waiting_data.pop(response.req_id)
                     try:
-                        callback(response)
+                        cb(response)
                     except Exception:
                         logger.exception("Callback error:")
-
+                else:
+                    with self.cv:
+                        self.ready_data[response.req_id] = response
+                        self.cv.notify_all()
         except grpc.RpcError as e:
             with self.cv:
                 self._in_shutdown = True
@@ -133,8 +130,7 @@ class DataClient:
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
-            with self.cv:
-                self.asyncio_waiting_data[req_id] = callback
+            self.asyncio_waiting_data[req_id] = callback
         self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
