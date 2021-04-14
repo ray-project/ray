@@ -238,6 +238,8 @@ Ray 1.3+ spills objects to external storage once the object store is full. By de
 Single node
 -----------
 
+Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. `temp_folder` is `/tmp` for Linux and MacOS by default.
+
 To configure the directory where objects are placed, use:
 
 .. code-block:: python
@@ -271,6 +273,10 @@ usage across multiple physical devices if needed (e.g., SSD devices):
         },
     )
 
+.. note::
+  
+  To optimize the performance, it is recommended to use SSD instead of HD when using object spilling for memory intensive workloads.
+
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
 .. code-block:: python
@@ -285,12 +291,16 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
         },
     )
 
-Remote storage support is still experimental. 
+Remote storage support is still experimental.
 
 Cluster mode
 ------------
+To enable object spilling in multi node clusters:
 
-You can 
+.. code-block:: bash
+  
+  # Note that `object_spilling_config`'s value should be json format.
+  ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
 
 Stats
 -----
