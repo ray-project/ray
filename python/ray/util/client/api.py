@@ -296,5 +296,5 @@ class ClientAPI:
         return self.__getattribute__(key)
 
     def _register_callback(self, ref: "ClientObjectRef",
-                           callback: Callable[..., None]) -> None:
+                           callback: Callable[["DataResponse"], None]) -> None:
         self.worker.register_callback(ref, callback)
