@@ -1,4 +1,4 @@
-Iteration 22604:
-  - Iteration time: 10.628239870071411.
-  - Absolute time: 1618216921.837286.
-  - Total elapsed time: 238827.02226614952.
+Iteration 17139:
+  - Iteration time: 5.055423736572266.
+  - Absolute time: 1618389885.9484322.
+  - Total elapsed time: 83340.11029696465.
