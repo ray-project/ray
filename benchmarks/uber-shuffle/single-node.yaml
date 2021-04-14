@@ -70,6 +70,13 @@ head_node:
         - DeviceName: /dev/sda1
           Ebs:
               VolumeSize: 100
+    TagSpecifications:
+        - ResourceType: "instance"
+          Tags:
+              - Key: anyscale-user
+                Value: "clark@anyscale.com"
+              - Key: anyscale-expiration
+                Value: "2021-04-21"
 
     # Additional options in the boto docs.
 
@@ -92,9 +99,9 @@ worker_nodes:
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
-# file_mounts: {
-#     "/home/ubuntu/uber-shuffle/": "/home/ubuntu/workspace/ray/benchmarks/uber-shuffle",
-# }
+file_mounts: {
+    "/home/ubuntu/uber-shuffle": "/home/ubuntu/workspace/ray/benchmarks/uber-shuffle",
+}
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
 # list of paths. The same path on the head node will be copied to the worker node.
@@ -138,6 +145,7 @@ setup_commands:
     - mkdir -p /mnt/disk1/benchmark_scratch && rm -f /mnt/disk1/benchmark_scratch/*.parquet
     - mkdir -p /mnt/disk2/benchmark_scratch && rm -f /mnt/disk2/benchmark_scratch/*.parquet
     - mkdir -p /mnt/disk3/benchmark_scratch && rm -f /mnt/disk3/benchmark_scratch/*.parquet
+    - mkdir -p /mnt/disk0/benchmark_scratch/results
     # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
