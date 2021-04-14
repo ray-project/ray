@@ -59,8 +59,8 @@ class TrainableUtil:
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
         # Use normpath so that a directory path isn't mapped to empty string.
-        name = os.path.relpath(
-            os.path.normpath(checkpoint_path), checkpoint_dir)
+        name = os.path.relpath(os.path.normpath(checkpoint_path),
+                               checkpoint_dir)
         name += os.path.sep if os.path.isdir(checkpoint_path) else ""
         data_dict = pickle.dumps({
             "checkpoint_name": name,
@@ -95,9 +95,10 @@ class TrainableUtil:
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found for {}"
-                                    .format(checkpoint_path))
-        return checkpoint_dir
+            raise FileNotFoundError(
+                "Checkpoint directory not found for {}".format(
+                    checkpoint_path))
+        return os.path.normpath(checkpoint_dir)
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):
@@ -164,8 +165,8 @@ class TrainableUtil:
             chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
             iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
-        chkpt_df = pd.DataFrame(
-            iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
+        chkpt_df = pd.DataFrame(iter_chkpt_pairs,
+                                columns=["training_iteration", "chkpt_path"])
         return chkpt_df
 
 
@@ -198,8 +199,8 @@ class PlacementGroupUtil:
             pg(placement_group): return a reference to the placement group
         """
         pg = None
-        options = dict(
-            num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
+        options = dict(num_cpus=num_cpus_per_worker,
+                       num_gpus=num_gpus_per_worker)
         if num_workers_per_host:
             num_hosts = int(num_workers / num_workers_per_host)
             cpus_per_node = num_cpus_per_worker * num_workers_per_host
