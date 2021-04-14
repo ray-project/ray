@@ -67,16 +67,22 @@ class DataClient:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
                     continue
-                if response.req_id in self.asyncio_waiting_data:
-                    cb = self.asyncio_waiting_data.pop(response.req_id)
-                    try:
-                        cb(response)
-                    except Exception:
-                        logger.exception("Callback error:")
-                else:
-                    with self.cv:
+                callback = None
+                with self.cv:
+                    if response.req_id in self.asyncio_waiting_data:
+                        callback = self.asyncio_waiting_data.pop(
+                            response.req_id)
+                    else:
                         self.ready_data[response.req_id] = response
                         self.cv.notify_all()
+
+                # Callback should not be invoked while holding the Lock.
+                if callback:
+                    try:
+                        callback(response)
+                    except Exception:
+                        logger.exception("Callback error:")
+
         except grpc.RpcError as e:
             with self.cv:
                 self._in_shutdown = True
@@ -127,7 +133,8 @@ class DataClient:
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
-            self.asyncio_waiting_data[req_id] = callback
+            with self.cv:
+                self.asyncio_waiting_data[req_id] = callback
         self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
