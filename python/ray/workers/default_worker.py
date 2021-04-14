@@ -15,7 +15,6 @@ import ray._private.utils
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import (get_worker_log_file_name,
                                       configure_log_file)
-from ray.util.importer import import_from_string
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -127,8 +126,6 @@ if __name__ == "__main__":
                                           args.logging_format)
 
     logger = logging.getLogger("ray")
-    logger.info("arrived in default worker woooo")
-    logger.info(f"args here are {args}")
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -168,17 +165,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
-    )
-
-    if args.tracing_startup_hook is not None:
-        # logger.info(
-        #     f"is tracing enabled? {ray.util.tracing.util.get_global_is_tracing_enabled()}"
-        # )
-        logger.info(f"tracing startup hook name {args.tracing_startup_hook}")
-        _setup_tracing = import_from_string(args.tracing_startup_hook)
-        setup_tracing_result = _setup_tracing()
-        logger.info(setup_tracing_result)
-        logger.info(getattr(ray, "__traced__"))
+        tracing_startup_hook=args.tracing_startup_hook)
 
     node = ray.node.Node(
         ray_params,
@@ -188,6 +175,14 @@ if __name__ == "__main__":
         connect_only=True)
     ray.worker._global_node = node
     ray.worker.connect(node, mode=mode)
+    # Add tracing-startup-hook to internal_kv so that new drivers can access it. # noqa
+    ray.experimental.internal_kv._internal_kv_put("tracing_startup_hook",
+                                                  args.tracing_startup_hook)
+    raise Exception()
+    logger.info(
+        f"tracing startup hook in kv "
+        f"{ray.experimental.internal_kv._internal_kv_get('tracing_startup_hook')}"  # noqa
+    )
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
@@ -201,17 +196,6 @@ if __name__ == "__main__":
             sys.path.insert(0, p)
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-    # TODO: set up tracing for head node here?
-    logger.info(
-        f"internal kv intialized? "
-        f"{ray.experimental.internal_kv._internal_kv_initialized()}"
-    )
-    ray.experimental.internal_kv._internal_kv_put(
-        "tracing_startup_hook", args.tracing_startup_hook)
-    logger.info(
-        f"tracing startup hook in kv "
-        f"{ray.experimental.internal_kv._internal_kv_get('tracing_startup_hook')}" # noqa
-    )
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

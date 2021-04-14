@@ -84,13 +84,13 @@ class Node:
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
+        logger.info(f"ray params here {ray_params.__dict__}")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError("'shutdown_at_exit' and 'connect_only' "
                                  "cannot both be true.")
             self._register_shutdown_hooks()
 
-        # logger.info(f"~~~ ray_params {ray_params.__dict__}")
         self.head = head
         self.kernel_fate_share = bool(
             spawn_reaper and ray._private.utils.detect_fate_sharing_support())
@@ -237,13 +237,6 @@ class Node:
                 log_warning=False))
             self._ray_params.node_manager_port = address_info[
                 "node_manager_port"]
-        logger.info(f"head processes on node {ray_params.tracing_startup_hook}")
-        if ray_params.tracing_startup_hook:
-            _setup_tracing = import_from_string(ray_params.tracing_startup_hook)
-            setup_tracing_result = _setup_tracing()
-            logger.info(setup_tracing_result)
-            assert getattr(ray, "__traced__")
-            logger.info(getattr(ray, "__traced__"))
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit

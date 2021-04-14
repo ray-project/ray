@@ -19,7 +19,6 @@ import psutil
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
-import ray.util.tracing.util as tracing_config
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -486,13 +485,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
 
-    # if tracing_startup_hook:
-    #     if system_config:
-    #         system_config["tracing_startup_hook"] = tracing_startup_hook
-    #     else:
-    #         system_config = {"tracing_startup_hook": tracing_startup_hook}
-    #     print(f"system config here {system_config}")
-        # system_config
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
@@ -578,7 +570,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
-
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()
@@ -708,14 +699,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
                 sys.exit(1)
-    # if tracing_startup_hook:
-    #     import importlib
-    #     spec = importlib.util.spec_from_file_location("",
-    #     tracing_startup_hook)
-    #     enable_tracing = importlib.util.module_from_spec(spec)
-    #     spec.loader.exec_module(enable_tracing)
-    #     ray.worker.global_worker.run_function_on_all_workers(
-    #         enable_tracing._setup_tracing)
 
 
 @cli.command()

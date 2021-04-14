@@ -30,6 +30,7 @@ import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env
 import ray._private.import_thread as import_thread
+from ray.util.importer import import_from_string
 import ray
 import setproctitle
 import ray.state
@@ -506,7 +507,8 @@ def init(
         _temp_dir=None,
         _lru_evict=False,
         _metrics_export_port=None,
-        _system_config=None):
+        _system_config=None,
+        _tracing_startup_hook=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -704,7 +706,8 @@ def init(
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port)
+            metrics_export_port=_metrics_export_port,
+            tracing_startup_hook=_tracing_startup_hook)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -1119,7 +1122,6 @@ def connect(node,
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
     """
-    # TODO:
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
@@ -1295,6 +1297,18 @@ def connect(node,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
+
+    # setup tracing here
+    # raise Exception(f"first worker doesn't have internal kv set? {_internal_kv_get('tracing_startup_hook')}")
+    logger.info(f"internal kv in worker: {_internal_kv_initialized()}")
+    logger.info(f"internal_kv {_internal_kv_get('tracing_startup_hook')}")
+    if _internal_kv_get("tracing_startup_hook"):
+        ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
+        _setup_tracing = import_from_string(
+            _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+        setup_tracing_result = _setup_tracing()
+        logger.info(setup_tracing_result)
+        logger.info(f"ray is now traced: {getattr(ray, '__traced__')}")
 
 
 def disconnect(exiting_interpreter=False):
