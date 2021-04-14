@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import ray
 import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
@@ -130,6 +131,7 @@ args_start = perf_counter()
 test_many_args()
 args_end = perf_counter()
 
+time.sleep(5)
 assert ray.cluster_resources() == ray.available_resources(), (
     ray.cluster_resources(), ray.available_resources())
 print("Finished many args")
@@ -138,6 +140,7 @@ returns_start = perf_counter()
 test_many_returns()
 returns_end = perf_counter()
 
+time.sleep(5)
 assert ray.cluster_resources() == ray.available_resources(), (
     ray.cluster_resources(), ray.available_resources())
 print("Finished many returns")
@@ -146,6 +149,7 @@ get_start = perf_counter()
 test_ray_get_args()
 get_end = perf_counter()
 
+time.sleep(5)
 assert ray.cluster_resources() == ray.available_resources(), (
     ray.cluster_resources(), ray.available_resources())
 print("Finished ray.get on many objects")
@@ -154,6 +158,7 @@ queued_start = perf_counter()
 test_many_queued_tasks()
 queued_end = perf_counter()
 
+time.sleep(5)
 assert ray.cluster_resources() == ray.available_resources(), (
     ray.cluster_resources(), ray.available_resources())
 print("Finished queueing many tasks")
@@ -162,6 +167,7 @@ large_object_start = perf_counter()
 test_large_object()
 large_object_end = perf_counter()
 
+time.sleep(5)
 assert ray.cluster_resources() == ray.available_resources(), (
     ray.cluster_resources(), ray.available_resources())
 print("Done")

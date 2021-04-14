@@ -14,9 +14,9 @@ auth:
     ssh_user: ubuntu
 
 available_node_types:
-    cpu_8_ondemand:
+    cpu_4_ondemand:
         node_config:
-            InstanceType: m5.2xlarge
+            InstanceType: m5.xlarge
             TagSpecifications:
               - ResourceType: "instance"
                 Tags:
@@ -26,12 +26,12 @@ available_node_types:
                     Value: "ignore"
                   - Key: anyscale-expiration
                     Value: '{{env["ANSYCALE_EXPIRATION"]}}'
-        resources: {"CPU": 8}
+        resources: {"CPU": 4}
         min_workers: 0
         max_workers: 0
 
-head_node_type: cpu_8_ondemand
-worker_default_node_type: cpu_8_ondemand
+head_node_type: cpu_4_ondemand
+worker_default_node_type: cpu_4_ondemand
 
 
 setup_commands:

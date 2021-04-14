@@ -4,7 +4,7 @@ min_workers: 0
 max_workers: 0
 
 docker:
-    image: anyscale/ray-ml:latest-gpu
+    image: anyscale/ray-ml:nightly-gpu
     container_name: ray_container
     pull_before_run: True
 
@@ -19,18 +19,19 @@ provider:
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: p2.xlarge  # Cheaper 1GPU K80 instance
+available_node_types:
+    gpu_ondemand:
+        node_config:
+            InstanceType: p2.xlarge
+        resources: {"CPU": 4, "GPU": 1}
+        min_workers: 0
+        max_workers: 0
 
-    # Set primary volume to 25 GiB
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
+head_node_type: gpu_ondemand
 
 # List of shell commands to run to set up nodes.
 setup_commands:
     - sudo apt update
     - sudo apt-get install -y libglib2.0-0 libcudnn8=8.0.5.39-1+cuda11.0 curl unzip gcc python3-dev
-    - pip install -U {{env["RAY_WHEEL"]}}
+#    - pip install -U {{env["RAY_WHEEL"]}}
+    - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.3.0/cb3661e547662f309a0cc55c5495b3adb779a309/ray-1.3.0-cp37-cp37m-manylinux2014_x86_64.whl
