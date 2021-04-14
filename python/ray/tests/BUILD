@@ -176,7 +176,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pydantic_serialization.py",
+    name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["pydantic_module.py"],
     tags = ["exclusive"],
