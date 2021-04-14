@@ -239,14 +239,14 @@ class RayServeReplica:
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        arg = parse_request_item(request_item)
+        args, kwargs = parse_request_item(request_item)
 
         start = time.time()
         method_to_call = None
         try:
             # TODO(simon): Split this section out when invoke_batch is removed.
             if self.config.internal_metadata.is_asgi_app:
-                request: Request = arg
+                request: Request = args[0]
                 sender = ASGIHTTPSender()
                 await self.callable._serve_asgi_app(
                     request.scope,
@@ -257,7 +257,7 @@ class RayServeReplica:
             else:
                 method_to_call = sync_to_async(
                     self.get_runner_method(request_item))
-                result = await method_to_call(arg)
+                result = await method_to_call(*args, **kwargs)
             result = await self.ensure_serializable_response(result)
             self.request_counter.inc()
         except Exception as e:

@@ -69,15 +69,17 @@ def load_package(config_path: str) -> "_RuntimePackage":
     # Autofill working directory by uploading to GCS storage.
     if "working_dir" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
-            working_dir=base_dir, py_modules=[])
+            working_dir=base_dir, py_modules=[], excludes=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
 
         def do_register_package():
             if not runtime_support.package_exists(pkg_uri):
                 tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
-                runtime_support.create_project_package(working_dir=base_dir,
-                                                       py_modules=[],
-                                                       output_path=tmp_path)
+                runtime_support.create_project_package(
+                    working_dir=base_dir,
+                    py_modules=[],
+                    excludes=[],
+                    output_path=tmp_path)
                 # TODO(ekl) does this get garbage collected correctly with the
                 # current job id?
                 runtime_support.push_package(pkg_uri, tmp_path)
@@ -99,11 +101,11 @@ def load_package(config_path: str) -> "_RuntimePackage":
                 "Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
-    pkg = _RuntimePackage(name=config["name"],
-                          desc=config["description"],
-                          interface_file=os.path.join(
-                              base_dir, config["interface_file"]),
-                          runtime_env=runtime_env)
+    pkg = _RuntimePackage(
+        name=config["name"],
+        desc=config["description"],
+        interface_file=os.path.join(base_dir, config["interface_file"]),
+        runtime_env=runtime_env)
     return pkg
 
 
@@ -140,8 +142,8 @@ def _download_from_github_if_needed(config_path: str) -> str:
 
         # Only download the repo if needed.
         if not os.path.exists(final_path):
-            tmp = tempfile.mkdtemp(prefix="github_{}".format(gh_repo),
-                                   dir=_pkg_tmp())
+            tmp = tempfile.mkdtemp(
+                prefix="github_{}".format(gh_repo), dir=_pkg_tmp())
             subprocess.check_call([
                 "curl", "--fail", "-L",
                 "https://github.com/{}/{}/tarball/{}".format(
@@ -164,6 +166,7 @@ class _RuntimePackage:
     the package (e.g., remote functions and actor definitions). You can also
     access the raw runtime env defined by the package via ``pkg._runtime_env``.
     """
+
     def __init__(self, name: str, desc: str, interface_file: str,
                  runtime_env: dict):
         self._name = name
@@ -183,8 +186,8 @@ class _RuntimePackage:
                 value = getattr(self._module, symbol)
                 if (isinstance(value, ray.remote_function.RemoteFunction)
                         or isinstance(value, ray.actor.ActorClass)):
-                    setattr(self, symbol,
-                            value.options(runtime_env=runtime_env))
+                    setattr(
+                        self, symbol, value.options(runtime_env=runtime_env))
 
     def __repr__(self):
         return "ray._RuntimePackage(module={}, runtime_env={})".format(

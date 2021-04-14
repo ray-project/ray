@@ -249,6 +249,12 @@ class Worker:
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
+        if not resp.valid:
+            try:
+                raise cloudpickle.loads(resp.error)
+            except pickle.UnpicklingError:
+                logger.exception("Failed to deserialize {}".format(resp.error))
+                raise
         return ClientObjectRef(resp.id)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
@@ -360,7 +366,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -377,7 +383,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
