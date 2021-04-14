@@ -6,7 +6,7 @@ import queue
 import threading
 import grpc
 
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -117,17 +117,14 @@ class DataClient:
             del self.ready_data[req_id]
         return data
 
-    def register_callback(
-            self, req: ray_client_pb2.DataRequest,
-            callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
+    def _async_send(self,
+                    req: ray_client_pb2.DataRequest,
+                    callback: Optional[Callable[[ray_client_pb2.DataResponse],
+                                                None]] = None) -> None:
         req_id = self._next_id()
         req.req_id = req_id
-        self.asyncio_waiting_data[req_id] = callback
-        self.request_queue.put(req)
-
-    def _async_send(self, req: ray_client_pb2.DataRequest) -> None:
-        req_id = self._next_id()
-        req.req_id = req_id
+        if callback:
+            self.asyncio_waiting_data[req_id] = callback
         self.request_queue.put(req)
 
     def Init(self, request: ray_client_pb2.InitRequest,
@@ -162,7 +159,7 @@ class DataClient:
             callback: Callable[[ray_client_pb2.DataResponse], None],
             context=None) -> None:
         datareq = ray_client_pb2.DataRequest(get=request, )
-        self.register_callback(datareq, callback)
+        self._async_send(datareq, callback)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
