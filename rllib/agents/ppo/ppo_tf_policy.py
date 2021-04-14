@@ -224,10 +224,15 @@ class KLCoeffMixin:
 
     def update_kl(self, sampled_kl):
         # Update the current KL value based on the recently measured value.
+        # Increase.
         if sampled_kl > 2.0 * self.kl_target:
             self.kl_coeff_val *= 1.5
+        # Decrease.
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
+        # No change.
+        else:
+            return self.kl_coeff_val
 
         # Update the tf Variable (via session call for tf).
         if self.framework == "tf":
