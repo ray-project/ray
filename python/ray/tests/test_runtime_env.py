@@ -113,6 +113,20 @@ The following test cases are related with runtime env. It following these steps
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
+def test_empty_working_dir(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        runtime_env = f"""{{  "working_dir": "r{tmp_dir}", "py_modules": ["r{tmp_dir}"] }}"""
+        # Execute the following cmd in driver with runtime_env
+        execute_statement = ""
+        script = driver_script.format(**locals())
+        out = run_string_as_driver(script, env)
+        assert out != "ERROR"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
