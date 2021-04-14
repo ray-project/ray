@@ -36,7 +36,7 @@ parser.add_argument("--framework", choices=["tf", "tf2", "tfe", "torch"],
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=50)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=0.1)
+parser.add_argument("--stop-reward", type=float, default=180.0)
 
 
 """class SimpleCorridor(gym.Env):
@@ -79,10 +79,19 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
+
+        # torch:
+        # Works fine with:
+        # num_gpus=0.5 (2 trials at the same time)
+        # num_gpus=0.3? (3 trials at the same time)
+        # num_gpus=0.25? (4 trials at the same time)
+
+        # tf:
+
         "num_gpus": 0.25,
-        "num_workers": 2,  # parallelism
+        "num_workers": 1,
         "num_envs_per_worker": 1,
-        "lr": tune.grid_search([0.1, 0.01, 0.001, 0.0001]),
+        "lr": tune.grid_search([0.005, 0.003, 0.001, 0.0001]),
         "framework": args.framework,
     }
 
