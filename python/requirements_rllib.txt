@@ -1,7 +1,6 @@
 # Deep learning.
 # --------------
 tensorflow-probability
-#gast #Test whether we can do w/o
 # Version requirement to match Tune.
 torch>=1.6.0
 # Version requirement to match Tune.
