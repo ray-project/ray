@@ -23,50 +23,65 @@ from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
                             get_error_message, Semaphore)
 
 
-def test_unhandled_errors(ray_start_regular):
+def test_failed_task(ray_start_regular, error_pubsub):
+    @ray.remote
+    def throw_exception_fct1():
+        raise Exception("Test function 1 intentionally failed.")
+
+    @ray.remote
+    def throw_exception_fct2():
+        raise Exception("Test function 2 intentionally failed.")
+
+    @ray.remote(num_returns=3)
+    def throw_exception_fct3(x):
+        raise Exception("Test function 3 intentionally failed.")
+
+    p = error_pubsub
+
+    throw_exception_fct1.remote()
+    throw_exception_fct1.remote()
+
+    msgs = get_error_message(p, 2, ray_constants.TASK_PUSH_ERROR)
+    assert len(msgs) == 2
+    for msg in msgs:
+        assert "Test function 1 intentionally failed." in msg.error_message
+
+    x = throw_exception_fct2.remote()
+    try:
+        ray.get(x)
+    except Exception as e:
+        assert "Test function 2 intentionally failed." in str(e)
+    else:
+        # ray.get should throw an exception.
+        assert False
+
+    x, y, z = throw_exception_fct3.remote(1.0)
+    for ref in [x, y, z]:
+        try:
+            ray.get(ref)
+        except Exception as e:
+            assert "Test function 3 intentionally failed." in str(e)
+        else:
+            # ray.get should throw an exception.
+            assert False
+
+    class CustomException(ValueError):
+        pass
+
     @ray.remote
     def f():
-        raise ValueError()
+        raise CustomException("This function failed.")
 
-    @ray.remote
-    class Actor:
-        def f(self):
-            raise ValueError()
-
-    a = Actor.remote()
-    num_exceptions = 0
-
-    def interceptor(e):
-        nonlocal num_exceptions
-        num_exceptions += 1
-
-    # Test we report unhandled exceptions.
-    ray.worker._unhandled_error_handler = interceptor
-    x1 = f.remote()
-    x2 = a.f.remote()
-    del x1
-    del x2
-    wait_for_condition(lambda: num_exceptions == 2)
-
-    # Test we don't report handled exceptions.
-    x1 = f.remote()
-    x2 = a.f.remote()
-    with pytest.raises(ray.exceptions.RayError) as err:  # noqa
-        ray.get([x1, x2])
-    del x1
-    del x2
-    time.sleep(1)
-    assert num_exceptions == 2, num_exceptions
-
-    # Test suppression with env var works.
     try:
-        os.environ["RAY_IGNORE_UNHANDLED_ERRORS"] = "1"
-        x1 = f.remote()
-        del x1
-        time.sleep(1)
-        assert num_exceptions == 2, num_exceptions
-    finally:
-        del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
+        ray.get(f.remote())
+    except Exception as e:
+        assert "This function failed." in str(e)
+        assert isinstance(e, CustomException)
+        assert isinstance(e, ray.exceptions.RayTaskError)
+        assert "RayTaskError(CustomException)" in repr(e)
+    else:
+        # ray.get should throw an exception.
+        assert False
 
 
 def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
