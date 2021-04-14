@@ -186,7 +186,7 @@ message PubsubLongPollingRequest {
 
 message PubsubLongPollingReply {
   /// The object ids that are published.
-  repeated bytes object_ids = 1;
+  repeated PubMessage pub_messages = 1;
 }
 
 message AddObjectLocationOwnerRequest {

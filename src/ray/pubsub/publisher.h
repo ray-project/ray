@@ -34,6 +34,7 @@ using LongPollConnectCallback = std::function<void(const std::vector<ObjectID> &
 namespace pub_internal {
 
 /// Index for object ids and node ids of subscribers.
+template <typename MessageID>
 class SubscriptionIndex {
  public:
   explicit SubscriptionIndex() {}
@@ -41,11 +42,11 @@ class SubscriptionIndex {
 
   /// Add a new entry to the index.
   /// NOTE: If the entry already exists, it raises assert failure.
-  void AddEntry(const ObjectID &object_id, const SubscriberID &subscriber_id);
+  void AddEntry(const MessageID &message_id, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
   absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByObjectId(const ObjectID &object_id) const;
+  GetSubscriberIdsByMessageId(const MessageID &message_id) const;
 
   /// Erase the subscriber from the index. Returns the number of erased subscribers.
   /// NOTE: It cannot erase subscribers that were never added.
@@ -54,10 +55,10 @@ class SubscriptionIndex {
   /// Erase the object id and subscriber id from the index. Return the number of erased
   /// entries.
   /// NOTE: It cannot erase subscribers that were never added.
-  bool EraseEntry(const ObjectID &object_id, const SubscriberID &subscriber_id);
+  bool EraseEntry(const MessageID &message_id, const SubscriberID &subscriber_id);
 
   /// Return true if the object id exists in the index.
-  bool HasObjectId(const ObjectID &object_id) const;
+  bool HasMessageId(const MessageID &message_id) const;
 
   /// Returns true if object id or subscriber id exists in the index.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
@@ -66,12 +67,12 @@ class SubscriptionIndex {
   bool AssertNoLeak() const;
 
  private:
-  /// Mapping from objects -> subscribers.
-  absl::flat_hash_map<ObjectID, absl::flat_hash_set<SubscriberID>>
-      objects_to_subscribers_;
-  // Mapping from subscribers -> objects. Reverse index of objects_to_subscribers_.
-  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<ObjectID>>
-      subscribers_to_objects_;
+  /// Mapping from message id -> subscribers.
+  absl::flat_hash_map<MessageID, absl::flat_hash_set<SubscriberID>>
+      message_id_to_subscribers_;
+  // Mapping from subscribers -> message ids. Reverse index of message_id_to_subscribers_.
+  absl::flat_hash_map<SubscriberID, absl::flat_hash_set<MessageID>>
+      subscribers_to_message_id_;
 };
 
 /// Abstraction to each subscriber.
@@ -164,6 +165,9 @@ class Publisher {
       : periodical_runner_(periodical_runner),
         get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
+        subscription_index_map_({
+          { rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, pub_internal::SubscriptionIndex<ObjectID>() }
+        }),
         publish_batch_size_(publish_batch_size) {
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
                                           subscriber_timeout_ms);
@@ -180,14 +184,26 @@ class Publisher {
 
   /// Register the subscription.
   ///
+  /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param object_id The object id that the subscriber is subscribing to.
-  void RegisterSubscription(const SubscriberID &subscriber_id, const ObjectID &object_id);
+  void RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &object_id);
 
   /// Publish the given object id to subscribers.
   ///
-  /// \param object_id The object id to publish to subscribers.
-  void Publish(const ObjectID &object_id);
+  /// \param channel_type The type of the channel.
+  /// \param pub_message The message to publish.
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message);
+
+  /// Unregister subscription. It means the given object id won't be published to the
+  /// subscriber anymore.
+  ///
+  /// \param channel_type The type of the channel.
+  /// \param subscriber_id The node id of the subscriber.
+  /// \param object_id The object id of the subscriber.
+  /// \return True if erased. False otherwise.
+  bool UnregisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+                              const ObjectID &object_id);
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
@@ -196,15 +212,6 @@ class Publisher {
   /// \param subscriber_id The node id of the subscriber to unsubscribe.
   /// \return True if erased. False otherwise.
   bool UnregisterSubscriber(const SubscriberID &subscriber_id);
-
-  /// Unregister subscription. It means the given object id won't be published to the
-  /// subscriber anymore.
-  ///
-  /// \param subscriber_id The node id of the subscriber.
-  /// \param object_id The object id of the subscriber.
-  /// \return True if erased. False otherwise.
-  bool UnregisterSubscription(const SubscriberID &subscriber_id,
-                              const ObjectID &object_id);
 
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
@@ -249,8 +256,8 @@ class Publisher {
   absl::flat_hash_map<SubscriberID, std::shared_ptr<pub_internal::Subscriber>>
       subscribers_ GUARDED_BY(mutex_);
 
-  /// Index that stores the mapping of objects <-> subscribers.
-  pub_internal::SubscriptionIndex subscription_index_ GUARDED_BY(mutex_);
+  /// Index that stores the mapping of messages <-> subscribers.
+  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex<ObjectID>> subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const uint64_t publish_batch_size_;
