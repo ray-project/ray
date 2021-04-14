@@ -191,7 +191,6 @@ if __name__ == "__main__":
             sys.path.insert(0, p)
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
-
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type))

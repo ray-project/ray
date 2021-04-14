@@ -24,7 +24,6 @@ import ray._private.utils
 from ray.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
-from ray.util.importer import import_from_string
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -228,8 +227,9 @@ class Node:
             redis_client.set("temp_dir", self._temp_dir)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
-            redis_client.hset("tracing_startup_hook", "value",
-                              ray_params.tracing_startup_hook)
+            if ray_params.tracing_startup_hook:
+                redis_client.hset("tracing_startup_hook", "value",
+                                  ray_params.tracing_startup_hook)
 
         if not connect_only:
             self.start_ray_processes()

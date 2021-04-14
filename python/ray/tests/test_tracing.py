@@ -1,23 +1,12 @@
+import asyncio
+import glob
+import json
 import os
+import pytest
+import shutil
+import tempfile
 
-# We must set the environment variable before importing ray
-# TODO: use py_test(env = ...) in the build file with bazel 4.0
-os.environ["RAY_TRACING_ENABLED"] = "True"
-
-from opentelemetry import trace  # noqa: E402
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
-from opentelemetry.sdk.trace.export import (
-    ConsoleSpanExporter,
-    SimpleExportSpanProcessor,
-)  # noqa: E402
-import asyncio  # noqa: E402
-import glob  # noqa: E402
-import json  # noqa: E402
-import pytest  # noqa: E402
-import shutil  # noqa: E402
-import tempfile  # noqa: E402
-from typing import Any  # noqa: E402
-import ray  # noqa: E402
+import ray
 
 # Create temporary spans folder for trace output.
 spans_dir = tempfile.gettempdir() + "/spans"
@@ -34,26 +23,8 @@ def cleanup_dirs():
         shutil.rmtree(spans_dir)
 
 
-def _setup_tracing(*args: Any, **kwargs: Any) -> None:
-    """This setup is what users currently need to do to enable tracing for Ray.
-    We should consider doing this automatically in the future."""
-    if getattr(ray, "__traced__", False):
-        return
-
-    ray.__traced__ = True
-    # Sets the tracer_provider. This is only allowed once per execution
-    # context and will log a warning if attempted multiple times.
-    trace.set_tracer_provider(TracerProvider())
-    trace.get_tracer_provider().add_span_processor(
-        SimpleExportSpanProcessor(
-            ConsoleSpanExporter(
-                out=open(f"{spans_dir}/{os.getpid()}.txt", "w"),
-                formatter=lambda span: span.to_json(indent=None) + os.linesep,
-            )))
-
-
-def test_tracing(ray_start_regular_shared, cleanup_dirs):
-    ray.worker.global_worker.run_function_on_all_workers(_setup_tracing)
+def test_tracing(cleanup_dirs):
+    ray.init(_tracing_startup_hook="ray.tests.enable_tracing:_setup_tracing")
 
     @ray.remote
     def f(value):
@@ -123,7 +94,6 @@ def test_tracing(ray_start_regular_shared, cleanup_dirs):
 
 
 if __name__ == "__main__":
-    # import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
