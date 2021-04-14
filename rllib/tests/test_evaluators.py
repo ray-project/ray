@@ -39,7 +39,7 @@ class EvalTest(unittest.TestCase):
         agent_classes = [A3CTrainer, DQNTrainer]
 
         for agent_cls in agent_classes:
-            for fw in framework_iterator(frameworks=("torch", "tf")):
+            for fw in framework_iterator(frameworks=("tf", "torch")):
                 register_env("CartPoleWrapped-v0", env_creator)
                 agent = agent_cls(
                     env="CartPoleWrapped-v0",
@@ -57,15 +57,19 @@ class EvalTest(unittest.TestCase):
                 # Given evaluation_interval=2, r0, r2, r4 should not contain
                 # evaluation metrics, while r1, r3 should.
                 r0 = agent.train()
+                print(r0)
                 r1 = agent.train()
+                print(r1)
                 r2 = agent.train()
+                print(r2)
                 r3 = agent.train()
+                print(r3)
                 agent.stop()
 
-                self.assertTrue("evaluation" in r1)
-                self.assertTrue("evaluation" in r3)
                 self.assertFalse("evaluation" in r0)
+                self.assertTrue("evaluation" in r1)
                 self.assertFalse("evaluation" in r2)
+                self.assertTrue("evaluation" in r3)
                 self.assertTrue("episode_reward_mean" in r1["evaluation"])
                 self.assertNotEqual(r1["evaluation"], r3["evaluation"])
 
