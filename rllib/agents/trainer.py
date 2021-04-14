@@ -618,7 +618,7 @@ class Trainer(Trainable):
             # A class specifier.
             elif "." in env:
                 self.env_creator = \
-                    lambda env_context: from_config(env, env_context)
+                    lambda env_context: from_config(env, _args=[env_context])
             # Try gym/PyBullet/Vizdoom.
             else:
 

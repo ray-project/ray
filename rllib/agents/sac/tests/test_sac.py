@@ -123,28 +123,23 @@ class TestSAC(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        # Mimic tuned_example for SAC Pendulum.
-        config["horizon"] = 200
-        config["soft_horizon"] = True
-        config["no_done_at_end"] = True
-        config["n_step"] = 3
-        config["prioritized_replay"] = True
-        config["timesteps_per_iteration"] = 1000
-        config["learning_starts"] = 256
         config["clip_actions"] = False
+        config["initial_alpha"] = 0.001
+        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
+        config["env_config"] = {"repeat_delay": 0}
 
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = sac.SACTrainer(config=config, env="Pendulum-v0")
-            num_iterations = 200
+            trainer = sac.SACTrainer(config=config, env=env)
+            num_iterations = 50
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()
-                print(results)
-                if results["episode_reward_mean"] > -700.0:
+                print(f"R={results['episode_reward_mean']}")
+                if results["episode_reward_mean"] > 30.0:
                     learnt = True
                     break
             assert learnt, \
-                "SAC multi-GPU (with fake-GPUs) did not learn CartPole!"
+                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
             trainer.stop()
 
     def test_sac_loss_function(self):
@@ -315,7 +310,7 @@ class TestSAC(unittest.TestCase):
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
                 c, a, e, t = policy.critic_loss, policy.actor_loss, \
-                    policy.alpha_loss, policy.td_error
+                    policy.alpha_loss, policy.model.td_error
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
@@ -431,9 +426,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                                rtol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, rtol=0.1)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -448,9 +443,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.07)
+                                rtol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.07)
+                            check(tf_var, torch_var, rtol=0.1)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return {
