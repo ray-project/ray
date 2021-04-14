@@ -84,21 +84,24 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    arg = request_item.args[0] if len(request_item.args) == 1 else None
+    if len(request_item.args) <= 1:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-    # If the input data from handle is web request, we don't need to wrap
-    # it in ServeRequest.
-    if isinstance(arg, starlette.requests.Request):
-        return arg
-    elif isinstance(arg, HTTPRequestWrapper):
-        return build_starlette_request(arg.scope, arg.body)
-    else:
-        return ServeRequest(
-            arg,
-            request_item.kwargs,
-            headers=request_item.metadata.http_headers,
-            method=request_item.metadata.http_method,
-        )
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, starlette.requests.Request):
+            return (arg, ), {}
+        elif isinstance(arg, HTTPRequestWrapper):
+            return (build_starlette_request(arg.scope, arg.body), ), {}
+        elif request_item.metadata.use_serve_request:
+            return (ServeRequest(
+                arg,
+                request_item.kwargs,
+                headers=request_item.metadata.http_headers,
+                method=request_item.metadata.http_method,
+            ), ), {}
+
+    return request_item.args, request_item.kwargs
 
 
 def _get_logger():

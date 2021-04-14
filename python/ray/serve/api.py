@@ -482,11 +482,12 @@ class Client:
                                                    proportion))
 
     @_ensure_connected
-    def get_handle(
-            self,
-            endpoint_name: str,
-            missing_ok: Optional[bool] = False,
-            sync: bool = True) -> Union[RayServeHandle, RayServeSyncHandle]:
+    def get_handle(self,
+                   endpoint_name: str,
+                   missing_ok: Optional[bool] = False,
+                   sync: bool = True,
+                   _internal_use_serve_request: Optional[bool] = True
+                   ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
@@ -536,12 +537,14 @@ class Client:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods)
+                known_python_methods=python_methods,
+                _internal_use_serve_request=_internal_use_serve_request)
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods)
+                known_python_methods=python_methods,
+                _internal_use_serve_request=_internal_use_serve_request)
 
         self.handle_cache[cache_key] = handle
         return handle
@@ -896,7 +899,9 @@ def shadow_traffic(endpoint_name: str, backend_tag: str,
 
 def get_handle(endpoint_name: str,
                missing_ok: Optional[bool] = False,
-               sync: bool = True) -> Union[RayServeHandle, RayServeSyncHandle]:
+               sync: Optional[bool] = True,
+               _internal_use_serve_request: Optional[bool] = True
+               ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -911,7 +916,11 @@ def get_handle(endpoint_name: str,
         RayServeHandle
     """
     return _get_global_client().get_handle(
-        endpoint_name, missing_ok=missing_ok, sync=sync, _internal=True)
+        endpoint_name,
+        missing_ok=missing_ok,
+        sync=sync,
+        _internal_use_serve_request=_internal_use_serve_request,
+        _internal=True)
 
 
 def get_replica_context() -> ReplicaContext:
@@ -1053,7 +1062,11 @@ class ServeDeployment:
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment."""
         return _get_global_client().get_handle(
-            self.name, missing_ok=True, sync=sync, _internal=True)
+            self.name,
+            missing_ok=True,
+            sync=sync,
+            _internal_use_serve_request=False,
+            _internal=True)
 
     def options(
             self,

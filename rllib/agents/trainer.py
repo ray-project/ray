@@ -208,6 +208,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Whether to run evaluation in parallel to a Trainer.train() call
+    # using threading. Default=False.
+    # E.g. evaluation_interval=2 -> For every other training iteration,
+    # the Trainer.train() and Trainer._evaluate() calls run in parallel.
+    # Note: This is experimental. Possible pitfalls could be race conditions
+    # for weight synching at the beginning of the evaluation loop.
+    "evaluation_parallel_to_training": False,
     # Internal flag that is set to True for evaluation workers.
     "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator

@@ -287,7 +287,7 @@ def train_mnist(config,
 # that affect the model complexity (such as the layer size), since it
 # does not have to be compatible to an existing model.
 def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
-    data_interface = MNISTDataInterface("/tmp/mnist_data", max_days=10)
+    data_interface = MNISTDataInterface("~/data", max_days=10)
     num_examples = data_interface._get_day_slice(day)
 
     config = {
