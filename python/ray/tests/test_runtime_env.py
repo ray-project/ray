@@ -117,7 +117,10 @@ def test_empty_working_dir(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     with tempfile.TemporaryDirectory() as tmp_dir:
-        runtime_env = f"""{{  "working_dir": "r{tmp_dir}", "py_modules": ["r{tmp_dir}"] }}"""
+        runtime_env = f"""{{
+    "working_dir": "r{tmp_dir}",
+    "py_modules": ["r{tmp_dir}"]
+}}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = ""
         script = driver_script.format(**locals())
