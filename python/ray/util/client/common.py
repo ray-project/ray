@@ -69,19 +69,16 @@ class ClientObjectRef(ClientBaseRef):
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
-        def set_value(resp):
-            from ray.util.client.client_pickler import loads_from_server
-
+        def set_value(data):
             def inner_set_value():
-                obj = resp.get
-                if not obj.valid:
-                    fut.set_exception(loads_from_server(resp.get.error))
+                if isinstance(data, Exception):
+                    fut.set_exception(data)
                 else:
-                    fut.set_result(loads_from_server(resp.get.data))
+                    fut.set_result(data)
 
             loop.call_soon_threadsafe(inner_set_value)
 
-        ray._register_callback(self, set_value)
+        self._on_completed(set_value)
         return fut
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
