@@ -1621,5 +1621,44 @@ def test_placement_group_gpu_assigned(ray_start_cluster):
     assert len(gpu_ids_res) == 2
 
 
+def test_placement_group_serialization():
+    """Tests conversion of placement group to json-serializable dict and back.
+
+    Tests conversion
+    placement_group -> dict -> placement_group and
+    dict -> placement_group -> dict
+    with and without non-null bundle cache.
+    """
+
+    # Tests conversion from dict to placement group and back.
+    def dict_to_pg_to_dict(pg_dict_in):
+        pg = PlacementGroup.from_json_serializable(pg_dict_in)
+        pg_dict_out = pg.to_json_serializable()
+        assert pg_dict_in == pg_dict_out
+
+    # Tests conversion from placement group to dict and back.
+    def pg_to_dict_to_pg(pg_in):
+        pg_dict = pg_in.to_json_serializable()
+        pg_out = PlacementGroup.from_json_serializable(pg_dict)
+        assert pg_out.id == pg_in.id
+        assert pg_out.bundle_cache == pg_in.bundle_cache
+
+    pg_id = PlacementGroupID(id=bytes(16))
+    id_string = bytes(16).hex()
+    bundle_cache = [{"CPU": 2}, {"custom_resource": 5}]
+
+    pg_with_bundles = PlacementGroup(id=pg_id, bundle_cache=bundle_cache)
+    pg_to_dict_to_pg(pg_with_bundles)
+
+    pg_no_bundles = PlacementGroup(id=pg_id)
+    pg_to_dict_to_pg(pg_no_bundles)
+
+    pg_dict_with_bundles = {"id": id_string, "bundle_cache": bundle_cache}
+    dict_to_pg_to_dict(pg_dict_with_bundles)
+
+    pg_dict_no_bundles = {"id": id_string, "bundle_cache": None}
+    dict_to_pg_to_dict(pg_dict_no_bundles)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

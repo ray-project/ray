@@ -1,16 +1,21 @@
 import time
-
-from typing import (List, Dict, Optional, Union)
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
+from typing import TYPE_CHECKING
 
 import ray
-from ray.util.client.common import ClientObjectRef
-from ray._raylet import PlacementGroupID, ObjectRef
+from ray._raylet import ObjectRef
+from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
 from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
 from ray._private.client_mode_hook import client_mode_wrap
 
-bundle_reservation_check = None
+if TYPE_CHECKING:
+    from ray.util.common import ClientObjectRef
 
+bundle_reservation_check = None
 
 # We need to import this method to use for ready API.
 # But ray.remote is only available in runtime, and
@@ -36,11 +41,12 @@ class PlacementGroup:
     def empty():
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self, id: PlacementGroupID):
+    def __init__(self, id: PlacementGroupID,
+                 bundle_cache: Optional[List[Dict]] = None):
         self.id = id
-        self.bundle_cache = None
+        self.bundle_cache = bundle_cache
 
-    def ready(self) -> Union[ObjectRef, ClientObjectRef]:
+    def ready(self) -> Union[ObjectRef, "ClientObjectRef"]:
         """Returns an ObjectRef to check ready status.
 
         This API runs a small dummy task to wait for placement group creation.
@@ -110,6 +116,48 @@ class PlacementGroup:
     def bundle_count(self) -> int:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
+
+    def to_json_serializable(self) -> dict:
+        """Convert this placement group into a dict for purposes of json
+        serialization.
+
+        Used when passing a placement group as an option to a Ray client remote
+        function. See set_task_options in util/client/common.py.
+
+        Return:
+            Dictionary with json-serializable keys representing the placemnent
+            group.
+        """
+        # Placement group id is converted to a hex /string/ to make it
+        # serializable.
+        return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
+
+    @staticmethod
+    def from_json_serializable(serializable_form: dict):
+        """Instantiate and return a PlacementGroup from its json-serializable
+        dict representation.
+
+        Used by Ray Client on server-side to deserialize placement group
+        option. See decode_options in util/client/server/server.py.
+
+        Args:
+            serializable_form(dict): Dictionary representing a placement group.
+        Return:
+            A placement group made from the data in the input dict.
+        """
+
+        # Validate serialized dict
+        assert serializable_form.keys() == {"id", "bundle_cache"}
+        # The value associated to key "id" is a hex string.
+        assert isinstance(serializable_form["id"], str)
+        if serializable_form["bundle_cache"] is not None:
+            assert isinstance(serializable_form["bundle_cache"], list)
+
+        # Deserialize and return a Placement Group.
+        id_bytes = bytes.fromhex(serializable_form["id"])
+        pg_id = PlacementGroupID(id_bytes)
+        bundle_cache = serializable_form["bundle_cache"]
+        return PlacementGroup(pg_id, bundle_cache)
 
     def _get_a_non_zero_resource(self, bundle: Dict):
         # Any number between 0-1 should be fine.

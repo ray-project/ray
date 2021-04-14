@@ -6,6 +6,7 @@ import uuid
 import os
 import inspect
 from ray.util.inspect import is_cython
+from ray.util.placement_group import PlacementGroup
 import json
 import threading
 from typing import Any
@@ -307,6 +308,11 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
+
+    if "placement_group" in options:
+        pg = options["placement_group"]  # type: PlacementGroup
+        options["placement_group"] = pg.to_json_serializable()
+
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str
 

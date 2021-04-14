@@ -31,6 +31,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -510,6 +511,13 @@ def decode_options(
         return None
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
+
+    if "placement_group" in opts:
+        pg_dict = opts["placement_group"]
+        assert isinstance(pg_dict, dict)
+        opts["placement_group"] = PlacementGroup.from_json_serializable(
+            pg_dict)
+
     return opts
 
 
