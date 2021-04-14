@@ -319,10 +319,6 @@ You can also view cluster-wide spill stats by using the ``ray memory`` command::
 
 If you only want to display cluster-wide spill stats, use ``ray memory --stats-only``.
 
-Performance Tips
-----------------
-It is recommended to use SSD for the spilling directory.
-
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
 
