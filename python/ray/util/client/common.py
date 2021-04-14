@@ -63,6 +63,9 @@ class ClientBaseRef:
 
 class ClientObjectRef(ClientBaseRef):
     def __await__(self):
+        return self.as_future.__await__()
+
+    def as_future(self):
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
@@ -79,7 +82,7 @@ class ClientObjectRef(ClientBaseRef):
             loop.call_soon_threadsafe(inner_set_value)
 
         ray._register_callback(self, set_value)
-        return fut.__await__()
+        return fut
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
         def deserialize_obj(resp):
