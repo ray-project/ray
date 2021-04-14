@@ -132,7 +132,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             # 24 bytes to store owner address, metadata, and buffer lengths.
             assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
                 == len(payload)
-            # TODO (yic): Considering add retry here to avoid transistent issue
+            # TODO (yic): Considering add retry here to avoid transient issue
             try:
                 written_bytes = f.write(payload)
                 url_with_offset = create_url_with_offset(

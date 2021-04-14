@@ -253,23 +253,18 @@ void LocalObjectManager::SpillObjectsInternal(
                 num_active_workers_ -= 1;
               }
               io_worker_pool_.PushSpillWorker(io_worker);
-              size_t num_objects_spilled = r.spilled_objects_url_size();
+              size_t num_objects_spilled = status.ok() ? r.spilled_objects_url_size() : 0;
               // Object spilling is always done in the order of the request.
               // For example, if an object succeeded, it'll guarentee that all objects
               // before this will succeed.
               RAY_CHECK(num_objects_spilled <= objects_to_spill.size());
-              if (!status.ok() || num_objects_spilled < objects_to_spill.size()) {
-                auto failed_num = objects_to_spill.size() - num_objects_spilled;
-                RAY_LOG(ERROR) << "Fail to spill " << failed_num << " objects.";
-                for (size_t i = !status.ok() ? 0 : num_objects_spilled;
-                     i != objects_to_spill.size(); ++i) {
-                  const auto &object_id = objects_to_spill[i];
-                  auto it = objects_pending_spill_.find(object_id);
-                  RAY_CHECK(it != objects_pending_spill_.end());
-                  pinned_objects_size_ += it->second.first->GetSize();
-                  pinned_objects_.emplace(object_id, std::move(it->second));
-                  objects_pending_spill_.erase(it);
-                }
+              for (size_t i = num_objects_spilled; i != objects_to_spill.size(); ++i) {
+                const auto &object_id = objects_to_spill[i];
+                auto it = objects_pending_spill_.find(object_id);
+                RAY_CHECK(it != objects_pending_spill_.end());
+                pinned_objects_size_ += it->second.first->GetSize();
+                pinned_objects_.emplace(object_id, std::move(it->second));
+                objects_pending_spill_.erase(it);
               }
 
               if (!status.ok()) {
