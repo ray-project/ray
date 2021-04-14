@@ -178,11 +178,6 @@ if __name__ == "__main__":
     # Add tracing-startup-hook to internal_kv so that new drivers can access it. # noqa
     ray.experimental.internal_kv._internal_kv_put("tracing_startup_hook",
                                                   args.tracing_startup_hook)
-    raise Exception()
-    logger.info(
-        f"tracing startup hook in kv "
-        f"{ray.experimental.internal_kv._internal_kv_get('tracing_startup_hook')}"  # noqa
-    )
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker

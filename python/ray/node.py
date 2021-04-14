@@ -84,7 +84,6 @@ class Node:
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        logger.info(f"ray params here {ray_params.__dict__}")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError("'shutdown_at_exit' and 'connect_only' "
@@ -227,6 +226,10 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
+            # Add tracing_startup_hook to redis / internal kv manually
+            # since internal kv is not yet initialized.
+            redis_client.hset("tracing_startup_hook", "value",
+                              ray_params.tracing_startup_hook)
 
         if not connect_only:
             self.start_ray_processes()

@@ -1299,16 +1299,11 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # setup tracing here
-    # raise Exception(f"first worker doesn't have internal kv set? {_internal_kv_get('tracing_startup_hook')}")
-    logger.info(f"internal kv in worker: {_internal_kv_initialized()}")
-    logger.info(f"internal_kv {_internal_kv_get('tracing_startup_hook')}")
     if _internal_kv_get("tracing_startup_hook"):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         _setup_tracing = import_from_string(
             _internal_kv_get("tracing_startup_hook").decode("utf-8"))
-        setup_tracing_result = _setup_tracing()
-        logger.info(setup_tracing_result)
-        logger.info(f"ray is now traced: {getattr(ray, '__traced__')}")
+        _setup_tracing()
 
 
 def disconnect(exiting_interpreter=False):
