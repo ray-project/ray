@@ -69,7 +69,10 @@ class DataClient:
                     continue
                 if response.req_id in self.asyncio_waiting_data:
                     cb = self.asyncio_waiting_data.pop(response.req_id)
-                    cb(response)
+                    try:
+                        cb(response)
+                    except Exception:
+                        logger.exception("Callback error:")
                 else:
                     with self.cv:
                         self.ready_data[response.req_id] = response

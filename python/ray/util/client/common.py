@@ -82,8 +82,15 @@ class ClientObjectRef(ClientBaseRef):
         return fut
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
+        """
+        from ray.util.client.client_pickler import loads_from_server
+
         def deserialize_obj(resp):
-            from ray.util.client.client_pickler import loads_from_server
+            """Converts from a GetResponse proto to a python object."""
             obj = resp.get
             data = None
             if not obj.valid:
