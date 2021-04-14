@@ -548,8 +548,8 @@ class Trainer(Trainable):
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
-                    # Evaluation workers (+1 b/c of the additional local
-                    # worker).
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",

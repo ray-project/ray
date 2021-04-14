@@ -84,12 +84,12 @@ class OverrideDefaultResourceRequest:
         # (already properly defined as device bundles).
         return PlacementGroupFactory(
             bundles=[{
-                # Local worker + local eval worker + replay buffer actors.
+                # Local worker + replay buffer actors.
                 # Force replay buffers to be on same node to maximize
                 # data bandwidth between buffers and the learner (driver).
                 # Replay buffer actors each contain one shard of the total
                 # replay buffer and use 1 CPU each.
-                "CPU": cf["num_cpus_for_driver"] + 1 +
+                "CPU": cf["num_cpus_for_driver"] +
                 cf["optimizer"]["num_replay_buffer_shards"],
                 "GPU": cf["num_gpus"]
             }] + [
