@@ -1,6 +1,7 @@
 import pathlib
 from typing import List
 import logging
+import shutil
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -26,5 +27,7 @@ def dispatch(request: str, args: List[str]):
     """
     if request == "DEL_FILE" and len(args) == 1:
         path = pathlib.Path(args[0])
-        if path.exists():
+        if path.is_dir():
+            shutil.rmtree(str(path))
+        else:
             path.unlink()

@@ -151,7 +151,6 @@ def test_serialize_app_imported_closure(start_ray):
 def test_serialize_serve_dataclass(start_ray):
     @dataclass
     class BackendMetadata:
-        accepts_batches: bool = False
         is_blocking: bool = True
         autoscaling_config: Optional[Dict[str, Any]] = None
 
@@ -167,7 +166,6 @@ def test_serialize_serve_dataclass(start_ray):
     ray.get(consume.remote(BackendConfig()))
 
 
-@pytest.mark.skip("Fails. https://github.com/ray-project/ray/issues/14960.")
 def test_serialize_nested_field(start_ray):
     class B(BaseModel):
         v: List[int]

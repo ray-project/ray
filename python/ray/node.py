@@ -208,6 +208,10 @@ class Node:
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
+            gcs_server_port = os.getenv(
+                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+            if gcs_server_port:
+                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             self._webui_url = None
         else:
             self._webui_url = (
@@ -671,7 +675,7 @@ class Node:
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
-             port_blacklist=self._ray_params.reserved_ports)
+             port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (

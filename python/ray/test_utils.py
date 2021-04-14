@@ -205,7 +205,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     return out
 
 
-def run_string_as_driver_nonblocking(driver_script):
+def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
@@ -225,7 +225,8 @@ def run_string_as_driver_nonblocking(driver_script):
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc

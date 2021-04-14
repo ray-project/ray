@@ -48,23 +48,12 @@ enum MessageType:long {
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
-  // Sending and receiving data.
-  // PlasmaDataRequest initiates sending the data, there will be one
-  // such message per data transfer.
-  PlasmaDataRequest,
-  // PlasmaDataReply contains the actual data and is sent back to the
-  // object store that requested the data. For each transfer, multiple
-  // reply messages get sent. Each one contains a fixed number of bytes.
-  PlasmaDataReply,
   // Set memory quota for a client.
   PlasmaSetOptionsRequest,
   PlasmaSetOptionsReply,
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
-  // Touch a number of objects to bump their position in the LRU cache.
-  PlasmaRefreshLRURequest,
-  PlasmaRefreshLRUReply,
 }
 
 enum PlasmaError:int {
@@ -289,33 +278,4 @@ table PlasmaEvictRequest {
 table PlasmaEvictReply {
   // Number of bytes that have been freed.
   num_bytes: ulong;
-}
-
-table PlasmaSubscribeRequest {
-}
-
-table PlasmaDataRequest {
-  // ID of the object that is requested.
-  object_id: string;
-  // The host address where the data shall be sent to.
-  address: string;
-  // The port of the manager the data shall be sent to.
-  port: int;
-}
-
-table PlasmaDataReply {
-  // ID of the object that will be sent.
-  object_id: string;
-  // Size of the object data in bytes.
-  object_size: ulong;
-  // Size of the metadata in bytes.
-  metadata_size: ulong;
-}
-
-table PlasmaRefreshLRURequest {
-  // ID of the objects to be bumped in the LRU cache.
-  object_ids: [string];
-}
-
-table PlasmaRefreshLRUReply {
 }

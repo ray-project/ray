@@ -144,10 +144,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
   NodeManager(instrumented_io_context &io_service, const NodeID &self_node_id,
-              const NodeManagerConfig &config, ObjectManager &object_manager,
+              const NodeManagerConfig &config,
+              const ObjectManagerConfig &object_manager_config,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
   ///
@@ -184,6 +184,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
+
+  int GetObjectManagerPort() const { return object_manager_.GetServerPort(); }
 
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
@@ -363,9 +365,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle an object becoming local. This updates any local accounting, but
   /// does not write to any global accounting in the GCS.
   ///
-  /// \param object_id The object that is locally available.
+  /// \param object_info The info about the object that is locally available.
   /// \return Void.
-  void HandleObjectLocal(const ObjectID &object_id);
+  void HandleObjectLocal(const ObjectInfo &object_info);
   /// Handle an object that is no longer local. This updates any local
   /// accounting, but does not write to any global accounting in the GCS.
   ///
@@ -472,11 +474,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return void.
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
-
-  /// Setup callback with Object Manager.
-  ///
-  /// \return Status indicating whether setup was successful.
-  ray::Status SetupPlasmaSubscription();
 
   /// Handle a `RequestResourceReport` request.
   void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
@@ -616,7 +613,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   instrumented_io_context &io_service_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
-  ObjectManager &object_manager_;
+  /// Manages client requests for object transfers and availability.
+  ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.

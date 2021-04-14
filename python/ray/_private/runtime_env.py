@@ -11,7 +11,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Set, Callable
 from urllib.parse import urlparse
 import os
 import sys
@@ -25,7 +25,6 @@ PKG_DIR = None
 logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
-FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
 
 
 class RuntimeEnvDict:
@@ -110,22 +109,42 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
     return left or right
 
 
-def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
+def _dir_travel(
+        path: Path,
+        excludes: Set[Path],
+        handler: Callable,
+):
+    if path in excludes:
+        return
+    handler(path)
+    if path.is_dir():
+        for sub_path in path.iterdir():
+            _dir_travel(sub_path, excludes, handler)
+
+
+def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
+                zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
-    for from_file_name in path.glob("**/*"):
-        file_size = from_file_name.stat().st_size
-        if file_size >= FILE_SIZE_LIMIT:
-            raise RuntimeError(f"File {from_file_name} is too big, "
-                               "which currently is not allowd ")
-        if file_size >= FILE_SIZE_WARNING:
-            logger.warning(
-                f"File {from_file_name} is too big ({file_size} bytes). "
-                "Consider exclude this file in working directory.")
-        to_file_name = from_file_name.relative_to(relative_path)
-        zip_handler.write(from_file_name, to_file_name)
+
+    def handler(path: Path):
+        # Pack this path if it's an empty directory or it's a file.
+        if path.is_dir() and next(path.iterdir()) is None or path.is_file():
+            file_size = path.stat().st_size
+            if file_size >= FILE_SIZE_WARNING:
+                logger.warning(
+                    f"File {path} is very large ({file_size} bytes). "
+                    "Consider excluding this file from the working directory.")
+            to_path = path.relative_to(relative_path)
+            zip_handler.write(path, to_path)
+
+    _dir_travel(root, excludes, handler)
 
 
-def _hash_modules(path: Path) -> bytes:
+def _hash_modules(
+        root: Path,
+        relative_path: Path,
+        excludes: Set[Path],
+) -> bytes:
     """Helper function to create hash of a directory.
 
     It'll go through all the files in the directory and xor
@@ -133,16 +152,20 @@ def _hash_modules(path: Path) -> bytes:
     """
     hash_val = None
     BUF_SIZE = 4096 * 1024
-    for from_file_name in path.glob("**/*"):
+
+    def handler(path: Path):
         md5 = hashlib.md5()
-        md5.update(str(from_file_name).encode())
-        if not Path(from_file_name).is_dir():
-            with open(from_file_name, mode="rb") as f:
+        md5.update(str(path.relative_to(relative_path)).encode())
+        if not path.is_dir():
+            with path.open("rb") as f:
                 data = f.read(BUF_SIZE)
-                if not data:
-                    break
-                md5.update(data)
+                while len(data) != 0:
+                    md5.update(data)
+                    data = f.read(BUF_SIZE)
+        nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
+
+    _dir_travel(root, excludes, handler)
     return hash_val
 
 
@@ -159,7 +182,8 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
+def get_project_package_name(working_dir: str, py_modules: List[str],
+                             excludes: List[str]) -> str:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
@@ -180,23 +204,29 @@ def get_project_package_name(working_dir: str, py_modules: List[str]) -> str:
     Args:
         working_dir (str): The working directory.
         py_modules (list[str]): The python module.
+        excludes (set[str]): The dir or files that should be excluded
 
     Returns:
         Package name as a string.
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
+    excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
-        hash_val = _xor_bytes(hash_val, _hash_modules(Path(working_dir)))
+        working_dir = Path(working_dir).absolute()
+        hash_val = _xor_bytes(
+            hash_val, _hash_modules(working_dir, working_dir, excludes))
     for py_module in py_modules or []:
-        hash_val = _xor_bytes(hash_val, _hash_modules(Path(py_module).parent))
+        module_dir = Path(py_module).absolute()
+        hash_val = _xor_bytes(
+            hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
 def create_project_package(working_dir: str, py_modules: List[str],
-                           output_path: str) -> None:
+                           excludes: List[str], output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working directory
@@ -206,36 +236,39 @@ def create_project_package(working_dir: str, py_modules: List[str],
         working_dir (str): The working directory.
         py_modules (list[str]): The list of path of python modules to be
             included.
+        excludes (List(str)): The directories or file to be excluded.
         output_path (str): The path of file to be created.
     """
-    pkg_file = Path(output_path)
+    pkg_file = Path(output_path).absolute()
+    excludes = [Path(e).absolute() for e in excludes]
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
-            working_path = Path(working_dir)
-            _zip_module(working_path, working_path, zip_handler)
+            working_path = Path(working_dir).absolute()
+            _zip_module(working_path, working_path, excludes, zip_handler)
         for py_module in py_modules or []:
-            _zip_module(Path(py_module), Path(py_module).parent, zip_handler)
+            module_path = Path(py_module).absolute()
+            _zip_module(module_path, module_path.parent, excludes, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
-    """Fetch a package from a given uri.
+def fetch_package(pkg_uri: str) -> int:
+    """Fetch a package from a given uri if not exists locally.
 
-    This function is used to fetch a pacakge from the given uri to local
-    filesystem. If it exists, it'll just return 0.
+    This function is used to fetch a pacakge from the given uri and unpack it.
 
     Args:
         pkg_uri (str): The uri of the package to download.
-        pkg_file (pathlib.Path): The path in local filesystem to download the
-            package.
 
     Returns:
-        The number of bytes downloaded.
+        The directory containing this package
     """
-    if pkg_file is None:
-        pkg_file = Path(_get_local_path(pkg_uri))
-    if pkg_file.exists():
-        return 0
+    pkg_file = Path(_get_local_path(pkg_uri))
+    local_dir = pkg_file.with_suffix("")
+    assert local_dir != pkg_file, "Invalid pkg_file!"
+    if local_dir.exists():
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        return local_dir
+    logger.debug("Fetch packge")
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
         code = _internal_kv_get(pkg_uri)
@@ -243,9 +276,14 @@ def fetch_package(pkg_uri: str, pkg_file: Path = None) -> int:
             raise IOError("Fetch uri failed")
         code = code or b""
         pkg_file.write_bytes(code)
-        return len(code)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+    logger.debug(f"Unpack {pkg_file} to {local_dir}")
+    with ZipFile(str(pkg_file), "r") as zip_ref:
+        zip_ref.extractall(local_dir)
+    pkg_file.unlink()
+    return local_dir
 
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
@@ -304,10 +342,13 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     # For now, we only support local directory and packages
     working_dir = job_config.runtime_env.get("working_dir")
     py_modules = job_config.runtime_env.get("py_modules")
+    excludes = job_config.runtime_env.get("excludes")
 
     if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
                                                                 or py_modules):
-        pkg_name = get_project_package_name(working_dir, py_modules)
+        if excludes is None:
+            excludes = set()
+        pkg_name = get_project_package_name(working_dir, py_modules, excludes)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
@@ -331,16 +372,18 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             pkg_file = Path(file_path)
             working_dir = job_config.runtime_env.get("working_dir")
             py_modules = job_config.runtime_env.get("py_modules")
+            excludes = job_config.runtime_env.get("excludes") or []
             logger.info(f"{pkg_uri} doesn't exist. Create new package with"
                         f" {working_dir} and {py_modules}")
             if not pkg_file.exists():
-                create_project_package(working_dir, py_modules, file_path)
+                create_project_package(working_dir, py_modules, excludes,
+                                       file_path)
             # Push the data to remote storage
             pkg_size = push_package(pkg_uri, pkg_file)
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
@@ -348,19 +391,20 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> None:
 
     Args:
         pkg_uri list(str): Package of the working dir for the runtime env.
-    """
 
+    Return:
+        Working directory is returned if the pkg_uris is not empty,
+        otherwise, None is returned.
+    """
+    pkg_dir = None
     assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
-        pkg_file = Path(_get_local_path(pkg_uri))
         # For each node, the package will only be downloaded one time
         # Locking to avoid multiple process download concurrently
+        pkg_file = Path(_get_local_path(pkg_uri))
         with FileLock(str(pkg_file) + ".lock"):
-            # TODO(yic): checksum calculation is required
-            if pkg_file.exists():
-                logger.debug(
-                    f"{pkg_uri} has existed locally, skip downloading")
-            else:
-                pkg_size = fetch_package(pkg_uri, pkg_file)
-                logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-        sys.path.insert(0, str(pkg_file))
+            pkg_dir = fetch_package(pkg_uri)
+        sys.path.insert(0, str(pkg_dir))
+    # Right now, multiple pkg_uris are not supported correctly.
+    # We return the last one as working directory
+    return str(pkg_dir) if pkg_dir else None

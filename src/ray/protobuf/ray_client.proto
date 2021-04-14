@@ -103,6 +103,12 @@ message PutRequest {
 message PutResponse {
   // The reference ID for the data that the server has stored.
   bytes id = 1;
+
+  // Whether or not the put was successful.
+  bool valid = 2;
+
+  // An error blob (for example, an exception) on failure.
+  bytes error = 3;
 }
 
 // Requests data from the server.
@@ -243,6 +249,8 @@ message InitRequest {
 }
 
 message InitResponse {
+  bool ok = 1;
+  string msg = 2;
 }
 
 message PrepRuntimeEnvRequest {

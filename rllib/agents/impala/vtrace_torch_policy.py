@@ -103,6 +103,7 @@ class VTraceLoss:
 
         # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
+        self.mean_entropy = self.entropy / torch.sum(valid_mask)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -230,7 +231,7 @@ def stats(policy, train_batch):
     return {
         "cur_lr": policy.cur_lr,
         "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,

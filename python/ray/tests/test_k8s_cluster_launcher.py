@@ -7,7 +7,7 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private.kubernetes.node_provider import \
+from ray.autoscaler._private._kubernetes.node_provider import \
     KubernetesNodeProvider
 from ray.autoscaler import sdk
 

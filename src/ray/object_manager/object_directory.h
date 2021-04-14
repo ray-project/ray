@@ -24,7 +24,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
-#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/common.h"
 
 namespace ray {
 
@@ -114,9 +114,8 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                        const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
@@ -124,9 +123,9 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                          const NodeID &node_id,
+                                          const ObjectInfo &object_info) = 0;
 
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;
@@ -168,12 +167,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
+  ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                const ObjectInfo &object_info) override;
+
+  ray::Status ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
+                                  const ObjectInfo &object_info) override;
 
   void RecordMetrics(uint64_t duration_ms) override;
 
