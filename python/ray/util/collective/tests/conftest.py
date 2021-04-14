@@ -5,7 +5,7 @@ import pytest
 import ray
 from ray.util.collective.collective_group.nccl_collective_group \
     import _get_comm_key_from_devices, _get_comm_key_send_recv
-from ray.util.collective.const import get_nccl_store_name
+from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -28,14 +28,15 @@ def clean_up():
                     p2p_communicator_key = _get_comm_key_send_recv(i, 0, j, 0)
                     all_keys.append(p2p_communicator_key + "@" + name)
     for group_key in all_keys:
-        store_name = get_nccl_store_name(group_key)
+        store_name = get_store_name(group_key)
         try:
             actor = ray.get_actor(store_name)
         except ValueError:
             actor = None
         if actor:
-            logger.debug("Killing actor with group_key: '{}' and store: '{}'."
-                         .format(group_key, store_name))
+            logger.debug(
+                "Killing actor with group_key: '{}' and store: '{}'.".format(
+                    group_key, store_name))
             ray.kill(actor)
 
 
@@ -67,4 +68,20 @@ def ray_start_distributed_multigpu_2_nodes_4_gpus():
     ray.init("auto")
     yield
     clean_up()
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_single_node():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_distributed_2_nodes():
+    # The cluster has a setup of 2 nodes.
+    # no GPUs!
+    ray.init("auto")
+    yield
     ray.shutdown()

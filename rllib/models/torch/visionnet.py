@@ -60,7 +60,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
 
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
-            padding, out_size = same_padding(in_size, kernel, [stride, stride])
+            padding, out_size = same_padding(in_size, kernel, stride)
             layers.append(
                 SlimConv2d(
                     in_channels,
@@ -172,8 +172,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
-                padding, out_size = same_padding(in_size, kernel,
-                                                 [stride, stride])
+                padding, out_size = same_padding(in_size, kernel, stride)
                 vf_layers.append(
                     SlimConv2d(
                         in_channels,

@@ -14,11 +14,16 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
-    boost::asio::io_service &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client)
-    : ObjectDirectory(io_service, gcs_client), client_call_manager_(io_service) {}
+    instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+    std::function<void(const ObjectID &)> mark_as_failed)
+    : ObjectDirectory(io_service, gcs_client),
+      client_call_manager_(io_service),
+      mark_as_failed_(mark_as_failed) {}
 
 namespace {
 
@@ -38,6 +43,7 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_reply,
                            const Status &status, const ObjectID &object_id,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
+                           std::function<void(const ObjectID &)> mark_as_failed,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
                            NodeID *spilled_node_id, size_t *object_size) {
   bool is_updated = false;
@@ -45,12 +51,14 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
   std::unordered_set<NodeID> new_node_ids;
 
   if (!status.ok()) {
-    RAY_LOG(INFO) << "Failed to return location updates to subscribers  for " << object_id
+    RAY_LOG(INFO) << "Failed to return location updates to subscribers for " << object_id
                   << ": " << status.ToString()
                   << ", assuming that the object was freed or evicted.";
-    // When we can't get location updates from the owner, we assume that the object was
-    // freed or evicted, so we send an empty location update to all subscribers.
+    // When we can't get location updates from the owner, we assume that the object
+    // was freed or evicted, so we send an empty location update to all subscribers.
     *node_ids = new_node_ids;
+    // Mark the object as failed immediately here since we know it can never appear.
+    mark_as_failed(object_id);
     is_updated = true;
   } else {
     // The size can be 0 if the update was a deletion. This assumes that an
@@ -76,21 +84,25 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
           NodeID::FromBinary(location_reply.spilled_node_id());
       RAY_LOG(DEBUG) << "Received object spilled to " << new_spilled_url << " spilled on "
                      << new_spilled_node_id;
-      *spilled_url = new_spilled_url;
-      *spilled_node_id = new_spilled_node_id;
+      if (gcs_client->Nodes().IsRemoved(new_spilled_node_id)) {
+        *spilled_url = "";
+        *spilled_node_id = NodeID::Nil();
+      } else {
+        *spilled_url = new_spilled_url;
+        *spilled_node_id = new_spilled_node_id;
+      }
       is_updated = true;
     }
   }
   return is_updated;
 }
 
-rpc::Address GetOwnerAddressFromObjectInfo(
-    const object_manager::protocol::ObjectInfoT &object_info) {
+rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id);
+  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
-  owner_address.set_worker_id(object_info.owner_worker_id);
+  owner_address.set_worker_id(object_info.owner_worker_id.Binary());
   return owner_address;
 }
 
@@ -114,9 +126,8 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
+    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+  const WorkerID &worker_id = object_info.owner_worker_id;
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
@@ -126,9 +137,11 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
     return Status::OK();
   }
   rpc::AddObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(object_info.owner_worker_id);
+  request.set_intended_worker_id(object_info.owner_worker_id.Binary());
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+
+  metrics_num_object_locations_added_++;
 
   rpc_client->AddObjectLocationOwner(
       request, [worker_id, object_id, node_id](
@@ -147,9 +160,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
+    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+  const WorkerID &worker_id = object_info.owner_worker_id;
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
@@ -160,9 +172,11 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   }
 
   rpc::RemoveObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(object_info.owner_worker_id);
+  request.set_intended_worker_id(worker_id.Binary());
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
+
+  metrics_num_object_locations_removed_++;
 
   rpc_client->RemoveObjectLocationOwner(
       request, [worker_id, object_id, node_id](
@@ -193,7 +207,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
   it->second.subscribed = true;
 
   // Update entries for this object.
-  if (UpdateObjectLocations(reply, status, object_id, gcs_client_,
+  if (UpdateObjectLocations(reply, status, object_id, gcs_client_, mark_as_failed_,
                             &it->second.current_object_locations, &it->second.spilled_url,
                             &it->second.spilled_node_id, &it->second.object_size)) {
     RAY_LOG(DEBUG) << "Pushing location updates to subscribers for object " << object_id
@@ -201,6 +215,7 @@ void OwnershipBasedObjectDirectory::SubscriptionCallback(
                    << " locations, spilled_url: " << it->second.spilled_url
                    << ", spilled node ID: " << it->second.spilled_node_id
                    << ", object size: " << it->second.object_size;
+    metrics_num_object_location_updates_++;
     // Copy the callbacks so that the callbacks can unsubscribe without interrupting
     // looping over the callbacks.
     auto callbacks = it->second.callbacks;
@@ -275,13 +290,14 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                    << " locations, spilled_url: " << spilled_url
                    << ", spilled node ID: " << spilled_node_id
                    << ", object size: " << object_size;
-    // We post the callback to the event loop in order to avoid mutating data structures
-    // shared with the caller and potentially invalidating caller iterators.
-    // See https://github.com/ray-project/ray/issues/2959.
+    // We post the callback to the event loop in order to avoid mutating data
+    // structures shared with the caller and potentially invalidating caller
+    // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
         [callback, locations, spilled_url, spilled_node_id, object_size, object_id]() {
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-        });
+        },
+        "ObjectDirectory.SubscribeObjectLocations");
   }
   return Status::OK();
 }
@@ -302,6 +318,7 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
 ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     const ObjectID &object_id, const rpc::Address &owner_address,
     const OnLocationsFound &callback) {
+  metrics_num_object_location_lookups_++;
   auto it = listeners_.find(object_id);
   if (it != listeners_.end() && it->second.subscribed) {
     // If we have locations cached due to a concurrent SubscribeObjectLocations
@@ -312,13 +329,14 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     auto &spilled_url = it->second.spilled_url;
     auto &spilled_node_id = it->second.spilled_node_id;
     auto object_size = it->second.object_size;
-    // We post the callback to the event loop in order to avoid mutating data structures
-    // shared with the caller and potentially invalidating caller iterators.
-    // See https://github.com/ray-project/ray/issues/2959.
+    // We post the callback to the event loop in order to avoid mutating data
+    // structures shared with the caller and potentially invalidating caller
+    // iterators. See https://github.com/ray-project/ray/issues/2959.
     io_service_.post(
         [callback, object_id, locations, spilled_url, spilled_node_id, object_size]() {
           callback(object_id, locations, spilled_url, spilled_node_id, object_size);
-        });
+        },
+        "ObjectDirectory.LookupLocations");
   } else {
     WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
     std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
@@ -328,9 +346,11 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
       // We post the callback to the event loop in order to avoid mutating data structures
       // shared with the caller and potentially invalidating caller iterators.
       // See https://github.com/ray-project/ray/issues/2959.
-      io_service_.post([callback, object_id]() {
-        callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
-      });
+      io_service_.post(
+          [callback, object_id]() {
+            callback(object_id, std::unordered_set<NodeID>(), "", NodeID::Nil(), 0);
+          },
+          "ObjectDirectory.LookupLocations");
       return Status::OK();
     }
 
@@ -350,8 +370,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           std::string spilled_url;
           NodeID spilled_node_id;
           size_t object_size = 0;
-          UpdateObjectLocations(reply, status, object_id, gcs_client_, &node_ids,
-                                &spilled_url, &spilled_node_id, &object_size);
+          UpdateObjectLocations(reply, status, object_id, gcs_client_, mark_as_failed_,
+                                &node_ids, &spilled_url, &spilled_node_id, &object_size);
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()
                          << " locations, spilled_url: " << spilled_url
@@ -367,10 +387,48 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
   return Status::OK();
 }
 
+void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
+  stats::ObjectDirectoryLocationSubscriptions.Record(listeners_.size());
+
+  // Record number of object location updates per second.
+  metrics_num_object_location_updates_per_second_ =
+      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryLocationUpdates.Record(
+      metrics_num_object_location_updates_per_second_);
+  metrics_num_object_location_updates_ = 0;
+  // Record number of object location lookups per second.
+  metrics_num_object_location_lookups_per_second_ =
+      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryLocationLookups.Record(
+      metrics_num_object_location_lookups_per_second_);
+  metrics_num_object_location_lookups_ = 0;
+  // Record number of object locations added per second.
+  metrics_num_object_locations_added_per_second_ =
+      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryAddedLocations.Record(
+      metrics_num_object_locations_added_per_second_);
+  metrics_num_object_locations_added_ = 0;
+  // Record number of object locations removed per second.
+  metrics_num_object_locations_removed_per_second_ =
+      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms);
+  stats::ObjectDirectoryRemovedLocations.Record(
+      metrics_num_object_locations_removed_per_second_);
+  metrics_num_object_locations_removed_ = 0;
+}
+
 std::string OwnershipBasedObjectDirectory::DebugString() const {
   std::stringstream result;
+  result << std::fixed << std::setprecision(3);
   result << "OwnershipBasedObjectDirectory:";
   result << "\n- num listeners: " << listeners_.size();
+  result << "\n- num location updates per second: "
+         << metrics_num_object_location_updates_per_second_;
+  result << "\n- num location lookups per second: "
+         << metrics_num_object_location_lookups_per_second_;
+  result << "\n- num locations added per second: "
+         << metrics_num_object_locations_added_per_second_;
+  result << "\n- num locations removed per second: "
+         << metrics_num_object_locations_removed_per_second_;
   return result.str();
 }
 

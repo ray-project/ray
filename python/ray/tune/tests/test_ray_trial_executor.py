@@ -258,7 +258,7 @@ class RayExecutorQueueTest(unittest.TestCase):
         self.trial_executor.start_trial(gpu_trial)
 
         # TODO(rliaw): This behavior is probably undesirable, but right now
-        # trials with different resource requirements is not often used.
+        #  trials with different resource requirements is not often used.
         cpu_only_trial = create_trial(1, 0)
         self.assertFalse(
             self.trial_executor.has_resources_for_trial(cpu_only_trial))

@@ -28,7 +28,7 @@ for i in range(num_nodes):
 
 ray.init(
     address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
-client = serve.start(detached=True)
+serve.start(detached=True)
 
 
 @ray.remote
@@ -55,43 +55,40 @@ class RandomKiller:
 
 
 class RandomTest:
-    def __init__(self, serve_client, max_endpoints=1):
-        self.client = serve_client
-        self.max_endpoints = max_endpoints
+    def __init__(self, max_deployments=1):
+        self.max_deployments = max_deployments
         self.weighted_actions = [
-            (self.create_endpoint, 1),
-            (self.verify_endpoint, 4),
+            (self.create_deployment, 1),
+            (self.verify_deployment, 4),
         ]
-        self.endpoints = []
-        for _ in range(max_endpoints):
-            self.create_endpoint()
+        self.deployments = []
+        for _ in range(max_deployments):
+            self.create_deployment()
 
-    def create_endpoint(self):
-        if len(self.endpoints) == self.max_endpoints:
-            endpoint_to_delete = self.endpoints.pop()
-            self.client.delete_endpoint(endpoint_to_delete)
-            self.client.delete_backend(endpoint_to_delete)
+    def create_deployment(self):
+        if len(self.deployments) == self.max_deployments:
+            deployment_to_delete = self.deployments.pop()
+            serve.delete_deployment(deployment_to_delete)
 
-        new_endpoint = "".join(
+        new_name = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])
 
+        @serve.deployment(name=new_name)
         def handler(self, *args):
-            return new_endpoint
+            return new_name
 
-        self.client.create_backend(new_endpoint, handler)
-        self.client.create_endpoint(
-            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
+        handler.deploy()
 
-        self.endpoints.append(new_endpoint)
+        self.deployments.append(new_name)
 
-    def verify_endpoint(self):
-        endpoint = random.choice(self.endpoints)
+    def verify_deployment(self):
+        deployment = random.choice(self.deployments)
         for _ in range(100):
             try:
-                r = requests.get("http://127.0.0.1:8000/" + endpoint)
-                assert r.text == endpoint
+                r = requests.get("http://127.0.0.1:8000/" + deployment)
+                assert r.text == deployment
             except Exception:
-                print("Request to {} failed.".format(endpoint))
+                print("Request to {} failed.".format(deployment))
                 time.sleep(0.01)
 
     def run(self):
@@ -116,6 +113,4 @@ class RandomTest:
 
 random_killer = RandomKiller.remote()
 random_killer.run.remote()
-# Subtract 1 CPU for the controller and 1 CPU from each node for the HTTP
-# server.
-RandomTest(client, max_endpoints=(num_nodes * (cpus_per_node - 1)) - 1).run()
+RandomTest(max_deployments=num_nodes * cpus_per_node).run()

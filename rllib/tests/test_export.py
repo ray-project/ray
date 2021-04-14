@@ -81,7 +81,7 @@ def export_test(alg_name, failures, framework="tf"):
         res = algo.train()
         print("current status: " + str(res))
 
-    export_dir = os.path.join(ray.utils.get_user_temp_dir(),
+    export_dir = os.path.join(ray._private.utils.get_user_temp_dir(),
                               "export_dir_%s" % alg_name)
     print("Exporting model ", alg_name, export_dir)
     algo.export_policy_model(export_dir)
@@ -110,17 +110,32 @@ def export_test(alg_name, failures, framework="tf"):
         assert model
 
         shutil.rmtree(export_dir)
+    algo.stop()
 
 
 class TestExport(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(
-            num_cpus=10, object_store_memory=1e9, ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
+
+    def test_export_a3c(self):
+        failures = []
+        export_test("A3C", failures, "tf")
+        assert not failures, failures
+
+    def test_export_ddpg(self):
+        failures = []
+        export_test("DDPG", failures, "tf")
+        assert not failures, failures
+
+    def test_export_dqn(self):
+        failures = []
+        export_test("DQN", failures, "tf")
+        assert not failures, failures
 
     def test_export_ppo(self):
         failures = []
@@ -128,10 +143,9 @@ class TestExport(unittest.TestCase):
         export_test("PPO", failures, "tf")
         assert not failures, failures
 
-    def test_export(self):
+    def test_export_sac(self):
         failures = []
-        for name in ["A3C", "DQN", "DDPG", "SAC"]:
-            export_test(name, failures)
+        export_test("SAC", failures, "tf")
         assert not failures, failures
         print("All export tests passed!")
 

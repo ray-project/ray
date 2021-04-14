@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
@@ -67,9 +67,8 @@ def build_tf_policy(
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
-        obs_include_prev_action_reward: bool = True,
         # Deprecated args.
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
         extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
 ) -> Type[DynamicTFPolicy]:
@@ -177,8 +176,6 @@ def build_tf_policy(
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
-        obs_include_prev_action_reward (bool): Whether to include the
-            previous action and reward in the model input.
 
     Returns:
         Type[DynamicTFPolicy]: A child class of DynamicTFPolicy based on the
@@ -193,6 +190,9 @@ def build_tf_policy(
             new="extra_action_out_fn",
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
+
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
 
     class policy_cls(base):
         def __init__(self,
@@ -235,7 +235,7 @@ def build_tf_policy(
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
                 get_batch_divisibility_req=get_batch_divisibility_req,
-                obs_include_prev_action_reward=obs_include_prev_action_reward)
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -292,6 +292,12 @@ def build_tf_policy(
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
+                # TODO: (sven) in torch, extra_learn_fetches do not exist.
+                #  Hence, things like td_error are returned by the stats_fn
+                #  and end up under the LEARNER_STATS_KEY. We should
+                #  change tf to do this as well. However, this will confilct
+                #  the handling of LEARNER_STATS_KEY inside the multi-GPU
+                #  train op.
                 # Auto-add empty learner stats dict if needed.
                 return dict({
                     LEARNER_STATS_KEY: {}

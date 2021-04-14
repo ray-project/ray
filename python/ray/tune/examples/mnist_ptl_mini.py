@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch.nn import functional as F
 import pytorch_lightning as pl
@@ -68,7 +70,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         progress_bar_refresh_rate=0,
         callbacks=[TuneReportCallback(metrics, on="validation_end")])
     trainer.fit(model, dm)

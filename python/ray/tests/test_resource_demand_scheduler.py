@@ -30,7 +30,7 @@ from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED, \
-                                STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
+                                STATUS_WAITING_FOR_SSH, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
 from ray.test_utils import same_elements
@@ -530,6 +530,7 @@ def test_request_resources_existing_usage():
     # 5 nodes with 32 CPU and 8 GPU each
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
     }, 2)
     all_nodes = provider.non_terminated_nodes({})
@@ -1164,14 +1165,14 @@ def test_handle_legacy_cluster_config_yaml():
             lm.get_static_node_resources_by_ip())
         # 4 nodes are necessary to meet resource demand.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-        to_launch = scheduler.get_nodes_to_launch(nodes, pending_launches,
-                                                  demands, utilizations, [],
-                                                  lm.get_node_resources())
+        to_launch = scheduler.get_nodes_to_launch(
+            nodes, pending_launches, demands, utilizations, [],
+            lm.get_static_node_resources_by_ip())
         # 0 because there are 4 pending launches and we only need 4.
         assert to_launch == {}
         to_launch = scheduler.get_nodes_to_launch(
             nodes, pending_launches, demands * 2, utilizations, [],
-            lm.get_node_resources())
+            lm.get_static_node_resources_by_ip())
         # 1 because there are 4 pending launches and we only allow a max of 5.
         assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
 
@@ -1227,13 +1228,13 @@ class LoadMetricsTest(unittest.TestCase):
             "1.1.1.1",
             {
                 "CPU": 64,
-                "memory": 20,  # 1000 MiB
-                "object_store_memory": 40  # 2000 MiB
+                "memory": 1000 * 1024 * 1024,
+                "object_store_memory": 2000 * 1024 * 1024,
             },
             {
                 "CPU": 2,
-                "memory": 10,  # 500 MiB
-                "object_store_memory": 20  # 1000 MiB
+                "memory": 500 * 1024 * 1024,  # 500 MiB
+                "object_store_memory": 1000 * 1024 * 1024,
             },
             {})
         lm.update("1.1.1.2", {
@@ -1458,15 +1459,11 @@ class AutoscalingTest(unittest.TestCase):
         lm.set_resource_requests([{"CPU": 64}] * 2)
         autoscaler.update()
 
-        self.provider.create_node(
-            {}, {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
-                TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
-            },
-            1,
-            _skip_wait=True)
-        self.waitForNodes(5)
+        # TODO (Alex): We should find a more robust way of simulating a node
+        # failure here.
+        obj = \
+            ("172.0.0.4", "m4.4xlarge")
+        autoscaler.node_tracker._add_node_mapping(4, obj)
 
         print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
@@ -1933,6 +1930,7 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["p2.xlarge"]["docker"] = {
             "worker_image": "p2x_image:nightly"
         }
+        config["docker"]["run_options"] = ["head-and-worker-run-options"]
         config["docker"]["worker_run_options"] = ["standard-run-options"]
         config["docker"]["image"] = "default-image:nightly"
         config["docker"]["worker_image"] = "default-image:nightly"
@@ -1988,6 +1986,8 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
                                "p2.8x-run-options")
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
+                               "head-and-worker-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
                                "p2.8x_image:latest")
         runner.assert_not_has_call(self.provider.mock_nodes[2].internal_ip,
                                    "default-image:nightly")
@@ -1998,6 +1998,8 @@ class AutoscalingTest(unittest.TestCase):
                                "p2x_image:nightly")
         runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
                                "standard-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[3].internal_ip,
+                               "head-and-worker-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[3].internal_ip,
                                    "p2.8x-run-options")
 
@@ -2005,6 +2007,8 @@ class AutoscalingTest(unittest.TestCase):
                                "default-image:nightly")
         runner.assert_has_call(self.provider.mock_nodes[4].internal_ip,
                                "standard-run-options")
+        runner.assert_has_call(self.provider.mock_nodes[4].internal_ip,
+                               "head-and-worker-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[4].internal_ip,
                                    "p2.8x-run-options")
         runner.assert_not_has_call(self.provider.mock_nodes[4].internal_ip,
@@ -2474,7 +2478,96 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- (no failures)
+ 1.2.3.6: p3.2xlarge
+
+Resources
+--------------------------------------------------------
+
+Usage:
+ 0/2 AcceleratorType:V100
+ 530/544 CPU
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+""".strip()
+
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
+    print(actual)
+    assert expected == actual
+
+
+def test_info_string_failed_node_cap():
+    lm_summary = LoadMetricsSummary(
+        head_ip="0.0.0.0",
+        usage={
+            "CPU": (530, 544),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (2 * 2**30, 2**33),
+            "object_store_memory": (3.14 * 2**30, 2**34)
+        },
+        resource_demand=[({
+            "CPU": 1
+        }, 150)],
+        pg_demand=[({
+            "bundles": [({
+                "CPU": 4
+            }, 5)],
+            "strategy": "PACK"
+        }, 420)],
+        request_demand=[({
+            "CPU": 16
+        }, 100)],
+        node_types=[])
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={
+            "p3.2xlarge": 2,
+            "m4.4xlarge": 20
+        },
+        pending_nodes=[("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+                       ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH)],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[(f"1.2.3.{i}", "p3.2xlarge") for i in range(100)])
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ 1.2.3.99: p3.2xlarge
+ 1.2.3.98: p3.2xlarge
+ 1.2.3.97: p3.2xlarge
+ 1.2.3.96: p3.2xlarge
+ 1.2.3.95: p3.2xlarge
+ 1.2.3.94: p3.2xlarge
+ 1.2.3.93: p3.2xlarge
+ 1.2.3.92: p3.2xlarge
+ 1.2.3.91: p3.2xlarge
+ 1.2.3.90: p3.2xlarge
+ 1.2.3.89: p3.2xlarge
+ 1.2.3.88: p3.2xlarge
+ 1.2.3.87: p3.2xlarge
+ 1.2.3.86: p3.2xlarge
+ 1.2.3.85: p3.2xlarge
+ 1.2.3.84: p3.2xlarge
+ 1.2.3.83: p3.2xlarge
+ 1.2.3.82: p3.2xlarge
+ 1.2.3.81: p3.2xlarge
 
 Resources
 --------------------------------------------------------

@@ -1,8 +1,11 @@
 # coding: utf-8
+import os
 import logging
 import sys
 import threading
 import time
+import tempfile
+import subprocess
 
 import numpy as np
 import pytest
@@ -558,6 +561,39 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
+def test_actor_max_concurrency(ray_start_regular_shared):
+    """
+    Test that an actor of max_concurrency=N should only run
+    N tasks at most concurrently.
+    """
+    CONCURRENCY = 3
+
+    @ray.remote
+    class ConcurentActor:
+        def __init__(self):
+            self.threads = set()
+
+        def call(self):
+            # Record the current thread that runs this function.
+            self.threads.add(threading.current_thread())
+
+        def get_num_threads(self):
+            return len(self.threads)
+
+    @ray.remote
+    def call(actor):
+        for _ in range(CONCURRENCY * 100):
+            ray.get(actor.call.remote())
+        return
+
+    actor = ConcurentActor.options(max_concurrency=CONCURRENCY).remote()
+    # Start many concurrent tasks that will call the actor many times.
+    ray.get([call.remote(actor) for _ in range(CONCURRENCY * 10)])
+
+    # Check that the number of threads shouldn't be greater than CONCURRENCY.
+    assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
+
+
 def test_wait(ray_start_regular_shared):
     @ray.remote
     def f(delay):
@@ -640,8 +676,48 @@ def test_get_correct_node_ip():
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
-        found_ip = ray._private.services.get_node_ip_address()
+        found_ip = ray.util.get_node_ip_address()
         assert found_ip == "10.0.0.111"
+
+
+def test_load_code_from_local(ray_start_regular_shared):
+    # This case writes a driver python file to a temporary directory.
+    #
+    # The driver starts a cluster with
+    # `ray.init(ray.job_config.JobConfig(code_search_path=<path list>))`,
+    # then creates a nested actor. The actor will be loaded from code in
+    # worker.
+    #
+    # This tests the following two cases when :
+    # 1) Load a nested class.
+    # 2) Load a class defined in the `__main__` module.
+    code_test = """
+import os
+import ray
+
+class A:
+    @ray.remote
+    class B:
+        def get(self):
+            return "OK"
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    b = A.B.remote()
+    print(ray.get(b.get.remote()))
+"""
+
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(
+                code_test.format(
+                    repr(ray_start_regular_shared["redis_address"])))
+        output = subprocess.check_output([sys.executable, test_driver])
+        assert b"OK" in output
 
 
 if __name__ == "__main__":

@@ -161,7 +161,7 @@ def build_q_model_and_distribution(
         isinstance(getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -180,7 +180,7 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.q_func_vars = policy.q_model.variables()
+    policy.q_func_vars = model.variables()
 
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
@@ -203,7 +203,7 @@ def build_q_model_and_distribution(
 
     policy.target_q_func_vars = policy.target_q_model.variables()
 
-    return policy.q_model, TorchCategorical
+    return model, TorchCategorical
 
 
 def get_distribution_inputs_and_class(
@@ -241,7 +241,7 @@ def build_q_losses(policy: Policy, model, _,
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t, _ = compute_q_values(
         policy,
-        policy.q_model, {"obs": train_batch[SampleBatch.CUR_OBS]},
+        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
         explore=False,
         is_training=True)
 
@@ -267,7 +267,7 @@ def build_q_losses(policy: Policy, model, _,
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net, _ = compute_q_values(
                 policy,
-                policy.q_model,
+                model,
                 {"obs": train_batch[SampleBatch.NEXT_OBS]},
                 explore=False,
                 is_training=True)

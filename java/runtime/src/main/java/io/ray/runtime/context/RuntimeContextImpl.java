@@ -3,6 +3,7 @@ package io.ray.runtime.context;
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
+import io.ray.api.id.TaskId;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
@@ -28,6 +29,11 @@ public class RuntimeContextImpl implements RuntimeContext {
     Preconditions.checkState(
         actorId != null && !actorId.isNil(), "This method should only be called from an actor.");
     return actorId;
+  }
+
+  @Override
+  public TaskId getCurrentTaskId() {
+    return runtime.getWorkerContext().getCurrentTaskId();
   }
 
   @Override

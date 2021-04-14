@@ -40,7 +40,7 @@ inline ray::gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
   std::string password = JavaStringToNativeString(
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
-  return ray::gcs::GcsClientOptions(ip, port, password, /*is_test_client=*/false);
+  return ray::gcs::GcsClientOptions(ip, port, password);
 }
 
 jobject ToJavaArgs(JNIEnv *env, jbooleanArray java_check_results,
@@ -101,7 +101,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-         std::vector<std::shared_ptr<ray::RayObject>> *results) {
+         std::vector<std::shared_ptr<ray::RayObject>> *results,
+         std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb) {
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
 
@@ -137,11 +138,19 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
                                   ray_function_array_list, args_array_list);
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = env->ExceptionOccurred();
-        if (throwable &&
-            env->IsInstanceOf(throwable,
-                              java_ray_intentional_system_exit_exception_class)) {
+        if (throwable) {
+          ray::Status status_to_return = ray::Status::OK();
+          if (env->IsInstanceOf(throwable,
+                                java_ray_intentional_system_exit_exception_class)) {
+            status_to_return = ray::Status::IntentionalSystemExit();
+          } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
+            creation_task_exception_pb = SerializeActorCreationException(env, throwable);
+            status_to_return = ray::Status::CreationTaskError();
+          } else {
+            RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
+          }
           env->ExceptionClear();
-          return ray::Status::IntentionalSystemExit();
+          return status_to_return;
         }
         RAY_CHECK_JAVA_EXCEPTION(env);
 
@@ -194,11 +203,11 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     int64_t start = current_time_ms();
     if (last_gc_time_ms + 1000 < start) {
       JNIEnv *env = GetJNIEnv();
-      RAY_LOG(INFO) << "Calling System.gc() ...";
+      RAY_LOG(DEBUG) << "Calling System.gc() ...";
       env->CallStaticObjectMethod(java_system_class, java_system_gc);
       last_gc_time_ms = current_time_ms();
-      RAY_LOG(INFO) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
-                    << " seconds.";
+      RAY_LOG(DEBUG) << "GC finished in " << (double)(last_gc_time_ms - start) / 1000
+                     << " seconds.";
     }
   };
 

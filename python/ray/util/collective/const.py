@@ -8,7 +8,7 @@ import os
 from enum import Enum, auto
 
 
-def get_nccl_store_name(group_name):
+def get_store_name(group_name):
     """Generate the unique name for the NCCLUniqueID store (named actor).
 
     Args:

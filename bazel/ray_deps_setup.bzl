@@ -80,8 +80,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
-        url = "https://github.com/redis/redis/archive/6.0.9.tar.gz",
-        sha256 = "2819b6d9c56be1f25cd157b9cb6b7c2733edcb46f4f6bcb1b79cefe639a2853b",
+        url = "https://github.com/redis/redis/archive/6.0.10.tar.gz",
+        sha256 = "900cb82227bac58242c9b7668e7113cd952253b256fe04bbdab1b78979cf255a",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
         ],

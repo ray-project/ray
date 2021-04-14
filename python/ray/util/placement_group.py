@@ -4,7 +4,7 @@ from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 
 bundle_reservation_check = None
 
@@ -109,9 +109,7 @@ class PlacementGroup:
         return len(self.bundle_cache)
 
     def _get_none_zero_resource(self, bundle: List[Dict]):
-        # This number shouldn't be changed.
-        # When it is specified, node manager won't warn about infeasible
-        # tasks.
+        # Any number between 0-1 should be fine.
         INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
         for key, value in bundle.items():
             if value > 0:

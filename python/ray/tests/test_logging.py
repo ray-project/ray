@@ -4,6 +4,7 @@ from pathlib import Path
 
 import ray
 from ray import ray_constants
+from ray.test_utils import wait_for_condition
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -101,6 +102,45 @@ def test_log_rotation(shutdown_only):
         assert file_cnt <= backup_count + 1, (
             f"{filename} has files that are more than "
             f"backup count {backup_count}, file count: {file_cnt}")
+
+
+def test_periodic_asio_stats(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "asio_stats_print_interval_ms": 100,
+            "asio_event_loop_stats_collection_enabled": True
+        })
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    def is_event_loop_stats_found(path):
+        found = False
+        with open(path) as f:
+            event_loop_stats_identifier = "Event loop stats"
+            for line in f.readlines():
+                if event_loop_stats_identifier in line:
+                    found = True
+        return found
+
+    for path in paths:
+        # Need to remove suffix to avoid reading log rotated files.
+        if "python-core-driver" in str(path):
+            wait_for_condition(lambda: is_event_loop_stats_found(path))
+        if "raylet.out" in str(path):
+            wait_for_condition(lambda: is_event_loop_stats_found(path))
+        if "gcs_server.out" in str(path):
+            wait_for_condition(lambda: is_event_loop_stats_found(path))
 
 
 if __name__ == "__main__":

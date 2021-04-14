@@ -9,13 +9,19 @@ import ray.new_dashboard.modules.tune.tune_consts \
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import async_loop_forever, rest_response
 
+logger = logging.getLogger(__name__)
+
 try:
     from ray.tune import Analysis
     from tensorboard import program
-except ImportError:
+# The `pip install ray` will not install pandas,
+# so `from ray.tune import Analysis` may raises
+# `AttributeError: module 'pandas' has no attribute 'core'`
+# if the pandas version is incorrect.
+except (ImportError, AttributeError) as ex:
+    logger.warning("tune module is not available: %s", ex)
     Analysis = None
 
-logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 

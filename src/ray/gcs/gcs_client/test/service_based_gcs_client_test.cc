@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -41,17 +42,17 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.redis_address = "127.0.0.1";
-    config_.is_test = true;
+    config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    client_io_service_.reset(new boost::asio::io_service());
+    client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     }));
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -67,21 +68,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                  config_.redis_password, config_.is_test);
+                                  config_.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
   void TearDown() override {
     client_io_service_->stop();
+    client_io_service_thread_->join();
     gcs_client_->Disconnect();
 
-    gcs_server_->Stop();
     server_io_service_->stop();
     server_io_service_thread_->join();
+    gcs_server_->Stop();
     gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
-    client_io_service_thread_->join();
   }
 
   void RestartGcsServer() {
@@ -92,7 +93,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -538,12 +539,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> server_io_service_;
+  std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> client_io_service_;
+  std::unique_ptr<instrumented_io_context> client_io_service_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -1245,10 +1246,10 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   std::vector<std::unique_ptr<std::thread>> threads;
   threads.resize(size);
 
-  // The number of times each thread executes subscribe & resubscribe & unsubscribe.
+  // The number of times each thread executes subscribe & unsubscribe.
   int sub_and_unsub_loop_count = 20;
 
-  // Multithreading subscribe/resubscribe/unsubscribe actors.
+  // Multithreading subscribe/unsubscribe actors.
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
@@ -1256,7 +1257,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
             actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
-        gcs_client_->Actors().AsyncResubscribe(false);
         UnsubscribeActor(actor_id);
       }
     }));
@@ -1266,7 +1266,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
     thread.reset();
   }
 
-  // Multithreading subscribe/resubscribe/unsubscribe objects.
+  // Multithreading subscribe/unsubscribe objects.
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
@@ -1274,7 +1274,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         ASSERT_TRUE(SubscribeToLocations(
             object_id, [](const ObjectID &id,
                           const std::vector<rpc::ObjectLocationChange> &result) {}));
-        gcs_client_->Objects().AsyncResubscribe(false);
         UnsubscribeToLocations(object_id);
       }
     }));
@@ -1318,16 +1317,17 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
+  absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
 
   // Restart GCS.
   RestartGcsServer();
 
-  absl::flat_hash_set<ActorID> actor_ids;
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);

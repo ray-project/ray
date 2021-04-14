@@ -30,9 +30,6 @@ void DependencyManager::RemoveObjectIfNotNeeded(
                      << " request: " << required_object_it->second.wait_request_id;
       object_manager_.CancelPull(required_object_it->second.wait_request_id);
     }
-    if (!local_objects_.count(object_id)) {
-      reconstruction_policy_.Cancel(object_id);
-    }
     required_objects_.erase(required_object_it);
   }
 }
@@ -43,9 +40,6 @@ DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
   auto it = required_objects_.find(object_id);
   if (it == required_objects_.end()) {
     it = required_objects_.emplace(object_id, ref).first;
-    if (local_objects_.count(object_id) == 0) {
-      reconstruction_policy_.ListenAndMaybeReconstruct(object_id, ref.owner_address());
-    }
   }
   return it;
 }
@@ -68,7 +62,8 @@ void DependencyManager::StartOrUpdateWaitRequest(
       auto it = GetOrInsertRequiredObject(obj_id, ref);
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
-        it->second.wait_request_id = object_manager_.Pull({ref});
+        it->second.wait_request_id = object_manager_.Pull({ref},
+                                                          /*is_worker_request=*/true);
         RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
                        << " request: " << it->second.wait_request_id;
       }
@@ -123,7 +118,8 @@ void DependencyManager::StartOrUpdateGetRequest(
     }
     // Pull the new dependencies before canceling the old request, in case some
     // of the old dependencies are still being fetched.
-    uint64_t new_request_id = object_manager_.Pull(refs);
+    uint64_t new_request_id = object_manager_.Pull(refs,
+                                                   /*is_worker_request=*/true);
     if (get_request.second != 0) {
       RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
                      << " request: " << get_request.second;
@@ -179,7 +175,8 @@ bool DependencyManager::RequestTaskDependencies(
   }
 
   if (!required_objects.empty()) {
-    task_entry.pull_request_id = object_manager_.Pull(required_objects);
+    task_entry.pull_request_id = object_manager_.Pull(required_objects,
+                                                      /*is_worker_request=*/false);
     RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
                    << " request: " << task_entry.pull_request_id;
   }
@@ -233,10 +230,6 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
       }
       task_entry.num_missing_dependencies++;
     }
-
-    // The object is missing and needed so wait for a possible failure again.
-    reconstruction_policy_.ListenAndMaybeReconstruct(object_entry->first,
-                                                     object_entry->second.owner_address);
   }
 
   // Process callbacks for all of the tasks dependent on the object that are
@@ -285,7 +278,6 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
       object_manager_.CancelPull(object_entry->second.wait_request_id);
       object_entry->second.wait_request_id = 0;
     }
-    reconstruction_policy_.Cancel(object_entry->first);
     RemoveObjectIfNotNeeded(object_entry);
   }
 

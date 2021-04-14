@@ -19,7 +19,7 @@ import os
 import time
 
 import ray
-from ray.services import get_node_ip_address
+from ray.util import get_node_ip_address
 
 from xgboost_ray import RayParams
 from xgboost_ray.session import get_actor_rank, put_queue

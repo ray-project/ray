@@ -94,6 +94,22 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
       });
 }
 
+inline std::pair<ray::PlacementGroupID, int64_t> ToPlacementGroupOptions(
+    JNIEnv *env, jobject callOptions) {
+  auto placement_group_options = std::make_pair(ray::PlacementGroupID::Nil(), -1);
+  auto group = env->GetObjectField(callOptions, java_task_creation_options_group);
+  if (group) {
+    auto placement_group_id = env->GetObjectField(group, java_placement_group_id);
+    auto java_id_bytes = static_cast<jbyteArray>(
+        env->CallObjectMethod(placement_group_id, java_base_id_get_bytes));
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    auto id = JavaByteArrayToId<ray::PlacementGroupID>(env, java_id_bytes);
+    auto index = env->GetIntField(callOptions, java_task_creation_options_bundle_index);
+    placement_group_options = std::make_pair(id, index);
+  }
+  return placement_group_options;
+}
+
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {
   std::unordered_map<std::string, double> resources;
   std::string name = "";
@@ -133,11 +149,10 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
-    jstring java_jvm_options = (jstring)env->GetObjectField(
+    jobject java_jvm_options = env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_jvm_options);
     if (java_jvm_options) {
-      std::string jvm_options = JavaStringToNativeString(env, java_jvm_options);
-      dynamic_worker_options.emplace_back(jvm_options);
+      JavaStringListToNativeStringVector(env, java_jvm_options, &dynamic_worker_options);
     }
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));
@@ -232,14 +247,14 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       ToRayFunction(env, functionDescriptor, functionDescriptorHash);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
+  auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
   std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
   ray::CoreWorkerProcess::GetCoreWorker().SubmitTask(
       ray_function, task_args, task_options, &return_ids,
       /*max_retries=*/0,
-      /*placement_options=*/
-      std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0),
+      /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint*/ "");
 

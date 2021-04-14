@@ -10,7 +10,7 @@ from ray.cluster_utils import Cluster
 from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
-        or ray.utils.get_system_memory() < 50 * 10**9):
+        or ray._private.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
 
@@ -373,6 +373,78 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     allocated = [allocate.remote(i) for i in range(num_objects)]
     ray.get(tasks)
     del allocated
+
+
+@pytest.mark.timeout(30)
+def test_max_pinned_args_memory(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=200 * 1024 * 1024,
+        _system_config={
+            "max_task_args_memory_fraction": 0.7,
+        })
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=3, object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(arg):
+        time.sleep(1)
+        return np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+
+    # Each task arg takes about 30% of the remote node's memory. We should
+    # execute at most 2 at a time to make sure we have room for at least 1 task
+    # output.
+    x = np.zeros(30 * 1024 * 1024, dtype=np.uint8)
+    ray.get([f.remote(ray.put(x)) for _ in range(3)])
+
+    @ray.remote
+    def large_arg(arg):
+        return
+
+    # Executing a task whose args are greater than the memory threshold is
+    # okay.
+    ref = np.zeros(80 * 1024 * 1024, dtype=np.uint8)
+    ray.get(large_arg.remote(ref))
+
+
+@pytest.mark.timeout(30)
+def test_ray_get_task_args_deadlock(shutdown_only):
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0, object_store_memory=4 * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    @ray.remote
+    def test_deadlock(get_args, task_args):
+        foo.remote(*task_args)
+        ray.get(get_args)
+
+    for i in range(5):
+        start = time.time()
+        get_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        ray.get(test_deadlock.remote(get_args, task_args))
+        print(f"round {i} finished in {time.time() - start}")
 
 
 if __name__ == "__main__":

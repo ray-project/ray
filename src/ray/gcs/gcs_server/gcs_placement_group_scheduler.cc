@@ -21,7 +21,7 @@ namespace ray {
 namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
-    boost::asio::io_context &io_context,
+    instrumented_io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
     GcsResourceScheduler &gcs_resource_scheduler,

@@ -1181,7 +1181,7 @@ ray.shutdown()
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -1219,7 +1219,7 @@ def test_create_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -1243,7 +1243,7 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -1268,7 +1268,7 @@ def test_create_placement_group_during_gcs_server_restart(
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):
@@ -1544,6 +1544,65 @@ def test_placement_group_synchronous_registration(ray_start_cluster):
         return table["state"] == "REMOVED"
 
     wait_for_condition(is_placement_group_removed)
+
+
+def test_placement_group_gpu_set(ray_start_cluster):
+    cluster = ray_start_cluster
+    # One node which only has one CPU.
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[{
+            "CPU": 1,
+            "GPU": 1
+        }, {
+            "CPU": 1,
+            "GPU": 1
+        }])
+
+    @ray.remote(num_gpus=1)
+    def get_gpus():
+        return ray.get_gpu_ids()
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+    result = ray.get(result)
+    assert result == [0]
+
+    result = get_gpus.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=1).remote()
+    result = ray.get(result)
+    assert result == [0]
+
+
+def test_placement_group_gpu_assigned(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_gpus=2)
+    ray.init(address=cluster.address)
+    gpu_ids_res = set()
+
+    @ray.remote(num_gpus=1, num_cpus=0)
+    def f():
+        import os
+        return os.environ["CUDA_VISIBLE_DEVICES"]
+
+    pg1 = ray.util.placement_group([{"GPU": 1}])
+    pg2 = ray.util.placement_group([{"GPU": 1}])
+
+    assert pg1.wait(10)
+    assert pg2.wait(10)
+
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg1).remote()))
+    gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
+
+    assert len(gpu_ids_res) == 2
 
 
 if __name__ == "__main__":

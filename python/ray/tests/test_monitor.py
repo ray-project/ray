@@ -1,5 +1,7 @@
+from ray.autoscaler._private.monitor import parse_resource_demands
 import ray
-from ray.monitor import parse_resource_demands
+
+ray.experimental.internal_kv.redis = False
 
 
 def test_parse_resource_demands():

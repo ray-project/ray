@@ -39,8 +39,8 @@ class MetricsAgentClient {
                      ClientCallManager &client_call_manager) {
     RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
                    << " port:" << port;
-    grpc_client_ = std::unique_ptr<GrpcClient<ReporterService>>(
-        new GrpcClient<ReporterService>(address, port, client_call_manager));
+    grpc_client_ =
+        std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager);
   };
 
   /// Report metrics to metrics agent.
