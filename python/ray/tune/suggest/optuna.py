@@ -12,9 +12,11 @@ from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import optuna as ot
+    from optuna.trial import TrialState as OptunaTrialState
     from optuna.samplers import BaseSampler
 except ImportError:
     ot = None
+    OptunaTrialState = None
     BaseSampler = None
 
 from ray.tune.suggest import Searcher
@@ -253,8 +255,14 @@ class OptunaSearch(Searcher):
         ot_trial = self._ot_trials[trial_id]
 
         val = result.get(self.metric, None) if result else None
+        ot_trial_state = OptunaTrialState.COMPLETE
+        if val is None:
+            if error:
+                ot_trial_state = OptunaTrialState.FAIL
+            else:
+                ot_trial_state = OptunaTrialState.PRUNED
         try:
-            self._ot_study.tell(ot_trial, val)
+            self._ot_study.tell(ot_trial, val, state=ot_trial_state)
         except ValueError as exc:
             logger.warning(exc)  # E.g. if NaN was reported
 
