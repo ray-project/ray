@@ -34,9 +34,9 @@ class DataClient:
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self.lock = threading.RLock()
-        # NOTE: Thread safety for asyncio_waiting_data is maintained by enqueue
-        # operations happening before request_queue insertion and removals
-        # happening after rquest_queue polling.
+
+        # NOTE: Dictionary insertion is guaranteed to complete before lookup
+        # and/or removal because of synchronization via the request_queue.
         self.asyncio_waiting_data: Dict[int, Callable[
             [ray_client_pb2.DataResponse], None]] = {}
         self._req_id = 0
