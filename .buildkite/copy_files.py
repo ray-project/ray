@@ -1,6 +1,7 @@
 import argparse
 import os
 from collections import OrderedDict
+import sys
 
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
@@ -28,7 +29,10 @@ resp = requests.get(
     "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
     auth=auth,
     params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
-print("Getting Presigned URL", resp.status_code)
+print("Getting Presigned URL, status_code", resp.status_code)
+if resp.status_code >= 500:
+    print(resp.text)
+    sys.exit(1)
 
 sha = os.environ["BUILDKITE_COMMIT"]
 if is_dir:
