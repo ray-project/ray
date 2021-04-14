@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
+from ray.serve.common import BackendTag, EndpointTag, Replica, TrafficPolicy
 from ray.serve.config import BackendConfig
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
@@ -104,16 +104,17 @@ class ReplicaSet:
                 f"ReplicaSet: changing max_concurrent_queries to {new_value}")
             self.config_updated_event.set()
 
-    def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
+    def update_worker_replicas(self, replicas: Iterable[Replica]):
+        new_handles = [replica.actor_handle for replica in replicas]
         added, removed, _ = compute_iterable_delta(
-            self.in_flight_queries.keys(), worker_replicas)
+            self.in_flight_queries.keys(), new_handles)
 
-        for new_replica_handle in added:
-            self.in_flight_queries[new_replica_handle] = set()
+        for new_replica in added:
+            self.in_flight_queries[new_replica] = set()
 
-        for removed_replica_handle in removed:
+        for removed_replica in removed:
             # Delete it directly because shutdown is processed by controller.
-            del self.in_flight_queries[removed_replica_handle]
+            del self.in_flight_queries[removed_replica]
 
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(

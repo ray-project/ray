@@ -14,7 +14,7 @@ from ray.serve.common import (
     EndpointTag,
     GoalId,
     NodeId,
-    ReplicaTag,
+    Replica,
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
@@ -123,11 +123,6 @@ class ServeController:
                     logger.error(f"Exception updating backend state: {e}")
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
-
-    def _all_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
-        """Used for testing."""
-        return self.backend_state.get_running_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
@@ -265,10 +260,9 @@ class ServeController:
         async with self.write_lock:
             for proxy in self.http_state.get_http_proxy_handles().values():
                 ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_running_replica_handles(
-            ).values():
-                for replica in replica_dict.values():
-                    ray.kill(replica, no_restart=True)
+            for replicas in self.backend_state.get_running_replicas().values():
+                for replica in replicas:
+                    ray.kill(replica.actor_handle, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
 
     async def deploy(self, name: str, backend_config: BackendConfig,
@@ -339,6 +333,10 @@ class ServeController:
         route = self.endpoint_state.get_endpoint_route(name)
 
         return backend_info, route
+
+    def get_deployment_replicas(self, name: str) -> List[Replica]:
+        """Gets the list of running replicas for the deployment."""
+        return self.backend_state.get_running_replicas(name).get(name, [])
 
     def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
         """Gets the current information about all active deployments."""

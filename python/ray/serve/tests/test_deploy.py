@@ -14,7 +14,7 @@ from ray.serve.utils import get_random_letters
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy(serve_instance, use_handle):
+def test_basic_updates(serve_instance, use_handle):
     @serve.deployment(version="1")
     def d(*args):
         return f"1|{os.getpid()}"
@@ -28,17 +28,27 @@ def test_deploy(serve_instance, use_handle):
         return ret.split("|")[0], ret.split("|")[1]
 
     d.deploy()
+    assert len(d.replicas) == 1
+    assert d.replicas[0].version == "1"
+    tag1 = d.replicas[0].replica_tag
     val1, pid1 = call()
     assert val1 == "1"
 
     # Redeploying with the same version and code should do nothing.
     d.deploy()
+    assert len(d.replicas) == 1
+    assert d.replicas[0].version == "1"
+    assert d.replicas[0].replica_tag == tag1
     val2, pid2 = call()
     assert val2 == "1"
     assert pid2 == pid1
 
     # Redeploying with a new version should start a new actor.
     d.options(version="2").deploy()
+    assert len(d.replicas) == 1
+    assert d.replicas[0].version == "2"
+    tag2 = d.replicas[0].replica_tag
+    assert tag2 != tag1
     val3, pid3 = call()
     assert val3 == "1"
     assert pid3 != pid2
@@ -49,6 +59,9 @@ def test_deploy(serve_instance, use_handle):
 
     # Redeploying with the same version and new code should do nothing.
     d.deploy()
+    assert len(d.replicas) == 1
+    assert d.replicas[0].version == "2"
+    assert d.replicas[0].replica_tag == tag2
     val4, pid4 = call()
     assert val4 == "1"
     assert pid4 == pid3
@@ -56,6 +69,9 @@ def test_deploy(serve_instance, use_handle):
     # Redeploying with new code and a new version should start a new actor
     # running the new code.
     d.options(version="3").deploy()
+    assert len(d.replicas) == 1
+    assert d.replicas[0].version == "3"
+    assert d.replicas[0].replica_tag != tag2
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 != pid4
@@ -81,7 +97,7 @@ def test_empty_decorator(serve_instance):
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy_no_version(serve_instance, use_handle):
+def test_no_version(serve_instance, use_handle):
     name = "test"
 
     @serve.deployment(name=name)
@@ -97,6 +113,8 @@ def test_deploy_no_version(serve_instance, use_handle):
         return ret.split("|")[0], ret.split("|")[1]
 
     v1.deploy()
+    assert len(v1.replicas) == 1
+    tag1 = v1.replicas[0].replica_tag
     val1, pid1 = call()
     assert val1 == "1"
 
@@ -106,22 +124,35 @@ def test_deploy_no_version(serve_instance, use_handle):
 
     # Not specifying a version tag should cause it to always be updated.
     v2.deploy()
+    assert len(v2.replicas) == 1
+    tag2 = v2.replicas[0].replica_tag
+    assert tag2 != tag1
     val2, pid2 = call()
     assert val2 == "2"
     assert pid2 != pid1
 
     v2.deploy()
+    assert len(v2.replicas) == 1
+    tag3 = v2.replicas[0].replica_tag
+    assert tag3 != tag2
     val3, pid3 = call()
     assert val3 == "2"
     assert pid3 != pid2
 
     # Specifying the version should stop updates from happening.
     v2.options(version="1").deploy()
+    assert len(v2.replicas) == 1
+    assert v2.replicas[0].version == "1"
+    tag4 = v2.replicas[0].replica_tag
+    assert tag4 != tag3
     val4, pid4 = call()
     assert val4 == "2"
     assert pid4 != pid3
 
     v2.options(version="1").deploy()
+    assert len(v2.replicas) == 1
+    assert v2.replicas[0].version == "1"
+    assert v2.replicas[0].replica_tag == tag4
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 == pid4
@@ -150,30 +181,47 @@ def test_config_change(serve_instance, use_handle):
 
     # First deploy with no user config set.
     D.deploy()
+    assert len(D.replicas) == 1
+    tag1 = D.replicas[0].replica_tag
+    assert D.replicas[0].version == "1"
     val1, pid1 = call()
     assert val1 == "1"
 
     # Now update the user config without changing versions. Actor should stay
     # alive but return value should change.
     D.options(user_config={"ret": "2"}).deploy()
+    assert len(D.replicas) == 1
+    assert D.replicas[0].replica_tag == tag1
+    assert D.replicas[0].version == "1"
     val2, pid2 = call()
     assert pid2 == pid1
     assert val2 == "2"
 
     # Update the user config without changing the version again.
     D.options(user_config={"ret": "3"}).deploy()
+    assert len(D.replicas) == 1
+    assert D.replicas[0].replica_tag == tag1
+    assert D.replicas[0].version == "1"
     val3, pid3 = call()
     assert pid3 == pid2
     assert val3 == "3"
 
     # Update the version without changing the user config.
     D.options(version="2", user_config={"ret": "3"}).deploy()
+    assert len(D.replicas) == 1
+    tag2 = D.replicas[0].replica_tag
+    assert tag2 != tag1
+    assert D.replicas[0].version == "2"
     val4, pid4 = call()
     assert pid4 != pid3
     assert val4 == "3"
 
     # Update the version and the user config.
     D.options(version="3", user_config={"ret": "4"}).deploy()
+    assert len(D.replicas) == 1
+    tag3 = D.replicas[0].replica_tag
+    assert tag3 != tag2
+    assert D.replicas[0].version == "3"
     val5, pid5 = call()
     assert pid5 != pid4
     assert val5 == "4"
@@ -224,6 +272,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             return await self.handler()
 
     V1.deploy()
+    assert len(V1.replicas) == 1
+    tag1 = V1.replicas[0].replica_tag
+    assert V1.replicas[0].version == "1"
     ref1 = call.remote(block=False)
     val1, pid1 = ray.get(ref1)
     assert val1 == "1"
@@ -237,6 +288,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     V2 = V1.options(backend_def=V2, version="2")
     goal_ref = V2.deploy(_blocking=False)
     assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    assert len(V2.replicas) == 0
 
     # It may take some time for the handle change to propagate and requests
     # to get sent to the new version. Repeatedly send requests until they
@@ -265,6 +317,9 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
     # Now the goal and request to the new version should complete.
     assert client._wait_for_goal(goal_ref)
+    assert len(V2.replicas) == 1
+    assert V2.replicas[0].replica_tag != tag1
+    assert V2.replicas[0].version == "2"
     new_version_val, new_version_pid = ray.get(new_version_ref)
     assert new_version_val == "2"
     assert new_version_pid != pid2
@@ -339,6 +394,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         return responses, blocking
 
     V1.deploy()
+    assert len(V1.replicas) == 2
+    assert V1.replicas[0].version == "1"
+    assert V1.replicas[1].version == "1"
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -361,6 +419,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
             "1": 1
         }, expect_blocking=True)
 
+    assert len(V2.replicas) == 1
+    assert V2.replicas[0].version == "1"
+
     # Signal the original call to exit.
     ray.get(signal.send.remote())
     val, pid = ray.get(ref2)
@@ -370,6 +431,9 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
     assert client._wait_for_goal(goal_ref)
+    assert len(V2.replicas) == 2
+    assert V2.replicas[0].version == "2"
+    assert V2.replicas[1].version == "2"
     make_nonblocking_calls({"2": 2})
 
 
@@ -414,6 +478,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         return responses
 
     v1.deploy()
+    assert len(v1.replicas) == 4
+    assert all(r.version == "1" for r in v1.replicas)
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
@@ -422,6 +488,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     v2.deploy()
+    assert len(v2.replicas) == 2
+    assert all(r.version == "2" for r in v2.replicas)
     responses2 = make_calls({"2": 2})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -467,6 +535,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         return responses
 
     v1.deploy()
+    assert len(v1.replicas) == 2
+    assert all(r.version == "1" for r in v1.replicas)
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -475,6 +545,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         return f"2|{os.getpid()}"
 
     v2.deploy()
+    assert len(v2.replicas) == 4
+    assert all(r.version == "2" for r in v2.replicas)
     responses2 = make_calls({"2": 4})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -839,6 +911,96 @@ def test_deploy_change_route_prefix(serve_instance):
 
     d.options(route_prefix="/new").deploy()
     wait_for_condition(check_switched)
+
+
+class TestRuntimeMetadata:
+    def test_no_metadata(self, serve_instance):
+        @serve.deployment
+        def d(*args):
+            return "hi"
+
+        d.deploy()
+        assert len(d.replicas) == 1
+        assert d.replicas[0].runtime_metadata is None
+
+    def test_basic(self, serve_instance):
+        @serve.deployment
+        class D:
+            def ready_check(self):
+                return "meta"
+
+        D.deploy()
+        assert len(D.replicas) == 1
+        assert D.replicas[0].runtime_metadata == "meta"
+
+    def test_multiple_replicas_same_meta(self, serve_instance):
+        @serve.deployment(num_replicas=2)
+        class D:
+            def ready_check(self):
+                return "meta"
+
+        D.deploy()
+        assert len(D.replicas) == 2
+        assert all(r.runtime_metadata == "meta" for r in D.replicas)
+
+    def test_multiple_replicas_different_meta(self, serve_instance):
+        @serve.deployment(num_replicas=2)
+        class D:
+            def ready_check(self):
+                return os.getpid()
+
+        D.deploy()
+        assert len(D.replicas) == 2
+        assert len(set(r.runtime_metadata for r in D.replicas)) == 2
+
+    def test_redeploy_different_meta(self, serve_instance):
+        @serve.deployment(name="test", num_replicas=2)
+        class D:
+            def ready_check(self):
+                return "meta1"
+
+        D.deploy()
+        assert len(D.replicas) == 2
+        assert all(r.runtime_metadata == "meta1" for r in D.replicas)
+        tags1 = set(r.replica_tag for r in D.replicas)
+        assert len(tags1) == 2
+
+        @serve.deployment(name="test", num_replicas=2)
+        class D:
+            def ready_check(self):
+                return "meta2"
+
+        D.deploy()
+        assert len(D.replicas) == 2
+        assert all(r.runtime_metadata == "meta2" for r in D.replicas)
+        tags2 = set(r.replica_tag for r in D.replicas)
+        assert len(tags2) == 2
+        assert tags2.isdisjoint(tags1)
+
+    def test_kill_replicas_new_meta(self, serve_instance):
+        @serve.deployment(name="test", num_replicas=2)
+        class D:
+            def ready_check(self):
+                return os.getpid()
+
+        D.deploy()
+        assert len(D.replicas) == 2
+        metas1 = set(r.runtime_metadata for r in D.replicas)
+        assert len(metas1) == 2
+        tags1 = set(r.replica_tag for r in D.replicas)
+        assert len(tags1) == 2
+
+        [ray.kill(r.actor_handle) for r in D.replicas]
+
+        def restarted():
+            new_tags = set(r.replica_tag for r in D.replicas)
+            return len(D.replicas) == 2 and new_tags.isdisjoint(tags1)
+
+        wait_for_condition(restarted)
+
+        assert len(D.replicas) == 2
+        metas2 = set(r.runtime_metadata for r in D.replicas)
+        assert metas2.isdisjoint(metas1)
 
 
 if __name__ == "__main__":

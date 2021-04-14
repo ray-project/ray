@@ -2,6 +2,7 @@ import asyncio
 import atexit
 import inspect
 import os
+import threading
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -11,14 +12,15 @@ from warnings import warn
 from weakref import WeakValueDictionary
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId
+from ray.serve.common import BackendInfo, GoalId, Replica, ReplicaTag
 from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
-from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.controller import BackendTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import (
     format_actor_name, get_current_node_resource_key, get_random_letters,
     logger, make_fastapi_class_based_view, register_custom_serializers)
@@ -78,6 +80,31 @@ def _ensure_connected(f: Callable) -> Callable:
         return f(self, *args, **kwargs)
 
     return check
+
+
+class ReplicaSet:
+    def __init__(self, name: str, controller: ActorHandle):
+        self._name = name
+        self._update_lock = threading.Lock()
+        self._replicas = ray.get(
+            controller.get_deployment_replicas.remote(name))
+
+        self._long_poll_client = LongPollClient(
+            controller,
+            {
+                (LongPollNamespace.REPLICA_HANDLES, name): self.
+                _update_replicas,
+            },
+        )
+
+    def _update_replicas(self, replicas: List[Replica]):
+        with self._update_lock:
+            self._replicas = replicas
+
+    @property
+    def replicas(self):
+        with self._update_lock:
+            return self._replicas
 
 
 class Client:
@@ -548,6 +575,10 @@ class Client:
 
         self.handle_cache[cache_key] = handle
         return handle
+
+    @_ensure_connected
+    def get_replica_set(self, name: str):
+        return ReplicaSet(name, self._controller)
 
 
 def start(
@@ -1023,11 +1054,28 @@ class ServeDeployment:
 
         self.backend_def = backend_def
         self.name = name
-        self.version = version
         self.config = config
+        self.version = version
         self.init_args = init_args
         self.route_prefix = route_prefix
         self.ray_actor_options = ray_actor_options
+        self._replica_set = None
+
+    def __reduce__(self):
+        serialized_data = {
+            "backend_def": self.backend_def,
+            "name": self.name,
+            "config": self.config,
+            "version": self.version,
+            "init_args": self.init_args,
+            "route_prefix": self.route_prefix,
+            "ray_actor_options": self.ray_actor_options
+        }
+
+        def deserializer(data):
+            return ServeDeployment(**data, _internal=True)
+
+        return deserializer, (serialized_data, )
 
     def __call__(self):
         raise RuntimeError("Deployments cannot be constructed directly. "
@@ -1067,6 +1115,16 @@ class ServeDeployment:
             sync=sync,
             _internal_use_serve_request=False,
             _internal=True)
+
+    @property
+    def replicas(self):
+        # Lazily populate the replica set because it comes with the overhead of
+        # a long-poll client.
+        if self._replica_set is None:
+            self._replica_set = _get_global_client().get_replica_set(
+                self.name, _internal=True)
+
+        return self._replica_set.replicas
 
     def options(
             self,

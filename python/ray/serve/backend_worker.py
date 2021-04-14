@@ -10,7 +10,6 @@ from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
-from ray._private.async_compat import sync_to_async
 
 from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
                              import_attr)
@@ -27,6 +26,16 @@ from ray.serve.http_util import make_startup_shutdown_hooks
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
+
+
+def sync_to_async(func):
+    if inspect.iscoroutinefunction(func):
+        return func
+
+    async def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
@@ -102,8 +111,8 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        def ready(self):
-            pass
+        async def ready_check(self):
+            return await self.backend.ready_check()
 
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
@@ -211,6 +220,12 @@ class RayServeReplica:
                     handler.formatter._fmt +
                     f" component=serve backend={self.backend_tag} "
                     f"replica={self.replica_tag}"))
+
+    async def ready_check(self) -> Any:
+        if hasattr(self.callable, "ready_check"):
+            return await sync_to_async(self.callable.ready_check)()
+
+        return None
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method

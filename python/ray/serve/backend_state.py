@@ -9,7 +9,7 @@ import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag)
+                              Replica, ReplicaTag)
 from ray.serve.config import BackendConfig
 from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.kv_store import RayInternalKVStore
@@ -53,7 +53,7 @@ class ActorReplicaWrapper:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
-        self._startup_obj_ref = None
+        self._ready_check_obj_ref = None
         self._drain_obj_ref = None
         self._stopped = False
         self._actor_resources = None
@@ -66,13 +66,13 @@ class ActorReplicaWrapper:
 
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
-        del clean_dict["_startup_obj_ref"]
+        del clean_dict["_ready_check_obj_ref"]
         del clean_dict["_drain_obj_ref"]
         return clean_dict
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
-        self._startup_obj_ref = None
+        self._ready_check_obj_ref = None
         self._drain_obj_ref = None
 
     @property
@@ -107,11 +107,14 @@ class ActorReplicaWrapper:
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name)
-        self._startup_obj_ref = self._actor_handle.ready.remote()
+        self._ready_check_obj_ref = self._actor_handle.ready_check.remote()
 
-    def check_ready(self) -> bool:
-        ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
-        return len(ready) == 1
+    def check_ready(self) -> (bool, Any):
+        ready, _ = ray.wait([self._ready_check_obj_ref], timeout=0)
+        if len(ready) == 1:
+            return True, ray.get(self._ready_check_obj_ref)
+        else:
+            return False, None
 
     def resource_requirements(
             self) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -207,6 +210,7 @@ class BackendReplica(VersionedReplica):
         self._start_time = None
         self._prev_slow_startup_warning_time = None
         self._state = ReplicaState.SHOULD_START
+        self._runtime_metadata = None
 
     def __get_state__(self) -> Dict[Any, Any]:
         return self.__dict__.copy()
@@ -214,6 +218,13 @@ class BackendReplica(VersionedReplica):
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._recover_from_checkpoint()
+
+    @property
+    def runtime_metadata(self) -> Any:
+        assert self._state not in [
+            ReplicaState.SHOULD_START, ReplicaState.STARTING
+        ], "runtime_metadata not available until replica is RUNNING."
+        return self._runtime_metadata
 
     def _recover_from_checkpoint(self) -> None:
         if self._state == ReplicaState.STARTING:
@@ -263,8 +274,10 @@ class BackendReplica(VersionedReplica):
         assert self._state == ReplicaState.STARTING, (
             f"State must be {ReplicaState.STARTING}, *not* {self._state}")
 
-        if self._actor.check_ready():
+        ready, runtime_metadata = self._actor.check_ready()
+        if ready:
             self._state = ReplicaState.RUNNING
+            self._runtime_metadata = runtime_metadata
             return True
 
         time_since_start = time.time() - self._start_time
@@ -517,26 +530,27 @@ class BackendState:
                 config,
             )
 
-    def get_running_replica_handles(
+    def get_running_replicas(
             self,
             filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    ) -> Dict[BackendTag, List[Replica]]:
         return {
-            backend_tag: {
-                backend_replica.replica_tag: backend_replica.actor_handle
-                for backend_replica in replicas_container.get(
-                    [ReplicaState.RUNNING])
-            }
+            backend_tag: [
+                Replica(backend_replica.replica_tag, backend_replica.version,
+                        backend_replica.actor_handle,
+                        backend_replica.runtime_metadata) for backend_replica
+                in replicas_container.get([ReplicaState.RUNNING])
+            ]
             for backend_tag, replicas_container in self._replicas.items()
             if filter_tag is None or backend_tag == filter_tag
         }
 
     def _notify_replica_handles_changed(
             self, key: Optional[BackendTag] = None) -> None:
-        for key, replica_dict in self.get_running_replica_handles(key).items():
+        for key, replicas in self.get_running_replicas(key).items():
             self._long_poll_host.notify_changed(
                 (LongPollNamespace.REPLICA_HANDLES, key),
-                list(replica_dict.values()),
+                replicas,
             )
 
     def get_backend_configs(
@@ -565,7 +579,7 @@ class BackendState:
             if backend_info.version is not None:
                 version = backend_info.version
             else:
-                version = get_random_letters()
+                version = f"RandomVersion:{get_random_letters()}"
             self._target_versions[backend_tag] = version
         else:
             self._target_replicas[backend_tag] = 0

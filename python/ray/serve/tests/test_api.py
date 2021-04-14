@@ -265,37 +265,6 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_updating_config(serve_instance):
-    class BatchSimple:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            return 1
-
-    config = BackendConfig(max_concurrent_queries=2, num_replicas=3)
-    serve.create_backend("bsimple:v1", BatchSimple, config=config)
-    serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
-
-    controller = serve.api._global_client._controller
-    old_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
-
-    update_config = BackendConfig(max_concurrent_queries=5)
-    serve.update_backend_config("bsimple:v1", update_config)
-    new_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            controller._all_replica_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the old and new replica tag list should be identical
-    # and should be subset of all_tag_list
-    assert set(old_replica_tag_list) <= set(new_all_tag_list)
-    assert set(old_replica_tag_list) == set(new_replica_tag_list)
-
-
 def test_delete_backend(serve_instance):
     def function(_):
         return "hello"

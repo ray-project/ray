@@ -1,9 +1,12 @@
-from pydantic import BaseModel
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from pydantic import BaseModel
+
 import numpy as np
 
+from ray.actor import ActorHandle
 from ray.serve.config import BackendConfig, ReplicaConfig
 
 BackendTag = str
@@ -12,6 +15,14 @@ ReplicaTag = str
 NodeId = str
 GoalId = UUID
 Duration = float
+
+
+@dataclass(frozen=True)
+class Replica:
+    replica_tag: ReplicaTag
+    version: str
+    actor_handle: ActorHandle
+    runtime_metadata: Any
 
 
 class BackendInfo(BaseModel):

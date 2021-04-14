@@ -66,7 +66,7 @@ class MockReplicaActorWrapper:
 
     def check_ready(self) -> bool:
         assert self.started
-        return self.ready
+        return self.ready, None
 
     def resource_requirements(
             self) -> Tuple[Dict[str, float], Dict[str, float]]:

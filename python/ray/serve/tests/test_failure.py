@@ -107,13 +107,6 @@ def test_http_proxy_failure(serve_instance):
     wait_for_condition(check_new)
 
 
-def _get_worker_handles(backend):
-    controller = serve.api._global_client._controller
-    backend_dict = ray.get(controller._all_replica_handles.remote())
-
-    return list(backend_dict[backend].values())
-
-
 # Test that a worker dying unexpectedly causes it to restart and continue
 # serving requests.
 def test_worker_restart(serve_instance):
@@ -128,9 +121,8 @@ def test_worker_restart(serve_instance):
     old_pid = request_with_retries("/worker_failure", timeout=1).text
 
     # Kill the worker.
-    handles = _get_worker_handles("worker_failure")
-    assert len(handles) == 1
-    ray.kill(handles[0], no_restart=False)
+    assert len(Worker1.replicas) == 1
+    ray.kill(Worker1.replicas[0].actor_handle, no_restart=False)
 
     # Wait until the worker is killed and a one is started.
     start = time.time()
@@ -186,9 +178,8 @@ def test_worker_replica_failure(serve_instance):
         raise TimeoutError("Timed out waiting for replicas after 30s.")
 
     # Kill one of the replicas.
-    handles = _get_worker_handles("replica_failure")
-    assert len(handles) == 2
-    ray.kill(handles[0], no_restart=False)
+    assert len(Worker.replicas) == 2
+    ray.kill(Worker.replicas[0].actor_handle, no_restart=False)
 
     # Check that the other replica still serves requests.
     for _ in range(10):
