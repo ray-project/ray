@@ -249,4 +249,6 @@ ApexTrainer = DQNTrainer.with_updates(
     name="APEX",
     default_config=APEX_DEFAULT_CONFIG,
     validate_config=apex_validate_config,
-    execution_plan=apex_execution_plan)
+    execution_plan=apex_execution_plan,
+    mixins=[OverrideDefaultResourceRequest],
+)
