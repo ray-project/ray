@@ -34,6 +34,8 @@ HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
     "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."\
     " Your current version is Ray {version}.\n"\
     "See the docs for more information:\n"\
+    "https://docs.ray.io/en/master/cluster/config.html"\
+    "#cluster-configuration-node-max-workers\n"\
     "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
 
 logger = logging.getLogger(__name__)
@@ -235,9 +237,7 @@ def fill_node_type_max_workers(config):
                 HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
                     node_type=node_type_name,
                     max_workers=config["max_workers"],
-                    version=ray.__version__
-                )
-            )
+                    version=ray.__version__))
 
         # The key part of this function:
         node_type_data.setdefault("max_workers", config["max_workers"])
