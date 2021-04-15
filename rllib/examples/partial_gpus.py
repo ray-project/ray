@@ -85,6 +85,15 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
+    # Note: The above GPU settings should also work in case you are not
+    # running via tune.run(), but instead do:
+
+    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >> trainer = PPOTrainer(config=config)
+    # >> for _ in range(10):
+    # >>     results = trainer.train()
+    # >>     print(results)
+
     results = tune.run(args.run, config=config, stop=stop)
 
     if args.as_test:
