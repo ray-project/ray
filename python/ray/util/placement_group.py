@@ -114,8 +114,8 @@ class PlacementGroup:
         return len(self.bundle_cache)
 
     def _get_none_zero_resource(self, bundle: List[Dict]):
-        # Any number between 0-1 should be fine.
-        INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
+        # Set a mock value to schedule a dummy task.
+        MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
                 if key == "memory":
@@ -124,7 +124,7 @@ class PlacementGroup:
                     to_memory_units(value, True)
                     value = MEMORY_RESOURCE_UNIT_BYTES
                 else:
-                    value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
+                    value = MOCK_VALUE
                 return key, value
         assert False, "This code should be unreachable."
 

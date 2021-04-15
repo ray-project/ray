@@ -96,6 +96,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
 
     placement_group = ray.util.placement_group(
         name="name", strategy="STRICT_PACK", bundles=[{
+            "memory": 50 * 1024 * 1024,  # Test memory resource spec doesn't break tests.
             "CPU": 2
         }, {
             "CPU": 2
@@ -1615,25 +1616,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster):
     gpu_ids_res.add(ray.get(f.options(placement_group=pg2).remote()))
 
     assert len(gpu_ids_res) == 2
-
-
-def test_placement_group_ready_when_memory_specified(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node()
-    cluster.wait_for_nodes()
-
-    ray.init(address=cluster.address)
-
-    placement_group = ray.util.placement_group(
-        name="name",
-        strategy="PACK",
-        bundles=[{
-            "memory": 50 * 1024 * 1024,
-        }, {
-            "memory": 50 * 1024 * 1024,
-        }])
-
-    assert placement_group.ready()
 
 
 if __name__ == "__main__":
