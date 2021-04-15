@@ -82,7 +82,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
-
             with self.clients_lock:
                 if accepted_connection:
                     # Could fail before client accounting happens
@@ -91,8 +90,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
-                with disable_client_hook():
-                    if self.num_clients == 0:
+                if self.num_clients == 0:
+                    with disable_client_hook():
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 

@@ -70,13 +70,19 @@ def benchmark_simple_actor(ray):
 
 def main():
     system_config = {"put_small_object_in_memory_store": True}
-    with ray_setup_and_teardown(
-            logging_level=logging.WARNING, _system_config=system_config):
-        for name, obj in inspect.getmembers(sys.modules[__name__]):
-            if not name.startswith("benchmark_"):
-                continue
-            with ray_start_client_server() as ray:
-                obj(ray)
+
+    def ray_connect_handler(job_config=None):
+        import ray as real_ray
+        from ray._private.client_mode_hook import disable_client_hook
+        with disable_client_hook():
+            if not real_ray.is_initialized():
+                real_ray.init(_system_config=system_config)
+
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if not name.startswith("benchmark_"):
+            continue
+        with ray_start_client_server(ray_connect_handler=ray_connect_handler) as ray:
+            obj(ray)
 
 
 if __name__ == "__main__":
