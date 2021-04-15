@@ -82,6 +82,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
+
             with self.clients_lock:
                 if accepted_connection:
                     # Could fail before client accounting happens
