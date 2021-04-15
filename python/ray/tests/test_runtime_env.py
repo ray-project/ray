@@ -178,7 +178,7 @@ print(sum([int(v) for v in vals]))
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_exclusion(working_dir, ray_start_cluster_head, client_mode):
+def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)

@@ -216,14 +216,6 @@ py_test(
 )
 
 py_test(
-    name = "test_pydantic_serialization",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_fastapi",
     size = "small",
     srcs = serve_tests_srcs,
