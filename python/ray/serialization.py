@@ -18,6 +18,7 @@ from ray._raylet import (
     MessagePackSerializedObject,
     RawSerializedObject,
 )
+from ray import serialization_addons
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class SerializationContext:
             return _object_ref_deserializer, (obj.binary(), owner_address)
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+        serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer

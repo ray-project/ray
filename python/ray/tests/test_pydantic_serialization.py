@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel
-from ray.serve.utils import register_custom_serializers
 
 import ray
 
@@ -12,7 +11,6 @@ import ray
 @pytest.fixture(scope="session")
 def start_ray():
     ray.init(ignore_reinit_error=True)
-    register_custom_serializers()
 
 
 def test_serialize_cls(start_ray):
