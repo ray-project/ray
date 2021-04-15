@@ -391,10 +391,10 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.data.items()
+                for k, v in sample_batch.items()
             }
         else:
-            data = {k: v[begin:end] for k, v in sample_batch.data.items()}
+            data = {k: v[begin:end] for k, v in sample_batch.items()}
 
         if zero_init_states_:
             i = 0

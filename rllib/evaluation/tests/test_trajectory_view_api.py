@@ -27,7 +27,7 @@ class MyCallbacks(DefaultCallbacks):
     def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
         assert sum(train_batch.seq_lens) == 201
-        for k, v in train_batch.data.items():
+        for k, v in train_batch.items():
             if k == "state_in_0":
                 assert len(v) == len(train_batch.seq_lens)
             else:
@@ -90,7 +90,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 config["num_envs_per_worker"] * \
                 config["rollout_fragment_length"]
             assert sample_batch.count == expected_count
-            for v in sample_batch.data.values():
+            for v in sample_batch.values():
                 assert len(v) == expected_count
             trainer.stop()
 
@@ -195,7 +195,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"] = ViewRequirement()
         batch = rollout_worker_w_api.sample()
-        self.assertTrue("next_actions" in batch.data)
+        self.assertTrue("next_actions" in batch)
         expected_a_ = None  # expected next action
         for i in range(len(batch["actions"])):
             a, d, a_ = batch["actions"][i], batch["dones"][i], \
@@ -257,7 +257,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
             result = rollout_worker_wo_api.sample()
             pol_batch_wo = result.policy_batches["pol0"]
-            check(pol_batch_w.data, pol_batch_wo.data)
+            check(pol_batch_w, pol_batch_wo)
 
     def test_traj_view_attention_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(3, ))
