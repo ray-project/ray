@@ -1889,18 +1889,18 @@ py_test(
     name = "examples/custom_fast_model_tf",
     main = "examples/custom_fast_model.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1", "--num-cpus=4"]
+    args = ["--stop-iters=1"]
 )
 
 py_test(
     name = "examples/custom_fast_model_torch",
     main = "examples/custom_fast_model.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
+    args = ["--stop-iters=1", "--torch"]
 )
 
 py_test(
