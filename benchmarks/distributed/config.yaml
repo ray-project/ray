@@ -21,6 +21,7 @@ available_node_types:
           CPU: 0
           node: 1
           small: 1
+        max_workers: 0
     worker_node:
         node_config:
             InstanceType: m5.16xlarge
