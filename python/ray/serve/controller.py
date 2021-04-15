@@ -284,7 +284,7 @@ class ServeController:
             http_methods = ALL_HTTP_METHODS
         else:
             # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = {"GET", "POST"}
+            http_methods = ["GET", "POST"]
 
         python_methods = []
         if inspect.isclass(replica_config.backend_def):

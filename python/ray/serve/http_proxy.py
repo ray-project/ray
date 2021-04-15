@@ -1,7 +1,7 @@
 import asyncio
 import socket
 import time
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Tuple
 
 import uvicorn
 import starlette.responses
@@ -29,7 +29,7 @@ class LongestPrefixRouter:
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints and methods associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, Set[str]]] = dict()
+        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -158,11 +158,8 @@ class HTTPProxy:
         self.request_counter.inc(tags={"route": scope["path"]})
 
         if scope["path"] == "/-/routes":
-            return await starlette.responses.JSONResponse({
-                route: (endpoint, list(methods))
-                for route, (endpoint,
-                            methods) in self.router.route_info.items()
-            })(scope, receive, send)
+            return await starlette.responses.JSONResponse(
+                self.router.route_info)(scope, receive, send)
 
         route_prefix, handle = self.router.match_route(scope["path"],
                                                        scope["method"])
