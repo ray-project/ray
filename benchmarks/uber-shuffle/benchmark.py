@@ -7,7 +7,7 @@ import ray
 
 from data_generation import generate_data
 from shuffle import shuffle_from_disk, shuffle_from_memory
-from stats import process_stats
+from stats import process_stats, human_readable_size
 
 
 # TODOs:
@@ -52,13 +52,7 @@ from stats import process_stats
 DEFAULT_DATA_DIR = "/mnt/disk0/benchmark_scratch"
 DEFAULT_STATS_DIR = "./results"
 
-
-def human_readable_size(num, precision=1, suffix="B"):
-    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
-        if abs(num) < 1024.0 or unit == "Zi":
-            break
-        num /= 1024.0
-    return f"{num:.{precision}f}{unit}{suffix}"
+DEFAULT_UTILIZATION_SAMPLE_PERIOD = 5.0
 
 
 def run_trials(
@@ -71,6 +65,7 @@ def run_trials(
         num_rows,
         max_concurrent_rounds,
         max_concurrent_epochs,
+        utilization_sample_period,
         use_from_disk_shuffler=False,
         num_trials=None,
         trials_timeout=None):
@@ -94,7 +89,7 @@ def run_trials(
               f"most {max_concurrent_epochs} concurrent epochs.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
-            stats = shuffle(
+            stats, store_stats = shuffle(
                 num_epochs,
                 num_rounds,
                 filenames,
@@ -103,9 +98,10 @@ def run_trials(
                 batches_per_round,
                 num_rows,
                 max_concurrent_rounds,
-                max_concurrent_epochs)
+                max_concurrent_epochs,
+                utilization_sample_period)
             print(f"Trial {trial} done after {stats.duration} seconds.")
-            all_stats.append(stats)
+            all_stats.append((stats, store_stats))
     elif trials_timeout is not None:
         print(f"Running {trials_timeout} seconds of shuffle trials with "
               f"{num_epochs} epochs, {num_rounds} rounds, {num_trainers} "
@@ -118,7 +114,7 @@ def run_trials(
         trial = 0
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
-            stats = shuffle(
+            stats, store_stats = shuffle(
                 num_epochs,
                 num_rounds,
                 filenames,
@@ -127,9 +123,10 @@ def run_trials(
                 batches_per_round,
                 num_rows,
                 max_concurrent_rounds,
-                max_concurrent_epochs)
+                max_concurrent_epochs,
+                utilization_sample_period)
             print(f"Trial {trial} done after {stats.duration} seconds.")
-            all_stats.append(stats)
+            all_stats.append((stats, store_stats))
             trial += 1
     else:
         raise ValueError(
@@ -153,6 +150,10 @@ if __name__ == "__main__":
     parser.add_argument("--trials-timeout", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--batches-per-round", type=int, default=1)
+    parser.add_argument(
+        "--utilization-sample-period",
+        type=float,
+        default=DEFAULT_UTILIZATION_SAMPLE_PERIOD)
     parser.add_argument("--use-from-disk-shuffler", action="store_true")
     parser.add_argument("--cluster", action="store_true")
     parser.add_argument("--data-dir", type=str, default=DEFAULT_DATA_DIR)
@@ -250,6 +251,8 @@ if __name__ == "__main__":
         max_concurrent_epochs = num_epochs
     assert max_concurrent_epochs > 0
 
+    utilization_sample_period = args.utilization_sample_period
+
     # warmup_trials = 2
     # print(f"\nRunning {warmup_trials} warmup trials.")
     # times = run_trials(
@@ -272,6 +275,7 @@ if __name__ == "__main__":
         num_rows,
         max_concurrent_rounds,
         max_concurrent_epochs,
+        utilization_sample_period,
         use_from_disk_shuffler,
         num_trials,
         trials_timeout)

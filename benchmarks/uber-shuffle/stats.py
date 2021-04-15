@@ -459,9 +459,17 @@ def process_stats(
         num_rounds,
         max_concurrent_epochs,
         max_concurrent_rounds):
-    times = [stats.duration for stats in all_stats]
+    stats_list, store_stats_list = zip(*all_stats)
+    times = [stats.duration for stats in stats_list]
     mean = np.mean(times)
     std = np.std(times)
+    store_bytes_used = [
+        getattr(store_stats_sample, "object_store_bytes_used", 0)
+        for trial_store_stats in store_stats_list
+        for _, store_stats_sample in trial_store_stats]
+    num_store_stats_samples = sum(
+        len(trial_store_stats) for trial_store_stats in store_stats_list)
+    max_utilization = human_readable_size(np.max(store_bytes_used))
     throughput_std = np.std([num_epochs * num_rows / time for time in times])
     batch_throughput_std = np.std([
         (num_epochs * num_rows / batch_size) / time for time in times])
@@ -471,6 +479,8 @@ def process_stats(
     print(f"Mean batch throughput over {len(times)} trials: "
           f"{(num_epochs * num_rows / batch_size) / mean:.2f} batches/s +- "
           f"{batch_throughput_std:.2f}")
+    print(f"Max object store utilization over {num_store_stats_samples} "
+          f"samples: {max_utilization}\n")
 
     shuffle_type = (
         "from_disk" if use_from_disk_shuffler else "from_memory")
@@ -505,50 +515,53 @@ def process_stats(
             "duration",
             "row_throughput",
             "batch_throughput",
-            "avg_epoch_duration",  # across rounds
-            "std_epoch_duration",  # across rounds
-            "max_epoch_duration",  # across rounds
-            "min_epoch_duration",  # across rounds
-            "avg_map_stage_duration",  # across rounds
-            "std_map_stage_duration",  # across rounds
-            "max_map_stage_duration",  # across rounds
-            "min_map_stage_duration",  # across rounds
-            "avg_reduce_stage_duration",  # across rounds
-            "std_reduce_stage_duration",  # across rounds
-            "max_reduce_stage_duration",  # across rounds
-            "min_reduce_stage_duration",  # across rounds
-            "avg_map_task_duration",  # across rounds and mappers
-            "std_map_task_duration",  # across rounds and mappers
-            "max_map_task_duration",  # across rounds and mappers
-            "min_map_task_duration",  # across rounds and mappers
-            "avg_reduce_task_duration",  # across rounds and reducers
-            "std_reduce_task_duration",  # across rounds and reducers
-            "max_reduce_task_duration",  # across rounds and reducers
-            "min_reduce_task_duration",  # across rounds and reducers
-            "avg_time_to_consume",  # across rounds and consumers
-            "std_time_to_consume",  # across rounds and consumers
-            "max_time_to_consume",  # across rounds and consumers
-            "min_time_to_consume"]  # across rounds and consumers
+            "avg_object_store_utilization_duration",  # across epochs, rounds
+            "max_object_store_utilization_duration",  # across epochs, rounds
+            "min_object_store_utilization_duration",  # across epochs, rounds
+            "avg_epoch_duration",  # across epochs, rounds
+            "std_epoch_duration",  # across epochs, rounds
+            "max_epoch_duration",  # across epochs, rounds
+            "min_epoch_duration",  # across epochs, rounds
+            "avg_map_stage_duration",  # across epochs, rounds
+            "std_map_stage_duration",  # across epochs, rounds
+            "max_map_stage_duration",  # across epochs, rounds
+            "min_map_stage_duration",  # across epochs, rounds
+            "avg_reduce_stage_duration",  # across epochs, rounds
+            "std_reduce_stage_duration",  # across epochs, rounds
+            "max_reduce_stage_duration",  # across epochs, rounds
+            "min_reduce_stage_duration",  # across epochs, rounds
+            "avg_map_task_duration",  # across epochs, rounds, mappers
+            "std_map_task_duration",  # across epochs, rounds, mappers
+            "max_map_task_duration",  # across epochs, rounds, mappers
+            "min_map_task_duration",  # across epochs, rounds, mappers
+            "avg_reduce_task_duration",  # across epochs, rounds, reducers
+            "std_reduce_task_duration",  # across epochs, rounds, reducers
+            "max_reduce_task_duration",  # across epochs, rounds, reducers
+            "min_reduce_task_duration",  # across epochs, rounds, reducers
+            "avg_time_to_consume",  # across epochs, rounds, consumers
+            "std_time_to_consume",  # across epochs, rounds, consumers
+            "max_time_to_consume",  # across epochs, rounds, consumers
+            "min_time_to_consume"]  # across epochs, rounds, consumers
         if use_from_disk_shuffler:
             fieldnames += [
-                "avg_read_duration",  # across rounds and mappers
-                "std_read_duration",  # across rounds and mappers
-                "max_read_duration",  # across rounds and mappers
-                "min_read_duration"]  # across rounds and mappers
+                "avg_read_duration",  # across epochs, rounds, mappers
+                "std_read_duration",  # across epochs, rounds, mappers
+                "max_read_duration",  # across epochs, rounds, mappers
+                "min_read_duration"]  # across epochs, rounds, mappers
         else:
             fieldnames += [
-                "avg_cache_map_stage_duration",  # across mappers
-                "std_cache_map_stage_duration",  # across mappers
-                "max_cache_map_stage_duration",  # across mappers
-                "min_cache_map_stage_duration",  # across mappers
-                "avg_cache_map_task_duration",  # across mappers
-                "std_cache_map_task_duration",  # across mappers
-                "max_cache_map_task_duration",  # across mappers
-                "min_cache_map_task_duration",  # across mappers
-                "avg_read_duration",  # across rounds
-                "std_read_duration",  # across rounds
-                "max_read_duration",  # across rounds
-                "min_read_duration"]  # across rounds
+                "avg_cache_map_stage_duration",  # across epochs, mappers
+                "std_cache_map_stage_duration",  # across epochs, mappers
+                "max_cache_map_stage_duration",  # across epochs, mappers
+                "min_cache_map_stage_duration",  # across epochs, mappers
+                "avg_cache_map_task_duration",  # across epochs, mappers
+                "std_cache_map_task_duration",  # across epochs, mappers
+                "max_cache_map_task_duration",  # across epochs, mappers
+                "min_cache_map_task_duration",  # across epochs, mappers
+                "avg_read_duration",  # across epochs, rounds
+                "std_read_duration",  # across epochs, rounds
+                "max_read_duration",  # across epochs, rounds
+                "min_read_duration"]  # across epochs, rounds
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
@@ -562,7 +575,7 @@ def process_stats(
             "num_rounds": num_rounds,
             "max_concurrent_rounds": max_concurrent_rounds,
         }
-        for trial, stats in enumerate(all_stats):
+        for trial, (stats, store_stats) in enumerate(all_stats):
             row["trial"] = trial
             row["duration"] = stats.duration
             row["row_throughput"] = num_epochs * num_rows / stats.duration
@@ -603,6 +616,17 @@ def process_stats(
                     for consume_time in (
                             round_stats.consume_stats.consume_times):
                         consume_times.append(consume_time)
+
+            # Trial store stats.
+            store_bytes_used = [
+                getattr(store_stats_, "object_store_bytes_used", 0)
+                for _, store_stats_ in store_stats]
+            row["avg_object_store_utilization_duration"] = np.mean(
+                store_bytes_used)
+            row["max_object_store_utilization_duration"] = np.max(
+                store_bytes_used)
+            row["min_object_store_utilization_duration"] = np.min(
+                store_bytes_used)
 
             # Calculate the trial stats.
             row["avg_epoch_duration"] = np.mean(epoch_durations)
@@ -725,7 +749,8 @@ def process_stats(
                 "num_rounds": num_rounds,
                 "max_concurrent_rounds": max_concurrent_rounds,
             }
-            for trial, trial_stats in enumerate(all_stats):
+            for trial, (trial_stats, trial_store_stats) in enumerate(
+                    all_stats):
                 row["trial"] = trial
                 for epoch, stats in enumerate(trial_stats.epoch_stats):
                     row["epoch"] = epoch
@@ -865,7 +890,8 @@ def process_stats(
                 "num_rounds": num_rounds,
                 "max_concurrent_rounds": max_concurrent_rounds,
             }
-            for trial, trial_stats in enumerate(all_stats):
+            for trial, (trial_stats, trial_store_stats) in enumerate(
+                    all_stats):
                 row["trial"] = trial
                 for epoch, epoch_stats in enumerate(trial_stats.epoch_stats):
                     row["epoch"] = epoch
@@ -947,7 +973,8 @@ def process_stats(
                 "num_rounds": num_rounds,
                 "max_concurrent_rounds": max_concurrent_rounds,
             }
-            for trial, trial_stats in enumerate(all_stats):
+            for trial, (trial_stats, trial_store_stats) in enumerate(
+                    all_stats):
                 row["trial"] = trial
                 for epoch, epoch_stats in enumerate(trial_stats.epoch_stats):
                     row["epoch"] = epoch
@@ -973,3 +1000,64 @@ def human_readable_big_num(num):
         return f"{int(new_num)}{unit}"
     else:
         return f"{new_num:.1f}{unit}"
+
+
+def human_readable_size(num, precision=1, suffix="B"):
+    for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+        if abs(num) < 1024.0 or unit == "Zi":
+            break
+        num /= 1024.0
+    return f"{num:.{precision}f}{unit}{suffix}"
+
+
+_STUB = None
+MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
+
+
+def _get_raylet_address():
+    node = ray.worker.global_worker.node
+    return f"{node.raylet_ip_address}:{node.node_manager_port}"
+
+
+def _get_raylet_stub():
+    global _STUB
+    if _STUB is None:
+        import grpc
+        from ray.core.generated import node_manager_pb2_grpc
+        raylet_address = _get_raylet_address()
+        channel = grpc.insecure_channel(
+            raylet_address,
+            options=[
+                ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+                ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+            ],
+        )
+        _STUB = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    return _STUB
+
+
+def get_store_stats(timeout=5):
+    from ray.core.generated import node_manager_pb2
+
+    stub = _get_raylet_stub()
+    reply = stub.FormatGlobalMemoryInfo(
+        node_manager_pb2.FormatGlobalMemoryInfoRequest(
+            include_memory_info=False),
+        timeout=timeout)
+    return reply.store_stats
+
+
+def collect_store_stats(
+        store_stats,
+        done_event,
+        utilization_sample_period,
+        do_print=True,
+        fetch_timeout=5):
+    is_done = False
+    while not is_done:
+        get_time = timeit.default_timer()
+        stats = get_store_stats(timeout=fetch_timeout)
+        print(f"Current object store utilization: "
+              f"{human_readable_size(stats.object_store_bytes_used)}")
+        store_stats.append((get_time, stats))
+        is_done = done_event.wait(timeout=utilization_sample_period)

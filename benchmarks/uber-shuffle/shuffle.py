@@ -1,12 +1,14 @@
 import time
 import timeit
+import threading
 
 import pandas as pd
 import numpy as np
 
 import ray
 
-from stats import TrialStatsCollector, TrialStatsCollectorFromMemory
+from stats import (
+    TrialStatsCollector, TrialStatsCollectorFromMemory, collect_store_stats)
 
 
 #
@@ -24,13 +26,20 @@ def shuffle_from_memory(
         num_rows,
         max_concurrent_rounds,
         max_concurrent_epochs,
-        ):
+        utilization_sample_period):
     # v = Validator.remote(filenames)
     # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
     # print("Expecting", num_expected_rows, "rows")
 
     stats_collector = TrialStatsCollectorFromMemory.remote(
         num_epochs, len(filenames), num_trainers, num_trainers, num_rounds)
+
+    store_stats = []
+    done_event = threading.Event()
+    store_stats_collector_thread = threading.Thread(
+        target=collect_store_stats,
+        args=(store_stats, done_event, utilization_sample_period))
+    store_stats_collector_thread.start()
 
     print(f"Doing {num_epochs} epochs each with {num_rounds} shuffle rounds.")
 
@@ -70,11 +79,15 @@ def shuffle_from_memory(
 
     stats_collector.trial_done.remote(end - start)
 
+    # Signal store stats collector thread that we're done, join the thread.
+    done_event.set()
+    store_stats_collector_thread.join()
+
     stats = ray.get(stats_collector.get_stats.remote())
 
     # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
-    return stats
+    return stats, store_stats
 
 
 @ray.remote
@@ -126,6 +139,8 @@ def shuffle_from_memory_epoch(
                 round_index,
                 *[chunks[i][j] for i in range(len(round_partitions))])
             for j in range(num_trainers)]
+        # TODO(Clark): Give consumer trial start time instead of epoch start
+        # time?
         in_progress.extend([
             consume.remote(batch, start, stats_collector, epoch, round_index)
             for batch in shuffled])
@@ -239,7 +254,8 @@ def shuffle_from_disk(
         batches_per_round,
         num_rows,
         max_concurrent_epochs,
-        max_concurrent_rounds):
+        max_concurrent_rounds,
+        utilization_sample_period):
     # v = Validator.remote(filenames)
     # num_expected_rows = ray.get(v.get_num_expected_rows.remote())
     # print("Expecting", num_expected_rows, "rows")
@@ -248,6 +264,13 @@ def shuffle_from_disk(
     # the Ray cluster with stats collecting actors.
     stats_collector = TrialStatsCollector.remote(
         num_epochs, len(filenames), num_trainers, num_trainers, num_rounds)
+
+    store_stats = []
+    done_event = threading.Event()
+    store_stats_collector_thread = threading.Thread(
+        target=collect_store_stats,
+        args=(store_stats, done_event, utilization_sample_period))
+    store_stats_collector_thread.start()
 
     print(f"Doing {num_rounds} shuffle rounds.")
 
@@ -281,14 +304,17 @@ def shuffle_from_disk(
 
     end = timeit.default_timer()
 
-    ray.wait(
-        [stats_collector.trial_done.remote(end - start)], num_returns=1)
+    stats_collector.trial_done.remote(end - start)
+
+    # Signal store stats collector thread that we're done, join the thread.
+    done_event.set()
+    store_stats_collector_thread.join()
 
     stats = ray.get(stats_collector.get_stats.remote())
 
     # ray.get(v.check.remote(batches_per_round, *final_shuffled))
 
-    return stats
+    return stats, store_stats
 
 
 @ray.remote
