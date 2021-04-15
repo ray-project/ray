@@ -236,7 +236,8 @@ def build_eager_tf_policy(
 
             # Log device and worker index.
             from ray.rllib.evaluation.rollout_worker import get_global_worker
-            worker_idx = get_global_worker().worker_index
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
             if tf.config.list_physical_devices("GPU"):
                 logger.info(
                     "TF-eager Policy (worker={}) running on GPU.".format(
