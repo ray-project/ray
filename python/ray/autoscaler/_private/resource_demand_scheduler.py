@@ -754,6 +754,11 @@ def _utilization_score(node_resources: ResourceDict,
 
     util_by_resources = []
     for k, v in node_resources.items():
+        # Don't divide by zero.
+        if v < 1:
+            # Could test v == 0 on the nose, but v < 1 feels safer.
+            # (Note that node resources are integers.)
+            continue
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
 
