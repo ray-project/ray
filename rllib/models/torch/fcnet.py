@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import gym
+from typing import Optional, Sequence
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
@@ -14,6 +15,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
+# TODO: (sven) obsolete this class once we only support native torch modules.
 class FullyConnectedNetwork(TorchModelV2, nn.Module):
     """Generic fully connected network."""
 
@@ -148,17 +150,23 @@ class Torch_FullyConnectedNetwork(nn.Module):
                  num_outputs: int,
                  *,
                  name: str = "",
+                 fcnet_hiddens: Optional[Sequence[int]] = (),
+                 fcnet_activation: Optional[str] = None,
+                 post_fcnet_hiddens: Optional[Sequence[int]] = (),
+                 post_fcnet_activation: Optional[str] = None,
+                 no_final_linear: bool = False,
+                 vf_share_layers: bool = False,
+                 free_log_std: bool = False,
+                 **kwargs,
                  ):
         nn.Module.__init__(self)
 
-        hiddens = list(model_config.get("fcnet_hiddens", [])) + \
-            list(model_config.get("post_fcnet_hiddens", []))
-        activation = model_config.get("fcnet_activation")
-        if not model_config.get("fcnet_hiddens", []):
-            activation = model_config.get("post_fcnet_activation")
-        no_final_linear = model_config.get("no_final_linear")
-        self.vf_share_layers = model_config.get("vf_share_layers")
-        self.free_log_std = model_config.get("free_log_std")
+        hiddens = list(fcnet_hiddens or []) + list(post_fcnet_hiddens or [])
+        activation = get_activation_ fcnet_activation
+        if not fcnet_hiddens:
+            activation = post_fcnet_activation
+        self.vf_share_layers = vf_share_layers
+        self.free_log_std = free_log_std
 
         # Generate free-floating bias variables for the second half of
         # the outputs.
@@ -168,7 +176,7 @@ class Torch_FullyConnectedNetwork(nn.Module):
             num_outputs = num_outputs // 2
 
         layers = []
-        prev_layer_size = int(np.product(obs_space.shape))
+        prev_layer_size = int(np.product(input_space.shape))
         self._logits = None
 
         # Create layers 0 to second-last.
