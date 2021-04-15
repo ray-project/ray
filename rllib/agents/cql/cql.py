@@ -106,7 +106,7 @@ def execution_plan(workers, config):
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
-                                        .data.get("batch_indexes"), td_error)
+                                        .get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
