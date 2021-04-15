@@ -124,7 +124,7 @@ if __name__ == "__main__":
             "corridor_length": 5,
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": 1,#int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "model": {
             "custom_model": "my_model",
             "vf_share_layers": True,

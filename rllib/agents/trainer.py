@@ -1187,10 +1187,9 @@ class Trainer(Trainable):
                 framework != "tf" or len(config["multiagent"]["policies"]) > 0
         # User manually set simple-optimizer to False -> Error if not tf.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2", "torch"] or \
-                    len(config["multiagent"]["policies"]) > 0:
+            if framework in ["tfe", "tf2", "torch"]:
                 raise ValueError("`simple_optimizer=False` not supported for "
-                                 "framework={} or multi-agent!".format(framework))
+                                 "framework={}!".format(framework))
 
         # Offline RL settings.
         if isinstance(config["input_evaluation"], tuple):
