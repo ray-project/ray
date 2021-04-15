@@ -27,7 +27,7 @@ def setup_worker(name,
             await self.worker.__init__(name, name + ":tag", init_args,
                                        backend_config, controller_name)
 
-        def ready(self):
+        def ready_check(self):
             pass
 
         @ray.method(num_returns=2)
@@ -41,7 +41,7 @@ def setup_worker(name,
             return await self.worker.drain_pending_queries()
 
     worker = WorkerActor.remote()
-    ray.get(worker.ready.remote())
+    ray.get(worker.ready_check.remote())
     return worker
 
 

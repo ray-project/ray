@@ -6,8 +6,10 @@ import pytest
 
 import ray
 from ray import serve
+from ray.serve.common import Replica
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollNamespace
+from ray.serve.utils import get_random_letters
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -65,7 +67,8 @@ def mock_controller_with_name():
                             backend_tag,
                             runner_actor,
                             backend_config=BackendConfig()):
-            self.backend_replicas[backend_tag].append(runner_actor)
+            self.backend_replicas[backend_tag].append(
+                Replica(get_random_letters(), None, runner_actor, None))
             self.backend_configs[backend_tag] = backend_config
 
             self.host.notify_changed(

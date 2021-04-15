@@ -9,6 +9,7 @@ import os
 import pytest
 
 import ray
+from ray.serve.common import Replica
 from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Query, ReplicaSet, RequestMetadata, EndpointRouter
@@ -48,7 +49,7 @@ def mock_task_runner():
         def clear_calls(self):
             self.queries = []
 
-        def ready(self):
+        def ready_check(self):
             pass
 
     return TaskRunnerMock.remote()
@@ -206,9 +207,12 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
         "my_backend",
         asyncio.get_event_loop(),
     )
-    workers = [MockWorker.remote() for _ in range(2)]
+    replicas = [
+        Replica(get_random_letters(), "1", MockWorker.remote(), None)
+        for _ in range(2)
+    ]
     rs.set_max_concurrent_queries(BackendConfig(max_concurrent_queries=1))
-    rs.update_worker_replicas(workers)
+    rs.update_worker_replicas(replicas)
 
     # Send two queries. They should go through the router but blocked by signal
     # actors.
@@ -222,8 +226,8 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
 
     # Each replica should have exactly one inflight query. Let make sure the
     # queries arrived there.
-    for worker in workers:
-        while await worker.num_queries.remote() != 1:
+    for replica in replicas:
+        while await replica.actor_handle.num_queries.remote() != 1:
             await asyncio.sleep(1)
 
     # Let's try to send another query.
@@ -248,8 +252,8 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
     assert await third_ref == "DONE"
 
     # Finally, make sure that one of the replica processed the third query.
-    num_queries_set = {(await worker.num_queries.remote())
-                       for worker in workers}
+    num_queries_set = {(await replica.actor_handle.num_queries.remote())
+                       for replica in replicas}
     assert num_queries_set == {2, 1}
 
 
