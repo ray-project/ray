@@ -38,6 +38,12 @@ try:
         ray.init(address="{address}",
                  job_config=job_config,
                  logging_level=logging.DEBUG)
+except ValueError:
+    print("ValueError")
+    sys.exit(0)
+except TypeError:
+    print("TypeError")
+    sys.exit(0)
 except:
     print("ERROR")
     sys.exit(0)
@@ -126,6 +132,41 @@ def test_empty_working_dir(ray_start_cluster_head, working_dir, client_mode):
         script = driver_script.format(**locals())
         out = run_string_as_driver(script, env)
         assert out != "ERROR"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+
+    runtime_env = "{ 'working_dir': 10 }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "TypeError"
+
+    runtime_env = "{ 'py_modules': [10] }"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "TypeError"
+
+    runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'not-exist') }}"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "ValueError"
+
+    runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'not-exist')] }}"
+    # Execute the following cmd in driver with runtime_env
+    execute_statement = ""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env).strip().split()[-1]
+    assert out == "ValueError"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

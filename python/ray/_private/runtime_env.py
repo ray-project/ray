@@ -213,17 +213,21 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     hash_val = None
     excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
-        assert isinstance(working_dir, str), f"`working_dir` is not a string."
+        if not isinstance(working_dir, str):
+            raise TypeError("`working_dir` must be a string.")
         working_dir = Path(working_dir).absolute()
         if not working_dir.exists() or not working_dir.is_dir():
-            raise IOError(f"Invalid working dir {working_dir}.")
+            raise ValueError(f"working_dir {working_dir} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(working_dir, working_dir, excludes))
     for py_module in py_modules or []:
-        assert isinstance(py_module, str), f"`py_module` is not a string."
+        if not isinstance(py_module, str):
+            raise TypeError("`py_module` must be a string.")
         module_dir = Path(py_module).absolute()
         if not module_dir.exists() or not module_dir.is_dir():
-            raise IOError(f"Invalid py_module {py_module}.")
+            raise ValueError(f"py_module {py_module} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
