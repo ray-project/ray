@@ -128,7 +128,8 @@ def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
 
     def handler(path: Path):
         # Pack this path if it's an empty directory or it's a file.
-        if path.is_dir() and next(path.iterdir()) is None or path.is_file():
+        if path.is_dir() and next(path.iterdir(),
+                                  None) is None or path.is_file():
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(

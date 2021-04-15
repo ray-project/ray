@@ -154,14 +154,14 @@ def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "TypeError"
 
-    runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'not-exist') }}"
+    runtime_env = f"{{ 'working_dir': os.path.join(r'{working_dir}', 'na') }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env).strip().split()[-1]
     assert out == "ValueError"
 
-    runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'not-exist')] }}"
+    runtime_env = f"{{ 'py_modules': [os.path.join(r'{working_dir}', 'na')] }}"
     # Execute the following cmd in driver with runtime_env
     execute_statement = ""
     script = driver_script.format(**locals())
