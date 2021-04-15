@@ -114,7 +114,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms());
+        RayConfig::instance().kill_idle_workers_interval_ms(),
+        "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 }
 
@@ -748,10 +749,9 @@ void WorkerPool::TryKillingIdleWorkers() {
                                                const rpc::ExitReply &r) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-          return;
         }
 
-        if (r.success()) {
+        if (status.ok() && r.success()) {
           auto &worker_state = GetStateForLanguage(worker->GetLanguage());
           // If we could kill the worker properly, we remove them from the idle pool.
           if (RemoveWorker(worker_state.idle, worker)) {
