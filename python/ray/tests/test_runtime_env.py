@@ -19,7 +19,6 @@ from time import sleep
 import sys
 import logging
 sys.path.insert(0, "{working_dir}")
-import test_module
 import ray
 import ray.util
 import os
@@ -47,6 +46,8 @@ except TypeError:
 except:
     print("ERROR")
     sys.exit(0)
+
+import test_module
 
 @ray.remote
 def run_test():
@@ -119,13 +120,13 @@ The following test cases are related with runtime env. It following these steps
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
-def test_empty_working_dir(ray_start_cluster_head, working_dir, client_mode):
+def test_empty_working_dir(ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    with tempfile.TemporaryDirectory() as working_dir:
         runtime_env = f"""{{
-    "working_dir": "r{tmp_dir}",
-    "py_modules": ["r{tmp_dir}"]
+    "working_dir": r"{working_dir}",
+    "py_modules": [r"{working_dir}"]
 }}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = ""
