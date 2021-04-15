@@ -739,10 +739,9 @@ void WorkerPool::TryKillingIdleWorkers() {
                                                const rpc::ExitReply &r) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-          return;
         }
 
-        if (r.success()) {
+        if (status.ok() && r.success()) {
           auto &worker_state = GetStateForLanguage(worker->GetLanguage());
           // If we could kill the worker properly, we remove them from the idle pool.
           if (RemoveWorker(worker_state.idle, worker)) {
