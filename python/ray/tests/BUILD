@@ -165,6 +165,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_pydantic_serialization",
+    size = "small",
+    srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test_module_list(
   files = [
