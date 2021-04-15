@@ -6,7 +6,8 @@ import random
 class RepeatAfterMeEnv(gym.Env):
     """Env in which the observation at timestep minus n must be repeated."""
 
-    def __init__(self, config):
+    def __init__(self, config=None):
+        config = config or {}
         self.observation_space = Discrete(2)
         self.action_space = Discrete(2)
         # Note: Set `repeat_delay` to 0 for simply repeating the seen

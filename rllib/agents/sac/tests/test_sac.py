@@ -126,7 +126,7 @@ class TestSAC(unittest.TestCase):
         config["clip_actions"] = False
         config["initial_alpha"] = 0.001
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
-        config["env_config"] = {"repeat_delay": 0}
+        config["env_config"] = {"config": {"repeat_delay": 0}}
 
         for _ in framework_iterator(config, frameworks="torch"):
             trainer = sac.SACTrainer(config=config, env=env)

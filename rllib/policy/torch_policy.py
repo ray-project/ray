@@ -120,7 +120,8 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
         #   parallelization will be done.
-        if config["_fake_gpus"] or config["num_gpus"] == 0:
+        if config["_fake_gpus"] or config["num_gpus"] == 0 or \
+                not torch.cuda.is_available():
             logger.info(
                 "TorchPolicy running on {}.".format("{} fake-GPUs".format(
                     config["num_gpus"]) if config["_fake_gpus"] else "CPU"))
@@ -133,7 +134,6 @@ class TorchPolicy(Policy):
                 for i in range(config["num_gpus"] or 1)
             ]
         else:
-            assert torch.cuda.is_available()
             logger.info("TorchPolicy running on {} GPU(s).".format(
                 config["num_gpus"]))
             self.device = torch.device("cuda")
