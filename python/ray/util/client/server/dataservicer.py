@@ -90,8 +90,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
-                if self.num_clients == 0:
-                    with disable_client_hook():
+                with disable_client_hook():
+                    if self.num_clients == 0:
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
