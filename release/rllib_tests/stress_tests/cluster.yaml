@@ -20,7 +20,7 @@ available_node_types:
     gpu_ondemand:
         node_config:
             InstanceType: p3.16xlarge
-        resources: {"CPU": 64, "GPU": 8}
+        resources: {"CPU": 56, "GPU": 8}  # Keep one CPU free for each GPU
         min_workers: 0
         max_workers: 0
     cpu_ondemand:

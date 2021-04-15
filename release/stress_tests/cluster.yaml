@@ -19,7 +19,7 @@ available_node_types:
     cpu_64_ondemand:
         node_config:
             InstanceType: m4.16xlarge
-        resources: {"CPU": 56}  # Always keep one CPU available for each GPU
+        resources: {"CPU": 64}
         min_workers: 0
         max_workers: 0
     cpu_2_spot:
@@ -42,8 +42,8 @@ setup_commands:
 
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml --num-cpus=56
+    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --num-gpus=100
