@@ -120,7 +120,7 @@ def test_gpu_node_util_score():
 def test_zero_resource():
     # Test edge case of node type with all zero resource values.
     assert _utilization_score({"CPU": 0, "custom": 0}, [{"custom": 1}]) is None
-    # Just check that we don't have a division by zero error.
+    # Just check that we don't have a division-by-zero error.
     _utilization_score({"CPU": 0, "custom": 1}, [{"custom": 1}])
 
 
