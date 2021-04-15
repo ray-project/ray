@@ -24,64 +24,6 @@ before_install:
 
 matrix:
   include:
-    - os: linux
-      env:
-        - PYTHON=3.6 SMALL_AND_LARGE_TESTS=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-
-    - os: linux
-      env:
-        - PYTHON=3.6 MEDIUM_TESTS_A_TO_J=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,client_tests --test_env=RAY_CLIENT_MODE=1 python/ray/tests/...; fi
-
-    - os: linux
-      env:
-        - PYTHON=3.6 MEDIUM_TESTS_K_TO_Z=1
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-        - RAY_CYTHON_EXAMPLES=1
-        - RAY_USE_RANDOM_PORTS=1
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
-
-    - os: linux
-      env:
-        - PYTHON=3.6 BAZEL_CONFIG="asan"
-        - PYTHONWARNINGS=ignore
-        - RAY_DEFAULT_BUILD=1
-      install:
-        - . ./ci/travis/ci.sh init
-      before_script:
-        - ./ci/keep_alive ./ci/travis/ci.sh build
-      script:
-        # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
-        # NOTE: core_worker_test is out-of-date and should already covered by
-        # Python tests.
-        - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -core_worker_test
-
     - os: osx
       osx_image: xcode7
       env:
@@ -94,6 +36,21 @@ matrix:
         - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
+      script:
+        # cc bazel tests (w/o RLlib)
+        # NOTE: core_worker_test is out-of-date and should already covered by Python
+        # tests.
+        - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/... -core_worker_test
+
+        # ray serve tests
+        - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
+
+        # ray new dashboard tests
+        - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
+
+        # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+        # NO MORE TESTS BELOW, keep them above.
 
     - os: osx
       osx_image: xcode7
@@ -126,52 +83,6 @@ matrix:
       script:
         # bazel python tests for medium size tests. Used for parallelization.
         - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
-
-    - os: linux
-      env:
-        - JAVA_TESTS=1
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
-        - RAY_INSTALL_JAVA=1
-      language: java
-      jdk: openjdk8
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./java/test.sh
-
-    - os: linux
-      env:
-        - STREAMING_TESTS=1
-        - RAY_INSTALL_JAVA=1
-        - PYTHON=3.6 PYTHONWARNINGS=ignore
-        - RAY_USE_RANDOM_PORTS=1
-        - RAY_ENABLE_NEW_SCHEDULER=0
-      language: java
-      jdk: openjdk8
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_STREAMING_PYTHON_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # Streaming cpp test.
-        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci $(./scripts/bazel_export_options) --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
-        # BROKEN
-        # - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
-        # - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
-
-    - os: linux
-      env:
-        - LINT=1
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init
-      before_script:
-        - . ./ci/travis/ci.sh lint
-        - . ./ci/travis/ci.sh build
-      script:
-        - sleep 30  # we still need this block to exist, otherwise it will fall back to the global one
 
     # Build MacOS wheels and MacOS jars
     - os: osx
@@ -196,8 +107,7 @@ matrix:
     - os: linux
       env:
         # - PYTHON=3.6
-        - LINUX_WHEELS=1 LINUX_JARS=1
-        - DOCKER_BUILD_PY37=1
+        - LINUX_WHEELS=1 LINUX_JARS=1 DOCKER_BUILD_PY37=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       language: java
@@ -214,12 +124,10 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
-
     # Build Py36 & Py38 Docker Images
     - os: linux
       env:
-        - LINUX_WHEELS=1
-        - DOCKER_BUILD_PY36_38=1
+        - LINUX_WHEELS=1 DOCKER_BUILD_PY36_38=1
         - PYTHONWARNINGS=ignore
       language: java
       jdk: openjdk8
@@ -252,229 +160,6 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh multiplatform
         - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
-
-    # RLlib: Learning tests (from rllib/tuned_examples/*.yaml).
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
-
-    # RLlib: Learning tests with tf=1.x (from rllib/tuned_examples/*.yaml).
-    # Requested by Edi (MS): Test all learning capabilities with tf1.x
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
-        - TF_VERSION=1.14.0
-        - TFP_VERSION=0.7
-        - TORCH_VERSION=1.6
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=learning_tests_tf rllib/...
-
-    # RLlib: Learning tests with torch (from rllib/tuned_examples/*.yaml).
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TORCH=1
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=learning_tests_torch rllib/...
-
-    # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
-    # Agent single tests (compilation, loss-funcs, etc..).
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
-        # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=quick_train --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-        # Test everything that does not have any of the "main" labels:
-        # "learning_tests|quick_train|examples|tests_dir".
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-    # RLlib: Everything in rllib/examples/ directory.
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
-        # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=examples_A,examples_B --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=examples_C,examples_D --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1  rllib/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-    # RLlib: tests_dir: Everything in rllib/tests/ directory (A-L).
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
-        # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-    # RLlib: tests_dir: Everything in rllib/tests/ directory (M-Z).
-    - os: linux
-      env:
-        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
-        # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-        - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
-
-
-    # Tune: Tests and examples.
-    - os: linux
-      env:
-        - TUNE_TESTING=1
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-py37,flaky python/ray/tune/...
-
-    # SGD: Tests and examples.
-    - os: linux
-      env:
-        - SGD_TESTING=1
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        # No such tests at the moment:
-        # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 python/ray/util/sgd/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
-
-    # Docs: Tests and examples.
-    - os: linux
-      env:
-        - DOC_TESTING=1
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 doc/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...
-
-    # Tune/SGD: Python >= 3.7 tests and examples.
-    - os: linux
-      env:
-        - PYTHON=3.7 TUNE_TESTING=1
-        - INSTALL_HOROVOD=1
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37 python/ray/tune/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/lightning_accelerators/...
-        # There are no python 3.7 tests for RaySGD at the moment
-        # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 python/ray/util/sgd/...
-        # - ./ci/keep_alive bazel test --config=ci --build_tests_only --test_tag_filters=py37 doc/...
-
-    # Cpp worker test
-    - os: linux
-      env:
-        - TESTSUITE=cpp_worker
-        - PYTHON=3.6
-        - PYTHONWARNINGS=ignore
-      install:
-        - . ./ci/travis/ci.sh init
-      before_script:
-        - . ./ci/travis/ci.sh build
-      script:
-        - . ./ci/travis/ci.sh test_cpp
-script:
-  # cc bazel tests (w/o RLlib)
-  # NOTE: core_worker_test is out-of-date and should already covered by Python
-  # tests.
-  - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/... -core_worker_test
-
-  # ray serve tests
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
-
-  # ray new dashboard tests
-  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
-
-  # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
-  # NO MORE TESTS BELOW, keep them above.
 
 after_script:
   - if [ "${TRAVIS_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi
