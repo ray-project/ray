@@ -2218,7 +2218,7 @@ py_test(
     tags = ["examples", "examples_P"],
     size = "small",
     srcs = ["examples/partial_gpus.py"],
-    args = ["--as-test", "--stop-reward=30.0", "--num-gpus=0"]
+    args = ["--as-test", "--stop-reward=27.0", "--num-gpus=0", "--num-workers=0"]
 )
 
 py_test(
