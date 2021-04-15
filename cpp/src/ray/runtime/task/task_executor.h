@@ -14,7 +14,8 @@ namespace internal {
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(
     const std::string &func_name,
-    const std::vector<std::shared_ptr<RayObject>> &args_buffer);
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    msgpack::sbuffer *actor_ptr);
 
 BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
 }  // namespace internal

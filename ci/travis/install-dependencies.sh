@@ -257,6 +257,12 @@ install_toolchains() {
   fi
 }
 
+download_mnist() {
+  mkdir -p "${HOME}/data"
+  curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
+  unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
+}
+
 install_dependencies() {
 
   install_bazel
@@ -273,7 +279,7 @@ install_dependencies() {
   fi
 
   # Install modules needed in all jobs.
-  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
     # Remove this entire section once RLlib and Serve dependencies are fixed.
@@ -283,7 +289,7 @@ install_dependencies() {
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
       case "${OSTYPE}" in
         darwin*) pip install torch torchvision;;
-        *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
+        *) pip install torch==1.8.1+cpu torchvision==0.9.1+cpu -f "${torch_url}";;
       esac
     fi
 
@@ -325,6 +331,7 @@ install_dependencies() {
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+    download_mnist
   fi
 
   # For Tune, install upstream dependencies.
@@ -337,13 +344,13 @@ install_dependencies() {
     # If CI has deemed that a different version of Tensorflow or Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
-      case "${TORCH_VERSION-1.7}" in
-        1.7) TORCHVISION_VERSION=0.8.1;;
+      case "${TORCH_VERSION-1.8.1}" in
+        1.8.1) TORCHVISION_VERSION=0.9.1;;
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
       pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-        torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
+        torch=="${TORCH_VERSION-1.8.1}" torchvision=="${TORCHVISION_VERSION}" \
         tensorflow=="${TF_VERSION-2.2.0}" gym
     fi
   fi

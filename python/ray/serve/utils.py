@@ -84,21 +84,24 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    arg = request_item.args[0] if len(request_item.args) == 1 else None
+    if len(request_item.args) <= 1:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-    # If the input data from handle is web request, we don't need to wrap
-    # it in ServeRequest.
-    if isinstance(arg, starlette.requests.Request):
-        return arg
-    elif isinstance(arg, HTTPRequestWrapper):
-        return build_starlette_request(arg.scope, arg.body)
-    else:
-        return ServeRequest(
-            arg,
-            request_item.kwargs,
-            headers=request_item.metadata.http_headers,
-            method=request_item.metadata.http_method,
-        )
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, starlette.requests.Request):
+            return (arg, ), {}
+        elif isinstance(arg, HTTPRequestWrapper):
+            return (build_starlette_request(arg.scope, arg.body), ), {}
+        elif request_item.metadata.use_serve_request:
+            return (ServeRequest(
+                arg,
+                request_item.kwargs,
+                headers=request_item.metadata.http_headers,
+                method=request_item.metadata.http_method,
+            ), ), {}
+
+    return request_item.args, request_item.kwargs
 
 
 def _get_logger():
@@ -303,48 +306,6 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
-
-
-def register_custom_serializers():
-    """Install custom serializers needed for Ray Serve."""
-    import starlette.datastructures
-    import pydantic.fields
-
-    assert ray.is_initialized(
-    ), "This functional must be ran with Ray initialized."
-
-    # Pydantic's Cython validators are not serializable.
-    # https://github.com/cloudpipe/cloudpickle/issues/408
-    ray.worker.global_worker.run_function_on_all_workers(
-        lambda _: ray.util.register_serializer(
-            pydantic.fields.ModelField,
-            serializer=lambda o: {
-                "name": o.name,
-                # outer_type_ is the original type for ModelFields,
-                # while type_ can be updated later with the nested type
-                # like int for List[int].
-                "type_": o.outer_type_,
-                "class_validators": o.class_validators,
-                "model_config": o.model_config,
-                "default": o.default,
-                "default_factory": o.default_factory,
-                "required": o.required,
-                "alias": o.alias,
-                "field_info": o.field_info,
-            },
-            deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
-        )
-    )
-
-    # FastAPI's app.state object is not serializable
-    # because it overrides __getattr__
-    ray.worker.global_worker.run_function_on_all_workers(
-        lambda _: ray.util.register_serializer(
-            starlette.datastructures.State,
-            serializer=lambda s: s._state,
-            deserializer=lambda s: starlette.datastructures.State(s),
-        )
-    )
 
 
 class ASGIHTTPSender:

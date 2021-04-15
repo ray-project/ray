@@ -95,7 +95,7 @@ def test_backend_user_config(serve_instance):
         def __init__(self):
             self.count = 10
 
-        def __call__(self, starlette_request):
+        def __call__(self, *args):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
@@ -127,7 +127,7 @@ def test_backend_user_config(serve_instance):
 def test_call_method(serve_instance):
     @serve.deployment(name="method")
     class CallMethod:
-        def method(self, request):
+        def method(self, *args):
             return "hello"
 
     CallMethod.deploy()
