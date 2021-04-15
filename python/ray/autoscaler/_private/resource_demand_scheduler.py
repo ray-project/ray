@@ -12,7 +12,9 @@ import numpy as np
 import logging
 import collections
 from numbers import Number
-from typing import List, Dict
+from typing import Dict
+from typing import List
+from typing import Optional
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
@@ -733,7 +735,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 
 
 def _utilization_score(node_resources: ResourceDict,
-                       resources: List[ResourceDict]) -> float:
+                       resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources
     any_gpu_task = any("GPU" in r for r in resources)
