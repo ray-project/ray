@@ -708,7 +708,8 @@ void NodeManager::WarnResourceDeadlock() {
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
-  // Try scheduling tasks to break the deadlock.
+  // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
+  // tasks are never be scheduled.
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
