@@ -76,9 +76,9 @@ def main():
     }
 
     def ray_connect_handler(job_config=None):
-        import ray as real_ray
         from ray._private.client_mode_hook import disable_client_hook
         with disable_client_hook():
+            import ray as real_ray
             if not real_ray.is_initialized():
                 real_ray.init(**ray_config)
 
