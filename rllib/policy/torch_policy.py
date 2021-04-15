@@ -105,12 +105,20 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
+
+        # Log device and worker index.
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
+        worker_idx = get_global_worker().worker_index
         if torch.cuda.is_available():
-            logger.info("TorchPolicy running on GPU.")
+            logger.info("TorchPolicy (worker={}) running on GPU.".format(
+                worker_idx if worker_idx > 0 else "local"))
             self.device = torch.device("cuda")
         else:
-            logger.info("TorchPolicy running on CPU.")
+            logger.info("TorchPolicy (worker={}) running on CPU.".format(
+                worker_idx if worker_idx > 0 else "local"))
             self.device = torch.device("cpu")
+
+        # Move model to device.
         self.model = model.to(self.device)
 
         # Lock used for locking some methods on the object-level.
