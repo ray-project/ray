@@ -79,29 +79,20 @@ Dask-on-Ray is an ongoing project and is not expected to achieve the same perfor
 
 Best Practice for Large Scale workloads
 ---------------------------------------
-For Ray 1.3, the default scheduling policy is to pack tasks to the same node.
+For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible.
 It is more desirable to load balance tasks if you run a large scale / memory intensive Dask on Ray workloads.
 
 In this case, there are two recommended setup.
 - Setting an internal config flag `scheduler_loadbalance_spillback` to change the scheduler to load balance tasks. 
 - Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
 
-Single Node Example
-===================
-If you start a cluster using `ray.init`, it means you only have a head node. So don't specify `num_cpus=0`.
-
-.. code-block:: python
-
-  ray.init(_system_config={"scheduler_loadbalance_spillback": True})
-
-Multi Node Example
-==================
-If you are using `ray start`, start a head node with these parameters.
-
 .. code-block:: bash
 
-  ray start --head --num-cpus=0 --system-config='{"scheduler_loadbalance_spillback":true}'
+  # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
+  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --head --num-cpus=0
 
+  # Worker node. 
+  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------
