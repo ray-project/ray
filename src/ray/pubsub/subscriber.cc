@@ -117,8 +117,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   } else {
     // Otherwise, release objects that are reported from the long polling
     // connection.
-    for (const auto &object_id_binary : reply.object_ids()) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto object_id = ObjectID::FromBinary(msg.wait_for_object_eviction_message().object_id());
       RAY_LOG(DEBUG) << "Object id " << object_id << " information was published from "
                      << publisher_id << ". Releasing the object.";
       auto maybe_subscription_callback =

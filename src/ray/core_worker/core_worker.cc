@@ -2371,11 +2371,11 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
     rpc::PubMessage pub_message; 
-    auto &wait_for_object_eviction_msg = pub_message.mutable_wait_for_object_eviction_message();
-    wait_for_object_eviction_msg.set_object_id(object_id.Binary());
-    wait_for_object_eviction_msg.set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
-    object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, wait_for_object_eviction_msg);
-    object_status_publisher_->UnregisterSubscription(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
+    auto *wait_for_object_eviction_msg = pub_message.mutable_wait_for_object_eviction_message();
+    wait_for_object_eviction_msg->set_object_id(object_id.Binary());
+    wait_for_object_eviction_msg->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
+    object_status_publisher_->Publish<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, pub_message, object_id);
+    object_status_publisher_->UnregisterSubscription<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -2388,7 +2388,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    object_status_publisher_->RegisterSubscription(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
+    object_status_publisher_->RegisterSubscription<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
@@ -2405,7 +2405,10 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
         // fail if the number of batched objects are more than 50K. Though it is very
         // rare, we should probably handle it.
         for (const auto &object_id : object_ids) {
-          reply->add_object_ids(object_id.Binary());
+          auto *pub_message = reply->add_pub_messages();
+          auto *msg = pub_message->mutable_wait_for_object_eviction_message();
+          msg->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
+          msg->set_object_id(object_id.Binary());
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };

@@ -163,6 +163,8 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
 
+template class pub_internal::SubscriptionIndex<ObjectID>;
+
 }  // namespace pub_internal
 
 void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
@@ -187,9 +189,10 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
   subscriber->PublishIfPossible();
 }
 
+template <typename MessageID>
 void Publisher::RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-                                     const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "object id " << object_id << " is subscribed by " << subscriber_id;
+                                     const MessageID &message_id) {
+  RAY_LOG(DEBUG) << "message id " << message_id << " is subscribed by " << subscriber_id;
 
   absl::MutexLock lock(&mutex_);
   if (subscribers_.count(subscriber_id) == 0) {
@@ -197,14 +200,15 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type, const 
                          std::make_shared<pub_internal::Subscriber>(
                              get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
-  subscription_index_map_[channel_type].AddEntry(object_id, subscriber_id);
+  subscription_index_map_[channel_type].AddEntry(message_id, subscriber_id);
 }
 
-void Publisher::Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message) {
+template <typename MessageID>
+void Publisher::Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message, const MessageID &message_id) {
   absl::MutexLock lock(&mutex_);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
-  auto maybe_subscribers = subscription_index_map_[channel_type].GetSubscriberIdsByMessageId(object_id);
+  auto maybe_subscribers = subscription_index_map_[channel_type].GetSubscriberIdsByMessageId(message_id);
   if (!maybe_subscribers.has_value()) {
     return;
   }
@@ -213,14 +217,15 @@ void Publisher::Publish(const rpc::ChannelType channel_type, const rpc::PubMessa
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
-    subscriber->QueueMessage(object_id);
+    subscriber->QueueMessage(message_id);
   }
 }
 
+template <typename MessageID>
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-                                       const ObjectID &object_id) {
+                                       const MessageID &message_id) {
   absl::MutexLock lock(&mutex_);
-  return subscription_index_map_[channel_type].EraseEntry(object_id, subscriber_id);
+  return subscription_index_map_[channel_type].EraseEntry(message_id, subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {

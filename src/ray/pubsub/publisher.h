@@ -186,24 +186,28 @@ class Publisher {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param object_id The object id that the subscriber is subscribing to.
-  void RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &object_id);
+  /// \param message_id The message_id that the subscriber is subscribing to.
+  template <typename MessageID>
+  void RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const MessageID &message_id);
 
   /// Publish the given object id to subscribers.
   ///
   /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message);
+  /// \param message_id The message id to publish.
+  template <typename MessageID>
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message, const MessageID &message_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param object_id The object id of the subscriber.
+  /// \param message_id The message_id of the subscriber.
   /// \return True if erased. False otherwise.
+  template <typename MessageID>
   bool UnregisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
-                              const ObjectID &object_id);
+                              const MessageID &message_id);
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
