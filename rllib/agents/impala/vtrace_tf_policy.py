@@ -102,8 +102,9 @@ class VTraceLoss:
         self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
 
         # The entropy loss.
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        masked_entropy = tf.boolean_mask(actions_entropy, valid_mask)
+        self.entropy = tf.reduce_sum(masked_entropy)
+        self.mean_entropy = tf.reduce_mean(masked_entropy)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -226,7 +227,7 @@ def stats(policy, train_batch):
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,

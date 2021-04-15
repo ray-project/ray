@@ -1,6 +1,8 @@
 import argparse
 import os
 from collections import OrderedDict
+import sys
+import time
 
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 import requests
@@ -12,39 +14,33 @@ parser.add_argument("--destination", type=str)
 args = parser.parse_args()
 
 assert os.path.exists(args.path)
-assert args.destination in {"wheels", "containers"}
+assert args.destination in {"wheels", "containers", "logs"}
 assert "BUILDKITE_JOB_ID" in os.environ
 assert "BUILDKITE_COMMIT" in os.environ
 
 is_dir = os.path.isdir(args.path)
 
-# # Assume the caller role from the instance
-# sts_client = boto3.client('sts')
-# assumed_role_object = sts_client.assume_role(
-#     RoleArn="arn:aws:iam::029272617770:role/presigner_caller_role",
-#     RoleSessionName="ProdSessionFromBK")
-# credentials = assumed_role_object["Credentials"]
-
-# # Construct the HTTP auth to call the API gateway
-# auth = AWSRequestsAuth(
-#     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
-#     aws_region="us-west-2",
-#     aws_service="execute-api",
-#     aws_access_key=credentials["AccessKeyId"],
-#     aws_secret_access_key=credentials["SecretAccessKey"],
-#     aws_token=credentials["SessionToken"],
-# )
 auth = BotoAWSRequestsAuth(
     aws_host="vop4ss7n22.execute-api.us-west-2.amazonaws.com",
     aws_region="us-west-2",
     aws_service="execute-api",
 )
 
-resp = requests.get(
-    "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
-    auth=auth,
-    params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
-print("Getting Presigned URL", resp.status_code)
+for _ in range(5):
+    resp = requests.get(
+        "https://vop4ss7n22.execute-api.us-west-2.amazonaws.com/endpoint/",
+        auth=auth,
+        params={"job_id": os.environ["BUILDKITE_JOB_ID"]})
+    print("Getting Presigned URL, status_code", resp.status_code)
+    if resp.status_code >= 500:
+        print("errored, retrying...")
+        print(resp.text)
+        time.sleep(5)
+    else:
+        break
+if resp.status_code >= 500:
+    print("still errorred after many retries")
+    sys.exit(1)
 
 sha = os.environ["BUILDKITE_COMMIT"]
 if is_dir:
@@ -59,10 +55,19 @@ for path in paths:
         c = resp.json()["presigned_wheels"]
         of = OrderedDict(c["fields"])
         of["key"] = f"scratch/bk/{sha}/{fn}"
+
     elif args.destination == "containers":
         c = resp.json()["presigned_containers"]
         of = OrderedDict(c["fields"])
         of["key"] = f"{sha}/{fn}"
+
+    elif args.destination == "logs":
+        c = resp.json()["presigned_logs"]
+        of = OrderedDict(c["fields"])
+        branch = os.environ["BUILDKITE_BRANCH"]
+        bk_job_id = os.environ["BUILDKITE_JOB_ID"]
+        of["key"] = f"bazel_events/{branch}/{sha}/{bk_job_id}/{fn}"
+
     else:
         raise ValueError("Unknown destination")
 
