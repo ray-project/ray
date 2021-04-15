@@ -512,6 +512,10 @@ class Worker:
         """Given a UUID, return the converted object"""
         return self._converted[key]
 
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return key in self._converted
+
 
 def make_client_id() -> str:
     id = uuid.uuid4()
