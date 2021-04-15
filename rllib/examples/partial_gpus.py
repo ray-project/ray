@@ -23,7 +23,9 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument(
     "--framework", choices=["tf", "tf2", "tfe", "torch"], default="tf")
 parser.add_argument("--num-gpus", type=float, default=0.5)
+parser.add_argument("--num-workers", type=int, default=1)
 parser.add_argument("--num-gpus-per-worker", type=float, default=0.0)
+parser.add_argument("--num-envs-per-worker", type=int, default=1)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=50)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
@@ -71,7 +73,7 @@ if __name__ == "__main__":
         "num_gpus_per_worker": args.num_gpus_per_worker,
         # This setting should not really matter as it does not affect the
         # number of GPUs reserved for each worker.
-        "num_envs_per_worker": 1,
+        "num_envs_per_worker": args.num_envs_per_worker,
         # 4 tune trials altogether.
         "lr": tune.grid_search([0.005, 0.003, 0.001, 0.0001]),
         "framework": args.framework,

@@ -137,6 +137,12 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        if tf.config.list_physical_devices("GPU"):
+            logger.info("TFPolicy running on GPU.")
+        else:
+            logger.info("TFPolicy running on CPU.")
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
