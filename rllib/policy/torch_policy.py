@@ -663,7 +663,7 @@ class TorchPolicy(Policy):
         Args:
             export_dir (str): Local writable directory or filename.
         """
-        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch.data)
+        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch)
         # Provide dummy state inputs if not an RNN (torch cannot jit with
         # returned empty internal states list).
         if "state_in_0" not in dummy_inputs:
