@@ -59,7 +59,6 @@ Here's an example:
        columns=["age", "grade"]), npartitions=2)
    df.groupby(["age"]).mean().compute()
 
-
 .. note::
   For execution on a Ray cluster, you should *not* use the
   `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
@@ -77,6 +76,23 @@ Why use Dask on Ray?
 3. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.
 
 Dask-on-Ray is an ongoing project and is not expected to achieve the same performance as using Ray directly. All `Dask abstractions <https://docs.dask.org/en/latest/user-interfaces.html>`__ should run seamlessly on top of Ray using this scheduler, so if you find that one of these abstractions doesn't run on Ray, please `open an issue <https://github.com/ray-project/ray/issues/new/choose>`__.
+
+Best Practice for Large Scale workloads
+---------------------------------------
+For Ray 1.3, the default scheduling policy is to pack tasks to the same node as much as possible.
+It is more desirable to load balance tasks if you run a large scale / memory intensive Dask on Ray workloads.
+
+In this case, there are two recommended setup.
+- Setting an internal config flag `scheduler_loadbalance_spillback` to change the scheduler to load balance tasks. 
+- Setting the head node's `num-cpus` to 0 so that tasks are not scheduled on a head node.
+
+.. code-block:: bash
+
+  # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
+  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --head --num-cpus=0
+
+  # Worker node. 
+  RAY_SCHEDULER_LOADBALANCE_SPILLBACK=1 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------
