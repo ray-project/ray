@@ -26,6 +26,10 @@ available_node_types:
                     Value: "ignore"
                   - Key: anyscale-expiration
                     Value: '{{env["ANSYCALE_EXPIRATION"]}}'
+            BlockDeviceMappings:
+              - DeviceName: /dev/sda1
+                Ebs:
+                  VolumeSize: 200
         resources: {"CPU": 4}
         min_workers: 0
         max_workers: 0
