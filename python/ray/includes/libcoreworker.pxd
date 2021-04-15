@@ -269,7 +269,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(
             const c_string&,
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
-        (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode
