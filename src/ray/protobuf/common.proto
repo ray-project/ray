@@ -460,13 +460,13 @@ enum WorkerExitType {
 
 message PubMessage {
   oneof pub_message_oneof {
-    WaitForObjectEvictionMessage wait_for_object_eviction_message = 0;
+    WaitForObjectEvictionMessage wait_for_object_eviction_message = 1;
   }
 }
 
 message WaitForObjectEvictionMessage {
-  ChannelType channel_type = 0;
-  bytes object_id = 1;
+  ChannelType channel_type = 1;
+  bytes object_id = 2;
 }
 
 // SANG-TODO
