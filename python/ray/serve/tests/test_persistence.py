@@ -11,7 +11,7 @@ ray.init(address="{}")
 from ray import serve
 
 @serve.deployment
-def driver(starlette_request):
+def driver():
     return "OK!"
 
 driver.deploy()
