@@ -762,6 +762,10 @@ def _utilization_score(node_resources: ResourceDict,
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
 
+    # Could happen if node_resources has only zero values.
+    if not util_by_resources:
+        return None
+
     # Prioritize using all resources first, then prioritize overall balance
     # of multiple resources.
     return (min(util_by_resources), np.mean(util_by_resources))
