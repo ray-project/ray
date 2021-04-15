@@ -530,5 +530,18 @@ def test_client_gpu_ids(call_ray_stop_only):
         assert ray.get_gpu_ids() == []
 
 
+def test_client_serialize_addon(call_ray_stop_only):
+    import ray
+    import pydantic
+
+    ray.init(num_cpus=0)
+
+    class User(pydantic.BaseModel):
+        name: str
+
+    with ray_start_client_server() as ray:
+        assert ray.get(ray.put(User(name="ray"))).name == "ray"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
