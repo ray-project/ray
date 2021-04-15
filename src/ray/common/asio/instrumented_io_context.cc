@@ -60,6 +60,66 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
     return boost::asio::io_context::post(std::move(handler));
   }
+  const auto stats_handle = RecordStart(name);
+  // References are only invalidated upon deletion of the corresponding item from the
+  // table, which we won't do until this io_context is deleted. Provided that
+  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
+  // handler stats it->second from multiple threads without acquiring a table-level
+  // readers lock in the callback.
+  boost::asio::io_context::post(
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+        RecordExecution(handler, std::move(stats_handle));
+      });
+}
+
+std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string &name,
+                                                                  int64_t pad_start_ns) {
+  auto stats = GetOrCreate(name);
+  {
+    absl::MutexLock lock(&(stats->mutex));
+    stats->stats.cum_count++;
+    stats->stats.curr_count++;
+  }
+  return std::make_shared<StatsHandle>(name, absl::GetCurrentTimeNanos() + pad_start_ns,
+                                       stats, global_stats_);
+}
+
+void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
+                                              std::shared_ptr<StatsHandle> handle) {
+  int64_t start_execution = absl::GetCurrentTimeNanos();
+  // Execute actual handler.
+  fn();
+  int64_t end_execution = absl::GetCurrentTimeNanos();
+  // Update execution time stats.
+  const auto execution_time_ns = end_execution - start_execution;
+  // Update handler-specific stats.
+  {
+    auto &stats = handle->handler_stats;
+    absl::MutexLock lock(&(stats->mutex));
+    // Handler-specific execution stats.
+    stats->stats.cum_execution_time += execution_time_ns;
+    // Handler-specific current count.
+    stats->stats.curr_count--;
+  }
+  // Update global stats.
+  const auto queue_time_ns = start_execution - handle->start_time;
+  {
+    auto global_stats = handle->global_stats;
+    absl::MutexLock lock(&(global_stats->mutex));
+    // Global queue stats.
+    global_stats->stats.cum_queue_time += queue_time_ns;
+    if (global_stats->stats.min_queue_time > queue_time_ns) {
+      global_stats->stats.min_queue_time = queue_time_ns;
+    }
+    if (global_stats->stats.max_queue_time < queue_time_ns) {
+      global_stats->stats.max_queue_time = queue_time_ns;
+    }
+  }
+  handle->execution_recorded = true;
+}
+
+std::shared_ptr<GuardedHandlerStats> instrumented_io_context::GetOrCreate(
+    const std::string &name) {
   // Get this handler's stats.
   mutex_.ReaderLock();
   auto it = post_handler_stats_.find(name);
@@ -83,53 +143,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   } else {
     mutex_.ReaderUnlock();
   }
-  {
-    absl::MutexLock lock(&(it->second->mutex));
-    it->second->stats.cum_count++;
-    it->second->stats.curr_count++;
-  }
-  int64_t start = absl::GetCurrentTimeNanos();
-  // References are only invalidated upon deletion of the corresponding item from the
-  // table, which we won't do until this io_context is deleted. Provided that
-  // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
-  // handler stats it->second from multiple threads without acquiring a table-level
-  // readers lock in the callback.
-  // NOTE: We capture the handler stats and global stats shared pointers by value,
-  // ensuring that the reference count will be incremented and that the underlying
-  // structs won't be deallocated until all such handlers finish executing. This allows
-  // the handlers to execute without segfaulting even if the thread that constructed the
-  // io_context object exits without joining the handler threads (which can happen in a
-  // hard exit).
-  boost::asio::io_context::post([handler = std::move(handler), stats = it->second,
-                                 global_stats = global_stats_, name, start]() {
-    int64_t start_execution = absl::GetCurrentTimeNanos();
-    // Execute actual handler.
-    handler();
-    int64_t end_execution = absl::GetCurrentTimeNanos();
-    // Update queue and execution time stats.
-    const auto queue_time_ns = start_execution - start;
-    const auto execution_time_ns = end_execution - start_execution;
-    // Update handler-specific stats.
-    {
-      absl::MutexLock lock(&(stats->mutex));
-      // Handler-specific execution stats.
-      stats->stats.cum_execution_time += execution_time_ns;
-      // Handler-specific current count.
-      stats->stats.curr_count--;
-    }
-    // Update global stats.
-    {
-      absl::MutexLock lock(&(global_stats->mutex));
-      // Global queue stats.
-      global_stats->stats.cum_queue_time += queue_time_ns;
-      if (global_stats->stats.min_queue_time > queue_time_ns) {
-        global_stats->stats.min_queue_time = queue_time_ns;
-      }
-      if (global_stats->stats.max_queue_time < queue_time_ns) {
-        global_stats->stats.max_queue_time = queue_time_ns;
-      }
-    }
-  });
+  return it->second;
 }
 
 GlobalStats instrumented_io_context::get_global_stats() const {
@@ -162,7 +176,8 @@ instrumented_io_context::get_handler_stats() const {
 
 std::string instrumented_io_context::StatsString() const {
   if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
-    return "Stats collection disabled, turn on asio_event_loop_stats_collection_enabled "
+    return "Stats collection disabled, turn on "
+           "asio_event_loop_stats_collection_enabled "
            "flag to enable event loop stats collection";
   }
   auto stats = get_handler_stats();
