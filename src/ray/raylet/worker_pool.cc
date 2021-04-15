@@ -21,6 +21,7 @@
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
@@ -141,7 +142,7 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const std::vector<std::string> &dynamic_options,
+    const std::vector<std::string> &dynamic_options, ray::RuntimeEnv runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -275,18 +276,19 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
-
+  RAY_LOG(DEBUG) << "CONDA_ENV: " << runtime_env.conda_env_name;
   // if conda:
-  std::vector<std::string> setup_worker_command_args = worker_command_args;
-  const std::string setup_worker_path = "/Users/archit/ray/python/ray/workers/setup_worker.py";
-  const std::string conda_env_name = "tf1";
-  // const std::string conda_yaml_path = "/Users/archit/ray/python/ray/workers/environment.yml";
+  if (runtime_env.conda_env_name != "") {
+    const std::string setup_worker_path =
+        "/Users/archit/ray/python/ray/workers/setup_worker.py";
+    const std::string conda_env_name = runtime_env.conda_env_name;
+    // const std::string conda_yaml_path =
+    // "/Users/archit/ray/python/ray/workers/environment.yml";
 
-  worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
-  // if conda name:  else: 
-  worker_command_args.push_back("--conda-env-name=" + conda_env_name);
-  // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
-
+    worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
+    worker_command_args.push_back("--conda-env-name=" + conda_env_name);
+    // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
+  }
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
@@ -354,7 +356,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
-  // Normally argv e.g. /bin/python [...]/default_worker.py --node-ip-address=192.168.1.14 ...
+  // Normally argv e.g. /bin/python [...]/default_worker.py --node-ip-address=192.168.1.14
+  // ...
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
@@ -808,9 +811,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0) {
+      task_spec.OverrideEnvironmentVariables().size() > 0 ||
+      task_spec.RuntimeEnv().conda_env_name != "") {
+    // TODO (architkulkarni): Properly check if RuntimeEnv is not empty
     // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options, or any task with environment variable overrides.
+    // dynamic worker options, or any task with environment variable overrides, or
+    // any task with a specified RuntimeEnv.
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
     if (it != state.idle_dedicated_workers.end()) {
@@ -828,9 +834,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
-                                task_spec.OverrideEnvironmentVariables());
+      proc =
+          StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                             task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
+                             task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;

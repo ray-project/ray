@@ -51,6 +51,7 @@ from ray.includes.common cimport (
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
+    CRuntimeEnv,
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
@@ -1192,7 +1193,9 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    override_environment_variables):
+                    runtime_env,
+                    override_environment_variables
+                    ):
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
@@ -1200,12 +1203,15 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
+            conda_env_name = runtime_env.conda_env_name or ""
+            c_runtime_env = CRuntimeEnv(conda_env_name)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1216,7 +1222,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
-                    c_override_environment_variables),
+                    c_runtime_env, c_override_environment_variables),
                 &return_ids, max_retries,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1241,6 +1247,7 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
+                     runtime_env,
                      override_environment_variables
                      ):
         cdef:
@@ -1252,6 +1259,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
@@ -1259,6 +1267,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            c_runtime_env = CRuntimeEnv(runtime_env.conda_env_name or "")
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1270,6 +1279,7 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
+                        c_runtime_env,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
                             placement_group_bundle_index),

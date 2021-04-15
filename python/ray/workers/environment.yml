@@ -1,8 +1,0 @@
-name: test-shim-1
-dependencies:
-  - python=3.6
-  - pip
-  - ipython
-  - pip:
-    - tensorflow==1.15.0
-    - https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_13_intel.whl

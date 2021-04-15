@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import yaml
 
 from filelock import FileLock
 from pathlib import Path
@@ -15,8 +16,6 @@ from typing import List, Tuple
 from urllib.parse import urlparse
 import os
 import sys
-
-from ray._private.utils import get_conda_env_dir
 
 # We need to setup this variable before
 # using this module
@@ -61,16 +60,21 @@ class RuntimeEnvDict:
     """
 
     def __init__(self, runtime_env_json: dict):
+        self.conda_env_name = None
+        self.conda_serialized_yaml = None
         if "conda" in runtime_env_json:
-            self.conda = runtime_env_json["conda"]
-        else:
-            self.conda = None
+            conda = runtime_env_json["conda"]
+            if isinstance(conda, str):
+                self.conda_env_name = conda
+            elif isinstance(conda, dict):
+                self.conda_serialized_yaml = yaml.dump(conda)
         if "working_dir" in runtime_env_json:
             self.working_dir = runtime_env_json["working_dir"]
         else:
             self.working_dir = None
         # TODO(ekl) we should have better schema validation here.
-        # TODO(ekl) support env_vars, docker, py_modules
+        # TODO(ekl) support py_modules
+        # TODO(architkulkarni) support env_vars, docker
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -80,9 +84,6 @@ class RuntimeEnvDict:
         """
         if override_environment_variables is None:
             override_environment_variables = {}
-        if self.conda:
-            conda_env_dir = get_conda_env_dir(self.conda)
-            override_environment_variables.update(PYTHONHOME=conda_env_dir)
         if self.working_dir:
             override_environment_variables.update(
                 RAY_RUNTIME_ENV_FILES=self.working_dir)

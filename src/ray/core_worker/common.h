@@ -55,11 +55,13 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
+              const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
               const std::unordered_map<std::string, std::string>
                   &override_environment_variables = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
+        runtime_env(runtime_env),
         override_environment_variables(override_environment_variables) {}
 
   /// The name of this task.
@@ -68,6 +70,8 @@ struct TaskOptions {
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  // Runtime Env used by this task.  Propagated to child actors and tasks.
+  ray::RuntimeEnv runtime_env;
   /// Environment variables to update for this task.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
   /// Propagated to child actors and/or tasks.
@@ -82,7 +86,7 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &resources,
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, bool is_asyncio,
+      std::string &name, bool is_asyncio, RuntimeEnv &runtime_env,
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::unordered_map<std::string, std::string> &override_environment_variables =
@@ -96,6 +100,7 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
+        runtime_env(runtime_env),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         override_environment_variables(override_environment_variables){};
@@ -126,6 +131,8 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
+  // Runtime Env used by this actor.  Propagated to child actors and tasks.
+  RuntimeEnv runtime_env;
   /// The placement_options include placement_group_id and bundle_index.
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
