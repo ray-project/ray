@@ -591,7 +591,6 @@ def start_ray_process(command,
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
 
-    # print(f"command is {command}")
     process = ConsolePopen(
         command,
         env=modified_env,

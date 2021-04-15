@@ -7,6 +7,7 @@ import shutil
 import tempfile
 
 import ray
+from ray.test_utils import check_call_ray
 
 # Create temporary spans folder for trace output.
 spans_dir = tempfile.gettempdir() + "/spans"
@@ -24,7 +25,18 @@ def cleanup_dirs():
 
 
 def test_tracing(cleanup_dirs):
-    ray.init(_tracing_startup_hook="ray.tests.enable_tracing:_setup_tracing")
+    # # case 1 - works great!
+    # ray.init(_tracing_startup_hook="ray.tests.enable_tracing:_setup_tracing")
+
+    # # case 2 - somehow the string obtained from 'tracing-startup-hook' is 'None'
+    # check_call_ray(
+    #     ["start", "--head", "--tracing-startup-hook", "\"ray.tests.enable_tracing:_setup_tracing\""], capture_stdout=True, capture_stderr=True)
+    os.system(
+        "ray stop && ray start --head --tracing-startup-hook=\"ray.tests.enable_tracing:_setup_tracing\""
+    )
+    ray.init()
+
+    ######
 
     @ray.remote
     def f(value):

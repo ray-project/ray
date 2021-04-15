@@ -16,5 +16,5 @@ First, install opentelemetry.
     pip install opentelemetry-sdk==1.0.0rc1
 
 
-Tracing is currently disabled by default, but you can enable it by setting the environment variable ['RAY_TRACING_ENABLED'] to ['"True"'].
-
+To enable tracing, you must provide a tracing startup hook to set up the Tracing Provider, Remote Span Processor, and Additional Instruments. 
+TODO: add more to the documentation.

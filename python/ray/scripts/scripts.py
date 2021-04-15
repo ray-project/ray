@@ -484,7 +484,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
-
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
@@ -570,6 +569,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
+
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
         cli_logger.newline()

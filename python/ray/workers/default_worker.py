@@ -5,7 +5,6 @@ import logging
 import time
 import sys
 import os
-# change this to copy/pasted version because ray core cannot depend on uvicorn
 
 import ray
 import ray.actor
@@ -124,8 +123,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level,
                                           args.logging_format)
-
-    logger = logging.getLogger("ray")
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
