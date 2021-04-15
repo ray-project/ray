@@ -60,7 +60,7 @@ def test_handle_in_endpoint(serve_instance):
     Endpoint1.deploy()
     Endpoint2.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/Endpoint2/").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
 
 def test_handle_http_args(serve_instance):
@@ -122,8 +122,8 @@ def test_handle_inject_starlette_request(serve_instance):
 
     wrapper_model.deploy()
 
-    for route in ["/echo/", "/wrapper/"]:
-        resp = requests.get(f"http://127.0.0.1:8000{route}")
+    for route in ["echo", "wrapper"]:
+        resp = requests.get(f"http://127.0.0.1:8000/{route}")
         request_type = resp.text
         assert request_type == "<class 'starlette.requests.Request'>"
 

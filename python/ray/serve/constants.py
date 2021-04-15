@@ -44,7 +44,7 @@ RESERVED_VERSION_TAG = "__serve_version__"
 
 #: All defined HTTP methods.
 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-ALL_HTTP_METHODS = [
+ALL_HTTP_METHODS = {
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
     "PATCH"
-]
+}

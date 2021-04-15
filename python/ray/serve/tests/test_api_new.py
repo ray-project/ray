@@ -18,10 +18,10 @@ def test_e2e(serve_instance):
 
     function.deploy()
 
-    resp = requests.get("http://127.0.0.1:8000/api/").json()["method"]
+    resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
-    resp = requests.post("http://127.0.0.1:8000/api/").json()["method"]
+    resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
 
 
@@ -32,7 +32,7 @@ def test_starlette_response(serve_instance):
             "Hello, world!", media_type="text/plain")
 
     basic.deploy()
-    assert requests.get("http://127.0.0.1:8000/basic/").text == "Hello, world!"
+    assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
 
     @serve.deployment(name="html")
     def html(_):
@@ -41,7 +41,7 @@ def test_starlette_response(serve_instance):
 
     html.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/html/"
+        "http://127.0.0.1:8000/html"
     ).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
     @serve.deployment(name="plain_text")
@@ -50,14 +50,14 @@ def test_starlette_response(serve_instance):
 
     plain_text.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/plain_text/").text == "Hello, world!"
+        "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
     @serve.deployment(name="json")
     def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
     json.deploy()
-    assert requests.get("http://127.0.0.1:8000/json/").json()[
+    assert requests.get("http://127.0.0.1:8000/json").json()[
         "hello"] == "world"
 
     @serve.deployment(name="redirect")
@@ -67,7 +67,7 @@ def test_starlette_response(serve_instance):
 
     redirect.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/redirect/").text == "Hello, world!"
+        "http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
     @serve.deployment(name="streaming")
     def streaming(_):
@@ -80,7 +80,7 @@ def test_starlette_response(serve_instance):
             slow_numbers(), media_type="text/plain", status_code=418)
 
     streaming.deploy()
-    resp = requests.get("http://127.0.0.1:8000/streaming/")
+    resp = requests.get("http://127.0.0.1:8000/streaming")
     assert resp.text == "123"
     assert resp.status_code == 418
 
@@ -134,7 +134,7 @@ def test_call_method(serve_instance):
 
     # Test HTTP path.
     resp = requests.get(
-        "http://127.0.0.1:8000/method/",
+        "http://127.0.0.1:8000/method",
         timeout=1,
         headers={"X-SERVE-CALL-METHOD": "method"})
     assert resp.text == "hello"
@@ -168,7 +168,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/counter/").json()
+        resp = requests.get("http://127.0.0.1:8000/counter").json()
         counter_result.append(resp)
 
     # If the load is shared among two replicas. The max result cannot be 10.
@@ -178,7 +178,7 @@ def test_scaling_replicas(serve_instance):
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/counter/").json()
+        resp = requests.get("http://127.0.0.1:8000/counter").json()
         counter_result.append(resp)
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
@@ -192,7 +192,7 @@ def test_delete_backend(serve_instance):
 
     function.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/delete/").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
 
     function.delete()
 
@@ -204,13 +204,12 @@ def test_delete_backend(serve_instance):
 
     for _ in range(10):
         try:
-            assert requests.get(
-                "http://127.0.0.1:8000/delete/").text == "olleh"
+            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
             break
         except AssertionError:
             time.sleep(0.5)  # Wait for the change to propagate.
     else:
-        assert requests.get("http://127.0.0.1:8000/delete/").text == "olleh"
+        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
 
 
 def test_starlette_request(serve_instance):
@@ -225,7 +224,7 @@ def test_starlette_request(serve_instance):
     UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
 
-    resp = requests.post("http://127.0.0.1:8000/api/", data=long_string).text
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
 
 

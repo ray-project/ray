@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
 import numpy as np
@@ -17,7 +17,7 @@ Duration = float
 
 @dataclass
 class EndpointInfo:
-    http_methods: List[str]
+    http_methods: Set[str]
     python_methods: Optional[List[str]] = None
     route: Optional[str] = None
 

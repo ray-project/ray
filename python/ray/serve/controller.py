@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 import inspect
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -177,7 +177,7 @@ class ServeController:
             endpoint: str,
             traffic_dict: Dict[str, float],
             route: Optional[str],
-            methods: List[str],
+            methods: Set[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -276,7 +276,7 @@ class ServeController:
                      replica_config: ReplicaConfig, version: Optional[str],
                      route_prefix: Optional[str]) -> Optional[GoalId]:
         if route_prefix is not None:
-            assert route_prefix.endswith("/")
+            assert route_prefix.startswith("/")
 
         if replica_config.is_asgi_app:
             # When the backend is asgi application, we want to proxy it
@@ -284,7 +284,7 @@ class ServeController:
             http_methods = ALL_HTTP_METHODS
         else:
             # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
+            http_methods = {"GET", "POST"}
 
         python_methods = []
         if inspect.isclass(replica_config.backend_def):

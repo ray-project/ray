@@ -57,7 +57,7 @@ f.deploy()
 
     assert "test1" in serve.list_backends()
     assert "test1" in serve.list_endpoints()
-    assert requests.get("http://localhost:8000/hello/").text == "hello"
+    assert requests.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
 import ray
@@ -94,7 +94,7 @@ A.deploy()
 """.format(ray_client_instance)
     run_string_as_driver(fastapi)
 
-    assert requests.get("http://localhost:8000/A/").json() == "hello"
+    assert requests.get("http://localhost:8000/A").json() == "hello"
 
 
 if __name__ == "__main__":

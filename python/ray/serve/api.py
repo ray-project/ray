@@ -1006,8 +1006,6 @@ class ServeDeployment:
                 raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
                 raise ValueError("route_prefix must start with '/'.")
-            if not route_prefix.endswith("/"):
-                raise ValueError("route_prefix must end with '/'.")
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None
@@ -1133,7 +1131,7 @@ class ServeDeployment:
 
     def __str__(self):
         if self.route_prefix is None:
-            route_prefix = f"/{self.name}/"
+            route_prefix = f"/{self.name}"
         else:
             route_prefix = self.route_prefix
         return (f"ServeDeployment(name={self.name},"
