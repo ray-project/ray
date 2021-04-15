@@ -290,7 +290,8 @@ def sac_actor_critic_loss(
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
+        q_t = model.get_q_values(
+            model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
                 model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
