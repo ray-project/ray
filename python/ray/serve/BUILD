@@ -43,7 +43,7 @@ py_test(
 
 py_test(
     name = "test_http_prefix_matching",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],

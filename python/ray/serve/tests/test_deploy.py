@@ -806,7 +806,7 @@ def test_list_deployments(serve_instance):
 def test_deploy_change_route_prefix(serve_instance):
     name = "test"
 
-    @serve.deployment(name=name, version="1", route_prefix="/old/")
+    @serve.deployment(name=name, version="1", route_prefix="/old")
     def d(*args):
         return f"1|{os.getpid()}"
 
@@ -837,7 +837,7 @@ def test_deploy_change_route_prefix(serve_instance):
         assert pid2 == pid1
         return True
 
-    d.options(route_prefix="/new/").deploy()
+    d.options(route_prefix="/new").deploy()
     wait_for_condition(check_switched)
 
 
