@@ -121,6 +121,11 @@ def test_put_get(ray_start_regular_shared):
 
         retval = ray.get(objectref)
         assert retval == "hello world"
+        # Make sure ray.put(1) == 1 is False and does not raise an exception.
+        objectref = ray.put(1)
+        assert not objectref == 1
+        # Make sure it returns True when necessary as well.
+        assert objectref == ClientObjectRef(objectref.id)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
