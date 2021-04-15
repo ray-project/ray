@@ -27,6 +27,15 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
+HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
+    " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
+    " avoid spawning worker nodes of type `{node_type}`, explicitly set" \
+    " `max_workers: 0` for `{node_type}`.\n"\
+    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."\
+    " Your current version is Ray {version}.\n"\
+    "See the docs for more information:\n"\
+    "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+
 logger = logging.getLogger(__name__)
 
 
@@ -215,8 +224,23 @@ def fill_node_type_max_workers(config):
     with the only upper constraint coming from the global max_workers.
     """
     assert "max_workers" in config, "Global max workers should be set."
-    for node_type in config["available_node_types"].values():
-        node_type.setdefault("max_workers", config["max_workers"])
+    node_types = config["available_node_types"]
+    for node_type_name in node_types:
+        node_type_data = node_types[node_type_name]
+
+        # Log a warning if head node type's max_workers is absent.
+        if (node_type_name == config["head_node_type"]
+                and "max_workers" not in node_type_data):
+            cli_logger.warning(
+                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
+                    node_type=node_type_name,
+                    max_workers=config["max_workers"],
+                    version=ray.__version__
+                )
+            )
+
+        # The key part of this function:
+        node_type_data.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):
