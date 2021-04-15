@@ -17,7 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=3)
-parser.add_argument("--framework", choices=["tf", "torch"], default="tf")
+parser.add_argument(
+    "--framework", choices=["tf", "tf2", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=500000)
@@ -48,6 +49,9 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
+            # Attention net wrapping (for tf) can already use the native keras
+            # model versions. For torch, this will have no effect.
+            "_use_default_native_models": True,
             "use_attention": True,
             "max_seq_len": 10,
             "attention_num_transformer_units": 1,
@@ -75,18 +79,23 @@ if __name__ == "__main__":
     # >> from ray.rllib.agents.ppo import PPOTrainer
     # >>
     # >> trainer = PPOTrainer(config)
+    # >> num_transformers = config["model"]["attention_num_transformer_units"]
     # >> env = RepeatAfterMeEnv({})
     # >> obs = env.reset()
-    # >> init_state = state = np.zeros(
-    #    [100 (attention_memory_inference), 64 (attention_dim)], np.float32)
+    # >> init_state = state = [
+    # ..     np.zeros([100, 32], np.float32) for _ in range(num_transformers)
+    # .. ]
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(obs, [state])
+    # >>     a, state_out, _ = trainer.compute_action(obs, state)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:
     # >>         obs = env.reset()
     # >>         state = init_state
     # >>     else:
-    # >>         state = np.concatenate([state, [state_out[0]]])[1:]
+    # >>         state = [
+    # ..             np.concatenate([state[i], [state_out[i]]], axis=0)[1:]
+    # ..             for i in range(num_transformers)
+    # ..         ]
 
     # We use tune here, which handles env and trainer creation for us.
     results = tune.run(args.run, config=config, stop=stop, verbose=2)
