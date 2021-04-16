@@ -1293,11 +1293,11 @@ cdef class CoreWorker:
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, name, is_asyncio,
-                        c_runtime_env,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
+                        c_runtime_env,
                         c_override_environment_variables),
                     extension_data,
                     &c_actor_id))

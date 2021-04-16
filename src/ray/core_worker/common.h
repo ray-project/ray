@@ -87,9 +87,9 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {})
       : max_restarts(max_restarts),
@@ -101,9 +101,9 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
-        runtime_env(runtime_env),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
+        runtime_env(runtime_env),
         override_environment_variables(override_environment_variables){};
 
   /// Maximum number of times that the actor should be restarted if it dies
@@ -132,8 +132,6 @@ struct ActorCreationOptions {
   const std::string name;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
-  // Runtime Env used by this actor.  Propagated to child actors and tasks.
-  RuntimeEnv runtime_env;
   /// The placement_options include placement_group_id and bundle_index.
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
@@ -141,6 +139,8 @@ struct ActorCreationOptions {
   /// When true, the child task will always scheduled on the same placement group
   /// specified in the PlacementOptions.
   bool placement_group_capture_child_tasks = true;
+  // Runtime Env used by this actor.  Propagated to child actors and tasks.
+  ray::RuntimeEnv runtime_env;
   /// Environment variables to update for this actor.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
   /// Propagated to child actors and/or tasks.
