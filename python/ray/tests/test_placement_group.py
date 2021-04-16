@@ -149,7 +149,8 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         assert node_of_actor_1 == node_of_actor_2
 
 
-def test_placement_group_spread(ray_start_cluster):
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_group_spread(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)
     class Actor(object):
         def __init__(self):
@@ -164,38 +165,40 @@ def test_placement_group_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.util.placement_group(
-        name="name", strategy="SPREAD", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
-    ray.get(placement_group.ready())
-    actor_1 = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=0).remote()
-    actor_2 = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=1).remote()
+    with connect_to_client_or_not(connect_to_client):
+        placement_group = ray.util.placement_group(
+            name="name", strategy="SPREAD", bundles=[{
+                "CPU": 2
+            }, {
+                "CPU": 2
+            }])
+        ray.get(placement_group.ready())
+        actor_1 = Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=0).remote()
+        actor_2 = Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=1).remote()
 
-    ray.get(actor_1.value.remote())
-    ray.get(actor_2.value.remote())
+        ray.get(actor_1.value.remote())
+        ray.get(actor_2.value.remote())
 
-    # Get all actors.
-    actor_infos = ray.actors()
+        # Get all actors.
+        actor_infos = ray.actors()
 
-    # Make sure all actors in counter_list are located in separate nodes.
-    actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-    actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
+        # Make sure all actors in counter_list are located in separate nodes.
+        actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
+        actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
 
-    assert actor_info_1 and actor_info_2
+        assert actor_info_1 and actor_info_2
 
-    node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-    node_of_actor_2 = actor_info_2["Address"]["NodeID"]
-    assert node_of_actor_1 != node_of_actor_2
+        node_of_actor_1 = actor_info_1["Address"]["NodeID"]
+        node_of_actor_2 = actor_info_2["Address"]["NodeID"]
+        assert node_of_actor_1 != node_of_actor_2
 
 
-def test_placement_group_strict_spread(ray_start_cluster):
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)
     class Actor(object):
         def __init__(self):
@@ -210,47 +213,48 @@ def test_placement_group_strict_spread(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    placement_group = ray.util.placement_group(
-        name="name",
-        strategy="STRICT_SPREAD",
-        bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
-    ray.get(placement_group.ready())
-    actor_1 = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=0).remote()
-    actor_2 = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=1).remote()
-    actor_3 = Actor.options(
-        placement_group=placement_group,
-        placement_group_bundle_index=2).remote()
+    with connect_to_client_or_not(connect_to_client):
+        placement_group = ray.util.placement_group(
+            name="name",
+            strategy="STRICT_SPREAD",
+            bundles=[{
+                "CPU": 2
+            }, {
+                "CPU": 2
+            }, {
+                "CPU": 2
+            }])
+        ray.get(placement_group.ready())
+        actor_1 = Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=0).remote()
+        actor_2 = Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=1).remote()
+        actor_3 = Actor.options(
+            placement_group=placement_group,
+            placement_group_bundle_index=2).remote()
 
-    ray.get(actor_1.value.remote())
-    ray.get(actor_2.value.remote())
-    ray.get(actor_3.value.remote())
+        ray.get(actor_1.value.remote())
+        ray.get(actor_2.value.remote())
+        ray.get(actor_3.value.remote())
 
-    # Get all actors.
-    actor_infos = ray.actors()
+        # Get all actors.
+        actor_infos = ray.actors()
 
-    # Make sure all actors in counter_list are located in separate nodes.
-    actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
-    actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
-    actor_info_3 = actor_infos.get(actor_3._actor_id.hex())
+        # Make sure all actors in counter_list are located in separate nodes.
+        actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
+        actor_info_2 = actor_infos.get(actor_2._actor_id.hex())
+        actor_info_3 = actor_infos.get(actor_3._actor_id.hex())
 
-    assert actor_info_1 and actor_info_2 and actor_info_3
+        assert actor_info_1 and actor_info_2 and actor_info_3
 
-    node_of_actor_1 = actor_info_1["Address"]["NodeID"]
-    node_of_actor_2 = actor_info_2["Address"]["NodeID"]
-    node_of_actor_3 = actor_info_3["Address"]["NodeID"]
-    assert node_of_actor_1 != node_of_actor_2
-    assert node_of_actor_1 != node_of_actor_3
-    assert node_of_actor_2 != node_of_actor_3
+        node_of_actor_1 = actor_info_1["Address"]["NodeID"]
+        node_of_actor_2 = actor_info_2["Address"]["NodeID"]
+        node_of_actor_3 = actor_info_3["Address"]["NodeID"]
+        assert node_of_actor_1 != node_of_actor_2
+        assert node_of_actor_1 != node_of_actor_3
+        assert node_of_actor_2 != node_of_actor_3
 
 
 def test_placement_group_actor_resource_ids(ray_start_cluster):
