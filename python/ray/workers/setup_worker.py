@@ -21,14 +21,10 @@ parser.add_argument(
 # minus the python executable, e.g. default_worker.py --node-ip-address=...
 args, remaining_args = parser.parse_known_args()
 
-# conda_env_path = "/fake/path/environment.yml"
 commands = []
 
 if args.conda_env_name:
     commands += get_conda_activate_commands(args.conda_env_name)
-# elif args.conda_yaml_path:
-#     conda_env_name = get_or_create_conda_env(args.conda_yaml_path)
-#     commands += get_conda_activate_commands(conda_env_name)
 
 commands += [" ".join(["exec python"] + remaining_args)]
 command_separator = " && "

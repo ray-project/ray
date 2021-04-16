@@ -61,13 +61,10 @@ class RuntimeEnvDict:
 
     def __init__(self, runtime_env_json: dict):
         self.conda_env_name = None
-        self.conda_serialized_yaml = None
         if "conda" in runtime_env_json:
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
                 self.conda_env_name = conda
-            elif isinstance(conda, dict):
-                self.conda_serialized_yaml = yaml.dump(conda)
         if "working_dir" in runtime_env_json:
             self.working_dir = runtime_env_json["working_dir"]
         else:
