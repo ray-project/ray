@@ -87,7 +87,8 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-      const std::string &debugger_breakpoint, const ray::RuntimeEnv &runtime_env,
+      const std::string &debugger_breakpoint,
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {}) {
     message_->set_type(TaskType::NORMAL_TASK);
