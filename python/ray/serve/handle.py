@@ -1,8 +1,7 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Coroutine
-import threading
+from typing import Dict, List, Optional, Union
 from enum import Enum
 
 from ray.serve.common import EndpointTag
@@ -10,20 +9,6 @@ from ray.actor import ActorHandle
 from ray.serve.utils import get_random_letters
 from ray.serve.router import EndpointRouter, RequestMetadata
 from ray.util import metrics
-
-_global_async_loop = None
-
-
-def create_or_get_async_loop_in_thread():
-    global _global_async_loop
-    if _global_async_loop is None:
-        _global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=_global_async_loop.run_forever,
-        )
-        thread.start()
-    return _global_async_loop
 
 
 @dataclass(frozen=True)
@@ -102,7 +87,6 @@ class RayServeHandle:
         return EndpointRouter(
             self.controller_handle,
             self.endpoint_name,
-            asyncio.get_event_loop(),
         )
 
     def options(self,
@@ -138,7 +122,7 @@ class RayServeHandle:
             _internal_use_serve_request=self._use_serve_request)
 
     def _remote(self, endpoint_name, handle_options, args,
-                kwargs) -> Coroutine:
+                kwargs) -> concurrent.futures.Future:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             endpoint_name,
@@ -148,8 +132,8 @@ class RayServeHandle:
             http_headers=handle_options.http_headers,
             use_serve_request=self._use_serve_request,
         )
-        coro = self.router.assign_request(request_metadata, *args, **kwargs)
-        return coro
+        future = self.router.assign_request(request_metadata, *args, **kwargs)
+        return future
 
     async def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the endpoint.
@@ -167,8 +151,10 @@ class RayServeHandle:
                 ``request.query_params``.
         """
         self.request_counter.inc()
-        return await self._remote(self.endpoint_name, self.handle_options,
-                                  args, kwargs)
+        fut = self._remote(self.endpoint_name, self.handle_options, args,
+                           kwargs)
+        ref = await asyncio.wrap_future(fut)
+        return ref
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
@@ -203,7 +189,6 @@ class RayServeSyncHandle(RayServeHandle):
         return EndpointRouter(
             self.controller_handle,
             self.endpoint_name,
-            create_or_get_async_loop_in_thread(),
         )
 
     def remote(self, *args, **kwargs):
@@ -224,10 +209,8 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.endpoint_name, self.handle_options, args,
-                            kwargs)
-        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self.router._loop)
+        future = self._remote(self.endpoint_name, self.handle_options, args,
+                              kwargs)
         return future.result()
 
     def __reduce__(self):

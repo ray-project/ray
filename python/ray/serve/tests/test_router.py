@@ -3,6 +3,7 @@ Unit tests for the router class. Please don't add any test that will involve
 controller or the backend worker, use mock if necessary.
 """
 import asyncio
+import concurrent.futures
 from collections import defaultdict
 import os
 
@@ -61,7 +62,7 @@ def task_runner_mock_actor():
 
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                             task_runner_mock_actor):
-    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
+    q = EndpointRouter(mock_controller, "svc")
 
     # Propogate configs
     await mock_controller.set_traffic.remote(
@@ -72,8 +73,8 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
                                                  task_runner_mock_actor)
 
     # Make sure we get the request result back
-    ref = await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc"), 1)
+    fut = q.assign_request(RequestMetadata(get_random_letters(10), "svc"), 1)
+    ref = fut.result()
     result = await ref
     assert result == "DONE"
 
@@ -85,7 +86,7 @@ async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
 
 async def test_changing_backend(ray_instance, mock_controller,
                                 task_runner_mock_actor):
-    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
+    q = EndpointRouter(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -94,8 +95,8 @@ async def test_changing_backend(ray_instance, mock_controller,
     await mock_controller.add_new_replica.remote("backend-alter",
                                                  task_runner_mock_actor)
 
-    await (await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc"), 1))
+    await q.assign_request(RequestMetadata(get_random_letters(10), "svc"),
+                           1).result()
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 1
 
@@ -105,15 +106,15 @@ async def test_changing_backend(ray_instance, mock_controller,
         }))
     await mock_controller.add_new_replica.remote("backend-alter-2",
                                                  task_runner_mock_actor)
-    await (await q.assign_request.remote(
-        RequestMetadata(get_random_letters(10), "svc"), 2))
+    await q.assign_request(RequestMetadata(get_random_letters(10), "svc"),
+                           2).result()
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.args[0] == 2
 
 
 async def test_split_traffic_random(ray_instance, mock_controller,
                                     task_runner_mock_actor):
-    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
+    q = EndpointRouter(mock_controller, "svc")
 
     await mock_controller.set_traffic.remote(
         "svc", TrafficPolicy({
@@ -128,8 +129,8 @@ async def test_split_traffic_random(ray_instance, mock_controller,
     # single queue is 0.5^20 ~ 1-6
     object_refs = []
     for _ in range(20):
-        ref = await q.assign_request.remote(
-            RequestMetadata(get_random_letters(10), "svc"), 1)
+        ref = q.assign_request(
+            RequestMetadata(get_random_letters(10), "svc"), 1).result()
         object_refs.append(ref)
     ray.get(object_refs)
 
@@ -142,7 +143,7 @@ async def test_split_traffic_random(ray_instance, mock_controller,
 
 async def test_shard_key(ray_instance, mock_controller,
                          task_runner_mock_actor):
-    q = ray.remote(EndpointRouter).remote(mock_controller, "svc")
+    q = EndpointRouter(mock_controller, "svc")
 
     num_backends = 5
     traffic_dict = {}
@@ -157,10 +158,10 @@ async def test_shard_key(ray_instance, mock_controller,
     # Generate random shard keys and send one request for each.
     shard_keys = [get_random_letters() for _ in range(100)]
     for shard_key in shard_keys:
-        await (await q.assign_request.remote(
+        await q.assign_request(
             RequestMetadata(
                 get_random_letters(10), "svc", shard_key=shard_key),
-            shard_key))
+            shard_key).result()
 
     # Log the shard keys that were assigned to each backend.
     runner_shard_keys = defaultdict(set)
@@ -172,10 +173,10 @@ async def test_shard_key(ray_instance, mock_controller,
 
     # Send queries with the same shard keys a second time.
     for shard_key in shard_keys:
-        await (await q.assign_request.remote(
+        await q.assign_request(
             RequestMetadata(
                 get_random_letters(10), "svc", shard_key=shard_key),
-            shard_key))
+            shard_key).result()
 
     # Check that the requests were all mapped to the same backends.
     for i, runner in enumerate(runners):
@@ -204,7 +205,6 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
     rs = ReplicaSet(
         mock_controller_with_name[1],
         "my_backend",
-        asyncio.get_event_loop(),
     )
     workers = [MockWorker.remote() for _ in range(2)]
     rs.set_max_concurrent_queries(BackendConfig(max_concurrent_queries=1))
@@ -213,8 +213,8 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
     # Send two queries. They should go through the router but blocked by signal
     # actors.
     query = Query([], {}, RequestMetadata("request-id", "endpoint"))
-    first_ref = await rs.assign_replica(query)
-    second_ref = await rs.assign_replica(query)
+    first_ref = rs.assign_replica(query).result()
+    second_ref = rs.assign_replica(query).result()
 
     # These should be blocked by signal actor.
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -227,12 +227,11 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
             await asyncio.sleep(1)
 
     # Let's try to send another query.
-    third_ref_pending_task = asyncio.get_event_loop().create_task(
-        rs.assign_replica(query))
+    third_ref_pending_fut: concurrent.futures.Future = rs.assign_replica(query)
     # We should fail to assign a replica, so this coroutine should still be
     # pending after some time.
     await asyncio.sleep(0.2)
-    assert not third_ref_pending_task.done()
+    assert not third_ref_pending_fut.done()
 
     # Let's unblock the two workers
     await signal.send.remote()
@@ -241,7 +240,7 @@ async def test_replica_set(ray_instance, mock_controller_with_name):
 
     # The third request should be unblocked and sent to first worker.
     # This meas we should be able to get the object ref.
-    third_ref = await third_ref_pending_task
+    third_ref = third_ref_pending_fut.result()
 
     # Now we got the object ref, let's get it result.
     await signal.send.remote()
