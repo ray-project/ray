@@ -289,7 +289,7 @@ class ClientAPI:
 
     def _converted_key_exists(self, key: str) -> bool:
         """Check if a key UUID is present in the store of converted objects."""
-        return self.worker._converted_key_exists()
+        return self.worker._converted_key_exists(key)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):
