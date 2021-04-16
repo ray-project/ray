@@ -86,7 +86,8 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &resources,
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, bool is_asyncio, RuntimeEnv &runtime_env,
+      std::string &name, bool is_asyncio,
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::unordered_map<std::string, std::string> &override_environment_variables =
