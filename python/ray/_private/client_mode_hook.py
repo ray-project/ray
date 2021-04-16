@@ -101,9 +101,8 @@ def client_mode_convert_function(func_cls, in_args, in_kwargs, **kwargs):
 
     key = getattr(func_cls, RAY_CLIENT_MODE_ATTR, None)
 
-    # The first part of the "or" is redundant.
-    # We need the second part in case func_cls is reused between client
-    # sessions in one python interpreter session.
+    # Second part of "or" is needed in case func_cls is reused between Ray
+    # client sessions in one Python interpreter session.
     if (key is None) or (not ray._converted_key_exists(key)):
         key = ray._convert_function(func_cls)
         setattr(func_cls, RAY_CLIENT_MODE_ATTR, key)
@@ -122,9 +121,8 @@ def client_mode_convert_actor(actor_cls, in_args, in_kwargs, **kwargs):
     from ray.util.client import ray
 
     key = getattr(actor_cls, RAY_CLIENT_MODE_ATTR, None)
-    # The first part of the "or" is redundant.
-    # We need the second part in case actor_cls is reused between client
-    # sessions in one python interpreter session.
+    # Second part of "or" is needed in case actor_cls is reused between Ray
+    # client sessions in one Python interpreter session.
     if (key is None) or (not ray._converted_key_exists(key)):
         key = ray._convert_actor(actor_cls)
         setattr(actor_cls, RAY_CLIENT_MODE_ATTR, key)
