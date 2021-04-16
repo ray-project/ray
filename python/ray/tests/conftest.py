@@ -289,6 +289,7 @@ unstable_object_spilling_config = {
     }
 }
 
+
 def create_object_spilling_config(request, tmp_path):
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
@@ -317,6 +318,7 @@ def object_spilling_config(request, tmp_path):
     ])
 def multi_node_object_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
+
 
 @pytest.fixture(
     scope="function", params=[
