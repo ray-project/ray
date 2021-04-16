@@ -12,11 +12,6 @@ parser.add_argument(
     type=str,
     help="the name of an existing conda env to activate")
 
-parser.add_argument(
-    "--conda-yaml-path",
-    type=str,
-    help="the path to a conda environment yaml to install")
-
 # remaining_args contains the arguments to the original worker command,
 # minus the python executable, e.g. default_worker.py --node-ip-address=...
 args, remaining_args = parser.parse_known_args()

@@ -279,7 +279,6 @@ Process WorkerPool::StartWorkerProcess(
   if (runtime_env.conda_env_name != "") {
     const std::string conda_env_name = runtime_env.conda_env_name;
     worker_command_args.push_back("--conda-env-name=" + conda_env_name);
-    // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
   } else {
     // The "shim process" setup_worker.py is not needed, so do not run it.
     worker_command_args.erase(worker_command_args.begin() + 1);
@@ -806,7 +805,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
       task_spec.RuntimeEnv().conda_env_name != "") {
-    // TODO (architkulkarni): Properly check if RuntimeEnv is not empty
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options, or any task with environment variable overrides, or
     // any task with a specified RuntimeEnv.
