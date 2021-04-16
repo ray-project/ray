@@ -417,7 +417,7 @@ class TorchPolicy(Policy):
         # Step the optimizers.
         self.apply_gradients(_directStepOptimizerSingleton)
 
-        if self.model:
+        if self.model and isinstance(self.model, ModelV2):
             fetches["model"] = self.model.metrics()
         fetches.update({"custom_metrics": learn_stats})
 
@@ -449,7 +449,7 @@ class TorchPolicy(Policy):
             self._loss(self, self.model, self.dist_class, train_batch))
 
         # Call Model's custom-loss with Policy loss outputs and train_batch.
-        if self.model:
+        if self.model and isinstance(self.model, ModelV2):
             loss_out = self.model.custom_loss(loss_out, train_batch)
 
         # Give Exploration component that chance to modify the loss (or add

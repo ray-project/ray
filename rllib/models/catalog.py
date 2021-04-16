@@ -842,12 +842,15 @@ class ModelCatalog:
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
-            # Keras native requested AND no auto-rnn-wrapping.
+            # Keras/torch native requested.
             if model_config.get("_use_default_native_models"):
                 if Keras_FCNet:
                     return Keras_FCNet
-                elif Torch_FCNet:
+                elif Torch_FCNet and not model_config.get("use_lstm") and \
+                        not model_config.get("use_attention"):
                     return Torch_FCNet
+                else:
+                    return FCNet
             # Classic ModelV2 FCNet.
             else:
                 return FCNet

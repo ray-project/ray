@@ -42,7 +42,12 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch, is_training=True)
+    if not isinstance(model, ModelV2):
+        logits, state, extra_outs = model(train_batch)
+        value_fn_out = extra_outs[SampleBatch.VF_PREDS]
+    else:
+        logits, state = model.from_batch(train_batch, is_training=True)
+        value_fn_out = model.value_function()
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -85,7 +90,6 @@ def ppo_surrogate_loss(
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        value_fn_out = model.value_function()
         vf_loss1 = torch.pow(
             value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_clipped = prev_value_fn_out + torch.clamp(
@@ -109,11 +113,9 @@ def ppo_surrogate_loss(
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
-    policy._vf_explained_var = explained_variance(
-        train_batch[Postprocessing.VALUE_TARGETS],
-        policy.model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
+    policy._value_fn_out = value_fn_out
 
     return total_loss
 
@@ -135,7 +137,9 @@ def kl_and_loss_stats(policy: Policy,
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
+        "vf_explained_var": explained_variance(
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy._value_fn_out),
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
@@ -163,6 +167,10 @@ def vf_preds_fetches(
         Dict[str, TensorType]: Dict with extra tf fetches to perform per
             action computation.
     """
+    # torch.nn.Module return values for each call in third return argument
+    # (dict).
+    if not isinstance(policy.model, ModelV2):
+        return {}
     # Return value function outputs. VF estimates will hence be added to the
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
@@ -217,9 +225,13 @@ class ValueNetworkMixin:
             def value(**input_dict):
                 input_dict = SampleBatch(input_dict)
                 input_dict = self._lazy_tensor_dict(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0].item()
+                if not isinstance(self.model, ModelV2):
+                    _, _, extra_outs = self.model(input_dict)
+                    return extra_outs[SampleBatch.VF_PREDS][0]
+                else:
+                    self.model(input_dict)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0].item()
 
         # When not doing GAE, we do not require the value function's output.
         else:

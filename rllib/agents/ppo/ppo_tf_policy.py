@@ -285,7 +285,7 @@ class ValueNetworkMixin:
                     _, _, extra_outs = self.model(input_dict)
                     return extra_outs[SampleBatch.VF_PREDS][0]
                 else:
-                    model_out, _ = self.model(input_dict)
+                    self.model(input_dict)
                     # [0] = remove the batch dim.
                     return self.model.value_function()[0]
 
