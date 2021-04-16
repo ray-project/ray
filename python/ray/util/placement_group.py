@@ -118,13 +118,7 @@ class PlacementGroup:
         MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
-                if key == "memory":
-                    # Make sure the memory resource can be
-                    # transformed to memory unit.
-                    to_memory_units(value, True)
-                    value = MEMORY_RESOURCE_UNIT_BYTES
-                else:
-                    value = MOCK_VALUE
+                value = MEMORY_RESOURCE_UNIT_BYTES if key == "memory" else MOCK_VALUE
                 return key, value
         assert False, "This code should be unreachable."
 
@@ -193,6 +187,11 @@ def placement_group(bundles: List[Dict[str, float]],
             raise ValueError(
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
+
+        if "memory" in bundle.keys():
+            # Make sure the memory resource can be
+            # transformed to memory unit.
+            to_memory_units(bundle["memory"], True)
 
     if lifetime is None:
         detached = False
