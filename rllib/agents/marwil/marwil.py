@@ -1,3 +1,4 @@
+from ray.rllib.agents.ppo.ppo import warn_about_bad_reward_scales
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
@@ -7,6 +8,8 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.utils.deprecation import deprecation_warning, \
+    DEPRECATED_VALUE
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -24,7 +27,7 @@ DEFAULT_CONFIG = with_common_config({
     # When beta is 0.0, MARWIL is reduced to imitation learning.
     "beta": 1.0,
     # Balancing value estimation loss and policy optimization loss.
-    "vf_coeff": 1.0,
+    "vf_loss_coeff": 1.0,
     # If specified, clip the global norm of gradients by this amount.
     "grad_clip": None,
     # Whether to calculate cumulative rewards.
@@ -41,6 +44,9 @@ DEFAULT_CONFIG = with_common_config({
     "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
+
+    # Deprecated keys:
+    "vf_coeff": DEPRECATED_VALUE,  # use: vf_loss_coeff
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -71,12 +77,17 @@ def execution_plan(workers, config):
     train_op = Concurrently(
         [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
-    return StandardMetricsReporting(train_op, workers, config)
+    return StandardMetricsReporting(train_op, workers, config)# \
+        #.for_each(lambda result: warn_about_bad_reward_scales(config, result))
 
 
 def validate_config(config):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+
+    if config.get("vf_coeff") != DEPRECATED_VALUE:
+        deprecation_warning(old="vf_coeff", new="vf_loss_coeff", error=False)
+        config["vf_loss_coeff"] = config["vf_coeff"]
 
 
 MARWILTrainer = build_trainer(

@@ -11,7 +11,7 @@ torch, _ = try_import_torch()
 
 
 def marwil_loss(policy, model, dist_class, train_batch):
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model.from_batch(train_batch, is_training=True)
     action_dist = dist_class(model_out, model)
     state_values = model.value_function()
     advantages = train_batch[Postprocessing.ADVANTAGES]
@@ -35,7 +35,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     policy.p_loss = -1.0 * torch.mean(exp_advs.detach() * logprobs)
 
     # Combine both losses.
-    policy.total_loss = policy.p_loss + policy.config["vf_coeff"] * \
+    policy.total_loss = policy.p_loss + policy.config["vf_loss_coeff"] * \
         policy.v_loss
     explained_var = explained_variance(advantages, state_values)
     policy.explained_variance = torch.mean(explained_var)

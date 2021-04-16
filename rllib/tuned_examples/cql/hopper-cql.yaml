@@ -41,4 +41,3 @@ hopper_cql:
         lagrangian: False
         evaluation_config:
             input: sampler
-

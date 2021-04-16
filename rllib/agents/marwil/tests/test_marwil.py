@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True) #TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -35,45 +35,60 @@ class TestMARWIL(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
-        print("data_file={} exists={}".format(data_file,
-                                              os.path.isfile(data_file)))
+        data_file_cp = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        print("data_file_cp={} exists={}".format(
+            data_file_cp, os.path.isfile(data_file_cp)))
+        #data_file_pend = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
+        data_file_pend = "/tmp/out/output-2021-04-16_13-49-39_worker-0_1.json"
+        print("data_file_pend={} exists={}".format(
+            data_file_pend, os.path.isfile(data_file_pend)))
 
         config = marwil.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2
+        #config["num_workers"] = 2
+        config["vf_loss_coeff"] = 0.0001
+        config["lr"] = 0.00005
+        config["beta"] = 0.0
+        config["model"]["vf_share_layers"] = True
+        config["grad_clip"] = 10.0
+
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 2
+        config["evaluation_interval"] = 3
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
-        # Learn from offline data.
-        config["input"] = [data_file]
-        num_iterations = 350
-        min_reward = 70.0
+        num_iterations = 5000
+        #min_reward = 70.0
 
         # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = marwil.MARWILTrainer(config=config, env="CartPole-v0")
-            learnt = False
-            for i in range(num_iterations):
-                eval_results = trainer.train().get("evaluation")
-                if eval_results:
-                    print("iter={} R={}".format(
-                        i, eval_results["episode_reward_mean"]))
-                    # Learn until some reward is reached on an actual live env.
-                    if eval_results["episode_reward_mean"] > min_reward:
-                        print("learnt!")
-                        learnt = True
-                        break
+        for fw in framework_iterator(config, frameworks=("torch", "tf")):
+            envs = [("Pendulum-v0", -800.0, data_file_pend, False), ("CartPole-v0", 70.0, data_file_cp, True)]#TODO only cartpole here
+            #if fw == "tf":
+            #    envs.append(("Pendulum-v0", -800.0, data_file_pend, False))
+            for env, min_reward, data_file, off_pol_est in envs:
+                # Learn from offline data.
+                config["input"] = [data_file]
+                config["input_evaluation"] = [] if not off_pol_est else ["is", "wis"]
+                trainer = marwil.MARWILTrainer(config=config, env=env)
+                learnt = False
+                for i in range(num_iterations):
+                    eval_results = trainer.train().get("evaluation")
+                    if eval_results:
+                        print("iter={} R={}".format(
+                            i, eval_results["episode_reward_mean"]))
+                        # Learn until some reward is reached on an actual live env.
+                        if eval_results["episode_reward_mean"] >= min_reward:
+                            print("learnt!")
+                            learnt = True
+                            break
 
-            if not learnt:
-                raise ValueError(
-                    "MARWILTrainer did not reach {} reward from expert "
-                    "offline data!".format(min_reward))
+                if not learnt:
+                    raise ValueError(
+                        "MARWILTrainer did not reach {} reward from expert "
+                        "offline data!".format(min_reward))
 
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+                check_compute_single_action(
+                    trainer, include_prev_action_reward=True)
 
-            trainer.stop()
+                trainer.stop()
 
     def test_marwil_loss_function(self):
         """
@@ -123,7 +138,7 @@ class TestMARWIL(unittest.TestCase):
             expected_vf_loss = 0.5 * adv_squared
             expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
             expected_loss = \
-                expected_pol_loss + config["vf_coeff"] * expected_vf_loss
+                expected_pol_loss + config["vf_loss_coeff"] * expected_vf_loss
 
             # Calculate the algorithm's loss (to check against our own
             # calculation above).

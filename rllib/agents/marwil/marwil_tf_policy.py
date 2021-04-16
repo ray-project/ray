@@ -76,7 +76,7 @@ def postprocess_advantages(policy,
         sample_batch,
         last_r,
         policy.config["gamma"],
-        # We just want the discounted cummulative rewards, so we won't need
+        # We just want the discounted cumulative rewards, so we won't need
         # GAE nor critic (use_critic=True: Subtract vf-estimates from returns).
         use_gae=False,
         use_critic=False)
@@ -140,7 +140,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     policy.loss = MARWILLoss(policy, value_estimates, action_dist,
                              train_batch[SampleBatch.ACTIONS],
                              train_batch[Postprocessing.ADVANTAGES],
-                             policy.config["vf_coeff"], policy.config["beta"])
+                             policy.config["vf_loss_coeff"], policy.config["beta"])
 
     return policy.loss.total_loss
 
