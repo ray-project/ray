@@ -118,7 +118,8 @@ class PlacementGroup:
         MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
-                value = MEMORY_RESOURCE_UNIT_BYTES if key == "memory" else MOCK_VALUE
+                value = MEMORY_RESOURCE_UNIT_BYTES \
+                    if key == "memory" else MOCK_VALUE
                 return key, value
         assert False, "This code should be unreachable."
 
