@@ -300,7 +300,7 @@ def do_test_release_resource(object_spilling_config, expect_released):
 
     done = f.remote([plasma_obj])  # noqa
     canary = sneaky_task_tries_to_steal_released_resources.remote()
-    ready, _ = ray.wait([canary], timeout=2)
+    ready, _ = ray.wait([canary], timeout=10)
     if expect_released:
         assert ready
     else:
