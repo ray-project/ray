@@ -1006,6 +1006,9 @@ class ServeDeployment:
                 raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
                 raise ValueError("route_prefix must start with '/'.")
+            if route_prefix != "/" and route_prefix.endswith("/"):
+                raise ValueError(
+                    "route_prefix must not end with '/' unless it's the root.")
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None
@@ -1183,11 +1186,13 @@ def deployment(
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
         route_prefix (Optional[str]): Requests to paths under this HTTP path
-            prefix will be routed to this deployment. Defaults to '/{name}/'.
+            prefix will be routed to this deployment. Defaults to '/{name}'.
             Routing is done based on longest-prefix match, so if you have
-            deployment A with a prefix of '/a/' and deployment B with a prefix
-            of '/a/b/', requests to '/a/' go to A, requests to '/a/b' go to A,
-            requests to '/a/b/' go to B, and requests to '/a/b/c' go to B.
+            deployment A with a prefix of '/a' and deployment B with a prefix
+            of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
+            to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
+            a '/' unless they're the root (just '/'), which acts as a
+            catch-all.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Arguments to pass to the

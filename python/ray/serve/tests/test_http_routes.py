@@ -14,6 +14,13 @@ def test_path_validation(serve_instance):
         class D1:
             pass
 
+    # Path prefix must not end with / unless it's the root.
+    with pytest.raises(ValueError):
+
+        @serve.deployment(route_prefix="/hello/")
+        class D2:
+            pass
+
     # Wildcards not allowed with new ingress support.
     with pytest.raises(ValueError):
 
