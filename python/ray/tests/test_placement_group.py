@@ -338,12 +338,7 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_remove_placement_group(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
-    if not connect_to_client:
-        cluster.add_node(num_cpus=4)
-    else:
-        # If in client mode, add an extra CPU for tasks that operate on
-        # placement group.
-        cluster.add_node(num_cpus=5)
+    cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
@@ -677,9 +672,6 @@ def test_pending_placement_group_wait(ray_start_cluster, connect_to_client):
 def test_placement_group_wait(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     [cluster.add_node(num_cpus=2) for _ in range(2)]
-    if connect_to_client:
-        # Spare CPU for placement group tasks.
-        cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -1382,12 +1374,7 @@ def test_placement_group_wait_api(ray_start_cluster_head):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_schedule_placement_groups_at_the_same_time(connect_to_client):
-    if not connect_to_client:
-        ray.init(num_cpus=4)
-    else:
-        # This is a hack: Get an odd number of CPUs so that one CPU will be
-        # left over for the remove_placement_group task below.
-        ray.init(num_cpus=5)
+    ray.init(num_cpus=4)
 
     with connect_to_client_or_not(connect_to_client):
         pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]

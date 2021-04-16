@@ -81,7 +81,7 @@ def client_mode_wrap(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         if client_mode_should_convert():
-            f = ray.remote(func)
+            f = ray.remote(num_cpus=0)(func)
             ref = f.remote(*args, **kwargs)
             return ray.get(ref)
         return func(*args, **kwargs)
