@@ -234,7 +234,7 @@ def build_policy_class(
                     framework=framework)
 
             # Make sure, we passed in a correct Model factory.
-            model_cls = TorchModelV2 if framework == "torch" else JAXModelV2
+            model_cls = torch.nn.Module if framework == "torch" else JAXModelV2
             assert isinstance(self.model, model_cls), \
                 "ERROR: Generated Model must be a TorchModelV2 object!"
 

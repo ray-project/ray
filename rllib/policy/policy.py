@@ -7,6 +7,7 @@ import tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -767,20 +768,22 @@ class Policy(metaclass=ABCMeta):
             }
         view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        init_state = []
-        if hasattr(obj, "get_initial_state") and callable(
-                obj.get_initial_state):
-            init_state = obj.get_initial_state()
-        else:
+        #init_state = []
+        #self._is_recurrent = False
+        if not hasattr(obj, "get_initial_state") or \
+                not callable(obj.get_initial_state):
             # Add this functionality automatically for new native model API.
-            if tf and isinstance(model, tf.keras.Model) and \
-                    "state_in_0" not in view_reqs:
+            if "state_in_0" not in view_reqs and not isinstance(model, ModelV2):
                 obj.get_initial_state = lambda: [
                     np.zeros_like(view_req.space.sample())
                     for k, view_req in model.view_requirements.items()
                     if k.startswith("state_in_")]
             else:
                 obj.get_initial_state = lambda: []
+
+        init_state = obj.get_initial_state()
+        self._is_recurrent = len(init_state) > 0
+
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state

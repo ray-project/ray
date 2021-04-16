@@ -158,7 +158,7 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
         activation = fcnet_activation
         if not fcnet_hiddens:
             activation = post_fcnet_activation
-        activation = get_activation_fn(activation)
+        activation = get_activation_fn(activation, framework="tf")
 
         # Generate free-floating bias variables for the second half of
         # the outputs.

@@ -598,6 +598,7 @@ class ModelCatalog:
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
 
+            # Native Keras Model.
             if issubclass(wrapper, tf.keras.Model):
                 model = wrapper(
                     input_space=obs_space,
@@ -641,6 +642,18 @@ class ModelCatalog:
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+
+            # Native Torch Module.
+            if not issubclass(wrapper, ModelV2):
+                model = wrapper(
+                    input_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    name=name,
+                    **dict(model_kwargs, **model_config),
+                )
+                return model
+
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
 
@@ -782,6 +795,8 @@ class ModelCatalog:
         ComplexNet = None
         Keras_FCNet = None
         Keras_VisionNet = None
+        Torch_FCNet = None
+        Torch_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
@@ -793,8 +808,9 @@ class ModelCatalog:
             from ray.rllib.models.tf.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "torch":
-            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                      FCNet)
+            from ray.rllib.models.torch.fcnet import \
+                FullyConnectedNetwork as FCNet, \
+                Torch_FullyConnectedNetwork as Torch_FCNet
             from ray.rllib.models.torch.visionnet import (VisionNetwork as
                                                           VisionNet)
             from ray.rllib.models.torch.complex_input_net import \
@@ -827,8 +843,11 @@ class ModelCatalog:
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
             # Keras native requested AND no auto-rnn-wrapping.
-            if model_config.get("_use_default_native_models") and Keras_FCNet:
-                return Keras_FCNet
+            if model_config.get("_use_default_native_models"):
+                if Keras_FCNet:
+                    return Keras_FCNet
+                elif Torch_FCNet:
+                    return Torch_FCNet
             # Classic ModelV2 FCNet.
             else:
                 return FCNet

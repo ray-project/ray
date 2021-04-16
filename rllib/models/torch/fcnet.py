@@ -6,6 +6,8 @@ from typing import Optional, Sequence
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, \
     normc_initializer
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
@@ -162,9 +164,11 @@ class Torch_FullyConnectedNetwork(nn.Module):
         nn.Module.__init__(self)
 
         hiddens = list(fcnet_hiddens or []) + list(post_fcnet_hiddens or [])
-        activation = get_activation_ fcnet_activation
+        activation = fcnet_activation
         if not fcnet_hiddens:
             activation = post_fcnet_activation
+        activation = get_activation_fn(activation, framework="torch")
+
         self.vf_share_layers = vf_share_layers
         self.free_log_std = free_log_std
 
@@ -216,9 +220,9 @@ class Torch_FullyConnectedNetwork(nn.Module):
                     out_size=num_outputs,
                     initializer=normc_initializer(0.01),
                     activation_fn=None)
-            else:
-                self.num_outputs = (
-                    [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
+            #else:
+            #    self.num_outputs = (
+            #        [int(np.product(input_space.shape))] + hiddens[-1:])[-1]
 
         # Layer to add the log std vars to the state-dependent means.
         if self.free_log_std and self._logits:
@@ -229,7 +233,7 @@ class Torch_FullyConnectedNetwork(nn.Module):
         self._value_branch_separate = None
         if not self.vf_share_layers:
             # Build a parallel set of hidden layers for the value net.
-            prev_vf_layer_size = int(np.product(obs_space.shape))
+            prev_vf_layer_size = int(np.product(input_space.shape))
             vf_layers = []
             for size in hiddens:
                 vf_layers.append(
@@ -248,27 +252,24 @@ class Torch_FullyConnectedNetwork(nn.Module):
             activation_fn=None)
         # Holds the current "base" output (before logits layer).
         self._features = None
-        # Holds the last input, in case value branch is separate.
-        self._last_flat_in = None
 
-    @override(TorchModelV2)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> (TensorType, List[TensorType]):
-        obs = input_dict["obs_flat"].float()
-        self._last_flat_in = obs.reshape(obs.shape[0], -1)
-        self._features = self._hidden_layers(self._last_flat_in)
+    def forward(self, input_dict: SampleBatch) -> \
+            (TensorType, List[TensorType], Dict[str, TensorType]):
+        obs = input_dict[SampleBatch.OBS].float()
+        flat_in = obs.reshape(obs.shape[0], -1)
+        self._features = self._hidden_layers(flat_in)
+
         logits = self._logits(self._features) if self._logits else \
             self._features
+
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
-        return logits, state
 
-    @override(TorchModelV2)
-    def value_function(self) -> TensorType:
-        assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            return self._value_branch(
-                self._value_branch_separate(self._last_flat_in)).squeeze(1)
+           value_out = self._value_branch(
+               self._value_branch_separate(flat_in)).squeeze(1)
         else:
-            return self._value_branch(self._features).squeeze(1)
+            value_out = self._value_branch(self._features).squeeze(1)
+        extra_outs = {SampleBatch.VF_PREDS: value_out}
+
+        return logits, [], extra_outs
