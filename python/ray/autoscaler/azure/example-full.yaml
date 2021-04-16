@@ -141,6 +141,7 @@ rsync_filter:
 initialization_commands:
     # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
+    - sudo usermod -aG docker $USER || true
 
 # List of shell commands to run to set up nodes.
 setup_commands:
