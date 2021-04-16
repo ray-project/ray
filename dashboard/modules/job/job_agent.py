@@ -108,7 +108,6 @@ class JobProcessor:
             env={
                 **os.environ,
                 **env,
-                "RAY_JOB_DIR": job_package_dir,
             },
             cwd=job_package_dir,
         )
@@ -147,8 +146,8 @@ class DownloadPackage(JobProcessor):
             temp_dir=temp_dir, job_id=job_id)
         unpack_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
-        await self._download_package(self._http_session, self._job_info.url,
-                                     filename)
+        url = self._job_info.runtimeEnv.workingDir
+        await self._download_package(self._http_session, url, filename)
         await self._unpack_package(filename, unpack_dir)
 
 

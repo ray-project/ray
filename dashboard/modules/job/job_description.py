@@ -17,15 +17,22 @@ def any_():
 
 
 @attr.s(kw_only=True, slots=True)
+class RuntimeEnv:
+    # The url to download the job package archive. The archive format is
+    # one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
+    # https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
+    workingDir = attr.ib(type=str, validator=instance_of(str))
+
+
+@attr.s(kw_only=True, slots=True)
 class JobDescription:
     # The job driver language, this field determines how to start the
     # driver. The value is one of the names of enum Language defined in
     # common.proto, e.g. PYTHON
     language = attr.ib(type=str, validator=in_(common_pb2.Language.keys()))
-    # The url to download the job package archive. The archive format is
-    # one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
-    # https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
-    url = attr.ib(type=str, validator=instance_of(str))
+    # The runtime_env (RuntimeEnvDict) for the job config.
+    runtimeEnv = attr.ib(
+        type=RuntimeEnv, converter=lambda kw: RuntimeEnv(**kw))
     # The entry to start the driver.
     # PYTHON:
     #   - The basename of driver filename without extension in the job

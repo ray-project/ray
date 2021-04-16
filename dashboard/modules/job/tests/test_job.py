@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 TEST_PYTHON_JOB = {
     "language": job_consts.PYTHON,
-    "url": "{web_url}/test/file?path={path}",
+    "runtimeEnv": {
+        "workingDir": "{web_url}/test/file?path={path}"
+    },
     "driverEntry": "simple_job",
 }
 
@@ -80,7 +82,8 @@ def _gen_job_zip(job_code, driver_entry):
 def _prepare_job_for_test(web_url):
     path = _gen_job_zip(TEST_PYTHON_JOB_CODE, TEST_PYTHON_JOB["driverEntry"])
     job = copy.deepcopy(TEST_PYTHON_JOB)
-    job["url"] = job["url"].format(web_url=web_url, path=path)
+    job["runtimeEnv"]["workingDir"] = job["runtimeEnv"]["workingDir"].format(
+        web_url=web_url, path=path)
     return job
 
 
@@ -259,7 +262,9 @@ def test_submit_job_validation(ray_start_with_dashboard):
         f"{webui_url}/jobs",
         json={
             "language": "Unsupported",
-            "url": "http://xxx/yyy.zip",
+            "runtimeEnv": {
+                "workingDir": "http://xxx/yyy.zip"
+            },
             "driverEntry": "python_file_name_without_ext",
         })
     resp.raise_for_status()
@@ -273,7 +278,9 @@ def test_submit_job_validation(ray_start_with_dashboard):
         f"{webui_url}/jobs",
         json={
             "language": job_consts.PYTHON,
-            "url": "http://xxx/yyy.zip",
+            "runtimeEnv": {
+                "workingDir": "http://xxx/yyy.zip"
+            },
         })
     resp.raise_for_status()
     result = resp.json()
@@ -286,21 +293,25 @@ def test_submit_job_validation(ray_start_with_dashboard):
         f"{webui_url}/jobs",
         json={
             "language": job_consts.PYTHON,
-            "url": ["http://xxx/yyy.zip"],
+            "runtimeEnv": {
+                "workingDir": ["http://xxx/yyy.zip"]
+            },
             "driverEntry": "python_file_name_without_ext",
         })
     resp.raise_for_status()
     result = resp.json()
     assert result["result"] is False
     msg = result["msg"]
-    assert all(p in msg for p in ["url", "str", "list"]), resp.text
+    assert all(p in msg for p in ["workingDir", "str", "list"]), resp.text
 
     # Invalid key.
     resp = requests.post(
         f"{webui_url}/jobs",
         json={
             "language": job_consts.PYTHON,
-            "url": "http://xxx/yyy.zip",
+            "runtimeEnv": {
+                "workingDir": "http://xxx/yyy.zip"
+            },
             "driverEntry": "python_file_name_without_ext",
             "invalidKey": 1,
         })
