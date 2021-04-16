@@ -281,12 +281,14 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
-  if (runtime_env.conda_env_name != "") {
-    const std::string conda_env_name = runtime_env.conda_env_name;
-    worker_command_args.push_back("--conda-env-name=" + conda_env_name);
-  } else {
-    // The "shim process" setup_worker.py is not needed, so do not run it.
-    worker_command_args.erase(worker_command_args.begin() + 1);
+  if (language == Language::PYTHON) {
+    if (runtime_env.conda_env_name != "") {
+      const std::string conda_env_name = runtime_env.conda_env_name;
+      worker_command_args.push_back("--conda-env-name=" + conda_env_name);
+    } else {
+      // The "shim process" setup_worker.py is not needed, so do not run it.
+      worker_command_args.erase(worker_command_args.begin() + 1);
+    }
   }
 
   // We use setproctitle to change python worker process title,
