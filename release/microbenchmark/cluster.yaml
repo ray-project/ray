@@ -30,6 +30,7 @@ file_mounts: {
 
 setup_commands: []
     # - pip install -U {{env["RAY_WHEEL"]}}
+    # TODO: REVERT
 
 head_start_ray_commands:
     - ray stop
