@@ -1,4 +1,4 @@
-Iteration 25008:
-  - Iteration time: 21.77509379386902.
-  - Absolute time: 1618216773.2438455.
-  - Total elapsed time: 238685.71672797203.
+Iteration 51324:
+  - Iteration time: 1.2689878940582275.
+  - Absolute time: 1618567834.596641.
+  - Total elapsed time: 92552.05317473412.
