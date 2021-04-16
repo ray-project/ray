@@ -19,7 +19,7 @@ First, install Ray with the proper dependencies:
 
 .. code-block:: bash
 
-  pip install 'ray[full]'
+  pip install 'ray[default]'
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 

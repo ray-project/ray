@@ -94,7 +94,7 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "full": ["colorful"],
+    "default": ["colorful"],
     "serve": ["uvicorn", "requests", "pydantic>=1.8", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]

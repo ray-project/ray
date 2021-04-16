@@ -1,5 +1,5 @@
 """Tests launch, teardown, and update of multiple Ray clusters using Kubernetes
-operator."""
+operator. Also tests submission of jobs via Ray client."""
 import copy
 import sys
 import os
@@ -12,7 +12,7 @@ import kubernetes
 import pytest
 import yaml
 
-from ray.autoscaler._private.kubernetes.node_provider import\
+from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
@@ -26,13 +26,14 @@ PULL_POLICY = os.getenv(PULL_POLICY_ENV, "Always")
 
 RAY_PATH = os.path.abspath(
     os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 
 def retry_until_true(f):
     # Retry 60 times with 1 second delay between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(120):
+        for _ in range(240):
             if f(*args, **kwargs):
                 return
             else:
@@ -83,10 +84,8 @@ def wait_for_job(job_pod):
 
 
 def kubernetes_configs_directory():
-    here = os.path.realpath(__file__)
-    ray_python_root = os.path.dirname(os.path.dirname(here))
-    relative_path = "autoscaler/kubernetes"
-    return os.path.join(ray_python_root, relative_path)
+    relative_path = "python/ray/autoscaler/kubernetes"
+    return os.path.join(RAY_PATH, relative_path)
 
 
 def get_kubernetes_config_path(name):

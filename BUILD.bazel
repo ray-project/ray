@@ -476,6 +476,28 @@ cc_binary(
     ],
 )
 
+# Ray native pubsub module.
+cc_library(
+    name = "pubsub_lib",
+    srcs = glob([
+        "src/ray/pubsub/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/pubsub/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_common",
+        ":worker_rpc",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 cc_library(
     name = "stats_lib",
     srcs = glob(
@@ -549,6 +571,7 @@ cc_library(
         ":node_manager_rpc",
         ":object_manager",
         ":plasma_client",
+        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":service_based_gcs_client_lib",
@@ -628,6 +651,7 @@ cc_library(
     deps = [
         ":gcs",
         ":plasma_client",
+        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
@@ -742,16 +766,6 @@ cc_test(
 )
 
 cc_test(
-    name = "publisher_test",
-    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -831,18 +845,6 @@ cc_test(
     name = "local_object_manager_test",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "subscriber_test",
-    srcs = [
-        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -990,6 +992,28 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "publisher_test",
+    srcs = ["src/ray/pubsub/test/publisher_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":pubsub_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subscriber_test",
+    srcs = [
+        "src/ray/pubsub/test/subscriber_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

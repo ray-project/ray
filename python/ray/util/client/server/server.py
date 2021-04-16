@@ -4,7 +4,9 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
+import os
 import sys
+
 import threading
 from typing import Any
 from typing import List
@@ -282,15 +284,21 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
               delete this reference.
             context: gRPC context.
         """
-        obj = loads_from_client(request.data, self)
-        with disable_client_hook():
-            objectref = ray.put(obj)
+        try:
+            obj = loads_from_client(request.data, self)
+            with disable_client_hook():
+                objectref = ray.put(obj)
+        except Exception as e:
+            logger.exception("Put failed:")
+            return ray_client_pb2.PutResponse(
+                id=b"", valid=False, error=cloudpickle.dumps(e))
+
         self.object_refs[client_id][objectref.binary()] = objectref
         if len(request.client_ref_id) > 0:
             self.client_side_ref_map[client_id][
                 request.client_ref_id] = objectref.binary()
         logger.debug("put: %s" % objectref)
-        return ray_client_pb2.PutResponse(id=objectref.binary())
+        return ray_client_pb2.PutResponse(id=objectref.binary(), valid=True)
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
@@ -430,9 +438,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             for uri in uris:
                 try:
-                    runtime_env.fetch_package(uri)
-                    print("Adding!: ", runtime_env._get_local_path(uri))
-                    sys.path.insert(0, str(runtime_env._get_local_path(uri)))
+                    working_dir = runtime_env.fetch_package(uri)
+                    if working_dir:
+                        os.chdir(str(working_dir))
+                        sys.path.insert(0, str(working_dir))
                 except IOError:
                     missing_uris.append(uri)
         return missing_uris

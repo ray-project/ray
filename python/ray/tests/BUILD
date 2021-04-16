@@ -26,9 +26,9 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_cancel.py",
-    "test_cli.py",
     "test_client.py",
     "test_client_init.py",
+    "test_client_library_integration.py",
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
@@ -96,6 +96,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_job.py",
     "test_k8s_operator_mock.py",
+    "test_kv.py",
     "test_memstat.py",
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
@@ -117,17 +118,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_k8s_cluster_launcher.py",
-    "test_k8s_operator_examples.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  deps = ["//:ray_lib"],
-  tags = ["kubernetes"]
-)
-
-py_test_module_list(
-  files = [
+    "test_cli.py",
     "test_failure.py",
     "test_failure_2.py",
     "test_stress_failure.py",
@@ -142,6 +133,7 @@ py_test_module_list(
   files = [
     "test_placement_group.py",
     "test_runtime_env.py",
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -174,6 +166,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_pydantic_serialization",
+    size = "small",
+    srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test_module_list(
   files = [

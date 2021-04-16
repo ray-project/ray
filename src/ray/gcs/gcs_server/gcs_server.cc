@@ -101,6 +101,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init KV Manager
+  InitKVManager();
+
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
 
@@ -313,6 +316,13 @@ void GcsServer::InitStatsHandler() {
   // Register service.
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
   rpc_server_.RegisterService(*stats_service_);
+}
+
+void GcsServer::InitKVManager() {
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
+  // Register service.
+  rpc_server_.RegisterService(*kv_service_);
 }
 
 void GcsServer::InitGcsWorkerManager() {

@@ -47,11 +47,11 @@ ray.util.connect("{}")
 
 from ray import serve
 
+@serve.deployment(name="test1", route_prefix="/hello")
 def f(*args):
     return "hello"
 
-serve.create_backend("test1", f)
-serve.create_endpoint("test1", backend="test1", route="/hello")
+f.deploy()
 """.format(ray_client_instance)
     run_string_as_driver(deploy)
 
@@ -65,13 +65,36 @@ ray.util.connect("{}")
 
 from ray import serve
 
-serve.delete_endpoint("test1")
-serve.delete_backend("test1")
+serve.get_deployment("test1").delete()
 """.format(ray_client_instance)
     run_string_as_driver(delete)
 
     assert "test1" not in serve.list_backends()
     assert "test1" not in serve.list_endpoints()
+
+    fastapi = """
+import ray
+ray.util.connect("{}")
+
+from ray import serve
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def hello():
+    return "hello"
+
+@serve.deployment
+@serve.ingress(app)
+class A:
+    pass
+
+A.deploy()
+""".format(ray_client_instance)
+    run_string_as_driver(fastapi)
+
+    assert requests.get("http://localhost:8000/A/").json() == "hello"
 
 
 if __name__ == "__main__":

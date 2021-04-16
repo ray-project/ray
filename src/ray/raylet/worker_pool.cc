@@ -78,6 +78,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       periodical_runner_(io_service),
       get_time_(get_time) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+  // We need to record so that the metric exists. This way, we report that 0
+  // processes have started before a task runs on the node (as opposed to the
+  // metric not existing at all).
+  stats::NumWorkersStarted.Record(0);
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
@@ -111,7 +115,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms());
+        RayConfig::instance().kill_idle_workers_interval_ms(),
+        "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 }
 
@@ -284,12 +289,21 @@ Process WorkerPool::StartWorkerProcess(
     worker_command_args.erase(worker_command_args.begin() + 1);
   }
 
+  // We use setproctitle to change python worker process title,
+  // causing the process's /proc/PID/environ being empty.
+  // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
+  // Refer this issue for more details: https://github.com/ray-project/ray/issues/15061
+  if (language == Language::PYTHON) {
+    env.insert({"SPT_NOENV", "1"});
+  }
+
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
+  stats::NumWorkersStarted.Record(1);
 
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
@@ -745,10 +759,9 @@ void WorkerPool::TryKillingIdleWorkers() {
                                                const rpc::ExitReply &r) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-          return;
         }
 
-        if (r.success()) {
+        if (status.ok() && r.success()) {
           auto &worker_state = GetStateForLanguage(worker->GetLanguage());
           // If we could kill the worker properly, we remove them from the idle pool.
           if (RemoveWorker(worker_state.idle, worker)) {
