@@ -189,7 +189,7 @@ def placement_group(bundles: List[Dict[str, float]],
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
 
-        if "memory" in bundle.keys():
+        if "memory" in bundle.keys() and bundle["memory"] > 0:
             # Make sure the memory resource can be
             # transformed to memory unit.
             to_memory_units(bundle["memory"], True)
