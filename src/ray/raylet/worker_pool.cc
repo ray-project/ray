@@ -276,15 +276,8 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
-  // if conda:
   if (runtime_env.conda_env_name != "") {
-    // const std::string setup_worker_path =
-    //    "/Users/archit/ray/python/ray/workers/setup_worker.py";
     const std::string conda_env_name = runtime_env.conda_env_name;
-    // const std::string conda_yaml_path =
-    // "/Users/archit/ray/python/ray/workers/environment.yml";
-
-    // worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
     worker_command_args.push_back("--conda-env-name=" + conda_env_name);
     // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
   } else {

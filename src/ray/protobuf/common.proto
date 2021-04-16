@@ -140,7 +140,7 @@ message RayException {
 message RuntimeEnv {
   repeated string uris = 1;
   string conda_env_name = 2;
-  bytes conda_serialized_yaml = 3;
+  // string conda_serialized_yaml = 3; TODO(architkulkarni)
 }
 
 /// The task specification encapsulates all immutable information about the

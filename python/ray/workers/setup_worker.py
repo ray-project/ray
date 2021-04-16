@@ -1,8 +1,7 @@
 import argparse
 import os
 
-from ray._private.conda import (get_conda_activate_commands,
-                                get_or_create_conda_env)
+from ray._private.conda import get_conda_activate_commands
 
 parser = argparse.ArgumentParser(
     description=(
@@ -27,9 +26,9 @@ commands = []
 
 if args.conda_env_name:
     commands += get_conda_activate_commands(args.conda_env_name)
-elif args.conda_yaml_path:
-    conda_env_name = get_or_create_conda_env(args.conda_yaml_path)
-    commands += get_conda_activate_commands(conda_env_name)
+# elif args.conda_yaml_path:
+#     conda_env_name = get_or_create_conda_env(args.conda_yaml_path)
+#     commands += get_conda_activate_commands(conda_env_name)
 
 commands += [" ".join(["exec python"] + remaining_args)]
 command_separator = " && "

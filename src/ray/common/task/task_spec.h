@@ -33,7 +33,7 @@ class RuntimeEnv {
   RuntimeEnv() {}
   RuntimeEnv(std::string conda_env_name) : conda_env_name(conda_env_name) {}
   std::string conda_env_name;
-  // std::string conda_serialized_yaml
+  // std::string conda_serialized_yaml TODO(architkulkarni)
 
   /// Perform a simple dict update.
   ///
