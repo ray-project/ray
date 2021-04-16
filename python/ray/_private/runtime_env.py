@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import yaml
 
 from filelock import FileLock
 from pathlib import Path
