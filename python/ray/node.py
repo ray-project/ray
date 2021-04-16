@@ -129,7 +129,10 @@ class Node:
             temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "workers/default_worker.py"))
+                "workers/default_worker.py"),
+            setup_worker_path=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "workers/setup_worker.py"))
 
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")
@@ -765,6 +768,7 @@ class Node:
             self._raylet_socket_name,
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
+            self._ray_params.setup_worker_path,
             self._temp_dir,
             self._session_dir,
             self._resource_dir,

@@ -1519,10 +1519,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   // Update runtime env with simple dict update.
   ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
   ray::RuntimeEnv new_runtime_env = task_options.runtime_env;
-  RAY_LOG(DEBUG) << "new Conda env in SubmitTask(): "
-                 << task_options.runtime_env.conda_env_name;
   runtime_env.Update(new_runtime_env);
-  RAY_LOG(DEBUG) << "updated Conda env: " << runtime_env.conda_env_name;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),

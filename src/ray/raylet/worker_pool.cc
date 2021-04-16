@@ -276,18 +276,20 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
-  RAY_LOG(DEBUG) << "CONDA_ENV: " << runtime_env.conda_env_name;
   // if conda:
   if (runtime_env.conda_env_name != "") {
-    const std::string setup_worker_path =
-        "/Users/archit/ray/python/ray/workers/setup_worker.py";
+    // const std::string setup_worker_path =
+    //    "/Users/archit/ray/python/ray/workers/setup_worker.py";
     const std::string conda_env_name = runtime_env.conda_env_name;
     // const std::string conda_yaml_path =
     // "/Users/archit/ray/python/ray/workers/environment.yml";
 
-    worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
+    // worker_command_args.insert(worker_command_args.begin() + 1, setup_worker_path);
     worker_command_args.push_back("--conda-env-name=" + conda_env_name);
     // worker_command_args.push_back("--conda-yaml-path=" + conda_yaml_path);
+  } else {
+    // The "shim process" setup_worker.py is not needed, so do not run it.
+    worker_command_args.erase(worker_command_args.begin() + 1);
   }
 
   // Start a process and measure the startup time.
@@ -356,8 +358,6 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
-  // Normally argv e.g. /bin/python [...]/default_worker.py --node-ip-address=192.168.1.14
-  // ...
 
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {

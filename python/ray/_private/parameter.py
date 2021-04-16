@@ -68,6 +68,8 @@ class RayParams:
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
+        setup_worker_path (str): The path of the source code that will be run
+            to set up the environment for the worker.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -135,6 +137,7 @@ class RayParams:
                  redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                  plasma_directory=None,
                  worker_path=None,
+                 setup_worker_path=None,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
@@ -180,6 +183,7 @@ class RayParams:
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
+        self.setup_worker_path = setup_worker_path
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host

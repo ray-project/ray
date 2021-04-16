@@ -1330,6 +1330,7 @@ def start_raylet(redis_address,
                  raylet_name,
                  plasma_store_name,
                  worker_path,
+                 setup_worker_path,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1367,6 +1368,8 @@ def start_raylet(redis_address,
              to.
         worker_path (str): The path of the Python file that new worker
             processes will execute.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1458,6 +1461,7 @@ def start_raylet(redis_address,
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
         sys.executable,
+        setup_worker_path,
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
