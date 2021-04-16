@@ -514,9 +514,10 @@ def decode_options(
 
     if "placement_group" in opts:
         pg_dict = opts["placement_group"]
-        assert isinstance(pg_dict, dict)
-        opts["placement_group"] = PlacementGroup.from_json_serializable(
-            pg_dict)
+        if pg_dict is not None:
+            assert isinstance(pg_dict, dict)
+            opts["placement_group"] = PlacementGroup.from_json_serializable(
+                pg_dict)
 
     return opts
 

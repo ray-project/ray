@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 bundle_reservation_check = None
 
+
 # We need to import this method to use for ready API.
 # But ray.remote is only available in runtime, and
 # if we define this method inside ready method, this function is
@@ -41,7 +42,8 @@ class PlacementGroup:
     def empty():
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self, id: PlacementGroupID,
+    def __init__(self,
+                 id: PlacementGroupID,
                  bundle_cache: Optional[List[Dict]] = None):
         self.id = id
         self.bundle_cache = bundle_cache
@@ -180,8 +182,8 @@ def _call_placement_group_ready(pg_id: PlacementGroupID,
     worker = ray.worker.global_worker
     worker.check_connected()
 
-    return worker.core_worker.wait_placement_group_ready(pg_id,
-                                                         timeout_seconds)
+    return worker.core_worker.wait_placement_group_ready(
+        pg_id, timeout_seconds)
 
 
 @client_mode_wrap
