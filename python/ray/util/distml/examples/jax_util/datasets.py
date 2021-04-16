@@ -22,11 +22,13 @@ from os import path
 import struct
 import urllib.request
 from jax.api import F
+import jax.numpy as jnp
+from jax import jit
 
 import numpy as np
 import numpy.random as npr
 import pickle
-
+from functools import partial
 
 _DATA = "/tmp/jax_example_data/"
 
@@ -51,6 +53,10 @@ def _one_hot(x, k, dtype=np.float32):
     """Create a one-hot encoding of x of size k."""
     return np.asarray(x[:, None] == np.arange(k), dtype)
 
+# @partial(jit, static_argnums=1)
+def _one_hot_jit(x, k, dtype=np.float32):
+    """Create a one-hot encoding of x of size k."""
+    return jnp.asarray(x[:, None] == jnp.arange(0, k), dtype)
 
 def mnist_raw():
     """Download and parse the raw MNIST dataset."""

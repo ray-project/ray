@@ -70,7 +70,18 @@ class MnistTrainingOperator(JAXTrainingOperator):
         rng_key = random.PRNGKey(0)
         input_shape = (28, 28, 1, batch_size)
         lr = kwargs["lr"]
-        init_fun, predict_fun = ResNet18(kwargs["num_classes"])
+        model_name = kwargs["model_name"]
+        num_classes = kwargs["num_classes"]
+
+        if model_name == "resnet18":
+            init_fun, predict_fun = ResNet18(num_classes)
+        elif model_name == "resnet50":
+            init_fun, predict_fun = ResNet50(num_classes)
+        elif model_name == "resnet101":
+            init_fun, predict_fun = ResNet101(num_classes)
+        else:
+            raise RuntimeError("Unrecognized model name")
+        # init_fun, predict_fun = ResNet18(kwargs["num_classes"])
         # init_fun, predict_fun = ToyModel(kwargs["num_classes"])
 
         _, init_params = init_fun(rng_key, input_shape)
@@ -94,7 +105,7 @@ class MnistTrainingOperator(JAXTrainingOperator):
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
-        self.register_input_signatures(input_shape=input_shape)
+        # self.register_input_signatures(input_shape=input_shape)
 
 
 def make_ar_trainer(args):
@@ -107,12 +118,13 @@ def make_ar_trainer(args):
             # this will be split across workers.
             "batch_size": 128,
             "num_classes": 10,
+            "model_name": args.model_name
         },
         use_tqdm=True,
         record_config={
             "batch_size": 128,
             "num_workers": args.num_workers,
-            "job_name": f"mnist_resnet18_allreduce_{args.num_workers}workers",
+            "job_name": f"mnist_{args.model_name}_allreduce_{args.num_workers}workers",
             "save_freq": 50,
         },
         )
@@ -131,12 +143,13 @@ def make_ps_trainer(args):
             # this will be split across workers.
             "batch_size": 128,
             "num_classes": 10,
+            "model_name": args.model_name
         },
         use_tqdm=True,
         record_config={
             "batch_size": 128,
             "num_workers": args.num_workers//2,
-            "job_name": f"mnist_resnet18_{args.num_workers//2}ps_{args.num_workers//2}workers",
+            "job_name": f"mnist_{args.model_name}_{args.num_workers//2}ps_{args.num_workers//2}workers",
             "save_freq": 50,
         },
         )
@@ -177,13 +190,14 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
+    parser.add_argument(
+        "--model-name", type=str, default="resnet18", help="model, Optional: resnet18, resnet50, resnet101.")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
     # os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
-    num_cpus = 4 if args.smoke_test else None
-    ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
+    ray.init(num_gpus=args.num_workers, num_cpus=args.num_workers, log_to_driver=True)
 
     if args.trainer == "ar":
         trainer = make_ar_trainer(args)

@@ -52,7 +52,7 @@ def single_file_dataset(input_file, name_to_features, num_samples=None):
     d = d.with_options(options)
   return d
 
-
+@tf.autograph.experimental.do_not_convert
 def create_pretrain_dataset(input_patterns,
                             seq_length,
                             max_predictions_per_seq,

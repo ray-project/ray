@@ -6,7 +6,9 @@ import cupy as cp
 
 from ray.util.sgd.utils import TimerStat, TimerCollection, AverageMeterCollection
 
-import logging
+import time
+from functools import wraps
+
 
 # some operation for this ml system.
 def ones(shape, cpu=True):
@@ -43,6 +45,7 @@ class EmptyTimeState:
         pass
     def __exit__(self, type, value, tb):
         pass
+
 
 class ThroughoutCollection(TimerCollection):
     def __init__(self, batch_size, num_workers=1, save_freq=50, job_name="default"):
@@ -86,3 +89,15 @@ class ThroughoutCollection(TimerCollection):
         self.report(key)
         df = pd.DataFrame.from_dict(self.result_collection[key], orient='columns')
         df.to_csv(f'{self.job_name}_{key}.csv', index=None)
+
+
+def func_timer(function):
+    '''A decorator to record time.'''
+    @wraps(function)
+    def function_timer(*args, **kwargs):
+        t0 = time.time()
+        result = function(*args, **kwargs)
+        t1 = time.time()
+        print('[Function: {name} finished, spent time: {time:.5f}s]'.format(name = function.__name__,time = t1 - t0))
+        return result
+    return function_timer

@@ -109,7 +109,7 @@ class SstTrainingOperator(JAXTrainingOperator):
     
         self.register_data(train_loader=train_loader, validation_loader=test_loader)
 
-        self.register_input_signatures(input_shape=input_shape)
+        # self.register_input_signatures(input_shape=input_shape)
 
     @override(JAXTrainingOperator)
     def loss_func(self, params, batch):
@@ -149,14 +149,20 @@ class SstTrainingOperator(JAXTrainingOperator):
 def make_ar_trainer(args):
     trainer = AllReduceStrategy(
         training_operator_cls=SstTrainingOperator,
-        world_size=2,
+        world_size=args.num_workers,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 64,
             "num_classes": 10,
-            "use_tqdm": True
+        },
+        use_tqdm=True,
+        record_config={
+            "batch_size": 64,
+            "num_workers": args.num_workers//2,
+            "job_name": f"sst_transformer_{args.num_workers}workers",
+            "save_freq": 50,
         },
         )
     return trainer
@@ -165,15 +171,22 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=SstTrainingOperator,
-        world_size=2,
-        num_workers=1,
-        num_ps=1,
+        world_size=args.num_workers,
+        num_workers=args.num_workers//2,
+        num_ps=args.num_workers//2,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
             # this will be split across workers.
             "batch_size": 64,
             "num_classes": 10,
+        },
+        use_tqdm=True,
+        record_config={
+            "batch_size": 64,
+            "num_workers": args.num_workers//2,
+            "job_name": f"sst_transformer_{args.num_workers//2}ps_{args.num_workers//2}workers",
+            "save_freq": 50,
         },
         )
     return trainer
@@ -190,7 +203,7 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=4,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=5, help="Number of epochs to train.")
@@ -211,16 +224,23 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
+    parser.add_argument(
+        "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,4"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
 
     args, _ = parser.parse_known_args()
     num_cpus = 12
-    num_gpus = 2
+    num_gpus = args.num_workers
     ray.init(num_gpus=num_gpus, num_cpus=num_cpus, log_to_driver=True)
 
-    # trainer = make_ar(args)
-    trainer = make_ps_trainer(args)
+    if args.trainer == "ar":
+        trainer = make_ar_trainer(args)
+    elif args.trainer == "ps":
+        trainer = make_ps_trainer(args)
+    else:
+        raise RuntimeError("Unrecognized trainer type. Except 'ar' or 'ps'"
+                           "Got {}".format(args.trainer))
 
     info = {"num_steps": 1}
     for i in range(args.num_epochs):

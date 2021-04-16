@@ -65,3 +65,4 @@ class BaseTrainer:
 
     def _init_strategy(self):
         raise NotImplementedError()
+        

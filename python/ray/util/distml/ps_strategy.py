@@ -5,7 +5,7 @@ import ray.util.collective as col
 import cupy as cp
 import numpy as np
 import ray.util.distml.util as util
-from ray.util.distml.util import ThroughoutCollection
+from ray.util.distml.util import ThroughoutCollection, func_timer
 
 # TODO(HUI): use group start and end in send/recv
 from cupy.cuda.nccl import groupStart, groupEnd
@@ -192,6 +192,37 @@ class ParameterServerStrategy(BaseTrainer):
         self._collector.save("validate_epoch")
         return stats[0] # validate result should be the same in all workers
 
+    # @func_timer
+    # def step(self):
+    #     loss_vals = []
+    #     rets = []
+    #     metrics = {}
+
+    #     for worker_idx, worker in enumerate(self.worker_group.actors):
+    #         groupStart()
+    #         for server_idx, server in enumerate(self.server_group.actors):
+    #             # every server sends its shard to the worker
+    #             server.send_params.remote(worker_idx)
+    #         # the worker receives shards from ps, compute loss, gradients
+    #         # and sends these gradients to every server
+    #         worker.compute_recv_params.remote()
+    #         groupEnd()
+
+    #     for worker_idx, worker in enumerate(self.worker_group.actors):
+    #         groupStart()
+    #         loss_val = worker.compute_calculate_and_send.remote()
+    #         for server in self.server_group.actors:
+    #             rets.append(server.update.remote(worker_idx))
+    #         groupEnd()
+    #         loss_vals.append(loss_val)
+ 
+    #     loss_vals = ray.get(loss_vals)
+    #     ray.get(rets)
+    #     train_loss_list = [d["train_loss"] for d in loss_vals]
+    #     metrics["train_loss"] = np.mean(train_loss_list)
+    #     return metrics
+
+    @func_timer
     def step(self):
         loss_vals = []
         rets = []
@@ -455,6 +486,50 @@ class Worker(object):
         keys = list(self.get_named_parameters(cpu=False).keys())
         for i, a in enumerate(self.assignments):
             self.name_list[a].append(keys[i])
+
+    def compute_recv_params(self):
+        """Returns the loss, and send gradients to servers"""
+        
+        # First receive params from servers
+        weights = self.get_named_parameters(cpu=False)
+        # create the receive lists to group collective calls
+        recv_list = []
+        for i in range(self.num_ps):
+            recv_list.append([])
+            param_shard_keys = self.name_list[i]
+            for key in param_shard_keys:
+                to_recv = weights[key]
+                recv_list[-1].append(
+                    self.training_operator.ones(to_recv.shape, cpu=False))
+
+        for i in range(self.num_ps):
+            for j in range(len(self.name_list[i])):
+                v = self.training_operator.to_cupy(recv_list[i][j])
+                col.recv(v, self.num_workers+i, self.group_name)
+
+        self.recv_list = recv_list
+
+    def compute_calculate_and_send(self):
+        recv_list = self.recv_list
+        del self.recv_list
+        params = dict()
+        metrics = {}
+
+        # parameter updates
+        for i in range(self.num_ps):
+            param_shard_keys = self.name_list[i]
+            for j in range(len(param_shard_keys)):
+                params[param_shard_keys[j]] = recv_list[i][j]
+
+        loss_val, grad = self.compute_gradients(params)
+        metrics["train_loss"] = loss_val
+        split_grad = self.split_gradients(grad, self.assignments)
+        for i in range(self.num_ps):
+            this_shard = self.index_shard(split_grad, i)
+            for _, v in this_shard.items():
+                cv = self.training_operator.to_cupy(v)
+                col.send(cv, self.num_workers+i, self.group_name)
+        return metrics
 
     def compute(self):
         """Returns the loss, and send gradients to servers"""

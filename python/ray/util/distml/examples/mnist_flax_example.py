@@ -109,7 +109,7 @@ def make_ar_trainer(args):
         record_config={
             "batch_size": 128,
             "num_workers": 2,
-            "job_name": "mnist_ps_2workers",
+            "job_name": "flax_mnist_ps_2workers",
             "save_freq": 50,
         },
         )
@@ -133,7 +133,7 @@ def make_ps_trainer(args):
         record_config={
             "batch_size": 128,
             "num_workers": 2,
-            "job_name": "mnist_allreduce_2workers",
+            "job_name": "flax_mnist_allreduce_2workers",
             "save_freq": 50,
         },
         )

@@ -1,5 +1,6 @@
 import numpy as np
 import cupy as cp
+import jax
 from jax import grad, value_and_grad
 import jax.numpy as jnp
 from jax.lib import xla_client
@@ -10,14 +11,17 @@ from jax.experimental.optimizers import OptimizerState
 
 from ray.util.distml.base_operator import TrainingOperator
 from ray.util.sgd.utils import TimerCollection, AverageMeterCollection
+from ray.util.distml.util import ThroughoutCollection, func_timer
 
-jax2tf_available = True
-try:
-    import tensorflow as tf
-    from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
-except:
-    print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
-    jax2tf_available = False
+import time 
+
+# jax2tf_available = True
+# try:
+#     import tensorflow as tf
+#     from ray.util.distml.jax_utils import convert_and_save_model, load_params_from_tf
+# except:
+#     print("Warning: Can not import jax2tf, please install tensorflow to support jax2tf. otherwise you can't save models.")
+#     jax2tf_available = False
 
 tqdm = None
 try:
@@ -37,6 +41,7 @@ class JAXTrainingOperator(TrainingOperator):
             assert not self._config["jit_mode"], "Not support jit in jax operator."
 
         self.setup(**self._config)
+        print(f"device count {jax.device_count()}")
 
     def setup(self, *args, **kwargs):
         """Function that needs to be override by users.
@@ -94,16 +99,16 @@ class JAXTrainingOperator(TrainingOperator):
         self.train_loader = train_loader
         self.validation_loader = validation_loader
 
-    def register_input_signatures(self, *, input_shape):
-        if not isinstance(input_shape, list):
-            input_shape = [input_shape]
+    # def register_input_signatures(self, *, input_shape):
+    #     if not isinstance(input_shape, list):
+    #         input_shape = [input_shape]
 
-        input_signatures = [
-            # The first one will be the serving signature
-            tf.TensorSpec(s, tf.float32)
-            for s in input_shape
-        ]
-        self.input_signatures = input_signatures
+    #     input_signatures = [
+    #         # The first one will be the serving signature
+    #         tf.TensorSpec(s, tf.float32)
+    #         for s in input_shape
+    #     ]
+    #     self.input_signatures = input_signatures
 
     def loss_func(self, params, batch):
         inputs, targets = batch
@@ -111,24 +116,34 @@ class JAXTrainingOperator(TrainingOperator):
         return self.criterion(logits, targets)
 
     def derive_updates(self, batch):
+        cal_time = time.time()
         loss_val, gradient = self._calculate_gradient(self.opt_state, batch)
+        # print("calculate gradient spend {:.5f}".format(time.time()-cal_time))
+        
+        flat_time = time.time()
         gradient_dict, tree = tree_flatten(gradient)
         assert tree == self.opt_state[1]
+        # print("falt time spend {:.5f}".format(time.time()-flat_time))
 
+        # grad_dict_time = time.time()
         if hasattr(self, "preset_keys"):
             gradient_dict = {k:g for k, g in zip(self.preset_keys, gradient_dict)}
         else:
             gradient_dict = {f"{idx}":g for idx, g in enumerate(gradient_dict)}
+        # print("make a grad_dict spend {:.5f}".format(time.time()-grad_dict_time))
         return loss_val.item(), gradient_dict
         
+    # @func_timer
     def apply_updates(self, gradient, num_workers):
-        assert isinstance(gradient, dict)
+        # sort_gradient_time = time.time()
         keys, gradient = unzip2(sorted(gradient.items(), key=lambda d: int(d[0])))
-
         gradient = tree_unflatten(self.opt_state[1], gradient)
-        gradient = tree_map(lambda x: x/num_workers, gradient)
+        # print("sorting spend {:.5f}".format(time.time()-sort_gradient_time))
+        
+        # opt_update_time = time.time()
         self.opt_state = self.opt_update(self.train_step_num, gradient, self.opt_state)
         self.train_step_num += 1
+        # print("update time spend {:.5f}".format(time.time()-opt_update_time))
 
     def to_cupy(self, tensor):
         if isinstance(tensor, list):
@@ -193,28 +208,28 @@ class JAXTrainingOperator(TrainingOperator):
     def save_parameters(self, checkpoint):
         raise
         # save model
-        if jax2tf_available:
-            if not getattr(self, "input_signatures"):
-                print("Warning: input_signatures has not set. "
-                    "Please using register_input_signatures to register it.")
-                self.input_signatures = [tf.TensorSpec([], tf.float32)]
-            convert_and_save_model(
-                self.predict_fun,
-                self.get_params(self.opt_state),
-                checkpoint,
-                input_signatures=self.input_signatures,
-                compile_model=False)
-        else:
-            raise RuntimeError("jax2tf is not available.")
+        # if jax2tf_available:
+        #     if not getattr(self, "input_signatures"):
+        #         print("Warning: input_signatures has not set. "
+        #             "Please using register_input_signatures to register it.")
+        #         self.input_signatures = [tf.TensorSpec([], tf.float32)]
+        #     convert_and_save_model(
+        #         self.predict_fun,
+        #         self.get_params(self.opt_state),
+        #         checkpoint,
+        #         input_signatures=self.input_signatures,
+        #         compile_model=False)
+        # else:
+        #     raise RuntimeError("jax2tf is not available.")
 
     # TODO(HUI)
     def load_parameters(self, checkpoint):
         raise
-        print("Warning: Jax not support loading checkpoint. ")
-        if jax2tf_available:
-            restored_model = load_params_from_tf(checkpoint)
-        else:
-            raise RuntimeError("jax2tf is not available.")
+        # print("Warning: Jax not support loading checkpoint. ")
+        # if jax2tf_available:
+        #     restored_model = load_params_from_tf(checkpoint)
+        # else:
+        #     raise RuntimeError("jax2tf is not available.")
 
     def get_parameters(self, cpu):
         params = self.get_params(self.opt_state)

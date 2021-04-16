@@ -2,7 +2,7 @@ import ray
 import ray.util.collective as col
 
 from ray.util.distml.base_trainer import BaseTrainer
-from ray.util.distml.util import ThroughoutCollection
+from ray.util.distml.util import ThroughoutCollection, func_timer
 
 import cupy as cp
 import numpy as np

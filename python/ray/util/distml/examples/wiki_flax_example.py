@@ -32,6 +32,7 @@ from jax_util.datasets import _one_hot
 from transformers.models.bert.configuration_bert import BertConfig
 # pip install git+https://github.com/Ezra-H/transformers.git
 
+import tensorflow as tf
 
 class WikiTrainingOperator(FLAXTrainingOperator):
     @override(FLAXTrainingOperator)
@@ -124,10 +125,10 @@ def make_ar_trainer(args):
         use_tqdm= True,
         max_iteration= 3000,
         record_config={
-            "batch_size": 128,
-            "num_workers": 2,
-            "job_name": "wiki_bert_ar_2workers",
-            "save_freq": 100,
+            "batch_size": 8,
+            "num_workers": args.num_workers,
+            "job_name": f"wiki_bert_ar_{args.num_workers}workers",
+            "save_freq": 50,
         },
         )
     return trainer
@@ -135,9 +136,9 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=WikiTrainingOperator,
-        world_size=4,
-        num_workers=2,
-        num_ps=2,
+        world_size=args.num_workers,
+        num_workers=args.num_workers//2,
+        num_ps=args.num_workers//2,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
@@ -147,10 +148,10 @@ def make_ps_trainer(args):
         use_tqdm=True,
         max_iteration=3000,
         record_config={
-            "batch_size": 128,
-            "num_workers": 2,
-            "job_name": "wiki_bert_ps_2workers",
-            "save_freq": 100,
+            "batch_size": 8,
+            "num_workers": args.num_workers//2,
+            "job_name": f"wiki_bert_{args.num_workers//2}ps_{args.num_workers//2}workers",
+            "save_freq": 50,
         },
         )
 
@@ -167,10 +168,10 @@ if __name__ == "__main__":
         "--num-workers",
         "-n",
         type=int,
-        default=4,
+        default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
-        "--num-epochs", type=int, default=5, help="Number of epochs to train.")
+        "--num-epochs", type=int, default=20, help="Number of epochs to train.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -191,7 +192,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1,6"
+    tf.config.experimental.set_visible_devices([], 'GPU')
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None
@@ -211,8 +213,8 @@ if __name__ == "__main__":
         info["num_epochs"] = args.num_epochs
         # Increase `max_retries` to turn on fault tolerance.
         trainer.train(max_retries=1, info=info)
-        val_stats = trainer.validate()
-        info.update(val_acc=val_stats["val_accuracy"]) 
+        # val_stats = trainer.validate()
+        # info.update(val_acc=val_stats["val_accuracy"]) 
 
     trainer.shutdown()
     print("success!")
