@@ -78,7 +78,6 @@ class TestCQL(unittest.TestCase):
             trainer = cql.CQLTrainer(config=config, env=env)
             learnt = False
             for i in range(num_iterations):
-                results = trainer.train()
                 eval_results = trainer.train().get("evaluation")
                 if eval_results:
                     print("iter={} R={}".format(
