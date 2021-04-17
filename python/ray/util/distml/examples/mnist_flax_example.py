@@ -175,7 +175,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0,2,6,7"
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None

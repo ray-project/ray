@@ -222,7 +222,7 @@ class ParameterServerStrategy(BaseTrainer):
     #     metrics["train_loss"] = np.mean(train_loss_list)
     #     return metrics
 
-    @func_timer
+    # @func_timer
     def step(self):
         loss_vals = []
         rets = []

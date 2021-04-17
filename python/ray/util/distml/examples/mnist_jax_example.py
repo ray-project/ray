@@ -134,9 +134,9 @@ def make_ar_trainer(args):
 def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=MnistTrainingOperator,
-        world_size=args.num_workers,
-        num_workers=args.num_workers//2,
-        num_ps=args.num_workers//2,
+        world_size=args.num_workers ,
+        num_workers=args.num_workers - args.num_ps,
+        num_ps=args.num_ps,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
@@ -148,8 +148,8 @@ def make_ps_trainer(args):
         use_tqdm=True,
         record_config={
             "batch_size": 128,
-            "num_workers": args.num_workers//2,
-            "job_name": f"mnist_{args.model_name}_{args.num_workers//2}ps_{args.num_workers//2}workers",
+            "num_workers": args.num_workers-args.num_ps,
+            "job_name": f"mnist_{args.model_name}_{args.num_ps}ps_{args.num_workers-args.num_ps}workers",
             "save_freq": 50,
         },
         )
@@ -216,7 +216,7 @@ if __name__ == "__main__":
         info["smoke_test"] = args.smoke_test
         # Increase `max_retries` to turn on fault tolerance.
         trainer.train(max_retries=1, info=info)
-        # val_stats = trainer.validate()
+        val_stats = trainer.validate()
         # print("validate", val_stats)
         # info.update(val_acc=val_stats["val_accuracy"]) 
         # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))

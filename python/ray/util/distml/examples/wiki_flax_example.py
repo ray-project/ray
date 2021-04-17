@@ -137,8 +137,8 @@ def make_ps_trainer(args):
     trainer = ParameterServerStrategy(
         training_operator_cls=WikiTrainingOperator,
         world_size=args.num_workers,
-        num_workers=args.num_workers//2,
-        num_ps=args.num_workers//2,
+        num_workers=args.num_workers - args.num_ps,
+        num_ps=args.num_ps,
         operator_config={
             "lr": 0.01,
            "test_mode": args.smoke_test,  # subset the data
@@ -149,8 +149,8 @@ def make_ps_trainer(args):
         max_iteration=3000,
         record_config={
             "batch_size": 8,
-            "num_workers": args.num_workers//2,
-            "job_name": f"wiki_bert_{args.num_workers//2}ps_{args.num_workers//2}workers",
+            "num_workers": args.num_workers-args.num_ps,
+            "job_name": f"wiki_bert_{args.num_ps}ps_{args.num_workers-args.num_ps}workers",
             "save_freq": 50,
         },
         )
@@ -170,6 +170,8 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="Sets number of workers for training.")
+    parser.add_argument(
+        "--num-ps", type=int, default=1, help="Sets number of parameter server for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=20, help="Number of epochs to train.")
     parser.add_argument(
@@ -192,7 +194,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1,6"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "1,6"
     tf.config.experimental.set_visible_devices([], 'GPU')
 
     args, _ = parser.parse_known_args()
