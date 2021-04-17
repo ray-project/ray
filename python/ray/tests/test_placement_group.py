@@ -769,7 +769,8 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # placement group creation should've failed.
         pg_actor = NormalActor.options(
             placement_group=pg,
-            placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()
+            placement_group_bundle_index=num_nodes * bundle_per_node -
+            1).remote()
 
         # Wait on the placement group now. It should be unready
         # because normal actor takes resources that are required
@@ -780,8 +781,8 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
         # Wait until all tasks are done.
         assert all(ray.get(tasks))
 
-        # Wait on the placement group creation. Since resources are now available,
-        # it should be ready soon.
+        # Wait on the placement group creation. Since resources are now
+        # available, it should be ready soon.
         ready, unready = ray.wait([pg.ready()])
         assert len(ready) == 1
         assert len(unready) == 0

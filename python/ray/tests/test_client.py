@@ -181,6 +181,10 @@ def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
         @ray.remote
+        def sleep_for(t):
+            time.sleep(t)
+
+        @ray.remote
         def plus2(x):
             return x + 2
 
@@ -219,6 +223,12 @@ def test_remote_functions(ray_start_regular_shared):
         assert [] == res[1]
         all_vals = ray.get(res[0])
         assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
+        sleeping_ref = sleep_for.remote(1)
+        res = ray.wait([sleeping_ref], timeout=0)
+        assert res[0] == [] and len(res[1]) == 1
+        time.sleep(2)
+        res = ray.wait([sleeping_ref], timeout=2)
+        assert len(res[0]) == 1 and res[1] == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
