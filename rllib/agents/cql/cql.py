@@ -142,11 +142,17 @@ def after_init(trainer):
     # For a list of files, add each file's entire content to the buffer.
     elif isinstance(reader, ShuffledInput):
         for batch in reader.child.read_all_files():
+            # Add NEXT_OBS if not available. This is slightly hacked
+            # as for the very last time step, we will use next-obs=zeros
+            # and therefore force-set DONE=True to avoid this missing
+            # next-obs to cause learning problems.
             if SampleBatch.NEXT_OBS not in batch:
                 batch[SampleBatch.NEXT_OBS] = \
                     np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
+    else:
+        print("Error here?, otherwise buffer would be empty!")#TODO
 
 
 CQLTrainer = SACTrainer.with_updates(
