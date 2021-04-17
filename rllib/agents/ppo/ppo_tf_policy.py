@@ -216,16 +216,31 @@ class KLCoeffMixin:
             framework=config["framework"])
         # Constant target value.
         self.kl_target = config["kl_target"]
+        if self.framework == "tf":
+            self._kl_coeff_placeholder = \
+                tf1.placeholder(dtype=tf.float32, name="kl_coeff")
+            self._kl_coeff_update = self.kl_coeff.assign(
+                self._kl_coeff_placeholder, read_value=False)
 
     def update_kl(self, sampled_kl):
         # Update the current KL value based on the recently measured value.
+        # Increase.
         if sampled_kl > 2.0 * self.kl_target:
             self.kl_coeff_val *= 1.5
+        # Decrease.
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
+        # No change.
+        else:
+            return self.kl_coeff_val
 
-        # Update the tf Variable (via session call).
-        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
+        # Update the tf Variable (via session call for tf).
+        if self.framework == "tf":
+            self.get_session().run(
+                self._kl_coeff_update,
+                feed_dict={self._kl_coeff_placeholder: self.kl_coeff_val})
+        else:
+            self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
         # Return the current KL value.
         return self.kl_coeff_val
 

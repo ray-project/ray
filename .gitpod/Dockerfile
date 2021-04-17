@@ -16,7 +16,7 @@ RUN set -x; apt update \
     && echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list \
     && apt update && apt install bazel-3.7.2 -y \
     && pip3 install cython==0.29.0 pytest pandas tree tabulate pexpect sklearn joblib yapf==0.23.0 flake8==3.7.7 mypy==0.782 flake8-quotes setproctitle==1.1.10 psutil \
-    && echo -e "startup --output_base=/workspace/ray/.bazel-cache\nbuild --host_jvm_args=-Xmx1800m\nbuild --jobs=6" > /etc/bazel.bazelrc
+    && python3 -c  'print("startup --output_base=/workspace/ray/.bazel-cache\nbuild --host_jvm_args=-Xmx1800m\nbuild --jobs=6")' > /etc/bazel.bazelrc
 
 RUN update-alternatives --install /usr/local/bin/python python /usr/bin/python3 30 \
     && update-alternatives --install /usr/bin/bazel bazel /usr/bin/bazel-3.7.2 30 \
