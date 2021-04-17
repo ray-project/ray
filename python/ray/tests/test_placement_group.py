@@ -721,7 +721,8 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster,
         wait_for_condition(is_placement_group_created)
 
 
-def test_atomic_creation(ray_start_cluster):
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_atomic_creation(ray_start_cluster, connect_to_client):
     # Setup cluster.
     cluster = ray_start_cluster
     bundle_cpu_size = 2
@@ -744,88 +745,89 @@ def test_atomic_creation(ray_start_cluster):
         time.sleep(6)
         return True
 
-    # Schedule tasks to fail initial placement group creation.
-    tasks = [bothering_task.remote() for _ in range(2)]
+    with connect_to_client_or_not(connect_to_client):
+        # Schedule tasks to fail initial placement group creation.
+        tasks = [bothering_task.remote() for _ in range(2)]
 
-    # Make sure the two common task has scheduled.
-    def tasks_scheduled():
-        return ray.available_resources()["CPU"] == 2.0
+        # Make sure the two common task has scheduled.
+        def tasks_scheduled():
+            return ray.available_resources()["CPU"] == 2.0
 
-    wait_for_condition(tasks_scheduled)
+        wait_for_condition(tasks_scheduled)
 
-    # Create an actor that will fail bundle scheduling.
-    # It is important to use pack strategy to make test less flaky.
-    pg = ray.util.placement_group(
-        name="name",
-        strategy="SPREAD",
-        bundles=[{
-            "CPU": bundle_cpu_size
-        } for _ in range(num_nodes * bundle_per_node)])
+        # Create an actor that will fail bundle scheduling.
+        # It is important to use pack strategy to make test less flaky.
+        pg = ray.util.placement_group(
+            name="name",
+            strategy="SPREAD",
+            bundles=[{
+                "CPU": bundle_cpu_size
+            } for _ in range(num_nodes * bundle_per_node)])
 
-    # Create a placement group actor.
-    # This shouldn't be scheduled because atomic
-    # placement group creation should've failed.
-    pg_actor = NormalActor.options(
-        placement_group=pg,
-        placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()
+        # Create a placement group actor.
+        # This shouldn't be scheduled because atomic
+        # placement group creation should've failed.
+        pg_actor = NormalActor.options(
+            placement_group=pg,
+            placement_group_bundle_index=num_nodes * bundle_per_node - 1).remote()
 
-    # Wait on the placement group now. It should be unready
-    # because normal actor takes resources that are required
-    # for one of bundle creation.
-    ready, unready = ray.wait([pg.ready()], timeout=0.5)
-    assert len(ready) == 0
-    assert len(unready) == 1
-    # Wait until all tasks are done.
-    assert all(ray.get(tasks))
+        # Wait on the placement group now. It should be unready
+        # because normal actor takes resources that are required
+        # for one of bundle creation.
+        ready, unready = ray.wait([pg.ready()], timeout=0.5)
+        assert len(ready) == 0
+        assert len(unready) == 1
+        # Wait until all tasks are done.
+        assert all(ray.get(tasks))
 
-    # Wait on the placement group creation. Since resources are now available,
-    # it should be ready soon.
-    ready, unready = ray.wait([pg.ready()])
-    assert len(ready) == 1
-    assert len(unready) == 0
+        # Wait on the placement group creation. Since resources are now available,
+        # it should be ready soon.
+        ready, unready = ray.wait([pg.ready()])
+        assert len(ready) == 1
+        assert len(unready) == 0
 
-    # Confirm that the placement group actor is created. It will
-    # raise an exception if actor was scheduled before placement
-    # group was created thus it checks atomicity.
-    ray.get(pg_actor.ping.remote(), timeout=3.0)
-    ray.kill(pg_actor)
+        # Confirm that the placement group actor is created. It will
+        # raise an exception if actor was scheduled before placement
+        # group was created thus it checks atomicity.
+        ray.get(pg_actor.ping.remote(), timeout=3.0)
+        ray.kill(pg_actor)
 
-    # Make sure atomic creation failure didn't impact resources.
-    @ray.remote(num_cpus=bundle_cpu_size)
-    def resource_check():
-        return True
+        # Make sure atomic creation failure didn't impact resources.
+        @ray.remote(num_cpus=bundle_cpu_size)
+        def resource_check():
+            return True
 
-    # This should hang because every resources
-    # are claimed by placement group.
-    check_without_pg = [
-        resource_check.remote() for _ in range(bundle_per_node * num_nodes)
-    ]
+        # This should hang because every resources
+        # are claimed by placement group.
+        check_without_pg = [
+            resource_check.remote() for _ in range(bundle_per_node * num_nodes)
+        ]
 
-    # This all should scheduled on each bundle.
-    check_with_pg = [
-        resource_check.options(
-            placement_group=pg, placement_group_bundle_index=i).remote()
-        for i in range(bundle_per_node * num_nodes)
-    ]
+        # This all should scheduled on each bundle.
+        check_with_pg = [
+            resource_check.options(
+                placement_group=pg, placement_group_bundle_index=i).remote()
+            for i in range(bundle_per_node * num_nodes)
+        ]
 
-    # Make sure these are hanging.
-    ready, unready = ray.wait(check_without_pg, timeout=0)
-    assert len(ready) == 0
-    assert len(unready) == bundle_per_node * num_nodes
+        # Make sure these are hanging.
+        ready, unready = ray.wait(check_without_pg, timeout=0)
+        assert len(ready) == 0
+        assert len(unready) == bundle_per_node * num_nodes
 
-    # Make sure these are all scheduled.
-    assert all(ray.get(check_with_pg))
+        # Make sure these are all scheduled.
+        assert all(ray.get(check_with_pg))
 
-    ray.util.remove_placement_group(pg)
+        ray.util.remove_placement_group(pg)
 
-    def pg_removed():
-        return ray.util.placement_group_table(pg)["state"] == "REMOVED"
+        def pg_removed():
+            return ray.util.placement_group_table(pg)["state"] == "REMOVED"
 
-    wait_for_condition(pg_removed)
+        wait_for_condition(pg_removed)
 
-    # Make sure check without pgs are all
-    # scheduled properly because resources are cleaned up.
-    assert all(ray.get(check_without_pg))
+        # Make sure check without pgs are all
+        # scheduled properly because resources are cleaned up.
+        assert all(ray.get(check_without_pg))
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

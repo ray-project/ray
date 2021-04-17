@@ -274,7 +274,7 @@ class Worker:
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
-            "timeout": timeout if timeout else -1,
+            "timeout": timeout if (timeout is not None) else -1,
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
