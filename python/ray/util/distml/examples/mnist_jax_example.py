@@ -170,6 +170,8 @@ if __name__ == "__main__":
         default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
+        "--num-ps", type=int, default=1, help="Sets number of parameter server for training.")
+    parser.add_argument(
         "--num-epochs", type=int, default=20, help="Number of epochs to train.")
     parser.add_argument(
         "--use-gpu",
@@ -193,7 +195,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-name", type=str, default="resnet18", help="model, Optional: resnet18, resnet50, resnet101.")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "0,2"
     # os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
@@ -211,11 +213,12 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         info["epoch_idx"] = i
         info["num_epochs"] = args.num_epochs
+        info["smoke_test"] = args.smoke_test
         # Increase `max_retries` to turn on fault tolerance.
         trainer.train(max_retries=1, info=info)
-        val_stats = trainer.validate()
-        print("validate", val_stats)
-        info.update(val_acc=val_stats["val_accuracy"]) 
+        # val_stats = trainer.validate()
+        # print("validate", val_stats)
+        # info.update(val_acc=val_stats["val_accuracy"]) 
         # pbar.set_postfix(dict(acc=val_stats["val_accuracy"]))
 
     trainer.shutdown()

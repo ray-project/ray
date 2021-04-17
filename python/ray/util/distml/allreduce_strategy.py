@@ -53,6 +53,11 @@ class AllReduceStrategy(BaseTrainer):
         for idx in range(total):
             with self._collector.record("train_batch"):
                 metrics = self.data_parallel_group.train_batch()
+
+            if "smoke_test" in info and info["smoke_test"]:
+                if idx == 10:
+                    return info
+
             if self._use_tqdm:
                 _progress_bar.n = idx + 1
                 if "train_loss" in metrics:
