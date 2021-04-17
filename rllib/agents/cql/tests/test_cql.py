@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):

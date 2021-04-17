@@ -84,6 +84,26 @@ class JsonReader(InputReader):
                     self.cur_file))
         return self._postprocess_if_needed(batch)
 
+    def read_all_files(self):
+        for path in self.files:
+            if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
+                if smart_open is None:
+                    raise ValueError(
+                        "You must install the `smart_open` module to read "
+                        "from URIs like {}".format(path))
+                ctx = smart_open
+            else:
+                ctx = open
+            with ctx(path, "r") as file:
+                while True:
+                    line = file.readline()
+                    if not line:
+                        break
+                    batch = self._try_parse(line)
+                    if batch is None:
+                        break
+                    yield batch
+
     def _postprocess_if_needed(self,
                                batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):

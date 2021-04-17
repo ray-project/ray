@@ -1,12 +1,15 @@
 """CQL (derived from SAC).
 """
+import numpy as np
 from typing import Optional, Type, List
 
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils import merge_dicts
 
 from ray.rllib.execution.concurrency_ops import Concurrently
@@ -130,10 +133,20 @@ def execution_plan(workers, config):
 def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
     global replay_buffer
-    local_worker = trainer.workers.local_worker
+    reader = trainer.workers.local_worker().input_reader
+
+    # For d4rl, add the D4RLReaders' dataset to the buffer.
     if "d4rl" in trainer.config["input"]:
-        dataset = local_worker().input_reader.dataset
+        dataset = reader.dataset
         replay_buffer.add_batch(dataset)
+    # For a list of files, add each file's entire content to the buffer.
+    elif isinstance(reader, ShuffledInput):
+        for batch in reader.child.read_all_files():
+            if SampleBatch.NEXT_OBS not in batch:
+                batch[SampleBatch.NEXT_OBS] = \
+                    np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
+                batch[SampleBatch.DONES][-1] = True
+            replay_buffer.add_batch(batch)
 
 
 CQLTrainer = SACTrainer.with_updates(
