@@ -97,7 +97,7 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     action_dist_class = _get_dist_class(policy.config, policy.action_space)
     action_dist_t = action_dist_class(
-        model.get_policy_output(model_out_t), policy.model)
+        model.get_policy_output(model_out_t), model)
     policy_t = action_dist_t.sample() if not deterministic else \
         action_dist_t.deterministic_sample()
     log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
@@ -212,7 +212,7 @@ def cql_loss(policy: Policy, model: ModelV2,
         else:
             alpha_prime_loss = -min_qf1_loss
 
-    cql_loss = [min_qf2_loss]
+    cql_loss = [min_qf1_loss]
     if twin_q:
         cql_loss.append(min_qf2_loss)
 
@@ -224,6 +224,9 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.q_t = q_t
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
+    # Store td-error in model, such that for multi-GPU, we do not override
+    # them during the parallel loss phase. TD-error tensor in final stats
+    # can then be concatenated and retrieved for each individual batch item.
     model.td_error = td_error
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
