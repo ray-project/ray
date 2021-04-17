@@ -203,6 +203,23 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         df = analysis.dataframe(self.metric, mode="max")
         self.assertEquals(df.shape[0], 1)
 
+    def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
+        analysis = tune.run(
+            MyTrainableClass,
+            name="test_example",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 1},
+            num_samples=1,
+            config={"test": tune.grid_search([[1, 2], [3, 4]])},
+            checkpoint_at_end=True,
+        )
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
+        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
+        expected_path = os.path.join(logdir, "checkpoint_000001/",
+                                     "checkpoint")
+        assert checkpoints_metrics[0][0] == expected_path
+        assert checkpoints_metrics[0][1] == 1
+
 
 class ExperimentAnalysisPropertySuite(unittest.TestCase):
     def testBestProperties(self):

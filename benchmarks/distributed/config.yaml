@@ -17,7 +17,7 @@ available_node_types:
     head_node:
         node_config:
             InstanceType: r5dn.16xlarge # Network optimized.
-            ImageId: ami-0a2363a9cff180a64 
+            ImageId: ami-0a2363a9cff180a64
         resources:
           CPU: 1
           node: 1
