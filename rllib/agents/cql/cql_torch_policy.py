@@ -224,7 +224,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.q_t = q_t
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
-    policy.td_error = td_error
+    model.td_error = td_error
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
