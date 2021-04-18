@@ -192,7 +192,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
     parser.add_argument(
-        "--model_name", type=str, default="resnet18", help="model, Optional: resnet18, resnet50, resnet101.")
+        "--model-name", type=str, default="resnet18", help="model, Optional: resnet18, resnet50, resnet101.")
     parser.add_argument(
         "--batch_size", type=int, default=128, help="batch size.")
 
