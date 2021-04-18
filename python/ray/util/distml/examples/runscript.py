@@ -3,8 +3,6 @@ import subprocess
 from itertools import combinations
 
 
-default_epoches = 5
-cuda_list = ['0', '1', '2', '3', '4', '5', '6', '7']
 
 
 def combine(temp_list, n):
@@ -39,6 +37,11 @@ def find_wored_device():
             worked_cuda.append(cuda_aval)
     print("avaliable cuda list", worked_cuda)
 
+# =================================================================
+
+default_epoches = 5
+cuda_list = ['0', '1', '2', '3', '4', '5', '6', '7']
+
 
 def run_mnist_ar_single_node():
     num_workers = "--num-workers {}"
@@ -53,8 +56,6 @@ def run_mnist_ar_single_node():
         for model in models_candidate:
             cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} --trainer ar {models.format(model)}"
             res = os.system(cmd)
-            if res != 0:
-                raise
 
 
 def run_wiki_ar_single_node():
@@ -66,12 +67,11 @@ def run_wiki_ar_single_node():
     for workers in num_workers_candidate:
         cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python wiki_flax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} --trainer ar"
         res = os.system(cmd)
-        # if res != 0:
-        #     raise
+
 
 def run_mnist_ps_single_node(num_ps=1):
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(1+num_ps, len(cuda_list) + 1)
+    num_workers_candidate = range(num_ps*2, len(cuda_list) + 1)
 
     num_ps_str = f"--num-ps {num_ps}"
 
@@ -84,12 +84,11 @@ def run_mnist_ps_single_node(num_ps=1):
         for model in models_candidate:
             cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} {num_ps_str} --trainer ps {models.format(model)}"
             res = os.system(cmd)
-            # if res != 0:
-            #     raise
+
 
 def run_wiki_ps_single_node(num_ps=1):
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(1+num_ps, len(cuda_list) + 1)
+    num_workers_candidate = range(num_ps*2, len(cuda_list) + 1)
 
     num_ps_str = f"--num-ps {num_ps}"
 
