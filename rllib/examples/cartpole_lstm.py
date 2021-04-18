@@ -47,6 +47,7 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "model": {
                 "use_lstm": True,
+                "lstm_cell_size": 256,
                 "lstm_use_prev_action": args.use_prev_action,
                 "lstm_use_prev_reward": args.use_prev_reward,
             },
@@ -60,6 +61,39 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
+
+    # To run the Trainer without tune.run, using our LSTM model and
+    # manual state-in handling, do the following:
+
+    # Example (use `config` from the above code):
+    # >> import numpy as np
+    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >>
+    # >> trainer = PPOTrainer(config)
+    # >> lstm_cell_size = config["model"]["lstm_cell_size"]
+    # >> env = StatelessCartPole()
+    # >> obs = env.reset()
+    # >>
+    # >> # range(2) b/c h- and c-states of the LSTM.
+    # >> init_state = state = [
+    # ..     np.zeros([lstm_cell_size], np.float32) for _ in range(2)
+    # .. ]
+    # >> prev_a = 0
+    # >> prev_r = 0.0
+    # >>
+    # >> while True:
+    # >>     a, state_out, _ = trainer.compute_action(
+    # ..         obs, state, prev_a, prev_r)
+    # >>     obs, reward, done, _ = env.step(a)
+    # >>     if done:
+    # >>         obs = env.reset()
+    # >>         state = init_state
+    # >>         prev_a = 0
+    # >>         prev_r = 0.0
+    # >>     else:
+    # >>         state = state_out
+    # >>         prev_a = a
+    # >>         prev_r = reward
 
     results = tune.run(args.run, config=config, stop=stop, verbose=2)
 

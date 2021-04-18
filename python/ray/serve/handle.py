@@ -1,7 +1,7 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union, Coroutine
+from typing import Dict, List, Optional, Union, Coroutine
 import threading
 from enum import Enum
 
@@ -77,12 +77,14 @@ class RayServeHandle:
             *,
             known_python_methods: List[str] = [],
             _router: Optional[EndpointRouter] = None,
+            _internal_use_serve_request: Optional[bool] = True,
     ):
         self.controller_handle = controller_handle
         self.endpoint_name = endpoint_name
         self.handle_options = handle_options or HandleOptions()
         self.known_python_methods = known_python_methods
         self.handle_tag = f"{self.endpoint_name}#{get_random_letters()}"
+        self._use_serve_request = _internal_use_serve_request
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -132,9 +134,10 @@ class RayServeHandle:
             self.controller_handle,
             self.endpoint_name,
             new_options,
-            _router=self.router)
+            _router=self.router,
+            _internal_use_serve_request=self._use_serve_request)
 
-    def _remote(self, endpoint_name, handle_options, request_data,
+    def _remote(self, endpoint_name, handle_options, args,
                 kwargs) -> Coroutine:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
@@ -143,14 +146,12 @@ class RayServeHandle:
             shard_key=handle_options.shard_key,
             http_method=handle_options.http_method,
             http_headers=handle_options.http_headers,
+            use_serve_request=self._use_serve_request,
         )
-        coro = self.router.assign_request(request_metadata, request_data,
-                                          **kwargs)
+        coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
-    async def remote(self,
-                     request_data: Optional[Union[Dict, Any]] = None,
-                     **kwargs):
+    async def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
@@ -167,7 +168,7 @@ class RayServeHandle:
         """
         self.request_counter.inc()
         return await self._remote(self.endpoint_name, self.handle_options,
-                                  request_data, kwargs)
+                                  args, kwargs)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
@@ -177,7 +178,8 @@ class RayServeHandle:
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
-            "known_python_methods": self.known_python_methods
+            "known_python_methods": self.known_python_methods,
+            "_internal_use_serve_request": self._use_serve_request
         }
         return lambda kwargs: RayServeHandle(**kwargs), (serialized_data, )
 
@@ -204,8 +206,7 @@ class RayServeSyncHandle(RayServeHandle):
             create_or_get_async_loop_in_thread(),
         )
 
-    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
-               **kwargs):
+    def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
@@ -223,8 +224,8 @@ class RayServeSyncHandle(RayServeHandle):
                 ``request.args``.
         """
         self.request_counter.inc()
-        coro = self._remote(self.endpoint_name, self.handle_options,
-                            request_data, kwargs)
+        coro = self._remote(self.endpoint_name, self.handle_options, args,
+                            kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.router._loop)
         return future.result()
@@ -234,6 +235,7 @@ class RayServeSyncHandle(RayServeHandle):
             "controller_handle": self.controller_handle,
             "endpoint_name": self.endpoint_name,
             "handle_options": self.handle_options,
-            "known_python_methods": self.known_python_methods
+            "known_python_methods": self.known_python_methods,
+            "_internal_use_serve_request": self._use_serve_request
         }
         return lambda kwargs: RayServeSyncHandle(**kwargs), (serialized_data, )

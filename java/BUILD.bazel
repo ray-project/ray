@@ -13,6 +13,7 @@ all_modules = [
     "api",
     "runtime",
     "test",
+    "performance_test",
 ]
 
 java_import(
@@ -106,12 +107,26 @@ define_java_module(
     ],
 )
 
+define_java_module(
+    name = "performance_test",
+    deps = [
+        ":io_ray_ray_api",
+        ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
+        "@maven//:com_google_guava_guava",
+        "@maven//:commons_io_commons_io",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+    ],
+)
+
 java_binary(
     name = "all_tests",
     args = ["java/testng.xml"],
     data = ["testng.xml"],
     main_class = "org.testng.TestNG",
     runtime_deps = [
+        ":io_ray_ray_performance_test",
         ":io_ray_ray_runtime_test",
         ":io_ray_ray_test",
     ],
@@ -207,6 +222,7 @@ genrule(
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
+        cp -f $(location //java:io_ray_ray_performance_test_pom) "$$WORK_DIR/java/performance_test/pom.xml"
         date > $@
     """,
     local = 1,
