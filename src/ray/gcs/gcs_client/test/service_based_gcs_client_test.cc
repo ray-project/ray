@@ -542,9 +542,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
   std::unique_ptr<instrumented_io_context> client_io_service_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -1000,6 +1000,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
                            const ActorID &id, const rpc::ActorTableData &data) {
     subscribe_all_notifications.emplace_back(data);
     ++num_subscribe_all_notifications;
+    RAY_LOG(INFO) << "The number of actors subscription messages received is "
+                  << num_subscribe_all_notifications;
   };
   // Subscribe to updates of all actors.
   ASSERT_TRUE(SubscribeAllActors(subscribe_all));
@@ -1012,9 +1014,16 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
                              const ActorID &actor_id, const gcs::ActorTableData &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
+    RAY_LOG(INFO) << "The number of actor subscription messages received is "
+                  << num_subscribe_one_notifications;
   };
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
+
+  // In order to prevent receiving the message of other test case publish, we get the
+  // expected number of actor subscription messages before registering actor.
+  auto expected_num_subscribe_all_notifications = num_subscribe_all_notifications + 1;
+  auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
   // `WaitForActorOutOfScope` is executed first, and then the callback function of
@@ -1024,8 +1033,10 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   RegisterActor(actor_table_data, false);
 
   // We should receive a new notification from the subscribe channel.
-  WaitForExpectedCount(num_subscribe_all_notifications, 1);
-  WaitForExpectedCount(num_subscribe_one_notifications, 1);
+  WaitForExpectedCount(num_subscribe_all_notifications,
+                       expected_num_subscribe_all_notifications);
+  WaitForExpectedCount(num_subscribe_one_notifications,
+                       expected_num_subscribe_one_notifications);
 
   // Restart GCS server.
   RestartGcsServer();
@@ -1034,7 +1045,9 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
-  WaitForExpectedCount(num_subscribe_one_notifications, 3);
+  expected_num_subscribe_one_notifications += 2;
+  WaitForExpectedCount(num_subscribe_one_notifications,
+                       expected_num_subscribe_one_notifications);
 
   // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
   // client will register the actor again. When an actor is registered, the status in GCS
@@ -1044,10 +1057,15 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
   // more.
   // If the status of the actor is `DEPENDENCIES_UNREADY`, we will fetch two records, so
-  // `num_subscribe_all_notifications` will be 4. If the status of the actor is `DEAD`, we
-  // will fetch one record, so `num_subscribe_all_notifications` will be 3.
-  auto condition = [&num_subscribe_all_notifications]() {
-    return num_subscribe_all_notifications == 3 || num_subscribe_all_notifications == 4;
+  // `num_subscribe_all_notifications` will increase by 3. If the status of the actor is
+  // `DEAD`, we will fetch one record, so `num_subscribe_all_notifications` will increase
+  // by 2.
+  expected_num_subscribe_all_notifications += 2;
+  auto condition = [&num_subscribe_all_notifications,
+                    expected_num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications == expected_num_subscribe_all_notifications ||
+           num_subscribe_all_notifications ==
+               expected_num_subscribe_all_notifications + 1;
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }

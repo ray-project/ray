@@ -140,6 +140,8 @@ class TFPolicy(Policy):
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            self.view_requirements[
+                SampleBatch.INFOS].used_for_compute_actions = False
 
         assert model is None or isinstance(model, ModelV2), \
             "Model classes for TFPolicy other than `ModelV2` not allowed! " \
@@ -929,18 +931,26 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
-        if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
-        else:
-            self.lr_schedule = PiecewiseSchedule(
+        self._lr_schedule = lr_schedule
+        if self._lr_schedule is not None:
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            if self.framework == "tf":
+                self._lr_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="lr")
+                self._lr_update = self.cur_lr.assign(
+                    self._lr_placeholder, read_value=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        if self._lr_schedule is not None:
+            new_val = self._lr_schedule.value(global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
+            else:
+                self.cur_lr.assign(new_val, read_value=False)
 
     @override(TFPolicy)
     def optimizer(self):

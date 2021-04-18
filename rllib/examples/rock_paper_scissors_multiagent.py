@@ -136,7 +136,7 @@ def run_with_custom_entropy_loss(args, stop):
     run_heuristic_vs_learned(args, use_lstm=True, trainer=EntropyLossPG)
 
 
-if __name__ == "__main__":
+def main():
     args = parser.parse_args()
 
     stop = {
@@ -156,3 +156,7 @@ if __name__ == "__main__":
 
     run_with_custom_entropy_loss(args, stop=stop)
     print("run_with_custom_entropy_loss: ok.")
+
+
+if __name__ == "__main__":
+    main()

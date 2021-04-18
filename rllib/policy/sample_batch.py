@@ -361,6 +361,7 @@ class SampleBatch(dict):
                 {k: v[start:end]
                  for k, v in self.items()},
                 _seq_lens=None,
+                _is_training=self.is_training,
                 _time_major=self.time_major)
 
     @PublicAPI
@@ -450,7 +451,8 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        self.accessed_keys.add(key)
+        if not hasattr(self, key):
+            self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":

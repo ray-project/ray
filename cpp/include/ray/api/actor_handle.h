@@ -11,16 +11,6 @@
 namespace ray {
 namespace api {
 
-template <typename T>
-struct FilterArgType {
-  using type = T;
-};
-
-template <typename T>
-struct FilterArgType<ObjectRef<T>> {
-  using type = T;
-};
-
 template <typename ActorType, typename ReturnType, typename... Args>
 using ActorFunc = ReturnType (ActorType::*)(Args...);
 
@@ -39,11 +29,8 @@ class ActorHandle {
   const ActorID &ID() const;
 
   /// Include the `Call` methods for calling remote functions.
-
-  template <typename ReturnType, typename... Args>
-  ActorTaskCaller<ReturnType> Task(
-      ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-      Args... args);
+  template <typename F>
+  ActorTaskCaller<F> Task(F actor_func);
 
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
@@ -53,22 +40,6 @@ class ActorHandle {
 };
 
 // ---------- implementation ----------
-template <typename ReturnType, typename ActorType, typename FuncType,
-          typename ExecFuncType, typename... ArgTypes>
-inline ActorTaskCaller<ReturnType> CallActorInternal(FuncType &actor_func,
-                                                     ExecFuncType &exec_func,
-                                                     ActorHandle<ActorType> &actor,
-                                                     ArgTypes &... args) {
-  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
-  Arguments::WrapArgs(&task_args, args...);
-  RemoteFunctionPtrHolder ptr;
-  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorTaskCaller<ReturnType>(internal::RayRuntime().get(), actor.ID(), ptr,
-                                     std::move(task_args));
-}
-
 template <typename ActorType>
 ActorHandle<ActorType>::ActorHandle() {}
 
@@ -83,14 +54,23 @@ const ActorID &ActorHandle<ActorType>::ID() const {
 }
 
 template <typename ActorType>
-template <typename ReturnType, typename... Args>
-ActorTaskCaller<ReturnType> ActorHandle<ActorType>::Task(
-    ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-    Args... args) {
-  return CallActorInternal<ReturnType, ActorType>(
-      actor_func,
-      ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>,
-      *this, args...);
+template <typename F>
+ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+  RemoteFunctionPtrHolder ptr{};
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(actor_func);
+    if (function_name.empty()) {
+      throw RayException(
+          "Function not found. Please use RAY_REMOTE to register this function.");
+    }
+    ptr.function_name = std::move(function_name);
+    return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
+  }
+
+  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
+  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
+  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
 }
 
 }  // namespace api
