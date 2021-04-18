@@ -115,8 +115,11 @@ def _dir_travel(
         path: Path,
         excludes: PathSpec,
         handler: Callable,
+        base: Optional[Path]=None,
 ):
-    path_str = str(path)
+    if base is None:
+        base = path
+    path_str = str(path.relative_to(base))
     if path.is_dir():
         path_str += "/"
     if excludes.match_file(path_str):
@@ -124,7 +127,7 @@ def _dir_travel(
     handler(path)
     if path.is_dir():
         for sub_path in path.iterdir():
-            _dir_travel(sub_path, excludes, handler)
+            _dir_travel(sub_path, excludes, handler, base)
 
 
 def _zip_module(root: Path, relative_path: Path, excludes: PathSpec,
