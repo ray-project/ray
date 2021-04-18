@@ -255,15 +255,14 @@ def create_project_package(working_dir: str, py_modules: List[str],
         output_path (str): The path of file to be created.
     """
     pkg_file = Path(output_path).absolute()
-    excludes = [re.compile(fnmatch.translate(p)) for p in excludes]
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(working_path, working_path, excludes, zip_handler)
+            _zip_module(working_path, working_path, _get_exclude_spec(working_path, excludes), zip_handler)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(module_path, module_path.parent, excludes, zip_handler)
+            _zip_module(module_path, module_path.parent, _get_exclude_spec(module_path, excludes), zip_handler)
 
 
 def fetch_package(pkg_uri: str) -> int:
