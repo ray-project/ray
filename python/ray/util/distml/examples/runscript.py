@@ -3,34 +3,8 @@ import subprocess
 from itertools import combinations
 
 
-codes = ["mnist_jax_example.py", "sst_jax_example.py", "mnist_flax_example.py", "wiki_flax_example.py"]
-
-# 2,3,4,5,6, 7,8
-num_workers = "--num-workers {}"
-num_workers_candidate = range(2,9)
-
-# few
-model_names = "--model-name {}"
-models_candidate = ["resnet18", "resnet50", "resnet101"]
-
-# strategy
-strategy = "--trainer {}"
-strategy_candidate = ["ar", "ps"]
-
-woker2cuda = {2: "0,2", 3: "0,2,6"}
-# ['0,2,6', '0,3,6']
-
-cuda_list = ['0', '1', '2', '3', '6', '7']
-
-# for trainer in strategy_candidate:
-#     for model in models_candidate:
-#         cmd = f"NCCL_SHM_DISABLE=1 CUDA_VISIBLE_DEVICES python mnist_jax_example.py --num-epochs 5 --num-workers 2 {model_names.format(model)} {strategy.format(trainer)}")
-#         res = result.read()
-
-# cmd = f"CUDA_VISIBLE_DEVICES=0,2,1 python mnist_jax_example.py --num-epochs 5 --num-workers 3"
-# # cmd = "conda info --envs"
-# res = os.system(cmd)
-# print(res)
+default_epoches = 5
+cuda_list = ['0', '1', '2', '3', '4', '5', '6', '7']
 
 
 def combine(temp_list, n):
@@ -68,16 +42,16 @@ def find_wored_device():
 
 def run_mnist_ar_single_node():
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(2,9)
+    num_workers_candidate = range(2, len(cuda_list) + 1)
 
-    models = "--model_name {}"
-    models_candidate = ["resnet18", "resnet50", "resnet101"]
+    models = "--model-name {}"
+    models_candidate = ["resnet18", "resnet101"]
 
     cuda_aval = ",".join(cuda_list)
 
     for workers in num_workers_candidate:
         for model in models_candidate:
-            cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs 3 {num_workers.format(workers)} --trainer ar {models.format(model)}"
+            cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} --trainer ar {models.format(model)}"
             res = os.system(cmd)
             if res != 0:
                 raise
@@ -85,47 +59,45 @@ def run_mnist_ar_single_node():
 
 def run_wiki_ar_single_node():
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(2,9)
+    num_workers_candidate = range(2, len(cuda_list) + 1)
 
     cuda_aval = ",".join(cuda_list)
 
     for workers in num_workers_candidate:
-        cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python wiki_flax_example.py --num-epochs 3 {num_workers.format(workers)} --trainer ar"
+        cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python wiki_flax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} --trainer ar"
         res = os.system(cmd)
         # if res != 0:
         #     raise
 
 def run_mnist_ps_single_node(num_ps=1):
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(1+num_ps,9)
+    num_workers_candidate = range(1+num_ps, len(cuda_list) + 1)
 
-    num_ps_str = f"--num-workers {num_ps}"
+    num_ps_str = f"--num-ps {num_ps}"
 
-    models = "--model_name {}"
-    models_candidate = ["resnet18", "resnet50", "resnet101"]
+    models = "--model-name {}"
+    models_candidate = ["resnet18", "resnet101"]
 
     cuda_aval = ",".join(cuda_list)
 
     for workers in num_workers_candidate:
         for model in models_candidate:
-            cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs 3 {num_workers.format(workers)} {num_ps_str} --trainer ps {models.format(model)}"
+            cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python mnist_jax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} {num_ps_str} --trainer ps {models.format(model)}"
             res = os.system(cmd)
             # if res != 0:
             #     raise
 
 def run_wiki_ps_single_node(num_ps=1):
     num_workers = "--num-workers {}"
-    num_workers_candidate = range(1+num_ps,9)
+    num_workers_candidate = range(1+num_ps, len(cuda_list) + 1)
 
-    num_ps_str = f"--num-workers {num_ps}"
+    num_ps_str = f"--num-ps {num_ps}"
 
     cuda_aval = ",".join(cuda_list)
 
     for workers in num_workers_candidate:
-        cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python wiki_flax_example.py --num-epochs 3 {num_workers.format(workers)} {num_ps_str} --trainer ps"
+        cmd =  f"CUDA_VISIBLE_DEVICES={cuda_aval} NCCL_SHM_DISABLE=1 python wiki_flax_example.py --num-epochs {default_epoches} {num_workers.format(workers)} {num_ps_str} --trainer ps"
         res = os.system(cmd)
-            # if res != 0:
-            #     raise
 
 
 if __name__ == "__main__":
