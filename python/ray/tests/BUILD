@@ -26,6 +26,7 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_cancel.py",
+    "test_cli.py",
     "test_client.py",
     "test_client_init.py",
     "test_component_failures_2.py",
@@ -115,7 +116,17 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_cli.py",
+    "test_k8s_cluster_launcher.py",
+    "test_k8s_operator_examples.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  deps = ["//:ray_lib"],
+  tags = ["kubernetes"]
+)
+
+py_test_module_list(
+  files = [
     "test_failure.py",
     "test_stress_failure.py",
   ],
