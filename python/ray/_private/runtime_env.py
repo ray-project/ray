@@ -122,6 +122,7 @@ def _dir_travel(
     path_str = str(path.relative_to(base))
     if path.is_dir():
         path_str += "/"
+    print(path_str)
     if excludes.match_file(path_str):
         return
     handler(path)
@@ -191,9 +192,11 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 def _get_exclude_spec(path: Path, excludes: List[str]):
     ignore_file = path / ".gitignore"
+    excludes = [e if not Path(e).is_absolute() else str(Path(e).relative_to(path)) for e in excludes]
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             return PathSpec.from_lines("gitwildmatch", f.readlines() + excludes)
+    print("excludes: ", excludes)
     return PathSpec.from_lines("gitwildmatch", excludes)
 
 
@@ -220,7 +223,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     Args:
         working_dir (str): The working directory.
         py_modules (list[str]): The python module.
-        excludes (set[str]): The dir or files that should be excluded
+        excludes (list[str]): The dir or files that should be excluded
 
     Returns:
         Package name as a string.
@@ -361,7 +364,7 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
                                                                 or py_modules):
         if excludes is None:
-            excludes = set()
+            excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name

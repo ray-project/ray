@@ -231,7 +231,7 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    # Test it works before
+    print(out)
     assert out.strip().split("\n")[-1] == \
         "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
 
