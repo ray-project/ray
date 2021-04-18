@@ -4,6 +4,8 @@ import logging
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
+from pathspec import PathSpec
+import re
 from ray.job_config import JobConfig
 from enum import Enum
 
@@ -111,7 +113,7 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _dir_travel(
         path: Path,
-        excludes: Set[Path],
+        excludes: PathSpec,
         handler: Callable,
 ):
     if path in excludes:
@@ -122,7 +124,7 @@ def _dir_travel(
             _dir_travel(sub_path, excludes, handler)
 
 
-def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
+def _zip_module(root: Path, relative_path: Path, excludes: PathSpec,
                 zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
 
@@ -143,7 +145,7 @@ def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
 def _hash_modules(
         root: Path,
         relative_path: Path,
-        excludes: Set[Path],
+        excludes: PathSpec,
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -181,6 +183,14 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     return (protocol, uri.netloc)
 
 
+def _get_exclude_spec(path: Path, excludes: List[str]):
+    ignore_file = path / ".gitignore"
+    if ignore_file.is_file():
+        with ignore_file.open("r") as f:
+            return PathSpec.from_lines("gitwildmatch", f.readlines() + excludes)
+    return PathSpec.from_lines("gitwildmatch", excludes)
+
+
 # TODO(yic): Fix this later to handle big directories in better way
 def get_project_package_name(working_dir: str, py_modules: List[str],
                              excludes: List[str]) -> str:
@@ -211,7 +221,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
-    excludes = {Path(p).absolute() for p in excludes}
+    excludes = [re.compile(fnmatch.translate(p)) for p in excludes]
     if working_dir:
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
@@ -240,7 +250,7 @@ def create_project_package(working_dir: str, py_modules: List[str],
         output_path (str): The path of file to be created.
     """
     pkg_file = Path(output_path).absolute()
-    excludes = [Path(e).absolute() for e in excludes]
+    excludes = [re.compile(fnmatch.translate(p)) for p in excludes]
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
