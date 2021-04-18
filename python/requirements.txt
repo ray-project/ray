@@ -24,6 +24,7 @@ py-spy >= 0.2.0
 pyyaml
 redis >= 3.5.0
 requests
+pathspec
 
 ## setup.py extras
 atari_py

@@ -116,7 +116,10 @@ def _dir_travel(
         excludes: PathSpec,
         handler: Callable,
 ):
-    if path in excludes:
+    path_str = str(path)
+    if path.is_dir():
+        path_str += "/"
+    if excludes.match_file(path_str):
         return
     handler(path)
     if path.is_dir():
@@ -221,17 +224,16 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
-    excludes = [re.compile(fnmatch.translate(p)) for p in excludes]
     if working_dir:
         assert isinstance(working_dir, str)
         assert Path(working_dir).exists()
         working_dir = Path(working_dir).absolute()
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(working_dir, working_dir, excludes))
+            hash_val, _hash_modules(working_dir, working_dir, _get_exclude_spec(working_dir, excludes)))
     for py_module in py_modules or []:
         module_dir = Path(py_module).absolute()
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
+            hash_val, _hash_modules(module_dir, module_dir.parent, _get_exclude_spec(module_dir, excludes)))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
