@@ -29,7 +29,7 @@ namespace ray {
 namespace pubsub {
 
 using SubscriberID = UniqueID;
-using LongPollConnectCallback = std::function<void(const std::vector<ObjectID> &)>;
+using LongPollConnectCallback = std::function<void(const rpc::PubsubLongPollingReply*)>;
 
 namespace pub_internal {
 
@@ -96,10 +96,10 @@ class Subscriber {
 
   /// Queue the object id to publish to the subscriber.
   ///
-  /// \param object_id Object id to publish to the subscriber.
+  /// \param pub_message Message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
   /// connection. False is used only for testing.
-  void QueueMessage(const ObjectID &object_id, bool try_publish = true);
+  void QueueMessage(const std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -125,7 +125,7 @@ class Subscriber {
   /// It becomes a nullptr whenever the long polling request is replied.
   LongPollConnectCallback long_polling_reply_callback_ = nullptr;
   /// Queued messages to publish.
-  std::list<ObjectID> mailbox_;
+  std::list<std::unique_ptr<rpc::PubsubLongPollingReply> reply> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
@@ -196,7 +196,7 @@ class Publisher {
   /// \param pub_message The message to publish.
   /// \param message_id The message id to publish.
   template <typename MessageID>
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message, const MessageID &message_id);
+  void Publish(const rpc::ChannelType channel_type, const std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.

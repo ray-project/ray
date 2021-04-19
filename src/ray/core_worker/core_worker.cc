@@ -2399,17 +2399,9 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
   auto long_polling_reply_callback =
       [send_reply_callback = std::move(send_reply_callback), reply,
-       subscriber_id](const std::vector<ObjectID> &object_ids) {
+       subscriber_id](const rpc::PubsubLongPollingReply* queued_reply) {
         RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
-        // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
-        // fail if the number of batched objects are more than 50K. Though it is very
-        // rare, we should probably handle it.
-        for (const auto &object_id : object_ids) {
-          auto *pub_message = reply->add_pub_messages();
-          auto *msg = pub_message->mutable_wait_for_object_eviction_message();
-          msg->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
-          msg->set_object_id(object_id.Binary());
-        }
+        reply = queued_reply;
         send_reply_callback(Status::OK(), nullptr, nullptr);
       };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
