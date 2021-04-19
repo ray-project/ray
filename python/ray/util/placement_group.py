@@ -14,7 +14,7 @@ from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 
 if TYPE_CHECKING:
-    from ray.util.common import ClientObjectRef
+    from ray.util.common import ClientObjectRef  # noqa
 
 bundle_reservation_check = None
 
