@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -18,12 +18,8 @@ Duration = float
 @dataclass
 class EndpointInfo:
     http_methods: List[str]
-    python_methods: Optional[List[str]] = None
+    python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
-
-    def __post_init__(self):
-        if self.python_methods is None:
-            self.python_methods = []
 
 
 class BackendInfo(BaseModel):

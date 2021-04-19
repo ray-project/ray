@@ -171,12 +171,10 @@ class HTTPProxy:
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
-        if route_prefix.endswith("/"):
-            # We don't want to remove the trailing '/' from the incoming path.
-            route_prefix = route_prefix[:-1]
-
-        scope["path"] = scope["path"].replace(route_prefix, "", 1)
-        scope["root_path"] = route_prefix
+        if route_prefix != "/":
+            assert not route_prefix.endswith("/")
+            scope["path"] = scope["path"].replace(route_prefix, "", 1)
+            scope["root_path"] = route_prefix
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
         handle = handle.options(

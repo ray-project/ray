@@ -1053,7 +1053,8 @@ class ServeDeployment:
 
     def delete(self):
         """Delete this deployment."""
-        return _get_global_client().delete_deployment(self.name)
+        return _get_global_client().delete_deployment(
+            self.name, _internal=True)
 
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
