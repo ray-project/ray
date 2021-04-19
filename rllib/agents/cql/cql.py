@@ -150,6 +150,7 @@ def after_init(trainer):
                 batch[SampleBatch.NEXT_OBS] = \
                     np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
                 batch[SampleBatch.DONES][-1] = True
+            print(f"mean episode R in batch={np.mean(batch['rewards']) * 1600}")
             replay_buffer.add_batch(batch)
     else:
         print("Error here?, otherwise buffer would be empty!")#TODO

@@ -45,6 +45,7 @@ class TestCQL(unittest.TestCase):
         config = cql.CQL_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         #config["twin_q"] = True
+        config["bc_iters"] = 0
         config["clip_actions"] = False
         config["normalize_actions"] = True
         config["learning_starts"] = 0
@@ -64,7 +65,7 @@ class TestCQL(unittest.TestCase):
         }
         config["train_batch_size"] = 256
         config["timesteps_per_iteration"] = 1000
-        data_file_pend = "/tmp/out/output-2021-04-16_13-49-39_worker-0_1.json"
+        data_file_pend = "/tmp/out/output-2021-04-19_12-25-05_worker-0_4.json"
         print("data_file_pend={} exists={}".format(
             data_file_pend, os.path.isfile(data_file_pend)))
         data_file = data_file_pend
