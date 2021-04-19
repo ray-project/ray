@@ -30,7 +30,7 @@ import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env
 import ray._private.import_thread as import_thread
-from ray.util.importer import import_from_string
+from ray.util.tracing.tracing_helper import import_from_string
 import ray
 import setproctitle
 import ray.state

@@ -92,8 +92,6 @@ parser.add_argument(
     type=int,
     help="the port of the node's metric agent.")
 parser.add_argument(
-    "--tracing-startup-hook", type=str, help="tracing startup hook.")
-parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
@@ -161,7 +159,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
-        tracing_startup_hook=args.tracing_startup_hook)
+    )
 
     node = ray.node.Node(
         ray_params,
@@ -171,9 +169,6 @@ if __name__ == "__main__":
         connect_only=True)
     ray.worker._global_node = node
     ray.worker.connect(node, mode=mode)
-    # Add tracing-startup-hook to internal_kv so that new drivers can access it. # noqa
-    ray.experimental.internal_kv._internal_kv_put("tracing_startup_hook",
-                                                  args.tracing_startup_hook)
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker

@@ -439,8 +439,11 @@ def debug(address):
 @click.option(
     "--tracing-startup-hook",
     type=str,
+    hidden=True,
     default=None,
-)
+    help="The function that sets up tracing with a tracing provider, remote "
+    "span processor, and additional instruments. See docs.ray.io/tracing.html "
+    "for more info.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
