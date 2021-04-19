@@ -113,7 +113,8 @@ class ActorPool:
         if self._idle_actors:
             actor = self._idle_actors.pop()
             future = fn(actor, value)
-            self._future_to_actor[future] = (self._next_task_index, actor)
+            future_key = tuple(future) if isinstance(future, list) else future
+            self._future_to_actor[future_key] = (self._next_task_index, actor)
             self._index_to_future[self._next_task_index] = future
             self._next_task_index += 1
         else:
@@ -167,7 +168,10 @@ class ActorPool:
                 raise TimeoutError("Timed out waiting for result")
         del self._index_to_future[self._next_return_index]
         self._next_return_index += 1
-        i, a = self._future_to_actor.pop(future)
+
+        future_key = tuple(future) if isinstance(future, list) else future
+        i, a = self._future_to_actor.pop(future_key)
+
         self._return_actor(a)
         return ray.get(future)
 
