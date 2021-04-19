@@ -5,6 +5,15 @@ import sys
 
 
 if __name__ == "__main__":
+    import tensorflow as tf
+    import re
+    tf_file = tf.__file__
+    torch_file = re.sub("tensorflow", "torch", tf_file)
+    print(torch_file)
+    assert os.path.isfile(torch_file)
+    with open(torch_file, "w") as f:
+        print("raise Exception('torch imported!')", file=f)
+
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
 
@@ -21,7 +30,7 @@ if __name__ == "__main__":
             "framework": "tf",
             "num_workers": 0
         })
-    #trainer.train()
+    trainer.train()
 
     assert "torch" not in sys.modules, \
         "PyTorch should not be imported after creating and " \
