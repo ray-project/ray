@@ -7,6 +7,7 @@ import threading
 import _thread
 
 import ray.util.client.server.server as ray_client_server
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
@@ -179,10 +180,8 @@ def test_wait(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
-
-        @ray.remote
-        def sleep_for(t):
-            time.sleep(t)
+        SignalActor = create_remote_signal_actor(ray)
+        signaler = SignalActor.remote()
 
         @ray.remote
         def plus2(x):
@@ -223,11 +222,17 @@ def test_remote_functions(ray_start_regular_shared):
         assert [] == res[1]
         all_vals = ray.get(res[0])
         assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
-        sleeping_ref = sleep_for.remote(1)
-        res = ray.wait([sleeping_ref], timeout=0)
+
+        # Timeout 0 on ray.wait leads to immediate return
+        # (not indefinite wait for first return as with timeout None):
+        unready_ref = signaler.wait.remote()
+        res = ray.wait([unready_ref], timeout=0)
+        # Not ready.
         assert res[0] == [] and len(res[1]) == 1
-        time.sleep(2)
-        res = ray.wait([sleeping_ref], timeout=2)
+        ray.get(signaler.send.remote())
+        ready_ref = signaler.wait.remote()
+        # Ready.
+        res = ray.wait([ready_ref], timeout=0)
         assert len(res[0]) == 1 and res[1] == []
 
 
