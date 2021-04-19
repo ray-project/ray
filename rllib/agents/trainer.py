@@ -1182,7 +1182,21 @@ class Trainer(Trainable):
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
         # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = framework != "tf"
+            # Non-TF: Must use simple optimizer.
+            if framework != "tf":
+                config["simple_optimizer"] = True
+            # TF + Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are TFPolicies).
+            elif len(config["multiagent"]["policies"]) > 0:
+                from ray.rllib.policy.tf_policy import TFPolicy
+                if any(p[0] is not None and not issubclass(p[0], TFPolicy)
+                       for p in config["multiagent"]["policies"].values()):
+                    config["simple_optimizer"] = True
+                else:
+                    config["simple_optimizer"] = False
+            else:
+                config["simple_optimizer"] = False
+
         # User manually set simple-optimizer to False -> Error if not tf.
         elif simple_optim_setting is False:
             if framework in ["tfe", "tf2", "torch"]:
