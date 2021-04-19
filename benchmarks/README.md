@@ -6,7 +6,7 @@ All distributed tests are run on 64 nodes with 64 cores/node. Maximum number of 
 
 | Dimension                                       | Quantity |
 | ---------                                       | -------- |
-| # nodes in cluster (with trivial task workload) | 1000+     |
+| # nodes in cluster (with trivial task workload) | 250+     |
 | # actors in cluster (with trivial workload)     | 10k+     |
 | # simultaneously running tasks                  | 10k+     |
 | # simultaneously running placement groups       | 1k+      |

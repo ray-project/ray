@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -648,8 +648,11 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+            postprocessed_batch.seq_lens = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.is_training = True
         if seq_lens is not None:
             train_batch.seq_lens = seq_lens
         train_batch.count = self._dummy_batch.count

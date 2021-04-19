@@ -1,5 +1,5 @@
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, Union

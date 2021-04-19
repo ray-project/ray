@@ -27,7 +27,7 @@ From here, another Ray script can access that server from a networked machine wi
 
    # Normal Ray code follows
    @ray.remote
-   def f(x):
+   def do_work(x):
        return x ** x
 
    do_work.remote(2)

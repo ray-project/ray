@@ -30,6 +30,12 @@ class RequestMetadata:
 
     is_shadow_query: bool = False
 
+    # Determines whether or not the backend implementation will be presented
+    # with a ServeRequest object or directly passed args and kwargs. This is
+    # used to maintain backward compatibility and will be removed in the
+    # future.
+    use_serve_request: bool = True
+
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
         self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
