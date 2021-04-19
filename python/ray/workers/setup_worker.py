@@ -1,28 +1,19 @@
 import argparse
-import os
 
-from ray._private.conda import get_conda_activate_commands
-
+# TODO(architkulkarni): move to ray.utils
+from ray.serve.utils import import_attr
 parser = argparse.ArgumentParser(
     description=(
         "Set up the environment for a Ray worker and launch the worker."))
 
 parser.add_argument(
-    "--conda-env-name",
+    "--worker-setup-hook",
     type=str,
-    help="the name of an existing conda env to activate")
+    help="the module path to a Python function to run to set up the "
+    "environment for a worker and launch the worker.")
 
-# remaining_args contains the arguments to the original worker command,
-# minus the python executable, e.g. default_worker.py --node-ip-address=...
 args, remaining_args = parser.parse_known_args()
 
-commands = []
+setup = import_attr(args.worker_setup_hook)
 
-if args.conda_env_name:
-    commands += get_conda_activate_commands(args.conda_env_name)
-
-commands += [" ".join(["exec python"] + remaining_args)]
-command_separator = " && "
-command_str = command_separator.join(commands)
-
-os.execvp("bash", ["bash", "-c", command_str])
+setup(remaining_args)
