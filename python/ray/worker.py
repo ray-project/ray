@@ -1298,12 +1298,14 @@ def connect(node,
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
 
-    # setup tracing here
+    # Setup tracing here
     if _internal_kv_get("tracing_startup_hook"):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
-        _setup_tracing = import_from_string(
-            _internal_kv_get("tracing_startup_hook").decode("utf-8"))
-        _setup_tracing()
+        if not getattr(ray, "__traced__", False):
+            _setup_tracing = import_from_string(
+                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+            _setup_tracing()
+            ray.__traced__ = True
 
 
 def disconnect(exiting_interpreter=False):
