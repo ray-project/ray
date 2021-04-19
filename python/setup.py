@@ -54,7 +54,6 @@ ray_files = [
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
-    "ray/streaming/_streaming.so",
 ]
 
 if BUILD_JAVA or os.path.exists(
@@ -65,7 +64,6 @@ if BUILD_JAVA or os.path.exists(
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
-    "ray/streaming/generated",
 ]
 
 ray_files.append("ray/nightly-wheels.yaml")
@@ -153,6 +151,11 @@ def is_invalid_windows_platform():
     platform = sys.platform
     ver = sys.version
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
+
+
+if not is_native_windows_or_msys() and not is_invalid_windows_platform():
+    ray_files.append("ray/streaming/_streaming.so")
+    generated_python_directories.append("ray/streaming/generated")
 
 
 # Calls Bazel in PATH, falling back to the standard user installatation path
