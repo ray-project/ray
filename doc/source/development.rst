@@ -46,8 +46,8 @@ Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscale
     # This replaces miniconda3/lib/python3.7/site-packages/ray/tune
     # with your local `ray/python/ray/tune`.
 
-Building Ray (full)
--------------------
+Building Ray on Linux (full)
+----------------------------
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 
@@ -99,6 +99,47 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
+Building Ray on Windows (full)
+------------------------------
+
+**Requirements**
+
+- Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019)
+- JDK 15
+- Miniconda 3
+- git for Windows, version 2.31.1 or later
+
+**Steps**
+
+1. Enable Developer mode on Windows 10 systems.
+2. Enable symlinks on git:
+
+.. code-block:: shell
+
+  git config core.symlinks=true
+
+3. Add the following Miniconda subdirectories to PATH. If Miniconda is installed in a different directory, adjust the paths accordingly.
+
+ - ``C:\ProgramData\Miniconda3``
+ - ``C:\ProgramData\Miniconda3\Scripts``
+ - ``C:\ProgramData\Miniconda3\Library\bin``
+
+4. Define an environment variable BAZEL_SH to point to bash.exe (if git for Windows installed for all users: ``C:\Program Files\Git\bin\bash.exe``).
+
+5. Install cython:
+
+.. code-block:: shell
+
+  pip install cython
+
+6. Download ray source code and build it.
+
+.. code-block:: shell
+
+  # cd to the directory under which the ray source tree will be downloaded.
+  git clone https://github.com/ray-project/ray.git
+  cd ray\python
+  pip install -e . --verbose
 
 Fast, Debug, and Optimized Builds
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
