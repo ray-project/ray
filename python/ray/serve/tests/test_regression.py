@@ -16,8 +16,8 @@ def test_np_in_composed_model(serve_instance):
     # in cloudpickle _from_numpy_buffer
 
     @serve.deployment
-    def sum_model(request):
-        return np.sum(request.query_params["data"])
+    def sum_model(data):
+        return np.sum(data)
 
     @serve.deployment(name="model")
     class ComposedModel:
@@ -26,7 +26,7 @@ def test_np_in_composed_model(serve_instance):
 
         async def __call__(self, _request):
             data = np.ones((10, 10))
-            ref = await self.model.remote(data=data)
+            ref = await self.model.remote(data)
             return await ref
 
     sum_model.deploy()
@@ -40,7 +40,7 @@ def test_np_in_composed_model(serve_instance):
 def test_backend_worker_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment(name="model")
-    def gc_unreachable_objects(starlette_request):
+    def gc_unreachable_objects(*args):
         gc.set_debug(gc.DEBUG_SAVEALL)
         gc.collect()
         return len(gc.garbage)
@@ -65,8 +65,7 @@ def test_ref_in_handle_input(serve_instance):
     unblock_worker_signal = SignalActor.remote()
 
     @serve.deployment
-    async def blocked_by_ref(serve_request):
-        data = await serve_request.body()
+    async def blocked_by_ref(data):
         assert not isinstance(data, ray.ObjectRef)
 
     blocked_by_ref.deploy()

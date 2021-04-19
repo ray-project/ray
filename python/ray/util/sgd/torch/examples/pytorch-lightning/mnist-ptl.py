@@ -60,7 +60,10 @@ class LitMNIST(LightningModule):
 
         # prepare transforms standard to MNIST
         mnist_train = MNIST(
-            os.getcwd(), train=True, download=True, transform=transform)
+            os.path.expanduser("~/data"),
+            train=True,
+            download=True,
+            transform=transform)
 
         self.mnist_train, self.mnist_val = random_split(
             mnist_train, [55000, 5000])

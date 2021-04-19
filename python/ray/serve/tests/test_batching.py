@@ -26,7 +26,7 @@ def test_batching(serve_instance):
     future_list = []
     handle = BatchingExample.get_handle()
     for _ in range(20):
-        f = handle.remote(temp=1)
+        f = handle.remote(1)
         future_list.append(f)
 
     counter_result = ray.get(future_list)
@@ -54,7 +54,7 @@ def test_batching_exception(serve_instance):
 
     handle = NoListReturned.get_handle()
     with pytest.raises(ray.exceptions.RayTaskError):
-        assert ray.get(handle.remote(temp=1))
+        assert ray.get(handle.remote(1))
 
 
 @pytest.mark.asyncio

@@ -192,7 +192,7 @@ def train_mnist_tune_checkpoint(config,
 
 # __tune_asha_begin__
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
+    data_dir = os.path.expanduser("~/data")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -231,13 +231,12 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_asha_end__
 
 
 # __tune_pbt_begin__
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
+    data_dir = os.path.expanduser("~/data")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -278,7 +277,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_pbt_end__
 
 

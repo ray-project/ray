@@ -79,42 +79,23 @@ class Ray {
   /// \param[in] args The function arguments passed by a value or ObjectRef.
   /// \return TaskCaller.
   template <typename F>
-  static TaskCaller<boost::callable_traits::return_type_t<F>> Task(F func);
+  static TaskCaller<F> Task(F func);
 
   /// Generic version of creating an actor
   /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
-  /// Ray::Actor(Counter::FactoryCreate, 1).
+  /// Ray::Actor(Counter::FactoryCreate<int>).Remote(1);
   template <typename ActorType, typename... Args>
-  static ActorCreator<ActorType> Actor(
-      CreateActorFunc<ActorType, typename FilterArgType<Args>::type...> create_func,
-      Args... args);
-
-/// TODO: The bellow specific version of creating an actor will be replaced with generic
-/// version later.
-#include <ray/api/generated/create_funcs.generated.h>
-
-#include "api/generated/create_actors.generated.h"
+  static ActorCreator<ActorType> Actor(CreateActorFunc<ActorType, Args...> create_func);
 
  private:
   static std::once_flag is_inited_;
 
-  template <typename ReturnType, typename FuncType>
-  static TaskCaller<ReturnType> TaskInternal(FuncType &func);
+  template <typename FuncType>
+  static TaskCaller<FuncType> TaskInternal(FuncType &func);
 
-  template <typename ActorType, typename FuncType, typename ExecFuncType,
-            typename... ArgTypes>
+  template <typename ActorType, typename FuncType, typename ExecFuncType>
   static ActorCreator<ActorType> CreateActorInternal(FuncType &func,
-                                                     ExecFuncType &exec_func,
-                                                     ArgTypes &... args);
-
-  /// Include the `Call` methods for calling actor methods.
-  /// Used by ActorHandle to implement .Call()
-  /// It is called by ActorHandle: Ray::Task(&Counter::Add, counter/*instance of
-  /// Counter*/, 1);
-  template <typename ReturnType, typename ActorType, typename... Args>
-  static ActorTaskCaller<ReturnType> Task(
-      ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-      ActorHandle<ActorType> &actor, Args... args);
+                                                     ExecFuncType &exec_func);
 };
 
 }  // namespace api
@@ -170,8 +151,8 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return ray::internal::RayRuntime()->Wait(ids, num_objects, timeout_ms);
 }
 
-template <typename ReturnType, typename FuncType>
-inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func) {
+template <typename FuncType>
+inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
   RemoteFunctionPtrHolder ptr{};
   ptr.function_pointer = reinterpret_cast<uintptr_t>(func);
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
@@ -182,55 +163,42 @@ inline TaskCaller<ReturnType> Ray::TaskInternal(FuncType &func) {
     }
     ptr.function_name = std::move(function_name);
   }
-  return TaskCaller<ReturnType>(ray::internal::RayRuntime().get(), ptr);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), ptr);
 }
 
-template <typename ActorType, typename FuncType, typename ExecFuncType,
-          typename... ArgTypes>
+template <typename ActorType, typename FuncType, typename ExecFuncType>
 inline ActorCreator<ActorType> Ray::CreateActorInternal(FuncType &create_func,
-                                                        ExecFuncType &exec_func,
-                                                        ArgTypes &... args) {
-  std::vector<std::unique_ptr<::ray::TaskArg>> task_args;
-  Arguments::WrapArgs(&task_args, args...);
-  RemoteFunctionPtrHolder ptr;
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
-  ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
-  return ActorCreator<ActorType>(ray::internal::RayRuntime().get(), ptr,
-                                 std::move(task_args));
+                                                        ExecFuncType &exec_func) {
+  RemoteFunctionPtrHolder ptr{};
+  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
+    auto function_name =
+        ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
+    if (function_name.empty()) {
+      throw RayException(
+          "Function not found. Please use RAY_REMOTE to register this function.");
+    }
+
+    ptr.function_name = std::move(function_name);
+  } else {
+    ptr.function_pointer = reinterpret_cast<uintptr_t>(create_func);
+    ptr.exec_function_pointer = reinterpret_cast<uintptr_t>(exec_func);
+  }
+
+  return ActorCreator<ActorType>(ray::internal::RayRuntime().get(), ptr);
 }
 
 /// Normal task.
 template <typename F>
-TaskCaller<boost::callable_traits::return_type_t<F>> Ray::Task(F func) {
-  using ReturnType = boost::callable_traits::return_type_t<F>;
-
-  return TaskInternal<ReturnType>(func);
+TaskCaller<F> Ray::Task(F func) {
+  return TaskInternal<F>(func);
 }
 
-/// Generic version of creating an actor.
+/// Creating an actor.
 template <typename ActorType, typename... Args>
-ActorCreator<ActorType> Ray::Actor(
-    CreateActorFunc<ActorType, typename FilterArgType<Args>::type...> create_func,
-    Args... args) {
+ActorCreator<ActorType> Ray::Actor(CreateActorFunc<ActorType, Args...> create_func) {
   return CreateActorInternal<ActorType>(
       create_func,
-      CreateActorExecFunction<ActorType *, typename FilterArgType<Args>::type...>,
-      args...);
-}
-
-/// TODO: The bellow specific version of creating an actor will be replaced with generic
-/// version later.
-#include <ray/api/generated/create_actors_impl.generated.h>
-
-/// Actor task.
-template <typename ReturnType, typename ActorType, typename... Args>
-ActorTaskCaller<ReturnType> Ray::Task(
-    ActorFunc<ActorType, ReturnType, typename FilterArgType<Args>::type...> actor_func,
-    ActorHandle<ActorType> &actor, Args... args) {
-  return CallActorInternal<ReturnType, ActorType>(
-      actor_func,
-      ActorExecFunction<ReturnType, ActorType, typename FilterArgType<Args>::type...>,
-      actor, args...);
+      CreateActorExecFunction<ActorType *, typename FilterArgType<Args>::type...>);
 }
 
 }  // namespace api
