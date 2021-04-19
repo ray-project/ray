@@ -231,9 +231,72 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    print(out)
     assert out.strip().split("\n")[-1] == \
         "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    working_path = Path(working_dir)
+
+    def create_file(p):
+        if not p.parent.exists():
+            p.parent.mkdir(parents=True)
+        with p.open("w") as f:
+            f.write("Test")
+
+    create_file(working_path / "tmp_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "test_2")
+    create_file(working_path / "tmp_dir" / "test_3")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_2")
+    create_file(working_path / "test1")
+    create_file(working_path / "test2")
+    create_file(working_path / "test3")
+    create_file(working_path / "cache" / "test_1")
+    create_file(working_path / "tmp_dir" / "cache" / "test_1")
+    create_file(working_path / "another_dir" / "cache" / "test_1")
+    tmp_dir_test_3 = str((working_path / "tmp_dir" / "test_3").absolute())
+    runtime_env = f"""{{
+        "working_dir": r"{working_dir}",
+    }}"""
+    execute_statement = """
+    vals = ray.get([
+        check_file.remote('test1'),
+        check_file.remote('test2'),
+        check_file.remote('test3'),
+        check_file.remote(os.path.join('tmp_dir', 'test_1')),
+        check_file.remote(os.path.join('tmp_dir', 'test_2')),
+        check_file.remote(os.path.join('tmp_dir', 'test_3')),
+        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_1')),
+        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_2')),
+        check_file.remote(os.path.join("cache", "test_1")),
+        check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
+        check_file.remote(os.path.join("another_dir", "cache", "test_1")),
+    ])
+    print(','.join(vals))
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    # Test it works before
+    assert out.strip().split("\n")[-1] == \
+        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test"
+    with open(f"{working_dir}/.gitignore", "w") as f:
+        f.write("""
+# Comment
+test_[12]
+/test1
+!/tmp_dir/sub_dir/test_1
+cache/
+""")
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    t = out.strip().split("\n")[-1]
+    assert out.strip().split("\n")[-1] == \
+        "FAILED,Test,Test,FAILED,FAILED,Test,Test,FAILED,FAILED,FAILED,FAILED"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

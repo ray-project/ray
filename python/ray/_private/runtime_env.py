@@ -5,7 +5,6 @@ from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
 from pathspec import PathSpec
-import re
 from ray.job_config import JobConfig
 from enum import Enum
 
@@ -13,7 +12,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple, Optional, Set, Callable
+from typing import List, Tuple, Optional, Callable
 from urllib.parse import urlparse
 import os
 import sys
@@ -115,7 +114,7 @@ def _dir_travel(
         path: Path,
         excludes: PathSpec,
         handler: Callable,
-        base: Optional[Path]=None,
+        base: Optional[Path] = None,
 ):
     if base is None:
         base = path
@@ -192,10 +191,14 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 def _get_exclude_spec(path: Path, excludes: List[str]):
     ignore_file = path / ".gitignore"
-    excludes = [e if not Path(e).is_absolute() else str(Path(e).relative_to(path)) for e in excludes]
+    excludes = [
+        e if not Path(e).is_absolute() else str(Path(e).relative_to(path))
+        for e in excludes
+    ]
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
-            return PathSpec.from_lines("gitwildmatch", f.readlines() + excludes)
+            return PathSpec.from_lines("gitwildmatch",
+                                       f.readlines() + excludes)
     print("excludes: ", excludes)
     return PathSpec.from_lines("gitwildmatch", excludes)
 
@@ -235,11 +238,15 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
         assert Path(working_dir).exists()
         working_dir = Path(working_dir).absolute()
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(working_dir, working_dir, _get_exclude_spec(working_dir, excludes)))
+            hash_val,
+            _hash_modules(working_dir, working_dir,
+                          _get_exclude_spec(working_dir, excludes)))
     for py_module in py_modules or []:
         module_dir = Path(py_module).absolute()
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(module_dir, module_dir.parent, _get_exclude_spec(module_dir, excludes)))
+            hash_val,
+            _hash_modules(module_dir, module_dir.parent,
+                          _get_exclude_spec(module_dir, excludes)))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
@@ -262,10 +269,12 @@ def create_project_package(working_dir: str, py_modules: List[str],
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(working_path, working_path, _get_exclude_spec(working_path, excludes), zip_handler)
+            _zip_module(working_path, working_path,
+                        _get_exclude_spec(working_path, excludes), zip_handler)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(module_path, module_path.parent, _get_exclude_spec(module_path, excludes), zip_handler)
+            _zip_module(module_path, module_path.parent,
+                        _get_exclude_spec(module_path, excludes), zip_handler)
 
 
 def fetch_package(pkg_uri: str) -> int:
