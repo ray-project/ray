@@ -121,6 +121,30 @@ def test_put_get(ray_start_regular_shared):
 
         retval = ray.get(objectref)
         assert retval == "hello world"
+        # Make sure ray.put(1) == 1 is False and does not raise an exception.
+        objectref = ray.put(1)
+        assert not objectref == 1
+        # Make sure it returns True when necessary as well.
+        assert objectref == ClientObjectRef(objectref.id)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_put_failure_get(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+
+        class DeSerializationFailure:
+            def __getstate__(self):
+                return ""
+
+            def __setstate__(self, i):
+                raise ZeroDivisionError
+
+        dsf = DeSerializationFailure()
+        with pytest.raises(ZeroDivisionError):
+            ray.put(dsf)
+
+        # Ensure Ray Client is still connected
+        assert ray.get(ray.put(100)) == 100
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -509,6 +533,19 @@ def test_client_gpu_ids(call_ray_stop_only):
     with ray_start_client_server():
         # Now have a client connection.
         assert ray.get_gpu_ids() == []
+
+
+def test_client_serialize_addon(call_ray_stop_only):
+    import ray
+    import pydantic
+
+    ray.init(num_cpus=0)
+
+    class User(pydantic.BaseModel):
+        name: str
+
+    with ray_start_client_server() as ray:
+        assert ray.get(ray.put(User(name="ray"))).name == "ray"
 
 
 if __name__ == "__main__":

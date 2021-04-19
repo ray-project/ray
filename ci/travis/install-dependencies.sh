@@ -257,6 +257,12 @@ install_toolchains() {
   fi
 }
 
+download_mnist() {
+  mkdir -p "${HOME}/data"
+  curl -o "${HOME}/data/mnist.zip" https://ray-ci-mnist.s3-us-west-2.amazonaws.com/mnist.zip
+  unzip "${HOME}/data/mnist.zip" -d "${HOME}/data"
+}
+
 install_dependencies() {
 
   install_bazel
@@ -273,7 +279,7 @@ install_dependencies() {
   fi
 
   # Install modules needed in all jobs.
-  pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
+  pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
     # Remove this entire section once RLlib and Serve dependencies are fixed.
@@ -325,6 +331,7 @@ install_dependencies() {
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+    download_mnist
   fi
 
   # For Tune, install upstream dependencies.

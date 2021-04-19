@@ -82,25 +82,25 @@ def dataset_creator(use_cuda):
     with FileLock("./data.lock"):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "./data",
+                "~/data",
                 train=True,
                 download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Normalize((0.1307, ), (0.3081, ))
                 ])),
-            128,
+            batch_size=128,
             shuffle=True,
             **kwargs)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
-            "./data",
+            "~/data",
             train=False,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize((0.1307, ), (0.3081, ))
             ])),
-        128,
+        batch_size=128,
         shuffle=True,
         **kwargs)
 
