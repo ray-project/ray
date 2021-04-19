@@ -21,7 +21,6 @@ from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
                                       get_current_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
-from ray._private.client_mode_hook import client_mode_should_convert
 
 
 @ray.remote
@@ -47,16 +46,6 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
-        # Quick validation of the context manager:
-        if connect_to_client:
-            # Client mode is on.
-            assert client_mode_should_convert() is True
-            # We're connected to Ray client.
-            assert ray.util.client.ray.is_connected() is True
-        else:
-            assert client_mode_should_convert() is False
-            assert ray.util.client.ray.is_connected() is False
-
         placement_group = ray.util.placement_group(
             name="name",
             strategy="PACK",
