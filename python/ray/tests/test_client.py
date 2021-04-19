@@ -232,7 +232,7 @@ def test_remote_functions(ray_start_regular_shared):
         ray.get(signaler.send.remote())
         ready_ref = signaler.wait.remote()
         # Ready.
-        res = ray.wait([ready_ref], timeout=0)
+        res = ray.wait([ready_ref], timeout=10)
         assert len(res[0]) == 1 and res[1] == []
 
 

@@ -85,7 +85,7 @@ def connect_to_client_or_not(connect_to_client: bool):
     def test_<name>(args, connect_to_client)
     <initialize a ray cluster>
     with connect_to_client_or_not(connect_to_client):
-        <use the ray clluster>
+        <use the ray cluster>
 
     Parameterize the argument connect over True, False to run the test with and
     without a Ray client connection.
