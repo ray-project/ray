@@ -363,7 +363,7 @@ class SchedulingQueue {
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
-  virtual size_t Steal(size_t max_tasks, rpc::Address thief_addr,
+  virtual size_t Steal(rpc::Address thief_addr,
                        rpc::StealTasksReply *reply) = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
@@ -427,7 +427,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  size_t Steal(size_t max_tasks, rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+  size_t Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
     RAY_CHECK(false) << "Cannot steal actor tasks";
     // The return instruction will never be executed, but we need to include it
     // nonetheless because this is a non-void function.
@@ -585,21 +585,15 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Steal up to max_tasks tasks by removing them from the queue and responding to the
   /// owner.
-  size_t Steal(size_t max_tasks, rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+  size_t Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
     size_t tasks_stolen = 0;
 
-    while (tasks_stolen < max_tasks) {
-      InboundRequest tail;
-      {
-        absl::MutexLock lock(&mu_);
-        if (!pending_normal_tasks_.empty()) {
-          tail = pending_normal_tasks_.back();
-          pending_normal_tasks_.pop_back();
-
-        } else {
-          return tasks_stolen;
-        }
-      }
+    absl::MutexLock lock(&mu_);
+    size_t half = pending_normal_tasks_.size() / 2;
+    while(tasks_stolen < half) {
+      assert(!pending_normal_tasks_.empty());
+      InboundRequest tail = pending_normal_tasks_.back();
+      pending_normal_tasks_.pop_back();
       tail.Steal(thief_addr, reply);
       tasks_stolen++;
     }

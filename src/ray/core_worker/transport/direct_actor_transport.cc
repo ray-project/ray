@@ -516,9 +516,8 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 void CoreWorkerDirectTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  size_t half = normal_scheduling_queue_->Size() / 2;
 
-  if (half == 0) {
+  if (normal_scheduling_queue_->Size() <= 1) {
     RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
     reply->set_number_of_tasks_stolen(0);
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -526,7 +525,7 @@ void CoreWorkerDirectTaskReceiver::HandleStealTasks(
   }
 
   rpc::Address thief_addr = request.thief_addr();
-  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(half, thief_addr, reply);
+  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(thief_addr, reply);
 
   RAY_LOG(DEBUG) << "Setting the total number of tasks stolen to " << n_tasks_stolen;
   reply->set_number_of_tasks_stolen(n_tasks_stolen);
