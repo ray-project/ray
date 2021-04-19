@@ -25,25 +25,35 @@ roleRef:
   name: ray-operator-role
   apiGroup: rbac.authorization.k8s.io
 ---
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: ray-operator-pod
+  name: ray-operator
 spec:
-  serviceAccountName: ray-operator-serviceaccount
-  containers:
-  - name: ray
-    imagePullPolicy: Always
-    image: rayproject/ray:nightly
-    command: ["ray-operator"]
-    env:
-    - name: RAY_OPERATOR_POD_NAMESPACE
-      valueFrom:
-        fieldRef:
-          fieldPath: metadata.namespace
-    resources:
-      requests:
-        cpu: 1
-        memory: 1Gi
-      limits:
-        memory: 2Gi
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.ray.io/component: operator
+  template:
+    metadata:
+      labels:
+        cluster.ray.io/component: operator
+    spec:
+      serviceAccountName: ray-operator-serviceaccount
+      containers:
+      - name: ray
+        imagePullPolicy: Always
+        image: rayproject/ray:nightly
+        command: ["ray-operator"]
+        env:
+        - name: RAY_OPERATOR_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+          requests:
+            cpu: 1
+            memory: 1Gi
+          limits:
+            memory: 2Gi
+
