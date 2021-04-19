@@ -33,7 +33,7 @@ parser.add_argument("--stop-reward", type=float, default=180.0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=6)
 
     # These configs have been tested on a p2.8xlarge machine (8 GPUs, 16 CPUs),
     # where ray was started using only one of these GPUs:
