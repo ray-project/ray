@@ -1,9 +1,30 @@
 from ray.includes.unique_ids cimport CObjectID
 
 import asyncio
-from typing import Callable, Any
+import concurrent.futures
+from typing import Callable, Any, Union
 
 import ray
+
+
+def _set_future_helper(
+    py_future: Union[asyncio.Future, concurrent.futures.Future],
+    result: Any,
+):
+    # Issue #11030, #8841
+    # If this future has result set already, we just need to
+    # skip the set result/exception procedure.
+    if py_future.done():
+        return
+
+    if isinstance(result, RayTaskError):
+        py_future.set_exception(result.as_instanceof_cause())
+    elif isinstance(result, RayError):
+        # Directly raise exception for RayActorError
+        py_future.set_exception(result)
+    else:
+        py_future.set_result(result)
+
 
 cdef class ObjectRef(BaseID):
 
@@ -71,30 +92,27 @@ cdef class ObjectRef(BaseID):
         return self.as_future().__await__()
 
     def as_future(self):
+        """Wrap ObjectRef into an asyncio.Future object."""
         loop = asyncio.get_event_loop()
         py_future = loop.create_future()
 
         def callback(result):
             loop = py_future._loop
-
-            def set_future():
-                # Issue #11030, #8841
-                # If this future has result set already, we just need to
-                # skip the set result/exception procedure.
-                if py_future.done():
-                    return
-
-                if isinstance(result, RayTaskError):
-                    py_future.set_exception(result.as_instanceof_cause())
-                elif isinstance(result, RayError):
-                    # Directly raise exception for RayActorError
-                    py_future.set_exception(result)
-                else:
-                    py_future.set_result(result)
-
-            loop.call_soon_threadsafe(set_future)
+            loop.call_soon_threadsafe(
+                functools.partial(_set_future_helper, py_future, result))
 
         self._on_completed(callback)
+
+        # A hack to keep a reference to the object ref for ref counting.
+        py_future.object_ref = self
+        return py_future
+
+    def as_concurrent_future(self) -> concurrent.futures.Future:
+        """Wrap ObjectRef into a concurrent.futures.Future"""
+        py_future = concurrent.futures.Future()
+
+        self._on_completed(
+            functools.partial(_set_future_helper, py_future, result))
 
         # A hack to keep a reference to the object ref for ref counting.
         py_future.object_ref = self
