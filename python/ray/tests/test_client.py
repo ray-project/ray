@@ -9,8 +9,10 @@ import _thread
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
+from ray._private.client_mode_hook import client_mode_should_convert
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -561,6 +563,20 @@ def test_client_serialize_addon(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get(ray.put(User(name="ray"))).name == "ray"
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+    import ray
+    with connect_to_client_or_not(connect_to_client):
+        if connect_to_client:
+            # Client mode is on.
+            assert client_mode_should_convert() is True
+            # We're connected to Ray client.
+            assert ray.util.client.ray.is_connected() is True
+        else:
+            assert client_mode_should_convert() is False
+            assert ray.util.client.ray.is_connected() is False
 
 
 if __name__ == "__main__":

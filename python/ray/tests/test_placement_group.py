@@ -1069,7 +1069,8 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             placement_group=pg,
             placement_group_capture_child_tasks=False).remote(0, 1)
         pgs = ray.get(t2)
-        # All placement group should be None since we don't capture child tasks
+        # All placement groups should be None since we don't capture child
+        # tasks.
         assert not all(pgs)
 
 
