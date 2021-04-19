@@ -116,6 +116,7 @@ def cql_loss(policy: Policy, model: ModelV2,
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
+        print(f"BC'ing. iter={policy.cur_iter}")
         bc_logp = action_dist_t.logp(actions)
         actor_loss = (alpha * log_pis_t - bc_logp).mean()
 
@@ -141,14 +142,14 @@ def cql_loss(policy: Policy, model: ModelV2,
             target_model_out_tp1, policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
-    q_tp1 = torch.squeeze(input=q_tp1, dim=-1)
+    q_tp1 = torch.squeeze(q_tp1, dim=-1)
+    # Set Q(t+1)-values to 0.0 at the terminals.
     q_tp1 = (1.0 - terminals.float()) * q_tp1
-
-    # compute RHS of bellman equation
+    # Compute RHS of bellman equation.
     q_t_target = (
         rewards + (discount**policy.config["n_step"]) * q_tp1).detach()
 
-    # Compute the TD-error (potentially clipped), for priority replay buffer
+    # Compute the TD-error (potentially clipped), for priority replay buffer.
     base_td_error = torch.abs(q_t - q_t_target)
     if twin_q:
         twin_td_error = torch.abs(twin_q_t - q_t_target)
@@ -159,7 +160,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     if twin_q:
         critic_loss.append(nn.MSELoss()(twin_q_t, q_t_target))
 
-    # CQL Loss (We are using Entropy version of CQL (the best version))
+    # CQL Loss (We are using Entropy version of CQL (the best version)).
     rand_actions = convert_to_torch_tensor(
         torch.FloatTensor(actions.shape[0] * num_actions,
                           actions.shape[-1]).uniform_(action_low, action_high),
@@ -202,6 +203,8 @@ def cql_loss(policy: Policy, model: ModelV2,
             cat_q2 / cql_temp, dim=1).mean() * min_q_weight * cql_temp
         min_qf2_loss = min_qf2_loss - twin_q_t.mean() * min_q_weight
 
+    # Use Lagrangian dual gradient descent to tune alpha_prime (the CQL
+    # tradeoff factor).
     if use_lagrange:
         alpha_prime = torch.clamp(
             model.log_alpha_prime.exp(), min=0.0, max=1000000.0)[0]

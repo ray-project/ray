@@ -49,11 +49,18 @@ class TestCQL(unittest.TestCase):
         config["normalize_actions"] = True
         config["learning_starts"] = 0
         config["rollout_fragment_length"] = 1
+        #config["twin_q"] = False #TODO
+        config["lagrangian"] = True
         config["Q_model"] = {
             "fcnet_hiddens": [256, 256, 256]
         }
         config["policy_model"] = {
             "fcnet_hiddens": [256, 256, 256]
+        }
+        config["optimization"] = {
+            "actor_learning_rate": 3e-5,
+            "critic_learning_rate": 3e-4,
+            "entropy_learning_rate": 3e-4,
         }
         config["train_batch_size"] = 256
         config["timesteps_per_iteration"] = 1000
