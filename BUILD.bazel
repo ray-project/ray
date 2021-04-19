@@ -1370,13 +1370,13 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["flaky"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
-    tags = ["flaky"],
 )
 
 cc_test(
