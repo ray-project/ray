@@ -236,3 +236,8 @@ MAX_INT64_VALUE = 9223372036854775807
 DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
+
+# Filename of "shim process" that sets up Python worker environment.
+# Should be kept in sync with kSetupWorkerFilename in
+# src/ray/common/constants.h.
+SETUP_WORKER_FILENAME = "setup_worker.py"

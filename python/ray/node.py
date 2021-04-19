@@ -132,7 +132,7 @@ class Node:
                 "workers/default_worker.py"),
             setup_worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "workers/setup_worker.py"))
+                f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")

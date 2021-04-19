@@ -286,8 +286,12 @@ Process WorkerPool::StartWorkerProcess(
       const std::string conda_env_name = runtime_env.conda_env_name;
       worker_command_args.push_back("--conda-env-name=" + conda_env_name);
     } else {
-      // The "shim process" setup_worker.py is not needed, so do not run it.
-      worker_command_args.erase(worker_command_args.begin() + 1);
+      // The "shim process" setup worker is not needed, so do not run it.
+      // Check that the arg really is the path to the setup worker before erasing it, to
+      // prevent breaking tests that mock out the worker command args.
+      if (worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+        worker_command_args.erase(worker_command_args.begin() + 1);
+      }
     }
   }
 
