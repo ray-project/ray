@@ -79,7 +79,7 @@ def test_backend_logger(serve_instance):
     Counter.deploy()
     f = io.StringIO()
     with redirect_stderr(f):
-        requests.get("http://127.0.0.1:8000/counter")
+        requests.get("http://127.0.0.1:8000/counter/")
 
         def counter_log_success():
             s = f.getvalue()

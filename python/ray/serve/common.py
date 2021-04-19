@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -15,6 +15,13 @@ ReplicaTag = str
 NodeId = str
 GoalId = UUID
 Duration = float
+
+
+@dataclass
+class EndpointInfo:
+    http_methods: List[str]
+    python_methods: Optional[List[str]] = field(default_factory=list)
+    route: Optional[str] = None
 
 
 @dataclass(frozen=True)

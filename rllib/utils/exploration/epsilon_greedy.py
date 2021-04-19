@@ -1,5 +1,5 @@
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 import random
 from typing import Union, Optional
 
