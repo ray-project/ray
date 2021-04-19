@@ -1,0 +1,44 @@
+hopper_cql:
+    env: Hopper-v2
+    run: CQL
+    config:
+        # SAC Configs
+        input: d4rl.hopper-random-v1
+        framework: torch
+        horizon: 1000
+        soft_horizon: false
+        Q_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256, 256]
+        policy_model:
+          fcnet_activation: relu
+          fcnet_hiddens: [256, 256, 256]
+        tau: 0.005
+        target_entropy: auto
+        no_done_at_end: false
+        n_step: 1
+        rollout_fragment_length: 1
+        prioritized_replay: false
+        train_batch_size: 256
+        target_network_update_freq: 1
+        timesteps_per_iteration: 1000
+        learning_starts: 10000
+        optimization:
+          actor_learning_rate: 0.0003
+          critic_learning_rate: 0.0003
+          entropy_learning_rate: 0.0003
+        num_workers: 0
+        num_gpus: 1
+        clip_actions: false
+        normalize_actions: true
+        evaluation_interval: 1
+        metrics_smoothing_episodes: 5
+        # CQL Configs
+        min_q_weight: 5.0
+        bc_iters: 20000
+        temperature: 1.0
+        num_actions: 10
+        lagrangian: False
+        evaluation_config:
+            input: sampler
+

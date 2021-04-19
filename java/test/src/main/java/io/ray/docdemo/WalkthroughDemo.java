@@ -5,6 +5,8 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.WaitResult;
+import io.ray.api.function.RayFunc0;
+import io.ray.api.function.RayFunc1;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,14 @@ public class WalkthroughDemo {
     public static int functionWithAnArgument(int value) {
       return value + 1;
     }
+
+    public static int overloadFunction() {
+      return 1;
+    }
+
+    public static int overloadFunction(int x) {
+      return x;
+    }
   }
 
   public static void demoTasks() {
@@ -50,6 +60,13 @@ public class WalkthroughDemo {
       // This doesn't block.
       Ray.task(MyRayApp::slowFunction).remote();
     }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals(
+        (int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals(
+        (int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(),
+        2);
 
     ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
     Assert.assertTrue(objRef1.get() == 1);

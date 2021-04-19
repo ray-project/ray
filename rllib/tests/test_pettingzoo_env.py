@@ -4,7 +4,7 @@ from copy import deepcopy
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 
 from pettingzoo.mpe import simple_spread_v2
 
@@ -20,7 +20,7 @@ class TestPettingZooEnv(unittest.TestCase):
         register_env("simple_spread",
                      lambda _: PettingZooEnv(simple_spread_v2.env()))
 
-        agent_class = get_agent_class("PPO")
+        agent_class = get_trainer_class("PPO")
 
         config = deepcopy(agent_class._default_config)
 

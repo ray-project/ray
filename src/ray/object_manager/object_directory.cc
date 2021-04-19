@@ -14,9 +14,11 @@
 
 #include "ray/object_manager/object_directory.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
-ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
+ObjectDirectory::ObjectDirectory(instrumented_io_context &io_service,
                                  std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service), gcs_client_(gcs_client) {}
 
@@ -81,9 +83,9 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
 
 }  // namespace
 
-ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
+ray::Status ObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
+                                               const NodeID &node_id,
+                                               const ObjectInfo &object_info) {
   size_t size = object_info.data_size + object_info.metadata_size;
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id << " size " << size;
   ray::Status status =
@@ -91,9 +93,9 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   return status;
 }
 
-ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
+ray::Status ObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
+                                                 const NodeID &node_id,
+                                                 const ObjectInfo &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   ray::Status status =
       gcs_client_->Objects().AsyncRemoveLocation(object_id, node_id, nullptr);
@@ -285,6 +287,10 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         });
   }
   return status;
+}
+
+void ObjectDirectory::RecordMetrics(uint64_t duration_ms) {
+  stats::ObjectDirectoryLocationSubscriptions().Record(listeners_.size());
 }
 
 std::string ObjectDirectory::DebugString() const {

@@ -103,8 +103,10 @@ def _configure_key_pair(config):
             with open(key_path, "r") as f:
                 public_key = f.read()
 
-    for node_type in ["head_node", "worker_nodes"]:
-        config[node_type]["azure_arm_parameters"]["adminUsername"] = ssh_user
-        config[node_type]["azure_arm_parameters"]["publicKey"] = public_key
+    for node_type in config["available_node_types"].values():
+        azure_arm_parameters = node_type["node_config"].setdefault(
+            "azure_arm_parameters", {})
+        azure_arm_parameters["adminUsername"] = ssh_user
+        azure_arm_parameters["publicKey"] = public_key
 
     return config

@@ -31,22 +31,16 @@ namespace plasma {
 
 class CreateRequestQueue {
  public:
-  using CreateObjectCallback =
-      std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
+  using CreateObjectCallback = std::function<PlasmaError(PlasmaObject *result)>;
 
-  CreateRequestQueue(bool evict_if_full, int64_t oom_grace_period_s,
+  CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time)
-      : evict_if_full_(evict_if_full),
-        oom_grace_period_ns_(oom_grace_period_s * 1e9),
+      : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        get_time_(get_time) {
-    RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with OOM grace period "
-                   << oom_grace_period_ns_ << ", evict if full? "
-                   << (evict_if_full_ ? 1 : 0);
-  }
+        get_time_(get_time) {}
 
   /// Add a request to the queue. The caller should use the returned request ID
   /// to later get the result of the request.
@@ -151,11 +145,6 @@ class CreateRequestQueue {
   /// a request by retrying. Start at 1 because 0 means "do not retry".
   uint64_t next_req_id_ = 1;
 
-  /// On the first attempt to create an object, whether to evict from the
-  /// object store to make space. If the first attempt fails, then we will
-  /// always try to evict.
-  const bool evict_if_full_;
-
   /// Grace period until we throw the OOM error to the application.
   /// -1 means grace period is infinite.
   const int64_t oom_grace_period_ns_;
@@ -163,7 +152,7 @@ class CreateRequestQueue {
   /// A callback to trigger object spilling. It tries to spill objects upto max
   /// throughput. It returns true if space is made by object spilling, and false if
   /// there's no more space to be made.
-  ray::SpillObjectsCallback spill_objects_callback_;
+  const ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.

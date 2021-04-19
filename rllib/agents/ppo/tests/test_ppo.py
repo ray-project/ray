@@ -83,12 +83,14 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
+        # Test with compression.
+        config["compress_observations"] = True
         num_iterations = 2
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
@@ -108,8 +110,7 @@ class TestPPO(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        config["framework"] = "tf"
-        # Mimick tuned_example for PPO CartPole.
+        # Mimic tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003
         config["observation_filter"] = "MeanStdFilter"
@@ -119,17 +120,19 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-            if results["episode_reward_mean"] > 150:
-                learnt = True
-                break
-        assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -338,8 +341,9 @@ class TestPPO(unittest.TestCase):
                                policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
+            train_batch.set_get_interceptor(None)
             expected_rho = np.exp(expected_logp.detach().cpu().numpy() -
-                                  train_batch.get(SampleBatch.ACTION_LOGP))
+                                  train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
             # Entropy-loss component.
@@ -362,19 +366,19 @@ class TestPPO(unittest.TestCase):
 
         # Policy loss component.
         pg_loss = np.minimum(
-            train_batch.get(Postprocessing.ADVANTAGES) * expected_rho,
-            train_batch.get(Postprocessing.ADVANTAGES) * np.clip(
+            train_batch[Postprocessing.ADVANTAGES] * expected_rho,
+            train_batch[Postprocessing.ADVANTAGES] * np.clip(
                 expected_rho, 1 - policy.config["clip_param"],
                 1 + policy.config["clip_param"]))
 
         # Value function loss component.
         vf_loss1 = np.power(
-            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
-        vf_clipped = train_batch.get(SampleBatch.VF_PREDS) + np.clip(
-            vf_outs - train_batch.get(SampleBatch.VF_PREDS),
+            vf_outs - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = train_batch[SampleBatch.VF_PREDS] + np.clip(
+            vf_outs - train_batch[SampleBatch.VF_PREDS],
             -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
         vf_loss2 = np.power(
-            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
+            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = np.maximum(vf_loss1, vf_loss2)
 
         # Overall loss.

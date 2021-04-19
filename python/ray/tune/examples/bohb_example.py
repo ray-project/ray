@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+import time
 import os
 
 import numpy as np
@@ -26,7 +27,7 @@ class MyTrainableClass(Trainable):
         self.timestep += 1
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)
-
+        time.sleep(0.1)
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
         return {"episode_reward_mean": v}
@@ -64,7 +65,10 @@ if __name__ == "__main__":
     #         "activation", choices=["relu", "tanh"]))
 
     bohb_hyperband = HyperBandForBOHB(
-        time_attr="training_iteration", max_t=100, reduction_factor=4)
+        time_attr="training_iteration",
+        max_t=100,
+        reduction_factor=4,
+        stop_last_trials=False)
 
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually

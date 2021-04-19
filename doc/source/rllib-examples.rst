@@ -41,7 +41,7 @@ Custom Envs and Models
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_workers > 0`.
-   For a more heavy-weight, distributed, cloud-based example, see `Unity3D client/server`_ below.
+   For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
 - `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:
@@ -61,9 +61,8 @@ Custom Envs and Models
 
 Serving and Offline
 -------------------
-
-.. _Unity3D client/server:
-
+- :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
+   with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.
 - `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
    clients against a central RLlib Policy server learning how to play the game.
@@ -123,5 +122,5 @@ Community Examples
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/master/flow_setup.html>`__:
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.

@@ -32,14 +32,15 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 def tune_mnist(num_samples=10,
                num_epochs=10,
                gpus_per_trial=0,
-               tracking_uri=None):
+               tracking_uri=None,
+               experiment_name="ptl_autologging_example"):
     data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     # Download data
     MNISTDataModule(data_dir=data_dir).prepare_data()
 
     # Set the MLflow experiment, or create it if it does not exist.
     mlflow.set_tracking_uri(tracking_uri)
-    mlflow.set_experiment("ptl_autologging_test")
+    mlflow.set_experiment(experiment_name)
 
     config = {
         "layer_1": tune.choice([32, 64, 128]),
@@ -47,7 +48,7 @@ def tune_mnist(num_samples=10,
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": tune.choice([32, 64, 128]),
         "mlflow": {
-            "experiment_name": "ptl_autologging_test",
+            "experiment_name": experiment_name,
             "tracking_uri": mlflow.get_tracking_uri()
         },
         "data_dir": os.path.join(tempfile.gettempdir(), "mnist_data_"),

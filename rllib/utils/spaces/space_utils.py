@@ -1,6 +1,6 @@
 from gym.spaces import Tuple, Dict
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 
 def flatten_space(space):

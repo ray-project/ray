@@ -70,11 +70,9 @@ def tune_transformer(num_samples=8,
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        evaluate_during_training=True,
-        eval_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config
-        save_steps=(len(train_dataset) // 16) + 1
-        if not smoke_test else 1,  # config,
+        no_cuda=gpus_per_trial <= 0,
+        evaluation_strategy="epoch",
+        load_best_model_at_end=True,
         num_train_epochs=2,  # config
         max_steps=-1,
         per_device_train_batch_size=16,  # config
@@ -84,6 +82,8 @@ def tune_transformer(num_samples=8,
         logging_dir="./logs",
     )
 
+    training_args._n_gpu = gpus_per_trial
+
     trainer = Trainer(
         model_init=get_model,
         args=training_args,
@@ -91,20 +91,9 @@ def tune_transformer(num_samples=8,
         eval_dataset=eval_dataset,
         compute_metrics=build_compute_metrics_fn(task_name))
 
-    # Number of eval steps is dependent on per_device_train_batch_size.
-    # So we define a separate function that takes in a spec arg.
-    def eval_steps_func(spec):
-        if not smoke_test:
-            return len(train_dataset
-                       ) // spec.config["per_device_train_batch_size"] + 1
-        else:
-            return min(1, spec.config["per_device_train_batch_size"])
-
     tune_config = {
         "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
-        "eval_steps": tune.sample_from(eval_steps_func),
-        "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
         "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
     }
@@ -125,7 +114,7 @@ def tune_transformer(num_samples=8,
             "weight_decay": "w_decay",
             "learning_rate": "lr",
             "per_device_train_batch_size": "train_bs/gpu",
-            "num_epochs": "num_epochs"
+            "num_train_epochs": "num_epochs"
         },
         metric_columns=[
             "eval_acc", "eval_loss", "epoch", "training_iteration"
@@ -140,7 +129,7 @@ def tune_transformer(num_samples=8,
             "gpu": gpus_per_trial
         },
         scheduler=scheduler,
-        keep_checkpoints_num=3,
+        keep_checkpoints_num=1,
         checkpoint_score_attr="training_iteration",
         stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,

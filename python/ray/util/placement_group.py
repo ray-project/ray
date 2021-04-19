@@ -4,7 +4,8 @@ from typing import (List, Dict, Optional, Union)
 
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
+from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
 
 bundle_reservation_check = None
 
@@ -69,17 +70,21 @@ class PlacementGroup:
         resource_name, value = self._get_none_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
+        memory = 0
         resources = {}
         if resource_name == "CPU":
             num_cpus = value
         elif resource_name == "GPU":
             num_gpus = value
+        elif resource_name == "memory":
+            memory = value
         else:
             resources[resource_name] = value
 
         return bundle_reservation_check.options(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            memory=memory,
             placement_group=self,
             placement_group_bundle_index=bundle_index,
             resources=resources).remote(self)
@@ -109,13 +114,12 @@ class PlacementGroup:
         return len(self.bundle_cache)
 
     def _get_none_zero_resource(self, bundle: List[Dict]):
-        # This number shouldn't be changed.
-        # When it is specified, node manager won't warn about infeasible
-        # tasks.
-        INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101
+        # Set a mock value to schedule a dummy task.
+        MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
-                value = INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER
+                value = MEMORY_RESOURCE_UNIT_BYTES \
+                    if key == "memory" else MOCK_VALUE
                 return key, value
         assert False, "This code should be unreachable."
 
@@ -185,6 +189,11 @@ def placement_group(bundles: List[Dict[str, float]],
                 "Bundles cannot be an empty dictionary or "
                 f"resources with only 0 values. Bundles: {bundles}")
 
+        if "memory" in bundle.keys() and bundle["memory"] > 0:
+            # Make sure the memory resource can be
+            # transformed to memory unit.
+            to_memory_units(bundle["memory"], True)
+
     if lifetime is None:
         detached = False
     elif lifetime == "detached":
@@ -235,7 +244,7 @@ def get_placement_group(placement_group_name: str):
                 hex_to_binary(placement_group_info["placement_group_id"])))
 
 
-def placement_group_table(placement_group: PlacementGroup = None) -> list:
+def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
     Args:

@@ -6,6 +6,7 @@ from functools import wraps
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+os.environ.update({"RAY_CLIENT_MODE": "0"})
 
 _client_hook_enabled = True
 
@@ -27,6 +28,11 @@ def _explicitly_enable_client_mode():
     client_mode_enabled = True
 
 
+def _explicitly_disable_client_mode():
+    global client_mode_enabled
+    client_mode_enabled = False
+
+
 @contextmanager
 def disable_client_hook():
     val = _disable_client_hook()
@@ -34,6 +40,15 @@ def disable_client_hook():
         yield None
     finally:
         _enable_client_hook(val)
+
+
+@contextmanager
+def enable_client_mode():
+    _explicitly_enable_client_mode()
+    try:
+        yield None
+    finally:
+        _explicitly_disable_client_mode()
 
 
 def client_mode_hook(func):

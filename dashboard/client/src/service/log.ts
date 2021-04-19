@@ -1,4 +1,4 @@
-import axios from "axios";
+import { get } from "./requestHandlers";
 
 export const getLogDetail = async (url: string) => {
   if (window.location.pathname !== "/" && url !== "log_index") {
@@ -12,7 +12,7 @@ export const getLogDetail = async (url: string) => {
       }
     }
   }
-  const rsp = await axios.get(
+  const rsp = await get(
     url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`,
   );
   if (rsp.headers["content-type"]?.includes("html")) {

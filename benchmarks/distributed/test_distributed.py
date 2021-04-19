@@ -6,7 +6,7 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from time import sleep, perf_counter
 from tqdm import tqdm, trange
 
-TEST_NUM_NODES = 64
+TEST_NUM_NODES = 65
 MAX_ACTORS_IN_CLUSTER = 10000
 MAX_RUNNING_TASKS_IN_CLUSTER = 10000
 MAX_PLACEMENT_GROUPS = 1000

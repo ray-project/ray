@@ -1,4 +1,5 @@
 import collections
+import copy
 from datetime import datetime
 import logging
 import hashlib
@@ -11,8 +12,10 @@ from typing import Any, Dict, List
 import ray
 import ray.ray_constants
 import ray._private.services as services
+from ray.autoscaler._private import constants
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
+from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
@@ -23,6 +26,17 @@ RAY_SCHEMA_PATH = os.path.join(
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+
+HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
+    " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
+    " avoid spawning worker nodes of type `{node_type}`, explicitly set" \
+    " `max_workers: 0` for `{node_type}`.\n"\
+    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."\
+    " Your current version is Ray {version}.\n"\
+    "See the docs for more information:\n"\
+    "https://docs.ray.io/en/master/cluster/config.html"\
+    "#cluster-configuration-node-max-workers\n"\
+    "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
 
 logger = logging.getLogger(__name__)
 
@@ -95,45 +109,107 @@ def validate_config(config: Dict[str, Any]) -> None:
                 "sum of `min_workers` of all the available node types.")
 
 
-def prepare_config(config):
+def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The returned config has the following properties:
+    - Uses the multi-node-type autoscaler configuration.
+    - Merged with the appropriate defaults.yaml
+    - Has a valid Docker configuration if provided.
+    - Has max_worker set for each node type.
+    """
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
+    fill_node_type_max_workers(with_defaults)
     return with_defaults
-
-
-def rewrite_legacy_yaml_to_available_node_types(
-        config: Dict[str, Any]) -> Dict[str, Any]:
-
-    if "available_node_types" not in config:
-        # TODO(ameer/ekl/alex): we can also rewrite here many other fields
-        # that include initialization/setup/start commands and ImageId.
-        logger.debug("Converting legacy cluster config to multi node types.")
-        config["available_node_types"] = {
-            NODE_TYPE_LEGACY_HEAD: {
-                "node_config": config["head_node"],
-                "resources": config["head_node"].get("resources") or {},
-                "min_workers": 0,
-                "max_workers": 0,
-            },
-            NODE_TYPE_LEGACY_WORKER: {
-                "node_config": config["worker_nodes"],
-                "resources": config["worker_nodes"].get("resources") or {},
-                "min_workers": config.get("min_workers", 0),
-                "max_workers": config.get("max_workers", 0),
-            },
-        }
-        config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
-        del config["min_workers"]
-    return config
 
 
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
-    defaults["auth"] = defaults.get("auth", {})
-    defaults = rewrite_legacy_yaml_to_available_node_types(defaults)
-    return defaults
+
+    # Just for clarity:
+    merged_config = copy.deepcopy(defaults)
+
+    # Fill auth field to avoid key errors.
+    # This field is accessed when calling NodeUpdater but is not relevant to
+    # certain node providers and is thus left out of some cluster launching
+    # configs.
+    merged_config["auth"] = merged_config.get("auth", {})
+
+    # A legacy config is one which doesn't have available_node_types,
+    # but has at least one of head_node or worker_nodes.
+    is_legacy_config = (("available_node_types" not in config) and
+                        ("head_node" in config or "worker_nodes" in config))
+    # Do merging logic for legacy configs.
+    if is_legacy_config:
+        merged_config = merge_legacy_yaml_with_defaults(merged_config)
+    # Take care of this here, in case a config does not specify any of head,
+    # workers, node types, but does specify min workers:
+    merged_config.pop("min_workers", None)
+
+    return merged_config
+
+
+def merge_legacy_yaml_with_defaults(
+        merged_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Rewrite legacy config's available node types after it has been merged
+    with defaults yaml.
+    """
+    cli_logger.warning(
+        "Converting legacy cluster config to a multi node type cluster "
+        "config. Multi-node-type cluster configs are the recommended "
+        "format for configuring Ray clusters. "
+        "See the docs for more information:\n"
+        "https://docs.ray.io/en/master/cluster/config.html#full-configuration")
+
+    # Get default head and worker types.
+    default_head_type = merged_config["head_node_type"]
+    # Default configs are assumed to have two node types -- one for the head
+    # and one for the workers.
+    assert len(merged_config["available_node_types"].keys()) == 2
+    default_worker_type = (merged_config["available_node_types"].keys() -
+                           {default_head_type}).pop()
+
+    if merged_config["head_node"]:
+        # User specified a head node in legacy config.
+        # Convert it into data for the head's node type.
+        head_node_info = {
+            "node_config": merged_config["head_node"],
+            "resources": merged_config["head_node"].get("resources") or {},
+            "min_workers": 0,
+            "max_workers": 0,
+        }
+    else:
+        # Use default data for the head's node type.
+        head_node_info = merged_config["available_node_types"][
+            default_head_type]
+    if merged_config["worker_nodes"]:
+        # User specified a worker node in legacy config.
+        # Convert it into data for the workers' node type.
+        worker_node_info = {
+            "node_config": merged_config["worker_nodes"],
+            "resources": merged_config["worker_nodes"].get("resources") or {},
+            "min_workers": merged_config.get("min_workers", 0),
+            "max_workers": merged_config["max_workers"],
+        }
+    else:
+        # Use default data for the workers' node type.
+        worker_node_info = merged_config["available_node_types"][
+            default_worker_type]
+
+    # Rewrite available_node_types.
+    merged_config["available_node_types"] = {
+        NODE_TYPE_LEGACY_HEAD: head_node_info,
+        NODE_TYPE_LEGACY_WORKER: worker_node_info
+    }
+    merged_config["head_node_type"] = NODE_TYPE_LEGACY_HEAD
+
+    # Resources field in head/worker fields cause node launch to fail.
+    merged_config["head_node"].pop("resources", None)
+    merged_config["worker_nodes"].pop("resources", None)
+
+    return merged_config
 
 
 def merge_setup_commands(config):
@@ -142,6 +218,29 @@ def merge_setup_commands(config):
     config["worker_setup_commands"] = (
         config["setup_commands"] + config["worker_setup_commands"])
     return config
+
+
+def fill_node_type_max_workers(config):
+    """Sets default per-node max workers to global max_workers.
+    This equivalent to setting the default per-node max workers to infinity,
+    with the only upper constraint coming from the global max_workers.
+    """
+    assert "max_workers" in config, "Global max workers should be set."
+    node_types = config["available_node_types"]
+    for node_type_name in node_types:
+        node_type_data = node_types[node_type_name]
+
+        # Log a warning if head node type's max_workers is absent.
+        if (node_type_name == config["head_node_type"]
+                and "max_workers" not in node_type_data):
+            cli_logger.warning(
+                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
+                    node_type=node_type_name,
+                    max_workers=config["max_workers"],
+                    version=ray.__version__))
+
+        # The key part of this function:
+        node_type_data.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):
@@ -313,12 +412,12 @@ def format_pg(pg):
 
 def get_usage_report(lm_summary) -> str:
     usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
+    for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
         line = f" {used}/{total} {resource}"
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
+            to_GiB = 1 / 2**30
             used *= to_GiB
             total *= to_GiB
             line = f" {used:.2f}/{total:.3f} GiB {resource}"
@@ -373,6 +472,10 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
+        failure_lines.append(line)
+    failure_lines = failure_lines[:
+                                  -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED:
+                                  -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
         failure_report += "\n".join(failure_lines)

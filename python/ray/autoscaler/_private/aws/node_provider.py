@@ -20,6 +20,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 
 from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -427,8 +428,12 @@ class AWSNodeProvider(NodeProvider):
         else:
             node.terminate()
 
-        self.tag_cache.pop(node_id, None)
-        self.tag_cache_pending.pop(node_id, None)
+        # TODO (Alex): We are leaking the tag cache here. Naively, we would
+        # want to just remove the cache entry here, but terminating can be
+        # asyncrhonous or error, which would result in a use after free error.
+        # If this leak becomes bad, we can garbage collect the tag cache when
+        # the node cache is updated.
+        pass
 
     def terminate_nodes(self, node_ids):
         if not node_ids:
@@ -462,10 +467,6 @@ class AWSNodeProvider(NodeProvider):
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
-
-        for node_id in node_ids:
-            self.tag_cache.pop(node_id, None)
-            self.tag_cache_pending.pop(node_id, None)
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
@@ -507,13 +508,26 @@ class AWSNodeProvider(NodeProvider):
             for instance in instances_list
         }
         available_node_types = cluster_config["available_node_types"]
+        head_node_type = cluster_config["head_node_type"]
         for node_type in available_node_types:
             instance_type = available_node_types[node_type]["node_config"][
                 "InstanceType"]
             if instance_type in instances_dict:
                 cpus = instances_dict[instance_type]["VCpuInfo"][
                     "DefaultVCpus"]
+
                 autodetected_resources = {"CPU": cpus}
+                if node_type != head_node_type:
+                    # we only autodetect worker node type memory resource
+                    memory_total = instances_dict[instance_type]["MemoryInfo"][
+                        "SizeInMiB"]
+                    memory_total = int(memory_total) * 1024 * 1024
+                    prop = (
+                        1 -
+                        ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+                    memory_resources = int(memory_total * prop)
+                    autodetected_resources["memory"] = memory_resources
+
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:

@@ -17,9 +17,13 @@ from typing import TYPE_CHECKING
 
 import grpc
 
+from ray.job_config import JobConfig
 import ray.cloudpickle as cloudpickle
+# Use cloudpickle's version of pickle for UnpicklingError
+from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.exceptions import GetTimeoutError
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server
@@ -29,6 +33,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -40,6 +45,11 @@ logger = logging.getLogger(__name__)
 
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
+
+# The max amount of time an operation can run blocking in the server. This
+# allows for Ctrl-C of the client to work without explicitly cancelling server
+# operations.
+MAX_BLOCKING_OPERATION_TIME_S = 2
 
 
 def backoff(timeout: int) -> int:
@@ -68,14 +78,22 @@ class Worker:
         """
         self.metadata = metadata if metadata else []
         self.channel = None
+        self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
+
+        grpc_options = [
+            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(conn_str, credentials)
+            self.channel = grpc.secure_channel(
+                conn_str, credentials, options=grpc_options)
         else:
-            self.channel = grpc.insecure_channel(conn_str)
+            self.channel = grpc.insecure_channel(
+                conn_str, options=grpc_options)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -83,7 +101,7 @@ class Worker:
         # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        ray_ready = False
+        service_ready = False
         while conn_attempts < max(connection_retries, 1):
             conn_attempts += 1
             try:
@@ -94,13 +112,8 @@ class Worker:
                 # RayletDriverStub, allowing for unary requests.
                 self.server = ray_client_pb2_grpc.RayletDriverStub(
                     self.channel)
-                # Now the HTTP2 channel is ready, or proxied, but the
-                # servicer may not be ready. Call is_initialized() and if
-                # it throws, the servicer is not ready. On success, the
-                # `ray_ready` result is checked.
-                ray_ready = self.is_initialized()
-                if ray_ready:
-                    # Ray is ready! Break out of the retry loop
+                service_ready = bool(self.ping_server())
+                if service_ready:
                     break
                 # Ray is not ready yet, wait a timeout
                 time.sleep(timeout)
@@ -120,9 +133,10 @@ class Worker:
                         f"retry in {timeout}s...")
             timeout = backoff(timeout)
 
-        # If we made it through the loop without ray_ready it means we've used
-        # up our retries and should error back to the user.
-        if not ray_ready:
+        # If we made it through the loop without service_ready
+        # it means we've used up our retries and
+        # should error back to the user.
+        if not service_ready:
             raise ConnectionError("ray client connection timeout")
 
         # Initialize the streams to finish protocol negotiation.
@@ -132,6 +146,7 @@ class Worker:
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
+
         self.closed = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
@@ -142,7 +157,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -164,7 +179,29 @@ class Worker:
                             "list of IDs or just an ID: %s" % type(vals))
         if timeout is None:
             timeout = 0
-        out = [self._get(x, timeout) for x in to_get]
+            deadline = None
+        else:
+            deadline = time.monotonic() + timeout
+        out = []
+        for obj_ref in to_get:
+            res = None
+            # Implement non-blocking get with a short-polling loop. This allows
+            # cancellation of gets via Ctrl-C, since we never block for long.
+            while True:
+                try:
+                    if deadline:
+                        op_timeout = min(
+                            MAX_BLOCKING_OPERATION_TIME_S,
+                            max(deadline - time.monotonic(), 0.001))
+                    else:
+                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+                    res = self._get(obj_ref, op_timeout)
+                    break
+                except GetTimeoutError:
+                    if deadline and time.monotonic() > deadline:
+                        raise
+                    logger.debug("Internal retry for get {}".format(obj_ref))
+            out.append(res)
         if single:
             out = out[0]
         return out
@@ -174,18 +211,17 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
-            logger.error(err)
             raise err
         return loads_from_server(data.data)
 
-    def put(self, vals):
+    def put(self, vals, *, client_ref_id: bytes = None):
         to_put = []
         single = False
         if isinstance(vals, list):
@@ -194,12 +230,12 @@ class Worker:
             single = True
             to_put.append(vals)
 
-        out = [self._put(x) for x in to_put]
+        out = [self._put(x, client_ref_id=client_ref_id) for x in to_put]
         if single:
             out = out[0]
         return out
 
-    def _put(self, val):
+    def _put(self, val, *, client_ref_id: bytes = None):
         if isinstance(val, ClientObjectRef):
             raise TypeError(
                 "Calling 'put' on an ObjectRef is not allowed "
@@ -209,9 +245,18 @@ class Worker:
                 "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
+        if client_ref_id is not None:
+            req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
+        if not resp.valid:
+            try:
+                raise cloudpickle.loads(resp.error)
+            except pickle.UnpicklingError:
+                logger.exception("Failed to deserialize {}".format(resp.error))
+                raise
         return ClientObjectRef(resp.id)
 
+    # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
     def wait(self,
              object_refs: List[ClientObjectRef],
              *,
@@ -262,11 +307,12 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except Exception:
+            except pickle.UnpicklingError:
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise
@@ -318,7 +364,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -335,7 +381,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -352,6 +398,11 @@ class Worker:
         return json.loads(resp.json)
 
     def internal_kv_get(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
+    def internal_kv_exists(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
@@ -377,8 +428,48 @@ class Worker:
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
 
+    def ping_server(self) -> bool:
+        """Simple health check.
+
+        Piggybacks the IS_INITIALIZED call to check if the server provides
+        an actual response.
+        """
+        if self.server is not None:
+            logger.debug("Pinging server.")
+            result = self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            return result is not None
+        return False
+
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _server_init(self, job_config: JobConfig):
+        """Initialize the server"""
+        try:
+            if job_config is None:
+                init_req = ray_client_pb2.InitRequest()
+                self.data_client.Init(init_req)
+                return
+
+            import ray._private.runtime_env as runtime_env
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
+                # Generate the uri for runtime env
+                runtime_env.rewrite_working_dir_uri(job_config)
+                init_req = ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(job_config))
+                init_resp = self.data_client.Init(init_req)
+                if not init_resp.ok:
+                    logger.error("Init failed due to: ", init_resp.msg)
+                    raise IOError(init_resp.msg)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+                runtime_env.PKG_DIR = old_dir
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""

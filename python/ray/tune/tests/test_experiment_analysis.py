@@ -108,14 +108,15 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_1/", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001/",
+                                     "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
@@ -123,7 +124,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
@@ -131,7 +132,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
@@ -142,6 +143,41 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_checkpoint = self.ea.get_best_checkpoint(
             best_trial, self.metric, mode="max")
         assert expected_path == best_checkpoint
+
+    def testGetLastCheckpoint(self):
+        # one more experiment with 2 iterations
+        new_ea = tune.run(
+            MyTrainableClass,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            stop={"training_iteration": 2},
+            checkpoint_freq=1,
+            config={
+                "width": tune.sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
+            })
+
+        # check if it's loaded correctly
+        last_checkpoint = new_ea.get_last_checkpoint()
+        assert self.test_path in last_checkpoint
+        assert "checkpoint_000002" in last_checkpoint
+
+        # test restoring the checkpoint and running for another iteration
+        tune.run(
+            MyTrainableClass,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            restore=last_checkpoint,
+            stop={"training_iteration": 3},
+            checkpoint_freq=1,
+            config={
+                "width": tune.sample_from(
+                    lambda spec: 10 + int(90 * random.random())),
+                "height": tune.sample_from(
+                    lambda spec: int(100 * random.random())),
+            })
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes
@@ -166,6 +202,23 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             })
         df = analysis.dataframe(self.metric, mode="max")
         self.assertEquals(df.shape[0], 1)
+
+    def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
+        analysis = tune.run(
+            MyTrainableClass,
+            name="test_example",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 1},
+            num_samples=1,
+            config={"test": tune.grid_search([[1, 2], [3, 4]])},
+            checkpoint_at_end=True,
+        )
+        logdir = analysis.get_best_logdir(self.metric, mode="max")
+        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
+        expected_path = os.path.join(logdir, "checkpoint_000001/",
+                                     "checkpoint")
+        assert checkpoints_metrics[0][0] == expected_path
+        assert checkpoints_metrics[0][1] == 1
 
 
 class ExperimentAnalysisPropertySuite(unittest.TestCase):

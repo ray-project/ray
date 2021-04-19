@@ -7,15 +7,28 @@ import numpy as np
 import ray
 from ray.util.collective import types
 
-_GLOO_AVAILABLE = False
 _NCCL_AVAILABLE = True
-
-try:
-    from ray.util.collective.collective_group import NCCLGroup
-except ImportError:
-    _NCCL_AVAILABLE = False
+_GLOO_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
+
+try:
+    from ray.util.collective.collective_group.\
+        nccl_collective_group import NCCLGroup
+except ImportError:
+    _NCCL_AVAILABLE = False
+    logger.warning("NCCL seems unavailable. Please install Cupy "
+                   "following the guide at: "
+                   "https://docs.cupy.dev/en/stable/install.html.")
+
+try:
+    from ray.util.collective.collective_group.\
+        gloo_collective_group import GLOOGroup
+except ImportError:
+    _GLOO_AVAILABLE = False
+    logger.warning("PyGloo seems unavailable. Please install PyGloo "
+                   "following the guide at: "
+                   "https://github.com/ray-project/pygloo.")
 
 
 def nccl_available():
@@ -48,7 +61,15 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
         elif backend == types.Backend.GLOO:
-            raise NotImplementedError()
+            logger.debug("Creating GLOO group: '{}'...".format(group_name))
+            g = GLOOGroup(
+                world_size,
+                rank,
+                group_name,
+                store_type="redis",
+                device_type="tcp")
+            self._name_group_map[group_name] = g
+            self._group_name_map[g] = group_name
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
@@ -123,11 +144,11 @@ def init_collective_group(world_size: int,
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
-def declare_collective_group(actors,
-                             world_size: int,
-                             ranks: List[int],
-                             backend=types.Backend.NCCL,
-                             group_name: str = "default"):
+def create_collective_group(actors,
+                            world_size: int,
+                            ranks: List[int],
+                            backend=types.Backend.NCCL,
+                            group_name: str = "default"):
     """Declare a list of actors as a collective group.
 
     Note: This function should be called in a driver process.
@@ -206,8 +227,8 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-def get_world_size(group_name: str = "default") -> int:
-    """Return the size of the collective gropu with the given name.
+def get_collective_group_size(group_name: str = "default") -> int:
+    """Return the size of the collective group with the given name.
 
     Args:
         group_name: the name of the group to query

@@ -164,7 +164,7 @@ You can connect other nodes to the head node, creating a Ray cluster by also cal
 Launching a Ray cluster (``ray up``)
 ------------------------------------
 
-Ray clusters can be launched with the :ref:`Cluster Launcher <ref-automatic-cluster>`.
+Ray clusters can be launched with the :ref:`Cluster Launcher <cluster-cloud>`.
 The ``ray up`` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls ``ray start`` to create a Ray cluster.
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about :ref:`running programs on a Ray cluster <using-ray-on-a-cluster>`.

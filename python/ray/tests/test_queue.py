@@ -199,17 +199,19 @@ def test_custom_resources(ray_start_regular_shared):
     assert current_resources["CPU"] == 1.0
 
     # By default an actor should not reserve any resources.
-    Queue()
+    q = Queue()
     current_resources = ray.available_resources()
     assert current_resources["CPU"] == 1.0
+    q.shutdown()
 
     # Specify resource requirement. The queue should now reserve 1 CPU.
-    Queue(actor_options={"num_cpus": 1})
+    q = Queue(actor_options={"num_cpus": 1})
 
     def no_cpu_in_resources():
         return "CPU" not in ray.available_resources()
 
     wait_for_condition(no_cpu_in_resources)
+    q.shutdown()
 
 
 if __name__ == "__main__":

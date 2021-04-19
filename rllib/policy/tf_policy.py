@@ -140,6 +140,8 @@ class TFPolicy(Policy):
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            self.view_requirements[
+                SampleBatch.INFOS].used_for_compute_actions = False
 
         assert model is None or isinstance(model, ModelV2), \
             "Model classes for TFPolicy other than `ModelV2` not allowed! " \
@@ -423,9 +425,18 @@ class TFPolicy(Policy):
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
+
         builder = TFRunBuilder(self._sess, "learn_on_batch")
+
+        # Callback handling.
+        learn_stats = {}
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch, result=learn_stats)
+
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
-        return builder.get(fetches)
+        stats = builder.get(fetches)
+        stats.update({"custom_metrics": learn_stats})
+        return stats
 
     @override(Policy)
     @DeveloperAPI
@@ -700,8 +711,13 @@ class TFPolicy(Policy):
             input_signature["prev_reward"] = \
                 tf1.saved_model.utils.build_tensor_info(
                     self._prev_reward_input)
+
         input_signature["is_training"] = \
             tf1.saved_model.utils.build_tensor_info(self._is_training)
+
+        if self._timestep is not None:
+            input_signature["timestep"] = \
+                tf1.saved_model.utils.build_tensor_info(self._timestep)
 
         for state_input in self._state_inputs:
             input_signature[state_input.name] = \
@@ -841,10 +857,6 @@ class TFPolicy(Policy):
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         self._debug_vars()
 
-        # Callback handling.
-        self.callbacks.on_learn_on_batch(
-            policy=self, train_batch=postprocessed_batch)
-
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
@@ -864,7 +876,7 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, train_batch, shuffle):
+    def _get_loss_inputs_dict(self, train_batch: SampleBatch, shuffle: bool):
         """Return a feed dict from a batch.
 
         Args:
@@ -874,18 +886,23 @@ class TFPolicy(Policy):
                 applying minibatch SGD after getting the outputs.
 
         Returns:
-            feed dict of data
+            Feed dict of data.
         """
 
+        if not isinstance(train_batch,
+                          SampleBatch) or not train_batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                train_batch,
+                max_seq_len=self._max_seq_len,
+                shuffle=shuffle,
+                batch_divisibility_req=self._batch_divisibility_req,
+                feature_keys=list(self._loss_input_dict_no_rnn.keys()),
+                view_requirements=self.view_requirements,
+            )
+        else:
+            train_batch["seq_lens"] = train_batch.seq_lens
+
         # Get batch ready for RNNs, if applicable.
-        pad_batch_to_sequences_of_same_size(
-            train_batch,
-            shuffle=shuffle,
-            max_seq_len=self._max_seq_len,
-            batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=list(self._loss_input_dict_no_rnn.keys()),
-            view_requirements=self.view_requirements,
-        )
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
@@ -914,18 +931,26 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
-        if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
-        else:
-            self.lr_schedule = PiecewiseSchedule(
+        self._lr_schedule = lr_schedule
+        if self._lr_schedule is not None:
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            if self.framework == "tf":
+                self._lr_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="lr")
+                self._lr_update = self.cur_lr.assign(
+                    self._lr_placeholder, read_value=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        if self._lr_schedule is not None:
+            new_val = self._lr_schedule.value(global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
+            else:
+                self.cur_lr.assign(new_val, read_value=False)
 
     @override(TFPolicy)
     def optimizer(self):

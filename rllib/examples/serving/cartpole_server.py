@@ -13,6 +13,7 @@ import ray
 from ray.rllib.agents.dqn import DQNTrainer
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.env.policy_server_input import PolicyServerInput
+from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.tune.logger import pretty_print
 
 SERVER_ADDRESS = "localhost"
@@ -43,6 +44,7 @@ if __name__ == "__main__":
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
         "input_evaluation": [],
+        "callbacks": MyCallbacks,
     }
 
     if args.run == "DQN":

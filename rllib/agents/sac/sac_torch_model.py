@@ -237,6 +237,8 @@ class SACTorchModel(TorchModelV2, nn.Module):
         if isinstance(net.obs_space, Box):
             if isinstance(model_out, (list, tuple)):
                 model_out = torch.cat(model_out, dim=-1)
+            elif isinstance(model_out, dict):
+                model_out = torch.cat(list(model_out.values()), dim=-1)
         elif isinstance(model_out, dict):
             model_out = list(model_out.values())
 

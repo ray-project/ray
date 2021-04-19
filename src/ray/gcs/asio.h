@@ -42,6 +42,7 @@
 #include <iostream>
 #include <string>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/redis_async_context.h"
 
 class RedisAsioClient {
@@ -53,7 +54,7 @@ class RedisAsioClient {
   /// \param io_service The single-threaded event loop for this client.
   /// \param redis_async_context The redis async context used to execute redis commands
   /// for this client.
-  RedisAsioClient(boost::asio::io_service &io_service,
+  RedisAsioClient(instrumented_io_context &io_service,
                   ray::gcs::RedisAsyncContext &redis_async_context);
 
   void operate();
@@ -66,7 +67,7 @@ class RedisAsioClient {
  private:
   ray::gcs::RedisAsyncContext &redis_async_context_;
 
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
   boost::asio::ip::tcp::socket socket_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet

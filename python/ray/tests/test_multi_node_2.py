@@ -4,10 +4,12 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
-from ray.monitor import Monitor
+from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor
+from ray.test_utils import (generate_system_config_map, wait_for_condition,
+                            SignalActor)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ def test_shutdown():
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
+            num_heartbeats_timeout=3, object_timeout_milliseconds=12345)
     ],
     indirect=True)
 def test_system_config(ray_start_cluster_head):
@@ -53,7 +55,7 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 20
+        assert ray._config.num_heartbeats_timeout() == 3
 
     ray.get([f.remote() for _ in range(5)])
 
@@ -61,23 +63,54 @@ def test_system_config(ray_start_cluster_head):
     time.sleep(1)
     assert ray.cluster_resources()["CPU"] == 2
 
-    time.sleep(2)
-    assert ray.cluster_resources()["CPU"] == 1
+    def _node_removed():
+        return ray.cluster_resources()["CPU"] == 1
+
+    wait_for_condition(_node_removed, timeout=3)
 
 
 def setup_monitor(address):
     monitor = Monitor(
         address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    monitor.update_raylet_map(_append_port=True)
     return monitor
 
 
+def assert_correct_pg(pg_response_data, pg_demands, strategy):
+    assert len(pg_response_data) == 1
+    pg_response_data = pg_response_data[0]
+    strategy_mapping_dict_protobuf = {
+        "PACK": 0,
+        "SPREAD": 1,
+        "STRICT_PACK": 2,
+        "STRICT_SPREAD": 3
+    }
+    assert pg_response_data.strategy == strategy_mapping_dict_protobuf[
+        strategy]
+    assert pg_response_data.creator_job_id
+    assert pg_response_data.creator_actor_id
+    assert pg_response_data.creator_actor_dead
+    assert pg_response_data.placement_group_id
+
+    for i, bundle in enumerate(pg_demands):
+        assert pg_response_data.bundles[i].unit_resources == bundle
+        assert pg_response_data.bundles[i].bundle_id.placement_group_id
+
+
+# DO NOT CHANGE THIS VERIFICATION WITHOUT NOTIFYING (Eric/Ameer/Alex).
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     request_resources(num_cpus=42)
+
+    # add placement groups.
+    pg_demands = [{"GPU": 2}, {"extra_resource": 2}]
+    strategy = "STRICT_PACK"
+    pg = placement_group(pg_demands, strategy=strategy)
+    pg.ready()
+    time.sleep(2)  # wait for placemnt groups to propogate.
 
     # Disable event clearing for test.
     monitor.event_summarizer.clear = lambda *a: None
 
+    visited_atleast_once = [set(), set()]
     while True:
         monitor.update_load_metrics()
         monitor.update_resource_requests()
@@ -88,21 +121,29 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         req = monitor.load_metrics.resource_requests
         assert req == [{"CPU": 1}] * 42, req
 
+        pg_response_data = monitor.load_metrics.pending_placement_groups
+        assert_correct_pg(pg_response_data, pg_demands, strategy)
+
         if "memory" in resource_usage[0]:
             del resource_usage[0]["memory"]
-        if "object_store_memory" in resource_usage[1]:
+            visited_atleast_once[0].add("memory")
+        if "object_store_memory" in resource_usage[0]:
             del resource_usage[0]["object_store_memory"]
+            visited_atleast_once[0].add("object_store_memory")
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]
+            visited_atleast_once[1].add("memory")
         if "object_store_memory" in resource_usage[1]:
             del resource_usage[1]["object_store_memory"]
+            visited_atleast_once[1].add("object_store_memory")
         for key in list(resource_usage[0].keys()):
             if key.startswith("node:"):
                 del resource_usage[0][key]
+                visited_atleast_once[0].add("node:")
         for key in list(resource_usage[1].keys()):
             if key.startswith("node:"):
                 del resource_usage[1][key]
-
+                visited_atleast_once[1].add("node:")
         if expected_resource_usage is None:
             if all(x for x in resource_usage[0:]):
                 break
@@ -119,6 +160,13 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
 
     # Sanity check we emitted a resize event.
     assert any("Resized to" in x for x in monitor.event_summarizer.summary())
+
+    assert visited_atleast_once[0] == {
+        "memory", "object_store_memory", "node:"
+    }
+    assert visited_atleast_once[0] == visited_atleast_once[1]
+
+    remove_placement_group(pg)
 
     return resource_usage
 
@@ -177,6 +225,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     ray.get(signal.send.remote())
     ray.get(work_handle)
+    del monitor
 
 
 def test_wait_for_nodes(ray_start_cluster_head):

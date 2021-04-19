@@ -189,7 +189,9 @@ deploy_jars() {
   fi
 }
 
-check_java_version
+if [ -z "${BUILDKITE-}" ]; then
+  check_java_version
+fi
 
 case "$1" in
 linux) # build jars that only contains Linux binaries.

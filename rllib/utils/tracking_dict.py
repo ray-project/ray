@@ -1,5 +1,10 @@
+from ray.rllib.utils.deprecation import deprecation_warning
+
+
 class UsageTrackingDict(dict):
-    """Dict that tracks which keys have been accessed.
+    """DEPRECATED class: Use SampleBatch instead!
+
+    Dict that tracks which keys have been accessed.
 
     It can also intercept gets and allow an arbitrary callback to be applied
     (i.e., to lazily convert numpy arrays to Tensors).
@@ -9,6 +14,13 @@ class UsageTrackingDict(dict):
     """
 
     def __init__(self, *args, **kwargs):
+        # DEPRECATED class: Use SampleBatch instead!
+        deprecation_warning(
+            old="UsageTrackingDict",
+            new="SampleBatch",
+            error=False,
+        )
+
         dict.__init__(self, *args, **kwargs)
         self.accessed_keys = set()
         self.added_keys = set()
@@ -18,6 +30,7 @@ class UsageTrackingDict(dict):
 
     def set_get_interceptor(self, fn):
         self.get_interceptor = fn
+        self.intercepted_values = {}
 
     def copy(self):
         copy = UsageTrackingDict(**dict.copy(self))
@@ -27,7 +40,8 @@ class UsageTrackingDict(dict):
     @property
     def data(self):
         # Make sure, if we use UsageTrackingDict wrapping a SampleBatch,
-        # one can still do: sample_batch.data[some_key].
+        # one can still do: sample_batch.data[some_key] even if it has been
+        # deprecated.
         return self
 
     def __getitem__(self, key):

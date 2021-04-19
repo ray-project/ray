@@ -73,9 +73,9 @@ class BoostingModel:
 
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
-client = serve.start()
-client.create_backend("lr:v1", BoostingModel)
-client.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
+serve.start()
+serve.create_backend("lr:v1", BoostingModel)
+serve.create_endpoint("iris_classifier", backend="lr:v1", route="/regressor")
 # __doc_deploy_end__
 
 # __doc_query_begin__

@@ -63,7 +63,7 @@ class BaseID {
   static T FromBinary(const std::string &binary);
   static T FromHex(const std::string &hex_str);
   static const T &Nil();
-  static size_t Size() { return T::Size(); }
+  static constexpr size_t Size() { return T::Size(); }
 
   size_t Hash() const;
   bool IsNil() const;
@@ -90,7 +90,7 @@ class BaseID {
 
 class UniqueID : public BaseID<UniqueID> {
  public:
-  static size_t Size() { return kUniqueIDSize; }
+  static constexpr size_t Size() { return kUniqueIDSize; }
 
   UniqueID() : BaseID() {}
 
@@ -109,7 +109,7 @@ class JobID : public BaseID<JobID> {
 
   static JobID FromInt(uint32_t value);
 
-  static size_t Size() { return kLength; }
+  static constexpr size_t Size() { return kLength; }
 
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static JobID FromRandom() = delete;
@@ -133,7 +133,7 @@ class ActorID : public BaseID<ActorID> {
   /// Size of `ActorID` in bytes.
   ///
   /// \return Size of `ActorID` in bytes.
-  static size_t Size() { return kLength; }
+  static constexpr size_t Size() { return kLength; }
 
   /// Creates an `ActorID` by hashing the given information.
   ///
@@ -178,7 +178,7 @@ class TaskID : public BaseID<TaskID> {
 
   TaskID() : BaseID() {}
 
-  static size_t Size() { return kLength; }
+  static constexpr size_t Size() { return kLength; }
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
@@ -258,7 +258,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The maximum index of object.
   static uint64_t MaxObjectIndex() { return kMaxObjectIndex; }
 
-  static size_t Size() { return kLength; }
+  static constexpr size_t Size() { return kLength; }
 
   /// Get the index of this object in the task that created it.
   ///
@@ -314,7 +314,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   /// Size of `PlacementGroupID` in bytes.
   ///
   /// \return Size of `PlacementGroupID` in bytes.
-  static size_t Size() { return kLength; }
+  static constexpr size_t Size() { return kLength; }
 
   /// Constructor of `PlacementGroupID`.
   PlacementGroupID() : BaseID() {}
@@ -355,7 +355,7 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
     static type FromRandom() { return type(UniqueID::FromRandom()); }                    \
     static type FromBinary(const std::string &binary) { return type(binary); }           \
     static type Nil() { return type(UniqueID::Nil()); }                                  \
-    static size_t Size() { return kUniqueIDSize; }                                       \
+    static constexpr size_t Size() { return kUniqueIDSize; }                             \
                                                                                          \
    private:                                                                              \
     explicit type(const std::string &binary) {                                           \

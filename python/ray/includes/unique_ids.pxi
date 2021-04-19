@@ -23,7 +23,7 @@ from ray.includes.unique_ids cimport (
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
 
 
 def check_id(b, size=kUniqueIDSize):

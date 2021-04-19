@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator
 class TestParameterNoise(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -101,6 +101,7 @@ class TestParameterNoise(unittest.TestCase):
             policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
+            trainer.stop()
 
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
@@ -156,6 +157,7 @@ class TestParameterNoise(unittest.TestCase):
             # beginning of episode).
             noise_after = self._get_current_noise(policy, fw)
             check(noise, noise_after)
+            trainer.stop()
 
             # Switch off underlying exploration entirely.
             # ----
@@ -188,6 +190,7 @@ class TestParameterNoise(unittest.TestCase):
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
                 check(a, a_)
+            trainer.stop()
 
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.

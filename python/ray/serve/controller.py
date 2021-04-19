@@ -1,12 +1,15 @@
 import asyncio
 from collections import defaultdict
-from typing import Dict, Any, List, Optional
+import inspect
+from typing import Dict, Any, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
+from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
+    BackendInfo,
     BackendTag,
     EndpointTag,
     GoalId,
@@ -15,6 +18,11 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import (
+    ALL_HTTP_METHODS,
+    RESERVED_VERSION_TAG,
+    WILDCARD_PATH_SUFFIX,
+)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -27,10 +35,10 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 1.0
+CONTROL_LOOP_PERIOD_S = 0.1
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -70,11 +78,6 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        # NOTE(simon): Currently we do all-to-all broadcast. This means
-        # any listeners will receive notification for all changes. This
-        # can be problem at scale, e.g. updating a single backend config
-        # will send over the entire configs. In the future, we should
-        # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
         self.goal_manager = AsyncGoalManager()
@@ -110,8 +113,14 @@ class ServeController:
     async def run_control_loop(self) -> None:
         while True:
             async with self.write_lock:
-                self.http_state.update()
-                self.backend_state.update()
+                try:
+                    self.http_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating HTTP state: {e}")
+                try:
+                    self.backend_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating backend state: {e}")
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -163,10 +172,13 @@ class ServeController:
             self.endpoint_state.shadow_traffic(endpoint_name, backend_tag,
                                                proportion)
 
-    # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
-    async def create_endpoint(self, endpoint: str,
-                              traffic_dict: Dict[str, float], route,
-                              methods: List[str]) -> None:
+    async def create_endpoint(
+            self,
+            endpoint: str,
+            traffic_dict: Dict[str, float],
+            route: Optional[str],
+            methods: List[str],
+    ) -> None:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -182,6 +194,10 @@ class ServeController:
             self.endpoint_state.create_endpoint(endpoint, route, methods,
                                                 TrafficPolicy(traffic_dict))
 
+        # TODO(simon): Use GoalID mechanism for this so client can check for
+        # goal id and http_state complete the goal id.
+        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
+
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
 
@@ -196,8 +212,13 @@ class ServeController:
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            return self.backend_state.create_backend(
-                backend_tag, backend_config, replica_config)
+            backend_info = BackendInfo(
+                worker_class=create_backend_replica(
+                    replica_config.backend_def),
+                version=RESERVED_VERSION_TAG,
+                backend_config=backend_config,
+                replica_config=replica_config)
+            return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -217,8 +238,17 @@ class ServeController:
                                     config_options: BackendConfig) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
-            return self.backend_state.update_backend_config(
-                backend_tag, config_options)
+            existing_info = self.backend_state.get_backend(backend_tag)
+            if existing_info is None:
+                raise ValueError(f"Backend {backend_tag} is not registered.")
+
+            backend_info = BackendInfo(
+                worker_class=existing_info.worker_class,
+                version=existing_info.version,
+                backend_config=existing_info.backend_config.copy(
+                    update=config_options.dict(exclude_unset=True)),
+                replica_config=existing_info.replica_config)
+            return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -240,3 +270,80 @@ class ServeController:
                 for replica in replica_dict.values():
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
+
+    async def deploy(self, name: str, backend_config: BackendConfig,
+                     replica_config: ReplicaConfig, version: Optional[str],
+                     route_prefix: Optional[str]) -> Optional[GoalId]:
+        if route_prefix is None:
+            route_prefix = f"/{name}"
+
+        if replica_config.is_asgi_app:
+            # When the backend is asgi application, we want to proxy it
+            # with a prefixed path as well as proxy all HTTP methods.
+            # {wildcard:path} is used so HTTPProxy's Starlette router can match
+            # arbitrary path.
+            if route_prefix.endswith("/"):
+                route_prefix = route_prefix[:-1]
+            http_route = route_prefix + WILDCARD_PATH_SUFFIX
+            http_methods = ALL_HTTP_METHODS
+        else:
+            http_route = route_prefix
+            # Generic endpoint should support a limited subset of HTTP methods.
+            http_methods = ["GET", "POST"]
+
+        python_methods = []
+        if inspect.isclass(replica_config.backend_def):
+            for method_name, _ in inspect.getmembers(
+                    replica_config.backend_def, inspect.isfunction):
+                python_methods.append(method_name)
+
+        async with self.write_lock:
+            backend_info = BackendInfo(
+                worker_class=create_backend_replica(
+                    replica_config.backend_def),
+                version=version,
+                backend_config=backend_config,
+                replica_config=replica_config)
+
+            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            self.endpoint_state.update_endpoint(
+                name,
+                http_route,
+                http_methods,
+                TrafficPolicy({
+                    name: 1.0
+                }),
+                python_methods=python_methods)
+            return goal_id
+
+    def delete_deployment(self, name: str) -> Optional[GoalId]:
+        self.endpoint_state.delete_endpoint(name)
+        return self.backend_state.delete_backend(name, force_kill=False)
+
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+        """Get the current information about a deployment.
+
+        Args:
+            name(str): the name of the deployment.
+
+        Returns:
+            (BackendInfo, route)
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
+        backend_info: BackendInfo = self.backend_state.get_backend(name)
+        if backend_info is None:
+            raise KeyError(f"Deployment {name} does not exist.")
+
+        route = self.endpoint_state.get_endpoint_route(name)
+
+        return backend_info, route
+
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all active deployments."""
+        return {
+            name: (self.backend_state.get_backend(name),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs()
+        }

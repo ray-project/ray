@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -29,7 +30,7 @@ class GcsResourceManagerTest : public ::testing::Test {
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr);
   }
 
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
@@ -71,7 +72,7 @@ TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
   rpc::ReportResourceUsageRequest report_request;
   (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
   (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
-  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request);
+  gcs_resource_manager_->UpdateNodeResourceUsage(node_id, report_request.resources());
 
   gcs_resource_manager_->HandleGetAllResourceUsage(get_all_request, &get_all_reply,
                                                    send_reply_callback);

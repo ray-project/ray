@@ -38,3 +38,8 @@ def test_get_runtime_context(ray_start_regular_shared):
 
         with pytest.raises(Exception):
             _ = rtc.task_id
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

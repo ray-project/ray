@@ -1,6 +1,6 @@
-import axios from "axios";
 import { RayConfigRsp } from "../type/config";
+import { get } from "./requestHandlers";
 
 export const getRayConfig = () => {
-  return axios.get<RayConfigRsp>("api/ray_config");
+  return get<RayConfigRsp>("api/ray_config");
 };

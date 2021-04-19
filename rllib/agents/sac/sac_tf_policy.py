@@ -323,7 +323,7 @@ def sac_actor_critic_loss(
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
     q_t_selected_target = tf.stop_gradient(
-        train_batch[SampleBatch.REWARDS] +
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped).
@@ -652,7 +652,7 @@ def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
     Raises:
         UnsupportedSpaceException: If one of the spaces is not supported.
     """
-    # Only support single Box or single Discreete spaces.
+    # Only support single Box or single Discrete spaces.
     if not isinstance(action_space, (Box, Discrete, Simplex)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
@@ -688,4 +688,4 @@ SACTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False)
+)
