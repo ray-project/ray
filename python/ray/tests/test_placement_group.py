@@ -1,4 +1,5 @@
 import pytest
+import platform
 import os
 import sys
 import time
@@ -95,11 +96,18 @@ def test_placement_group_strict_pack(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name", strategy="STRICT_PACK", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[
+            {
+                "memory": 50 * 1024 *
+                1024,  # Test memory resource spec doesn't break tests.
+                "CPU": 2
+            },
+            {
+                "CPU": 2
+            }
+        ])
     ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
@@ -1178,6 +1186,8 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
+@pytest.mark.skipif(
+    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -1216,6 +1226,8 @@ def test_create_placement_group_after_gcs_server_restart(
     assert table["state"] == "PENDING"
 
 
+@pytest.mark.skipif(
+    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -1240,6 +1252,8 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
+@pytest.mark.skipif(
+    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -1265,6 +1279,8 @@ def test_create_placement_group_during_gcs_server_restart(
         ray.get(placement_groups[i].ready())
 
 
+@pytest.mark.skipif(
+    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(

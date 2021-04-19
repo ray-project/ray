@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 from ray.rllib.utils.spaces.space_utils import flatten_space
 

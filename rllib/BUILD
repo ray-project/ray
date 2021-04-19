@@ -1435,7 +1435,7 @@ py_test(
 py_test(
     name = "tests/test_io",
     tags = ["tests_dir", "tests_dir_I"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_io.py"]
 )
 
