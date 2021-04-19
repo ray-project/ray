@@ -26,7 +26,6 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_cancel.py",
-    "test_cli.py",
     "test_client.py",
     "test_client_init.py",
     "test_client_library_integration.py",
@@ -119,6 +118,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_cli.py",
     "test_failure.py",
     "test_failure_2.py",
     "test_stress_failure.py",
