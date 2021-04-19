@@ -63,7 +63,7 @@ def test_starlette_response(serve_instance):
     @serve.deployment(name="redirect")
     def redirect(_):
         return starlette.responses.RedirectResponse(
-            url="http://127.0.0.1:8000/basic/")
+            url="http://127.0.0.1:8000/basic")
 
     redirect.deploy()
     assert requests.get(
@@ -145,7 +145,7 @@ def test_call_method(serve_instance):
 
 
 def test_reject_duplicate_route(serve_instance):
-    @serve.deployment(name="A", route_prefix="/api/")
+    @serve.deployment(name="A", route_prefix="/api")
     class A:
         pass
 
