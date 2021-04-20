@@ -106,8 +106,8 @@ ray_clusters = {}
 last_generation = {}
 
 
-def run_event_loop(cluster_cr_stream):
-    for event in cluster_cr_stream:
+def run_event_loop(raycluster_cr_stream):
+    for event in raycluster_cr_stream:
         cluster_cr = event["object"]
         cluster_name = cluster_cr["metadata"]["name"]
         event_type = event["type"]
@@ -155,13 +155,13 @@ def main() -> None:
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
     # Control loop
     if operator_utils.NAMESPACED_OPERATOR:
-        cluster_cr_stream = operator_utils.namespaced_cr_stream(
+        raycluster_cr_stream = operator_utils.namespaced_cr_stream(
             namespace=operator_utils.OPERATOR_NAMESPACE)
     else:
-        cluster_cr_stream = operator_utils.cluster_scoped_cr_stream()
+        raycluster_cr_stream = operator_utils.cluster_scoped_cr_stream()
     while True:
         try:
-            run_event_loop(cluster_cr_stream)
+            run_event_loop(raycluster_cr_stream)
         except ApiException as e:
             # Wait for creation of the Ray Cluster CRD if it hasn't
             # already been created.

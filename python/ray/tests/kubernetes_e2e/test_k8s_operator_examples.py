@@ -198,9 +198,9 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Delete operator pod. Deployment controller should recover it,
             # allowing the rest of this test to succeed.
-            print(">>>Deleting operator pod.")
+            print(">>>Deleting operator pod to test operator restart.")
             cmd = f"kubectl -n {NAMESPACE} delete pod {operator_pod}"
-
+            subprocess.check_call(cmd, shell=True)
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
             print(">>>Updating cluster size.")
