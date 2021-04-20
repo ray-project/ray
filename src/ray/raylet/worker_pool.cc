@@ -849,7 +849,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
           it->first->GetAssignedJobId() != task_spec.JobId() ||
           state.pending_disconnection_workers.count(it->first) > 0 ||
-          pending_exit_idle_workers_.count(it->first->WorkerID())) {
+          pending_exit_idle_workers_.count(it->first->WorkerId())) {
         continue;
       }
       state.idle.erase(it->first);
