@@ -13,7 +13,7 @@ if __name__ == "__main__":
     print(torch_file)
     assert os.path.isfile(torch_file)
     with open(torch_file, "w") as f:
-        print("raise Exception('torch imported!')", file=f)
+        print("raise ImportError('torch imported!')", file=f)
 
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
