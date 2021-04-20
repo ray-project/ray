@@ -22,7 +22,10 @@ CONFIG_FIELDS = {
     "headPodType": "head_node_type",
     "workerStartRayCommands": "worker_start_ray_commands",
     "headStartRayCommands": "head_start_ray_commands",
-    "podTypes": "available_node_types"
+    "podTypes": "available_node_types",
+    "headSetupCommands": "head_setup_commands",
+    "workerSetupCommands": "worker_setup_commands",
+    "SetupCommands": "setup_commands"
 }
 
 NODE_TYPE_FIELDS = {
@@ -30,7 +33,8 @@ NODE_TYPE_FIELDS = {
     "maxWorkers": "max_workers",
     "podConfig": "node_config",
     "rayResources": "resources",
-    "setupCommands": "worker_setup_commands"
+    "setupCommands": "worker_setup_commands",
+    "workerSetupCommands", "worker_setup_commands"
 }
 
 PROVIDER_CONFIG = {
