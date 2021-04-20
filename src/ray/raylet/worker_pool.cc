@@ -746,9 +746,6 @@ void WorkerPool::TryKillingIdleWorkers() {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
-        RAY_CHECK(running_size > 0);
-        running_size--;
-
         auto rpc_client = worker->rpc_client();
         RAY_CHECK(rpc_client);
         rpc::ExitRequest request;
@@ -785,7 +782,11 @@ void WorkerPool::TryKillingIdleWorkers() {
           RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
           RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         });
+      } else {
+        RemoveWorker(worker_state.idle, worker);
       }
+      RAY_CHECK(running_size > 0);
+      running_size--;
     }
   }
 
