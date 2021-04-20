@@ -749,28 +749,28 @@ void WorkerPool::TryKillingIdleWorkers() {
                                                const rpc::ExitReply &r) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-        }
-
-        if (status.ok() && r.success()) {
-          auto &worker_state = GetStateForLanguage(worker->GetLanguage());
-          // If we could kill the worker properly, we remove them from the idle pool.
-          if (RemoveWorker(worker_state.idle, worker)) {
-            // If the worker is not idle at this moment, we don't mark them dead.
-            // In this case, the core worker will exit the process after
-            // finishing the assigned task, and DisconnectWorker will handle this
-            // part.
-            if (!worker->IsDead()) {
-              worker->MarkDead();
-            }
-          }
         } else {
-          // We re-insert the idle worker to the back of the queue if it fails to kill the
-          // worker (e.g., when the worker owns the object). Without this, if the first N
-          // workers own objects, it can't kill idle workers that are >= N+1.
-          const auto &idle_pair = idle_of_all_languages_.front();
-          idle_of_all_languages_.push_back(idle_pair);
-          idle_of_all_languages_.pop_front();
-          RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+          if (r.success()) {
+            auto &worker_state = GetStateForLanguage(worker->GetLanguage());
+            // If we could kill the worker properly, we remove them from the idle pool.
+            if (RemoveWorker(worker_state.idle, worker)) {
+              // If the worker is not idle at this moment, we don't mark them dead.
+              // In this case, the core worker will exit the process after
+              // finishing the assigned task, and DisconnectWorker will handle this
+              // part.
+              if (!worker->IsDead()) {
+                worker->MarkDead();
+              }
+            }
+          } else {
+            // We re-insert the idle worker to the back of the queue if it fails to kill
+            // the worker (e.g., when the worker owns the object). Without this, if the
+            // first N workers own objects, it can't kill idle workers that are >= N+1.
+            const auto &idle_pair = idle_of_all_languages_.front();
+            idle_of_all_languages_.push_back(idle_pair);
+            idle_of_all_languages_.pop_front();
+            RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+          }
         }
         RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
         RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
