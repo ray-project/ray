@@ -25,7 +25,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
 
-    def Datapath(self, request_iterator, context):
+    async def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata["client_id"]
         accepted_connection = False
@@ -34,7 +34,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
         logger.debug(f"New data connection from client {client_id}: ")
         try:
-            for req in request_iterator:
+            async for req in request_iterator:
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
@@ -76,7 +76,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         raise Exception(f"Unreachable code: Request type "
                                         f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-                yield resp
+                await context.write(resp)
         except grpc.RpcError as e:
             logger.debug(f"Closing data channel: {e}")
         finally:

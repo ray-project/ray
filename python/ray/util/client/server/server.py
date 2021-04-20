@@ -1,6 +1,8 @@
-import logging
+import asyncio
 from concurrent import futures
+import logging
 import grpc
+import grpc.aio
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
@@ -534,7 +536,7 @@ def serve(connection_str, ray_connect_handler=None):
                 return ray.init(job_config=job_config)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.server(
+    server = grpc.aio.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=[
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
@@ -556,7 +558,11 @@ def serve(connection_str, ray_connect_handler=None):
         logs_servicer=logs_servicer,
         grpc_server=server,
     )
-    server.start()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(server.start())
+    t = threading.Thread(
+        target=lambda: loop.run_until_complete(server.wait_for_termination()))
+    t.start()
     return current_handle
 
 
