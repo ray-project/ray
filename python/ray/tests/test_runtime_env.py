@@ -114,6 +114,7 @@ def test_travel():
         excludes = []
 
         def construct(path, excluded=False):
+            global item_num
             path.mkdir(parents=True)
             if not excluded:
                 dir_paths.add(path)
@@ -154,7 +155,7 @@ def test_travel():
 
         def handler(path):
             if path.is_dir():
-                visited_dir_path.add(str(path))
+                visited_dir_paths.add(str(path))
             else:
                 visited_file_paths.add(str(path))
 
