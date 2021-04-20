@@ -200,7 +200,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// an placement_group creation task is infeasible.
   ///
   /// \param placement_group The placement_group whose creation task is infeasible.
-  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group);
+  /// \param is_retryable whether the scheduler can be retry or not currently.
+  void OnPlacementGroupCreationFailed(std::shared_ptr<GcsPlacementGroup> placement_group,
+                                      bool is_retryable);
 
   /// Handle placement_group creation task success. This should be called when the
   /// placement_group creation task has been scheduled successfully.
@@ -218,6 +220,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  /// Handle a node register. This will try to reschedule all the infeasible
+  /// placement groups.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeAdd(const NodeID &node_id);
 
   /// Clean placement group that belongs to the job id if necessary.
   ///
@@ -313,6 +321,9 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// `pending_placement_groups_` and delete the specific placement group, so we can't use
   /// `std::priority_queue`.
   std::deque<std::shared_ptr<GcsPlacementGroup>> pending_placement_groups_;
+
+  /// The infeasible placement_groups can't be scheduled currently.
+  std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
   std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>

@@ -211,27 +211,32 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
-    std::shared_ptr<GcsPlacementGroup> placement_group) {
+    std::shared_ptr<GcsPlacementGroup> placement_group, bool is_retryable) {
   RAY_LOG(INFO) << "Failed to create placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
-  // We will attempt to schedule this placement_group once an eligible node is
-  // registered.
-  auto state = placement_group->GetState();
-  RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
-            state == rpc::PlacementGroupTableData::PENDING ||
-            state == rpc::PlacementGroupTableData::REMOVED)
-      << "State: " << state;
-  if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
-    // NOTE: If a node is dead, the placement group scheduler should try to recover the
-    // group by rescheduling the bundles of the dead node. This should have higher
-    // priority than trying to place other placement groups.
-    pending_placement_groups_.emplace_front(std::move(placement_group));
-  } else {
-    pending_placement_groups_.emplace_back(std::move(placement_group));
-  }
 
-  MarkSchedulingDone();
-  RetryCreatingPlacementGroup();
+  if (!is_retryable) {
+    // We will attempt to schedule this placement_group once an eligible node is
+    // registered.
+    infeasible_placement_groups_.emplace_back(std::move(placement_group));
+  } else {
+    auto state = placement_group->GetState();
+    RAY_CHECK(state == rpc::PlacementGroupTableData::RESCHEDULING ||
+              state == rpc::PlacementGroupTableData::PENDING ||
+              state == rpc::PlacementGroupTableData::REMOVED)
+        << "State: " << state;
+    if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
+      // NOTE: If a node is dead, the placement group scheduler should try to recover the
+      // group by rescheduling the bundles of the dead node. This should have higher
+      // priority than trying to place other placement groups.
+      pending_placement_groups_.emplace_front(std::move(placement_group));
+    } else {
+      pending_placement_groups_.emplace_back(std::move(placement_group));
+    }
+
+    MarkSchedulingDone();
+    RetryCreatingPlacementGroup();
+  }
 }
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
@@ -274,8 +279,8 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     MarkSchedulingStarted(placement_group_id);
     gcs_placement_group_scheduler_->ScheduleUnplacedBundles(
         placement_group,
-        [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-          OnPlacementGroupCreationFailed(std::move(placement_group));
+        [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_retryable) {
+          OnPlacementGroupCreationFailed(std::move(placement_group), is_retryable);
         },
         [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
           OnPlacementGroupCreationSuccess(std::move(placement_group));
@@ -547,6 +552,21 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       }
     }
   }
+
+  SchedulePendingPlacementGroups();
+}
+
+void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
+  RAY_LOG(INFO)
+      << "A new node: " << node_id
+      << " registered, will try to reschedule all the infeasible placement groups.";
+
+  // Move all the infeasible placement groups to the pending queue so that we can
+  // reschedule them.
+  auto end_it = pending_placement_groups_.end();
+  pending_placement_groups_.insert(end_it, infeasible_placement_groups_.cbegin(),
+                                   infeasible_placement_groups_.cend());
+  infeasible_placement_groups_.clear();
 
   SchedulePendingPlacementGroups();
 }
