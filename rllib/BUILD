@@ -692,6 +692,26 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_memory_leak_a3c",
+    tags = ["memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "medium",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/a3c/memory-leak-test-a3c.yaml"],
+    args = ["--yaml-dir=tuned_examples/a3c"]
+)
+
+py_test(
+    name = "test_memory_leak_impala",
+    tags = ["memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "medium",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
+    args = ["--yaml-dir=tuned_examples/impala"]
+)
+
+py_test(
     name = "test_memory_leak_ppo",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",

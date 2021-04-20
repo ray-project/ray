@@ -7,5 +7,6 @@ memory-leak-test-impala:
     config:
         # Works for both torch and tf.
         framework: tf
-        num_workers: 4
+        num_workers: 3
+        num_aggregation_workers: 1
         num_envs_per_worker: 5
