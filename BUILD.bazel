@@ -1370,6 +1370,7 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
+    tags = ["flaky"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
