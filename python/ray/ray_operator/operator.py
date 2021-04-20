@@ -1,6 +1,7 @@
 import logging
 import multiprocessing as mp
 import os
+import time
 from typing import Any, Callable, Dict, Optional
 
 from kubernetes.client.exceptions import ApiException
@@ -105,6 +106,14 @@ ray_clusters = {}
 last_generation = {}
 
 
+def run_event_loop(cluster_cr_stream):
+    for event in cluster_cr_stream:
+        cluster_cr = event["object"]
+        cluster_name = cluster_cr["metadata"]["name"]
+        event_type = event["type"]
+        handle_event(event_type, cluster_cr, cluster_name)
+
+
 def handle_event(event_type, cluster_cr, cluster_name):
     # TODO: This only detects errors in the parent process and thus doesn't
     # catch cluster-specific autoscaling failures. Fix that (perhaps at
@@ -141,23 +150,26 @@ def cluster_action(event_type, cluster_cr, cluster_name) -> None:
 
 
 def main() -> None:
-    # Make directory for ray cluster configs
+    # Make directory for Ray cluster configs
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
     # Control loop
-    cluster_cr_stream = operator_utils.cluster_cr_stream()
-    try:
-        for event in cluster_cr_stream:
-            cluster_cr = event["object"]
-            cluster_name = cluster_cr["metadata"]["name"]
-            event_type = event["type"]
-            handle_event(event_type, cluster_cr, cluster_name)
-    except ApiException as e:
-        if e.status == 404:
-            raise Exception(
-                "Caught a 404 error. Has the RayCluster CRD been created?")
-        else:
-            raise
+    if operator_utils.NAMESPACED_OPERATOR:
+        cluster_cr_stream = operator_utils.namespaced_cr_stream(
+            namespace=operator_utils.OPERATOR_NAMESPACE)
+    else:
+        cluster_cr_stream = operator_utils.cluster_scoped_cr_stream()
+    while True:
+        try:
+            run_event_loop(cluster_cr_stream)
+        except ApiException as e:
+            # Wait for creation of the Ray Cluster CRD if it hasn't
+            # already been created.
+            if e.status == 404:
+                logger.warning("Waiting for creation of the RayCluster CRD")
+                time.sleep(5)
+            else:
+                raise
 
 
 if __name__ == "__main__":

@@ -8,7 +8,10 @@ from kubernetes.watch import Watch
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private.providers import _get_default_config
 
-RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
+OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
+# Operator is namespaced if the above environment variable is set,
+# cluster-scoped otherwise:
+NAMESPACED_OPERATOR = OPERATOR_NAMESPACE is not None
 
 RAY_CONFIG_DIR = os.environ.get("RAY_CONFIG_DIR") or \
     os.path.expanduser("~/ray_cluster_configs")
@@ -47,11 +50,20 @@ def config_path(cluster_name: str) -> str:
     return os.path.join(RAY_CONFIG_DIR, file_name)
 
 
-def cluster_cr_stream() -> Iterator:
+def cluster_scoped_cr_stream() -> Iterator:
     w = Watch()
     return w.stream(
         custom_objects_api().list_namespaced_custom_object,
-        namespace=RAY_NAMESPACE,
+        group="cluster.ray.io",
+        version="v1",
+        plural="rayclusters")
+
+
+def namespaced_cr_stream(namespace) -> Iterator:
+    w = Watch()
+    return w.stream(
+        custom_objects_api().list_cluster_custom_object,
+        namespace=namespace,
         group="cluster.ray.io",
         version="v1",
         plural="rayclusters")
@@ -135,9 +147,10 @@ def translate(configuration: Dict[str, Any],
 def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
                status: str) -> None:
     # TODO: Add retry logic in case of 409 due to old resource version.
+    namespace = cluster_cr["metadata"]["namespace"]
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
-        .patch_namespaced_custom_object_status(namespace=RAY_NAMESPACE,
+        .patch_namespaced_custom_object_status(namespace=namespace,
                                                group="cluster.ray.io",
                                                version="v1",
                                                plural="rayclusters",
