@@ -21,7 +21,8 @@
 
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
-
+#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/rpc/worker/core_worker_server.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -29,7 +30,6 @@ namespace ray {
 namespace pubsub {
 
 using SubscriberID = UniqueID;
-using LongPollConnectCallback = std::function<void(const rpc::PubsubLongPollingReply*)>;
 
 namespace pub_internal {
 
@@ -75,6 +75,14 @@ class SubscriptionIndex {
       subscribers_to_message_id_;
 };
 
+struct LongPollConnection {
+  LongPollConnection(rpc::PubsubLongPollingReply *reply, rpc::SendReplyCallback send_reply_callback)
+   : reply(reply), send_reply_callback(send_reply_callback) {}
+
+  rpc::PubsubLongPollingReply *reply;
+  rpc::SendReplyCallback send_reply_callback;
+};
+
 /// Abstraction to each subscriber.
 class Subscriber {
  public:
@@ -90,16 +98,17 @@ class Subscriber {
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
   ///
-  /// \param long_polling_reply_callback reply callback to the long polling request.
+  /// SANG-TODO Fix issues.
   /// \return True if connection is new. False if there were already connections cached.
-  bool ConnectToSubscriber(LongPollConnectCallback long_polling_reply_callback);
+  bool ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the object id to publish to the subscriber.
   ///
   /// \param pub_message Message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
   /// connection. False is used only for testing.
-  void QueueMessage(const std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish = true);
+  void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -123,9 +132,9 @@ class Subscriber {
   /// Cached long polling reply callback.
   /// It is cached whenever new long polling is coming from the subscriber.
   /// It becomes a nullptr whenever the long polling request is replied.
-  LongPollConnectCallback long_polling_reply_callback_ = nullptr;
+  std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::list<std::unique_ptr<rpc::PubsubLongPollingReply> reply> mailbox_;
+  std::list<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
@@ -180,7 +189,8 @@ class Publisher {
   /// using long polling internally. This should be changed once the bidirectional grpc
   /// streaming is supported.
   void ConnectToSubscriber(const SubscriberID &subscriber_id,
-                           LongPollConnectCallback long_poll_connect_callback);
+                           rpc::PubsubLongPollingReply *reply,
+                           rpc::SendReplyCallback send_reply_callback);
 
   /// Register the subscription.
   ///
@@ -196,7 +206,7 @@ class Publisher {
   /// \param pub_message The message to publish.
   /// \param message_id The message id to publish.
   template <typename MessageID>
-  void Publish(const rpc::ChannelType channel_type, const std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
+  void Publish(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.

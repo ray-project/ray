@@ -43,6 +43,14 @@ class PublisherTest : public ::testing::Test {
 
   void TearDown() { subscribers_map_.clear(); }
 
+  rpc::PubMessage GeneratePubMessage(const ObjectID &object_id) {
+    rpc::PubMessage pub_message; 
+    auto *wait_for_object_eviction_msg = pub_message.mutable_wait_for_object_eviction_message();
+    wait_for_object_eviction_msg->set_object_id(object_id.Binary());
+    wait_for_object_eviction_msg->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
+    return pub_message;
+  }
+
   instrumented_io_context io_service_;
   std::shared_ptr<PeriodicalRunner> periodic_runner_;
   std::shared_ptr<Publisher> object_status_publisher_;
@@ -195,51 +203,59 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ASSERT_TRUE(subscription_index.AssertNoLeak());
 }
 
-// TEST_F(PublisherTest, TestSubscriber) {
-//   std::unordered_set<ObjectID> object_ids_published;
-//   LongPollConnectCallback reply =
-//       [&object_ids_published](const std::vector<ObjectID> &object_ids) {
-//         for (auto &oid : object_ids) {
-//           object_ids_published.emplace(oid);
-//         }
-//       };
+TEST_F(PublisherTest, TestSubscriber) {
+  std::unordered_set<ObjectID> object_ids_published;
+  rpc::PubsubLongPollingReply reply;
+    RAY_LOG(ERROR) << "size: " << reply.pub_messages_size();
+  rpc::SendReplyCallback send_reply_callback = [&reply, &object_ids_published](Status status, std::function<void()> success, std::function<void()> failure) {
+    // RAY_LOG(ERROR) << "Callback";
+    // RAY_LOG(ERROR) << "size " << reply->pub_messages_size();
+    // RAY_LOG(ERROR) << "size " << reply->pub_messages_size();
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto oid = ObjectID::FromBinary(msg.wait_for_object_eviction_message().object_id());
+      object_ids_published.emplace(oid);
+    }
+    reply = rpc::PubsubLongPollingReply();
+  };
 
-//   std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
-//       [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
-//   // If there's no connection, it will return false.
-//   ASSERT_FALSE(subscriber->PublishIfPossible());
-//   // Try connecting it. Should return true.
-//   ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
-//   // If connecting it again, it should fail the request.
-//   ASSERT_FALSE(subscriber->ConnectToSubscriber(reply));
-//   // Since there's no published objects, it should return false.
-//   ASSERT_FALSE(subscriber->PublishIfPossible());
 
-//   std::unordered_set<ObjectID> published_objects;
-//   // Make sure publishing one object works as expected.
-//   auto oid = ObjectID::FromRandom();
-//   subscriber->QueueMessage(oid, /*try_publish=*/false);
-//   published_objects.emplace(oid);
-//   ASSERT_TRUE(subscriber->PublishIfPossible());
-//   ASSERT_TRUE(object_ids_published.count(oid) > 0);
-//   // Since the object is published, and there's no connection, it should return false.
-//   ASSERT_FALSE(subscriber->PublishIfPossible());
+  std::shared_ptr<Subscriber> subscriber = std::make_shared<Subscriber>(
+      [this]() { return current_time_; }, subscriber_timeout_ms_, 10);
+  // If there's no connection, it will return false.
+  ASSERT_FALSE(subscriber->PublishIfPossible());
+  // Try connecting it. Should return true.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
+  // If connecting it again, it should fail the request.
+  ASSERT_FALSE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
+  // Since there's no published objects, it should return false.
+  ASSERT_FALSE(subscriber->PublishIfPossible());
 
-//   // Add 3 oids and see if it works properly.
-//   for (int i = 0; i < 3; i++) {
-//     oid = ObjectID::FromRandom();
-//     subscriber->QueueMessage(oid, /*try_publish=*/false);
-//     published_objects.emplace(oid);
-//   }
-//   // Since there's no connection, objects won't be published.
-//   ASSERT_FALSE(subscriber->PublishIfPossible());
-//   ASSERT_TRUE(subscriber->ConnectToSubscriber(reply));
-//   ASSERT_TRUE(subscriber->PublishIfPossible());
-//   for (auto oid : published_objects) {
-//     ASSERT_TRUE(object_ids_published.count(oid) > 0);
-//   }
-//   ASSERT_TRUE(subscriber->AssertNoLeak());
-// }
+  std::unordered_set<ObjectID> published_objects;
+  // Make sure publishing one object works as expected.
+  auto oid = ObjectID::FromRandom();
+  subscriber->QueueMessage(absl::make_unique<rpc::PubMessage>(GeneratePubMessage(oid)), /*try_publish=*/false);
+  published_objects.emplace(oid);
+  ASSERT_TRUE(subscriber->PublishIfPossible());
+  ASSERT_TRUE(object_ids_published.count(oid) > 0);
+  // Since the object is published, and there's no connection, it should return false.
+  ASSERT_FALSE(subscriber->PublishIfPossible());
+
+  // Add 3 oids and see if it works properly.
+  for (int i = 0; i < 3; i++) {
+    oid = ObjectID::FromRandom();
+    subscriber->QueueMessage(absl::make_unique<rpc::PubMessage>(GeneratePubMessage(oid)), /*try_publish=*/false);
+    published_objects.emplace(oid);
+  }
+  // Since there's no connection, objects won't be published.
+  ASSERT_FALSE(subscriber->PublishIfPossible());
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
+  ASSERT_TRUE(subscriber->PublishIfPossible());
+  for (auto oid : published_objects) {
+    ASSERT_TRUE(object_ids_published.count(oid) > 0);
+  }
+  ASSERT_TRUE(subscriber->AssertNoLeak());
+}
 
 // TEST_F(PublisherTest, TestSubscriberBatchSize) {
 //   std::unordered_set<ObjectID> object_ids_published;

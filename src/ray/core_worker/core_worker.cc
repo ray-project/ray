@@ -2374,7 +2374,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     auto *wait_for_object_eviction_msg = pub_message.mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
     wait_for_object_eviction_msg->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
-    object_status_publisher_->Publish<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, pub_message, object_id);
+    object_status_publisher_->Publish<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, absl::make_unique<rpc::PubMessage>(pub_message), object_id);
     object_status_publisher_->UnregisterSubscription<ObjectID>(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
   };
 
@@ -2397,16 +2397,10 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  auto long_polling_reply_callback =
-      [send_reply_callback = std::move(send_reply_callback), reply,
-       subscriber_id](const rpc::PubsubLongPollingReply* queued_reply) {
-        RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
-        reply = queued_reply;
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
   object_status_publisher_->ConnectToSubscriber(subscriber_id,
-                                                std::move(long_polling_reply_callback));
+                                                reply,
+                                                std::move(send_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(

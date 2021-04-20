@@ -112,24 +112,25 @@ bool SubscriptionIndex<MessageID>::AssertNoLeak() const {
   return message_id_to_subscribers_.size() == 0 && subscribers_to_message_id_.size() == 0;
 }
 
-bool Subscriber::ConnectToSubscriber(
-    LongPollConnectCallback long_polling_reply_callback) {
-  if (long_polling_reply_callback_ == nullptr) {
-    long_polling_reply_callback_ = long_polling_reply_callback;
+bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (!long_polling_connection_) {
+    RAY_CHECK(reply != nullptr);
+    RAY_CHECK(send_reply_callback != nullptr);
+    long_polling_connection_ = absl::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
     last_connection_update_time_ms_ = get_time_ms_();
     return true;
   }
   return false;
 }
 
-void Subscriber::QueueMessage(const std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish) {
+void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish) {
   if (mailbox_.size() == 0) {
-    mailbox_.push_back(absl::make_unique<rpc::PubMessage>());
+    mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
   auto *next_long_polling_reply = mailbox_.back().get();
   // If the reply is too big, add a new entry.
-  if (next_long_polling_reply->pub_messages_size() > publish_batch_size_) {
-    mailbox_.push_back(absl::make_unique<rpc::PubMessage>());
+  if (next_long_polling_reply->pub_messages_size() >= publish_batch_size_) {
+    mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
 
   // Update the long polling reply.
@@ -141,13 +142,17 @@ void Subscriber::QueueMessage(const std::unique_ptr<rpc::PubMessage> pub_message
 }
 
 bool Subscriber::PublishIfPossible(bool force) {
-  if (long_polling_reply_callback_ == nullptr) {
+  if (!long_polling_connection_) {
     return false;
   }
 
   if (force || mailbox_.size() > 0) {
-    long_polling_reply_callback_(mailbox_.front());
-    long_polling_reply_callback_ = nullptr;
+    // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
+    long_polling_connection_->reply->Swap(mailbox_.front().get());
+    long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+
+    // Clean up & update metadata.
+    long_polling_connection_.reset(nullptr);
     mailbox_.pop_front();
     last_connection_update_time_ms_ = get_time_ms_();
     return true;
@@ -156,16 +161,16 @@ bool Subscriber::PublishIfPossible(bool force) {
 }
 
 bool Subscriber::AssertNoLeak() const {
-  return long_polling_reply_callback_ == nullptr && mailbox_.size() == 0;
+  return !long_polling_connection_ && mailbox_.size() == 0;
 }
 
 bool Subscriber::IsDisconnected() const {
-  return long_polling_reply_callback_ == nullptr &&
+  return !long_polling_connection_ &&
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
 
 bool Subscriber::IsActiveConnectionTimedOut() const {
-  return long_polling_reply_callback_ != nullptr &&
+  return long_polling_connection_ &&
          get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
 }
 
@@ -175,9 +180,10 @@ template class pub_internal::SubscriptionIndex<ObjectID>;
 }  // namespace pub_internal
 
 void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
-                                    LongPollConnectCallback long_poll_connect_callback) {
+                                    rpc::PubsubLongPollingReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
-  RAY_CHECK(long_poll_connect_callback != nullptr);
+  RAY_CHECK(send_reply_callback != nullptr);
 
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
@@ -192,7 +198,7 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
 
   // Since the long polling connection is synchronous between the client and
   // coordinator, when it connects, the connection shouldn't have existed.
-  RAY_CHECK(subscriber->ConnectToSubscriber(std::move(long_poll_connect_callback)));
+  RAY_CHECK(subscriber->ConnectToSubscriber(reply, std::move(send_reply_callback)));
   subscriber->PublishIfPossible();
 }
 
@@ -211,7 +217,7 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type, const 
 }
 
 template <typename MessageID>
-void Publisher::Publish(const rpc::ChannelType channel_type, const std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id) {
+void Publisher::Publish(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id) {
   absl::MutexLock lock(&mutex_);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
@@ -224,6 +230,7 @@ void Publisher::Publish(const rpc::ChannelType channel_type, const std::unique_p
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
+    RAY_LOG(ERROR) << "Publish to subscriber for " << message_id;
     subscriber->QueueMessage(std::move(pub_message));
   }
 }
@@ -291,7 +298,7 @@ bool Publisher::AssertNoLeak() const {
 // We need to define this in order for the compiler to find the definition.
 // TODO(sang): Encapsulate these methods to inheritable Channel class and only define Channel classes templates here.
 template bool Publisher::UnregisterSubscription<ObjectID>(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &message_id);
-template void Publisher::Publish<ObjectID>(const rpc::ChannelType channel_type, const std::unique_ptr<rpc::PubMessage> pub_message, const ObjectID &message_id);
+template void Publisher::Publish<ObjectID>(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const ObjectID &message_id);
 template void Publisher::RegisterSubscription<ObjectID>(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &message_id);
 
 }  // namespace pubsub
