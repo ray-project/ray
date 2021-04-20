@@ -66,6 +66,7 @@ class DataClient:
             wait_for_ready=True)
         try:
             for response in resp_stream:
+                logger.error(f"Got Response: {response}")
                 if response.req_id == 0:
                     # This is not being waited for.
                     logger.debug(f"Got unawaited response {response}")
