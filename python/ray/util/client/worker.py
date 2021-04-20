@@ -170,7 +170,7 @@ class Worker:
     def register_callback(
             self, ref: ClientObjectRef,
             callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
-        req = ray_client_pb2.GetRequest(id=ref.id)
+        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
         self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:

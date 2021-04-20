@@ -254,6 +254,32 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def GetObject(self, request, context=None):
         return self._get_object(request, "", context)
 
+    def _async_get_object(self, request, client_id: str, req_id: int, context):
+        if request.id not in self.object_refs[client_id]:
+            return ray_client_pb2.GetResponse(valid=False)
+        try:
+            assert request.asynchronous
+            assert context is not None
+            objectref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % objectref)
+            with disable_client_hook():
+                loop = asyncio.get_event_loop()
+
+                def f(result):
+                    serialized = dumps_from_server(result, client_id, self)
+                    resp = ray_client_pb2.DataResponse(
+                        get=ray_client_pb2.GetResponse(
+                            valid=True, data=serialized))
+                    resp.req_id = req_id
+
+                    loop.create_task(context.write(resp))
+
+                objectref._on_completed(f)
+                return None
+        except Exception as e:
+            return ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
+
     def _get_object(self, request, client_id: str, context=None):
         if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)

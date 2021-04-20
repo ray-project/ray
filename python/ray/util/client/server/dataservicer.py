@@ -48,8 +48,17 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 else:
                     assert accepted_connection
                     if req_type == "get":
-                        get_resp = self.basic_service._get_object(
-                            req.get, client_id)
+                        get_resp = None
+                        if req.get.asynchronous:
+                            get_resp = self.basic_service._async_get_object(
+                                req.get, client_id, req.req_id, context)
+                            if get_resp is None:
+                                # The response for this request will be sent
+                                # when the object is ready.
+                                continue
+                        else:
+                            get_resp = self.basic_service._get_object(
+                                req.get, client_id)
                         resp = ray_client_pb2.DataResponse(get=get_resp)
                     elif req_type == "put":
                         put_resp = self.basic_service._put_object(
