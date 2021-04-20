@@ -108,7 +108,7 @@ class VTraceLoss:
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
-        
+
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
@@ -233,6 +233,8 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 def stats(policy, train_batch):
     return {}
+
+
 #        "cur_lr": policy.cur_lr,
 #        "policy_loss": policy.loss.pi_loss,
 #        "entropy": policy.loss.mean_entropy,

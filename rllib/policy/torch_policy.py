@@ -149,12 +149,12 @@ class TorchPolicy(Policy):
                 if i < config["num_gpus"]:
                     self.devices.append(torch.device("cuda:{}".format(id_)))
             print(f"devices={self.devices}")
-            self.device = self.devices[0] #torch.device("cuda")
-#            self.model = model.to(self.device)
+            self.device = self.devices[0]  #torch.device("cuda")
+            #            self.model = model.to(self.device)
             ids = []
             for i, id_ in enumerate(gpu_ids):
                 if i < config["num_gpus"]:
-                        ids.append(id_)
+                    ids.append(id_)
             print(ids)
             #self.model = model.to(torch.device("cuda"))
             #self.model_gpu_towers = nn.parallel.replicate(
@@ -167,12 +167,15 @@ class TorchPolicy(Policy):
                 print("copy done!")
             self.model = self.model_gpu_towers[0]
             print("Policy's model-GPU towers={}".format(self.model_gpu_towers))
-            print("Policy's model's devices: {}".format([next(iter(self.model_gpu_towers[i].parameters())).device for i, id_ in enumerate(ids)]))
+            print("Policy's model's devices: {}".format([
+                next(iter(self.model_gpu_towers[i].parameters())).device
+                for i, id_ in enumerate(ids)
+            ]))
 
         # Move model to device.
         #self.model = self.model_gpu_towers[0] #model.to(self.device)
         print("Policy's `device`={}".format(self.devices[0]))
-        
+
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
         # first, then its value function (e.g. in a loss function), in
@@ -533,7 +536,9 @@ class TorchPolicy(Policy):
                 if tower_outputs[0][0][i] is not None:
                     all_grads.append(
                         torch.mean(
-                            torch.stack([t[0][i].to(self.device) for t in tower_outputs]),
+                            torch.stack([
+                                t[0][i].to(self.device) for t in tower_outputs
+                            ]),
                             dim=0))
                 else:
                     all_grads.append(None)
@@ -815,7 +820,8 @@ class TorchPolicy(Policy):
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
                         loss_out[opt_idx].backward(
-                            retain_graph=True)#(opt_idx < len(self._optimizers) - 1))
+                            retain_graph=True
+                        )  #(opt_idx < len(self._optimizers) - 1))
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
