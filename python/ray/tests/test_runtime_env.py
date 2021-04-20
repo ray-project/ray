@@ -112,44 +112,46 @@ def test_travel():
         file_paths = set()
         item_num = 0
         excludes = []
-
-        def construct(path, excluded=False):
-            global item_num
+        root = Path(tmp_dir) / "test"
+        def construct(path, excluded=False, depth=0):
+            nonlocal item_num
             path.mkdir(parents=True)
             if not excluded:
-                dir_paths.add(path)
-            if item_num > 1000:
+                dir_paths.add(str(path))
+            if depth > 8:
                 return
-            dir_num = random.randint(0, 3)
-            file_num = random.randint(0, 2)
+            if item_num > 500:
+                return
+            dir_num = random.randint(0, 10)
+            file_num = random.randint(0, 10)
             for _ in range(dir_num):
-                uid = uuid.uuid5()
+                uid = str(uuid.uuid4()).split("-")[0]
                 dir_path = path / uid
-                exclud_sub = random.randint(0, 1) == 0
+                exclud_sub = random.randint(0, 5) == 0
                 if not excluded and exclud_sub:
                     if random.randint(0, 1) == 0:
                         excludes.append(str(dir_path.absolute()))
                     else:
                         excludes.append(str(dir_path))
-                construct(dir_path, exclud_sub or excluded)
+                if not excluded:
+                    construct(dir_path, exclud_sub or excluded, depth + 1)
                 item_num += 1
             if item_num > 1000:
                 return
 
             for _ in range(file_num):
-                uid = uuid.uuid5()
+                uid = str(uuid.uuid4()).split("-")[0]
                 with (path / uid).open("w") as f:
-                    v = random.randint()
+                    v = random.randint(0, 1000)
                     f.write(str(v))
                     if not excluded:
-                        if random.randint(0, 1) == 0:
+                        if random.randint(0, 5) == 0:
                             excludes.append(str(path / uid))
                         else:
-                            file_paths.add((path / uid, v))
+                            file_paths.add((str(path / uid), str(v)))
                 item_num += 1
-
-        exclude_spec = ray._private.runtime_env._get_exclude_spec(
-            Path(tmp_dir), excludes)
+        construct(root)
+        exclude_spec = ray._private.runtime_env._get_exclude_spec(root, excludes)
         visited_dir_paths = set()
         visited_file_paths = set()
 
@@ -157,10 +159,10 @@ def test_travel():
             if path.is_dir():
                 visited_dir_paths.add(str(path))
             else:
-                visited_file_paths.add(str(path))
+                with open(path) as f:
+                    visited_file_paths.add((str(path), f.read()))
 
-        ray._private.runtime_env._dir_travel(
-            Path(tmp_dir), exclude_spec, handler)
+        ray._private.runtime_env._dir_travel(root, exclude_spec, handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
 
