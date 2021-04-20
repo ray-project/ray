@@ -108,7 +108,7 @@ class VTraceLoss:
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
-
+        
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
@@ -181,6 +181,16 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
+    # Store per tower (for stats_fn).
+    #values_batched = make_time_major(
+    #    policy,
+    #    train_batch.get("seq_lens"),
+    #    values,
+    #    drop_last=policy.config["vtrace"])
+    #policy._explained_variance = explained_variance(
+    #    torch.reshape(policy.loss.value_targets, [-1]),
+    #    torch.reshape(values_batched, [-1]))
+
     return policy.loss.total_loss
 
 
@@ -222,23 +232,15 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 def stats(policy, train_batch):
-    values_batched = make_time_major(
-        policy,
-        train_batch.get("seq_lens"),
-        policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
-
-    return {
-        "cur_lr": policy.cur_lr,
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.mean_entropy,
-        "entropy_coeff": policy.entropy_coeff,
-        "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
-        "vf_explained_var": explained_variance(
-            torch.reshape(policy.loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
-    }
+    return {}
+#        "cur_lr": policy.cur_lr,
+#        "policy_loss": policy.loss.pi_loss,
+#        "entropy": policy.loss.mean_entropy,
+#        "entropy_coeff": policy.entropy_coeff,
+#        "var_gnorm": global_norm(policy.model.trainable_variables()),
+#        "vf_loss": policy.loss.vf_loss,
+#        "vf_explained_var": policy._explained_variance,
+#    }
 
 
 def choose_optimizer(policy, config):

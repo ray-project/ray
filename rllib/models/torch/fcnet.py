@@ -122,9 +122,9 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         obs = input_dict["obs_flat"].float()
         self._last_flat_in = obs.reshape(obs.shape[0], -1)
-        print("in forward: device of last_flat_in={}".format(self._last_flat_in.device))
+        #print("in forward: device of last_flat_in={}".format(self._last_flat_in.device))
         matrix = next(iter(self._hidden_layers.parameters()))
-        print(" -> matrix device={}".format(matrix.device))
+        #print(" -> matrix device={}".format(matrix.device))
         self._features = self._hidden_layers(self._last_flat_in)
         logits = self._logits(self._features) if self._logits else \
             self._features

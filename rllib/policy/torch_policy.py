@@ -331,7 +331,7 @@ class TorchPolicy(Policy):
                         raise e
             else:
                 dist_class = self.dist_class
-                print("in compute_actions_helper: input_dict[obs].device={}".format(input_dict["obs"].device))
+                #print("in compute_actions_helper: input_dict[obs].device={}".format(input_dict["obs"].device))
                 dist_inputs, state_out = self.model(input_dict, state_batches,
                                                     seq_lens)
 
@@ -515,7 +515,7 @@ class TorchPolicy(Policy):
                 len_ -= shard_len
                 start += shard_len
 
-        # Copy weights of main model to all towers.
+            # Copy weights of main model to all towers.
             state_dict = self.model.state_dict()
             for tower in self.model_gpu_towers:
                 tower.load_state_dict(state_dict)
@@ -531,7 +531,7 @@ class TorchPolicy(Policy):
                 if tower_outputs[0][0][i] is not None:
                     all_grads.append(
                         torch.mean(
-                            torch.stack([t[0][i] for t in tower_outputs]),
+                            torch.stack([t[0][i].to(self.device) for t in tower_outputs]),
                             dim=0))
                 else:
                     all_grads.append(None)
@@ -813,7 +813,7 @@ class TorchPolicy(Policy):
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
                         loss_out[opt_idx].backward(
-                            retain_graph=(opt_idx < len(self._optimizers) - 1))
+                            retain_graph=True)#(opt_idx < len(self._optimizers) - 1))
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
@@ -854,6 +854,9 @@ class TorchPolicy(Policy):
                         e.args[0] + "\n" +
                         "In tower {} on device {}".format(shard_idx, device))
 
+        #for opt in self._optimizers:
+        #    opt.zero_grad()
+
         # Single device (GPU) case.
         if len(self.devices) == 1:
             _worker(0, self.model, sample_batches[0], self.device)
@@ -880,7 +883,7 @@ class TorchPolicy(Policy):
         for shard_idx in range(len(sample_batches)):
             output = results[shard_idx]
             if isinstance(output, Exception):
-                output.reraise()
+                raise output
             outputs.append(results[shard_idx])
         return outputs
 
