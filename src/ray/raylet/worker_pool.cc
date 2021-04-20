@@ -762,14 +762,12 @@ void WorkerPool::TryKillingIdleWorkers() {
           if (!status.ok() || r.success()) {
             auto &worker_state = GetStateForLanguage(worker->GetLanguage());
             // If we could kill the worker properly, we remove them from the idle pool.
-            if (RemoveWorker(worker_state.idle, worker)) {
-              // If the worker is not idle at this moment, we don't mark them dead.
-              // In this case, the core worker will exit the process after
-              // finishing the assigned task, and DisconnectWorker will handle this
-              // part.
-              if (!worker->IsDead()) {
-                worker->MarkDead();
-              }
+            RemoveWorker(worker_state.idle, worker);
+            // We always mark the worker as dead.
+            // If the worker is not idle at this moment, we'd want to mark it as dead
+            // so it won't be reused later.
+            if (!worker->IsDead()) {
+              worker->MarkDead();
             }
           } else {
             // We re-insert the idle worker to the back of the queue if it fails to kill
@@ -851,7 +849,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
           it->first->GetAssignedJobId() != task_spec.JobId() ||
-          state.pending_disconnection_workers.count(it->first) > 0) {
+          state.pending_disconnection_workers.count(it->first) > 0 ||
+          it->first->IsDead()) {
         continue;
       }
       if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
