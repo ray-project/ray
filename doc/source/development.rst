@@ -120,9 +120,9 @@ Building Ray on Windows (full)
 
 3. Add the following Miniconda subdirectories to PATH. If Miniconda is installed in a different directory, adjust the paths accordingly.
 
- - ``C:\ProgramData\Miniconda3``
- - ``C:\ProgramData\Miniconda3\Scripts``
- - ``C:\ProgramData\Miniconda3\Library\bin``
+- ``C:\ProgramData\Miniconda3``
+- ``C:\ProgramData\Miniconda3\Scripts``
+- ``C:\ProgramData\Miniconda3\Library\bin``
 
 4. Define an environment variable BAZEL_SH to point to bash.exe (if git for Windows installed for all users: ``C:\Program Files\Git\bin\bash.exe``).
 
