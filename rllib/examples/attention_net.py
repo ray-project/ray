@@ -75,18 +75,23 @@ if __name__ == "__main__":
     # >> from ray.rllib.agents.ppo import PPOTrainer
     # >>
     # >> trainer = PPOTrainer(config)
+    # >> num_transformers = config["model"]["attention_num_transformer_units"]
     # >> env = RepeatAfterMeEnv({})
     # >> obs = env.reset()
-    # >> init_state = state = np.zeros(
-    #    [100 (attention_memory_inference), 64 (attention_dim)], np.float32)
+    # >> init_state = state = [
+    # ..     np.zeros([100, 32], np.float32) for _ in range(num_transformers)
+    # .. ]
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(obs, [state])
+    # >>     a, state_out, _ = trainer.compute_action(obs, state)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:
     # >>         obs = env.reset()
     # >>         state = init_state
     # >>     else:
-    # >>         state = np.concatenate([state, [state_out[0]]])[1:]
+    # >>         state = [
+    # ..             np.concatenate([state[i], [state_out[i]]], axis=0)[1:]
+    # ..             for i in range(num_transformers)
+    # ..         ]
 
     # We use tune here, which handles env and trainer creation for us.
     results = tune.run(args.run, config=config, stop=stop, verbose=2)

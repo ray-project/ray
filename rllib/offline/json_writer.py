@@ -114,7 +114,7 @@ def _to_json(batch: SampleBatchType, compress_columns: List[str]) -> str:
         policy_batches = {}
         for policy_id, sub_batch in batch.policy_batches.items():
             policy_batches[policy_id] = {}
-            for k, v in sub_batch.data.items():
+            for k, v in sub_batch.items():
                 policy_batches[policy_id][k] = _to_jsonable(
                     v, compress=k in compress_columns)
         out["policy_batches"] = policy_batches

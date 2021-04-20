@@ -91,7 +91,7 @@ def test_handle_http_args(serve_instance):
     }
 
     resp_web = requests.post(
-        "http://127.0.0.1:8000/Endpoint?arg1=1&arg2=2",
+        "http://127.0.0.1:8000/Endpoint/?arg1=1&arg2=2",
         headers=ground_truth["headers"],
         json=ground_truth["json"]).json()
 
@@ -122,8 +122,8 @@ def test_handle_inject_starlette_request(serve_instance):
 
     wrapper_model.deploy()
 
-    for route in ["/echo", "/wrapper"]:
-        resp = requests.get(f"http://127.0.0.1:8000{route}")
+    for route in ["echo", "wrapper"]:
+        resp = requests.get(f"http://127.0.0.1:8000/{route}")
         request_type = resp.text
         assert request_type == "<class 'starlette.requests.Request'>"
 

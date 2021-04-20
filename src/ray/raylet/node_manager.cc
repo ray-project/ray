@@ -282,7 +282,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       << "max_task_args_memory_fraction must be a nonzero fraction.";
   int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
                                  RayConfig::instance().max_task_args_memory_fraction();
-  RAY_CHECK(max_task_args_memory > 0);
+  if (max_task_args_memory <= 0) {
+    RAY_LOG(WARNING)
+        << "Max task args should be a fraction of the object store capacity, but object "
+           "store capacity is zero or negative. Allowing task args to use 100% of the "
+           "local object store. This can cause ObjectStoreFullErrors if the tasks' "
+           "return values are greater than the remaining capacity.";
+    max_task_args_memory = 0;
+  }
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -701,6 +708,9 @@ void NodeManager::WarnResourceDeadlock() {
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
+  // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
+  // tasks are never be scheduled.
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::GetObjectManagerProfileInfo() {

@@ -12,7 +12,6 @@ py_test_module_list(
   files = [
 #    "test_dynres.py",  # dyn res not implemented
     "test_async.py",
-    "test_actor.py",
     "test_actor_advanced.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
@@ -26,7 +25,6 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_cancel.py",
-    "test_cli.py",
     "test_client.py",
     "test_client_init.py",
     "test_client_library_integration.py",
@@ -48,6 +46,16 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
@@ -59,11 +67,9 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_object_manager.py",
     "test_object_spilling.py",
-    "test_object_spilling_2.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
-    "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
     "test_scheduling.py",
     "test_serialization.py",
@@ -74,6 +80,17 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_k_to_z"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_spilling_2.py",
+    "test_reference_counting_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -119,8 +136,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_cli.py",
     "test_failure.py",
-    "test_failure_2.py",
     "test_stress_failure.py",
   ],
   size = "large",
@@ -131,8 +148,19 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_failure_2.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_placement_group.py",
     "test_runtime_env.py",
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -165,6 +193,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_pydantic_serialization",
+    size = "small",
+    srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
 
 py_test_module_list(
   files = [

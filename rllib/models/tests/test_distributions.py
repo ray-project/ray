@@ -2,7 +2,7 @@ from functools import partial
 import numpy as np
 from gym.spaces import Box, Dict, Tuple
 from scipy.stats import beta, norm
-import tree
+import tree  # pip install dm_tree
 import unittest
 
 from ray.rllib.models.jax.jax_action_dist import JAXCategorical

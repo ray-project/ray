@@ -2219,7 +2219,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [=] {
+        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (exiting_) return;
@@ -2759,13 +2759,16 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
                             rpc::SendReplyCallback send_reply_callback) {
   bool own_objects = reference_counter_->OwnObjects();
   // Fail the request if it owns any object.
-  if (own_objects) {
-    reply->set_success(false);
-  } else {
-    reply->set_success(true);
-    Exit(rpc::WorkerExitType::INTENDED_EXIT);
-  }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  reply->set_success(!own_objects);
+  send_reply_callback(Status::OK(),
+                      [own_objects, this]() {
+                        // If it doesn't own objects, we'll exit it
+                        if (!own_objects) {
+                          Exit(rpc::WorkerExitType::INTENDED_EXIT);
+                        }
+                      },
+                      // We need to kill it if grpc failed.
+                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
