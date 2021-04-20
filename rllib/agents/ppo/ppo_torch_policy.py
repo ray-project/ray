@@ -42,7 +42,7 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch, is_training=True)
+    logits, state = model(train_batch)
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -110,8 +110,7 @@ def ppo_surrogate_loss(
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._vf_explained_var = explained_variance(
-        train_batch[Postprocessing.VALUE_TARGETS],
-        policy.model.value_function())
+        train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
@@ -167,7 +166,7 @@ def vf_preds_fetches(
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function(),
+        SampleBatch.VF_PREDS: model.value_function(),
     }
 
 
@@ -219,7 +218,7 @@ class ValueNetworkMixin:
                 input_dict = self._lazy_tensor_dict(input_dict)
                 model_out, _ = self.model(input_dict)
                 # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                return self.model.value_function()[0].item()
 
         # When not doing GAE, we do not require the value function's output.
         else:

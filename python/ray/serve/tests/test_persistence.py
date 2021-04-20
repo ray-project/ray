@@ -10,15 +10,15 @@ ray.init(address="{}")
 
 from ray import serve
 
-def driver(starlette_request):
+@serve.deployment
+def driver():
     return "OK!"
 
-serve.create_backend("driver", driver)
-serve.create_endpoint("driver", backend="driver", route="/driver")
+driver.deploy()
 """.format(ray.worker._global_node._redis_address)
     ray.test_utils.run_string_as_driver(script)
 
-    handle = serve.get_handle("driver")
+    handle = serve.get_deployment("driver").get_handle()
     assert ray.get(handle.remote()) == "OK!"
 
 

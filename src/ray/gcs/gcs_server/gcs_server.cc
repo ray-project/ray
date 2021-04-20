@@ -101,6 +101,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
+  // Init KV Manager
+  InitKVManager();
+
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
 
@@ -121,6 +124,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Print debug info periodically.
   PrintDebugInfo();
+
+  // Print the asio event loop stats periodically if configured.
+  PrintAsioStats();
 
   CollectStats();
 
@@ -312,6 +318,13 @@ void GcsServer::InitStatsHandler() {
   rpc_server_.RegisterService(*stats_service_);
 }
 
+void GcsServer::InitKVManager() {
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(redis_client_);
+  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
+  // Register service.
+  rpc_server_.RegisterService(*kv_service_);
+}
+
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ =
       std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_pub_sub_);
@@ -393,6 +406,18 @@ void GcsServer::PrintDebugInfo() {
   execute_after(main_service_, [this] { PrintDebugInfo(); },
                 (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
                  60000) /* milliseconds */);
+}
+
+void GcsServer::PrintAsioStats() {
+  /// If periodic asio stats print is enabled, it will print it.
+  const auto asio_stats_print_interval_ms =
+      RayConfig::instance().asio_stats_print_interval_ms();
+  if (asio_stats_print_interval_ms != -1 &&
+      RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    RAY_LOG(INFO) << "Event loop stats:\n\n" << main_service_.StatsString() << "\n\n";
+    execute_after(main_service_, [this] { PrintAsioStats(); },
+                  asio_stats_print_interval_ms /* milliseconds */);
+  }
 }
 
 }  // namespace gcs

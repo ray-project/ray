@@ -361,6 +361,7 @@ class SampleBatch(dict):
                 {k: v[start:end]
                  for k, v in self.items()},
                 _seq_lens=None,
+                _is_training=self.is_training,
                 _time_major=self.time_major)
 
     @PublicAPI
@@ -430,7 +431,9 @@ class SampleBatch(dict):
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.values())
+        return sum(
+            v.nbytes if isinstance(v, np.ndarray) else sys.getsizeof(v)
+            for v in self.values())
 
     def get(self, key, default=None):
         try:
@@ -448,7 +451,8 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        self.accessed_keys.add(key)
+        if not hasattr(self, key):
+            self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
         if key == "is_training":

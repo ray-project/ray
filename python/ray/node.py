@@ -137,10 +137,6 @@ class Node:
         self._redis_address = ray_params.redis_address
         self._config = ray_params._system_config or {}
 
-        # Enable Plasma Store as a thread by default.
-        if "plasma_store_as_thread" not in self._config:
-            self._config["plasma_store_as_thread"] = True
-
         # Configure log rotation parameters.
         self.max_bytes = int(
             os.getenv("RAY_ROTATION_MAX_BYTES",
@@ -212,6 +208,10 @@ class Node:
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
+            gcs_server_port = os.getenv(
+                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+            if gcs_server_port:
+                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             self._webui_url = None
         else:
             self._webui_url = (
@@ -675,7 +675,7 @@ class Node:
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
-             port_blacklist=self._ray_params.reserved_ports)
+             port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (

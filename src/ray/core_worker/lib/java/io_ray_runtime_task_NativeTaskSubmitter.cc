@@ -149,11 +149,10 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
-    jstring java_jvm_options = (jstring)env->GetObjectField(
+    jobject java_jvm_options = env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_jvm_options);
     if (java_jvm_options) {
-      std::string jvm_options = JavaStringToNativeString(env, java_jvm_options);
-      dynamic_worker_options.emplace_back(jvm_options);
+      JavaStringListToNativeStringVector(env, java_jvm_options, &dynamic_worker_options);
     }
     max_concurrency = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_concurrency));

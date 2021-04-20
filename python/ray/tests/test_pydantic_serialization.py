@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 from fastapi import FastAPI
 from pydantic import BaseModel
-from ray.serve.utils import register_custom_serializers
 
 import ray
 
@@ -12,7 +11,6 @@ import ray
 @pytest.fixture(scope="session")
 def start_ray():
     ray.init(ignore_reinit_error=True)
-    register_custom_serializers()
 
 
 def test_serialize_cls(start_ray):
@@ -151,7 +149,6 @@ def test_serialize_app_imported_closure(start_ray):
 def test_serialize_serve_dataclass(start_ray):
     @dataclass
     class BackendMetadata:
-        accepts_batches: bool = False
         is_blocking: bool = True
         autoscaling_config: Optional[Dict[str, Any]] = None
 
@@ -165,6 +162,21 @@ def test_serialize_serve_dataclass(start_ray):
         pass
 
     ray.get(consume.remote(BackendConfig()))
+
+
+def test_serialize_nested_field(start_ray):
+    class B(BaseModel):
+        v: List[int]
+
+    # this shouldn't error
+    B(v=[1])
+
+    @ray.remote
+    def func():
+        # this shouldn't error
+        return B(v=[1])
+
+    ray.get(func.remote())
 
 
 if __name__ == "__main__":

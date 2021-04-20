@@ -1,5 +1,3 @@
-import asyncio
-from functools import singledispatch
 import importlib
 from itertools import groupby
 import inspect
@@ -21,6 +19,7 @@ import pydantic
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.exceptions import RayServeException
+from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -85,19 +84,24 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    arg = request_item.args[0] if len(request_item.args) == 1 else None
+    if len(request_item.args) <= 1:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-    # If the input data from handle is web request, we don't need to wrap
-    # it in ServeRequest.
-    if isinstance(arg, starlette.requests.Request):
-        return arg
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, starlette.requests.Request):
+            return (arg, ), {}
+        elif isinstance(arg, HTTPRequestWrapper):
+            return (build_starlette_request(arg.scope, arg.body), ), {}
+        elif request_item.metadata.use_serve_request:
+            return (ServeRequest(
+                arg,
+                request_item.kwargs,
+                headers=request_item.metadata.http_headers,
+                method=request_item.metadata.http_method,
+            ), ), {}
 
-    return ServeRequest(
-        arg,
-        request_item.kwargs,
-        headers=request_item.metadata.http_headers,
-        method=request_item.metadata.http_method,
-    )
+    return request_item.args, request_item.kwargs
 
 
 def _get_logger():
@@ -180,62 +184,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-@singledispatch
-def chain_future(src, dst):
-    """Base method for chaining futures together.
-
-    Chaining futures means the output from source future(s) are written as the
-    results of the destination future(s). This method can work with the
-    following inputs:
-        - src: Future, dst: Future
-        - src: List[Future], dst: List[Future]
-    """
-    raise NotImplementedError()
-
-
-@chain_future.register(asyncio.Future)
-def _chain_future_single(src: asyncio.Future, dst: asyncio.Future):
-    asyncio.futures._chain_future(src, dst)
-
-
-@chain_future.register(list)
-def _chain_future_list(src: List[asyncio.Future], dst: List[asyncio.Future]):
-    if len(src) != len(dst):
-        raise ValueError(
-            "Source and destination list doesn't have the same length. "
-            "Source: {}. Destination: {}.".foramt(len(src), len(dst)))
-
-    for s, d in zip(src, dst):
-        chain_future(s, d)
-
-
-def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
-    """Unpack the result of source future to num_items futures.
-
-    This function takes in a Future and splits its result into many futures. If
-    the result of the source future is an exception, then all destination
-    futures will have the same exception.
-    """
-    dest_futures = [
-        asyncio.get_event_loop().create_future() for _ in range(num_items)
-    ]
-
-    def unwrap_callback(fut: asyncio.Future):
-        exception = fut.exception()
-        if exception is not None:
-            [f.set_exception(exception) for f in dest_futures]
-            return
-
-        result = fut.result()
-        assert len(result) == num_items
-        for item, future in zip(result, dest_futures):
-            future.set_result(item)
-
-    src.add_done_callback(unwrap_callback)
-
-    return dest_futures
-
-
 def get_all_node_ids():
     """Get IDs for all nodes in the cluster.
 
@@ -280,11 +228,8 @@ def import_attr(full_path: str):
     return getattr(module, attr_name)
 
 
-async def mock_imported_function(batch):
-    result = []
-    for request in batch:
-        result.append(await request.body())
-    return result
+async def mock_imported_function(request):
+    return await request.body()
 
 
 class MockImportedBackend:
@@ -302,17 +247,11 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, batch):
-        return [{
-            "arg": self.arg,
-            "config": self.config
-        } for _ in range(len(batch))]
+    def __call__(self, request):
+        return {"arg": self.arg, "config": self.config}
 
-    async def other_method(self, batch):
-        responses = []
-        for request in batch:
-            responses.append(await request.body())
-        return responses
+    async def other_method(self, request):
+        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,
@@ -367,45 +306,6 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
-
-
-def register_custom_serializers():
-    """Install custom serializers needed for Ray Serve."""
-    import starlette.datastructures
-    import pydantic.fields
-
-    assert ray.is_initialized(
-    ), "This functional must be ran with Ray initialized."
-
-    # Pydantic's Cython validators are not serializable.
-    # https://github.com/cloudpipe/cloudpickle/issues/408
-    ray.worker.global_worker.run_function_on_all_workers(
-        lambda _: ray.util.register_serializer(
-            pydantic.fields.ModelField,
-            serializer=lambda o: {
-                "name": o.name,
-                "type_": o.type_,
-                "class_validators": o.class_validators,
-                "model_config": o.model_config,
-                "default": o.default,
-                "default_factory": o.default_factory,
-                "required": o.required,
-                "alias": o.alias,
-                "field_info": o.field_info,
-            },
-            deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
-        )
-    )
-
-    # FastAPI's app.state object is not serializable
-    # because it overrides __getattr__
-    ray.worker.global_worker.run_function_on_all_workers(
-        lambda _: ray.util.register_serializer(
-            starlette.datastructures.State,
-            serializer=lambda s: s._state,
-            deserializer=lambda s: starlette.datastructures.State(s),
-        )
-    )
 
 
 class ASGIHTTPSender:

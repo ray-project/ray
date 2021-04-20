@@ -1,10 +1,10 @@
 import dask
 import pytest
-import sys
 
 import ray
-if sys.platform != "win32":
-    from ray.util.dask import ray_dask_get, RayDaskCallback
+from ray._private.client_mode_hook import enable_client_mode
+from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.util.dask import ray_dask_get, RayDaskCallback
 
 
 @dask.delayed
@@ -12,7 +12,6 @@ def add(x, y):
     return x + y
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_callback_active():
     """Test that callbacks are active within context"""
     assert not RayDaskCallback.ray_active
@@ -23,7 +22,6 @@ def test_callback_active():
     assert not RayDaskCallback.ray_active
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_presubmit_shortcircuit(ray_start_regular_shared):
     """
     Test that presubmit return short-circuits task submission, and that task's
@@ -45,7 +43,6 @@ def test_presubmit_shortcircuit(ray_start_regular_shared):
     assert result == 0
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_pretask_posttask_shared_state(ray_start_regular_shared):
     """
     Test that pretask return value is passed to corresponding posttask
@@ -66,7 +63,6 @@ def test_pretask_posttask_shared_state(ray_start_regular_shared):
     assert result == 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_postsubmit(ray_start_regular_shared):
     """
     Test that postsubmit is called after each task.
@@ -100,7 +96,6 @@ def test_postsubmit(ray_start_regular_shared):
     assert result == 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_postsubmit_all(ray_start_regular_shared):
     """
     Test that postsubmit_all is called once.
@@ -133,7 +128,6 @@ def test_postsubmit_all(ray_start_regular_shared):
     assert result == 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_finish(ray_start_regular_shared):
     """
     Test that finish callback is called once.
@@ -166,7 +160,6 @@ def test_finish(ray_start_regular_shared):
     assert result == 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multiple_callbacks(ray_start_regular_shared):
     """
     Test that multiple callbacks are supported.
@@ -203,7 +196,6 @@ def test_multiple_callbacks(ray_start_regular_shared):
     assert result == 5
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     """
     Test that pretask return values are passed to the correct corresponding
@@ -235,6 +227,41 @@ def test_pretask_posttask_shared_state_multi(ray_start_regular_shared):
     with cb1, cb2, cb3, cb4:
         z = add(2, 3)
         result = z.compute(scheduler=ray_dask_get)
+
+    assert result == 5
+
+
+def test_pretask_posttask_shared_state_multi_client(ray_start_regular_shared):
+    """
+    Repeat the last test with Ray client.
+    """
+
+    class PretaskPosttaskCallback(RayDaskCallback):
+        def __init__(self, suffix):
+            self.suffix = suffix
+
+        def _ray_pretask(self, key, object_refs):
+            return key + self.suffix
+
+        def _ray_posttask(self, key, result, pre_state):
+            assert pre_state == key + self.suffix
+
+    class PretaskOnlyCallback(RayDaskCallback):
+        def _ray_pretask(self, key, object_refs):
+            return "baz"
+
+    class PosttaskOnlyCallback(RayDaskCallback):
+        def _ray_posttask(self, key, result, pre_state):
+            assert pre_state is None
+
+    cb1 = PretaskPosttaskCallback("foo")
+    cb2 = PretaskOnlyCallback()
+    cb3 = PosttaskOnlyCallback()
+    cb4 = PretaskPosttaskCallback("bar")
+    with ray_start_client_server(), enable_client_mode():
+        with cb1, cb2, cb3, cb4:
+            z = add(2, 3)
+            result = z.compute(scheduler=ray_dask_get)
 
     assert result == 5
 
