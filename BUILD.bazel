@@ -1901,6 +1901,12 @@ gen_rule(
             "//streaming:copy_streaming_py_proto",
         ],
     }),
+    outs = ["build_streaming.out"],
+    cmd = """
+        date > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
 )
 
 copy_to_workspace(
