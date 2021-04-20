@@ -34,14 +34,9 @@ NODE_TYPE_FIELDS = {
     "podConfig": "node_config",
     "rayResources": "resources",
     "setupCommands": "worker_setup_commands",
-    "workerSetupCommands", "worker_setup_commands"
+    "workerSetupCommands": "worker_setup_commands"
 }
 
-PROVIDER_CONFIG = {
-    "type": "kubernetes",
-    "use_internal_ips": True,
-    "namespace": RAY_NAMESPACE
-}
 
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
@@ -67,10 +62,11 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     autoscaler."""
     config = translate(cluster_resource["spec"], dictionary=CONFIG_FIELDS)
     cluster_name = cluster_resource["metadata"]["name"]
+    namespace = cluster_resource["metadata"]["namespace"]
     config["available_node_types"] = get_node_types(cluster_resource,
                                                     cluster_name)
     config["cluster_name"] = cluster_name
-    config["provider"] = get_provider_config(cluster_name)
+    config["provider"] = get_provider_config(cluster_name, namespace)
     return config
 
 
@@ -94,7 +90,7 @@ def get_node_types(cluster_resource: Dict[str, Any], cluster_name) ->\
     return node_types
 
 
-def get_provider_config(cluster_name):
+def get_provider_config(cluster_name, namespace):
     default_kubernetes_config = _get_default_config({"type": "kubernetes"})
     default_provider_conf = default_kubernetes_config["provider"]
 
@@ -107,7 +103,7 @@ def get_provider_config(cluster_name):
     provider_conf = {}
     provider_conf["type"] = "kubernetes"
     provider_conf["use_internal_ips"] = True
-    provider_conf["namespace"] = RAY_NAMESPACE
+    provider_conf["namespace"] = namespace
     provider_conf["services"] = [head_service]
     return provider_conf
 
