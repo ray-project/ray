@@ -420,7 +420,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(metadata_len, buf_len, parsed_result.size)
+                self._size_check(address_len, metadata_len, buf_len,
+                                 parsed_result.size)
                 owner_address = f.read(address_len)
                 total += buf_len
                 metadata = f.read(metadata_len)
