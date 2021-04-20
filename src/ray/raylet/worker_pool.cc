@@ -772,13 +772,13 @@ void WorkerPool::TryKillingIdleWorkers() {
             }
           }
         } else {
-            // We re-insert the idle worker to the back of the queue if it fails to kill
-            // the worker (e.g., when the worker owns the object). Without this, if the
-            // first N workers own objects, it can't kill idle workers that are >= N+1.
-            const auto &idle_pair = idle_of_all_languages_.front();
-            idle_of_all_languages_.push_back(idle_pair);
-            idle_of_all_languages_.pop_front();
-            RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+          // We re-insert the idle worker to the back of the queue if it fails to kill
+          // the worker (e.g., when the worker owns the object). Without this, if the
+          // first N workers own objects, it can't kill idle workers that are >= N+1.
+          const auto &idle_pair = idle_of_all_languages_.front();
+          idle_of_all_languages_.push_back(idle_pair);
+          idle_of_all_languages_.pop_front();
+          RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
         }
         RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
         RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
