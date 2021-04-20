@@ -1,3 +1,4 @@
+import functools
 import gym
 from gym.spaces import Discrete, Tuple
 import numpy as np
@@ -14,7 +15,8 @@ class RandomEnv(gym.Env):
     configured as well.
     """
 
-    def __init__(self, config):
+    def __init__(self, config=None):
+        config = config or {}
         # Action space.
         self.action_space = config.get("action_space", Discrete(2))
         # Observation space from which to sample.
@@ -63,3 +65,6 @@ class RandomEnv(gym.Env):
 
 # Multi-agent version of the RandomEnv.
 RandomMultiAgentEnv = make_multiagent(lambda c: RandomEnv(c))
+RandomLargeObsSpaceEnv = functools.partial(
+    RandomEnv,
+    config={"observation_space": gym.spaces.Box(-1.0, 1.0, (5000, ))})

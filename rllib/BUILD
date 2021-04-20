@@ -697,7 +697,8 @@ py_test(
     main = "tests/test_memory_leak.py",
     size = "medium",
     srcs = ["tests/test_memory_leak.py"],
-    args = ["--run=PPO"]
+    data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
 

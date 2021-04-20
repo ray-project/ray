@@ -1,0 +1,9 @@
+memory-leak-test-ddpg:
+    stop:
+        timesteps_total: 10000
+    env:
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+    run: DDPG
+    config:
+        # Works for both torch and tf.
+        framework: tf

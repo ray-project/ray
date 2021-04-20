@@ -17,6 +17,7 @@
 # )
 
 import argparse
+import numpy as np
 import os
 from pathlib import Path
 import sys
@@ -40,7 +41,6 @@ parser.add_argument(
     "--local-mode",
     action="store_true",
     help="Run ray in local mode for easier debugging.")
-
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -83,26 +83,40 @@ if __name__ == "__main__":
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
-        passed = False
+        leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)
+            available_memory = ray.cluster_resources()["memory"]
             trials = run_experiments(experiments, resume=False, verbose=2)
         finally:
             ray.shutdown()
             _register_all()
 
-        for t in trials:
-            if (t.last_result["episode_reward_mean"] >=
-                    t.stopping_criterion["episode_reward_mean"]):
-                passed = True
+        # How many Mb are we expected to have used during the run?
+        mb_usage_threshold = 500
+        std_mem_percent_threshold = 0.5
+
+        for trial in trials:
+            # Simple check: Compare 3rd entry with last one.
+            mem_series = trial.metric_n_steps["perf/ram_util_percent"]["10"]
+            std_dev_mem = np.std(mem_series)
+            total_used = (
+                mem_series[-1] - mem_series[0]) / 100 * available_memory / 1e6
+            print(f"trial {trial}")
+            print(f" -> mem consumption % stddev "
+                  f"over last 10 iters={std_dev_mem} "
+                  f"(must be smaller {std_mem_percent_threshold})")
+            print(f" -> total mem used "
+                  f"over last 10 iters={total_used} "
+                  f"(must be smaller {mb_usage_threshold})")
+            if std_dev_mem < std_mem_percent_threshold and \
+                    total_used < mb_usage_threshold:
+                leaking = False
                 break
 
-        if passed:
-            print("Regression test PASSED")
+        if not leaking:
+            print("Memory leak test PASSED")
             break
         else:
-            print("Regression test FAILED on attempt {}".format(i + 1))
-
-        if not passed:
-            print("Overall regression FAILED: Exiting with Error.")
+            print("Memory leak test FAILED. Exiting with Error.")
             sys.exit(1)
