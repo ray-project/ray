@@ -36,48 +36,49 @@ If you are using a library that has built-in tracing support, the setup_tracing 
 
 Below is an example tracing startup hook that sets up the default Tracing Provider, exports spans to files in /tmp/spans, and does not have any Additional Instruments.
 .. code-block:: python
-    import ray
 
-    import os
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import (
-        ConsoleSpanExporter,
-        SimpleExportSpanProcessor,
-    )
-    from typing import Any
+  import ray
+  import os
+  from opentelemetry import trace
+  from opentelemetry.sdk.trace import TracerProvider
+  from opentelemetry.sdk.trace.export import (
+      ConsoleSpanExporter,
+      SimpleExportSpanProcessor,
+  )
+  from typing import Any
+  
+  
+  def setup_tracing(*args: Any, **kwargs: Any) -> None:
+      if getattr(ray, "__traced__", False):
+          return
+  
+      ray.__traced__ = True
+      # Sets the tracer_provider. This is only allowed once per execution
+      # context and will log a warning if attempted multiple times.
+      trace.set_tracer_provider(TracerProvider())
+      trace.get_tracer_provider().add_span_processor(
+          SimpleExportSpanProcessor(
+              ConsoleSpanExporter(
+                  out=open(f"/tmp/spans_file{os.getpid()}.json", "a")
+                  )
+          )
+      )
 
-
-    def setup_tracing(*args: Any, **kwargs: Any) -> None:
-        if getattr(ray, "__traced__", False):
-            return
-
-        ray.__traced__ = True
-        # Sets the tracer_provider. This is only allowed once per execution
-        # context and will log a warning if attempted multiple times.
-        trace.set_tracer_provider(TracerProvider())
-        trace.get_tracer_provider().add_span_processor(
-            SimpleExportSpanProcessor(
-                ConsoleSpanExporter(
-                    out=open(f"/tmp/spans_file{os.getpid()}.json", "a")
-                    )
-            )
-        )
     
 To run your program with the tracing hook, see the following examples.
 
 .. tabs::
   .. code-tab:: start
 
-    $ ray start --head --tracing-startup-hook "MyLibrary:setup_tracing"
-    $ python
-    >>> ray.init(address="auto")
+  $ ray start --head --tracing-startup-hook "MyLibrary:setup_tracing"
+  $ python
+  >>> ray.init(address="auto")
 
 
   .. code-tab:: init
 
-    $ python
-    >>> ray.init(_tracing_startup_hook="MyLibrary:setup_tracing")
+  $ python
+  >>> ray.init(_tracing_startup_hook="MyLibrary:setup_tracing")
 
 
 Custom traces
@@ -87,11 +88,11 @@ Users can easily add their own custom tracing in their programs. Within the prog
 See below for a simple example of adding custom tracing.
 
 .. code-block:: python
-    from opentelemetry import trace
+  from opentelemetry import trace
 
-    @ray.remote
-    def my_func():
-        tracer = trace.get_tracer(__name__)
-
-        with tracer.start_as_current_span("foo"):
-            print("Hello world from OpenTelemetry Python!")
+  @ray.remote
+  def my_func():
+      tracer = trace.get_tracer(__name__)
+  
+      with tracer.start_as_current_span("foo"):
+          print("Hello world from OpenTelemetry Python!")

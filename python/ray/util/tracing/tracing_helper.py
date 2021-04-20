@@ -48,6 +48,7 @@ def is_tracing_enabled() -> bool:
     Tracing is off by default."""
     return _global_is_tracing_enabled
 
+
 class ImportFromStringError(Exception):
     pass
 
@@ -137,7 +138,6 @@ def _function_hydrate_span_args(func: Callable[..., Any]) -> "Attributes":
 def _function_span_producer_name(func: Callable[..., Any]) -> str:
     """Returns the function span name that has span kind of producer."""
     args = _function_hydrate_span_args(func)
-    assert args is not None
     name = args["ray.function"]
 
     return f"{name} ray.remote"
@@ -146,7 +146,6 @@ def _function_span_producer_name(func: Callable[..., Any]) -> str:
 def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     """Returns the function span name that has span kind of consumer."""
     args = _function_hydrate_span_args(func)
-    assert args is not None
     name = args["ray.function"]
 
     return f"{name} ray.remote_worker"
