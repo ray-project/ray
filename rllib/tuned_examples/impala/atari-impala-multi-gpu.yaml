@@ -1,19 +1,14 @@
-# Runs on a g3.16xl node with 3 m4.16xl workers
-# See https://github.com/ray-project/rl-experiments for results
+# Runs on a p2.8xlarge single head node machine.
 atari-impala:
     env:
-        #grid_search:
         BreakoutNoFrameskip-v4
-        #    - BeamRiderNoFrameskip-v4
-        #    - QbertNoFrameskip-v4
-        #SpaceInvadersNoFrameskip-v4 
     run: IMPALA
     config:
         framework: torch
         rollout_fragment_length: 50
-        train_batch_size: 2000
-        num_gpus: 5
-        num_workers: 2
+        train_batch_size: 4000
+        num_gpus: 4
+        num_workers: 31
         num_gpus_per_worker: 0
         num_envs_per_worker: 5
         clip_rewards: True

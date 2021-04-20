@@ -148,33 +148,16 @@ class TorchPolicy(Policy):
             for i, id_ in enumerate(gpu_ids):
                 if i < config["num_gpus"]:
                     self.devices.append(torch.device("cuda:{}".format(id_)))
-            print(f"devices={self.devices}")
-            self.device = self.devices[0]  #torch.device("cuda")
-            #            self.model = model.to(self.device)
+            self.device = self.devices[0]
             ids = []
             for i, id_ in enumerate(gpu_ids):
                 if i < config["num_gpus"]:
                     ids.append(id_)
-            print(ids)
-            #self.model = model.to(torch.device("cuda"))
-            #self.model_gpu_towers = nn.parallel.replicate(
-            #    self.model, ids)
             self.model_gpu_towers = []
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)
-                print("copying model to device={}".format(self.devices[i]))
                 self.model_gpu_towers.append(model_copy.to(self.devices[i]))
-                print("copy done!")
             self.model = self.model_gpu_towers[0]
-            print("Policy's model-GPU towers={}".format(self.model_gpu_towers))
-            print("Policy's model's devices: {}".format([
-                next(iter(self.model_gpu_towers[i].parameters())).device
-                for i, id_ in enumerate(ids)
-            ]))
-
-        # Move model to device.
-        #self.model = self.model_gpu_towers[0] #model.to(self.device)
-        print("Policy's `device`={}".format(self.devices[0]))
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -336,7 +319,6 @@ class TorchPolicy(Policy):
                         raise e
             else:
                 dist_class = self.dist_class
-                #print("in compute_actions_helper: input_dict[obs].device={}".format(input_dict["obs"].device))
                 dist_inputs, state_out = self.model(input_dict, state_batches,
                                                     seq_lens)
 
@@ -819,9 +801,7 @@ class TorchPolicy(Policy):
                                     param.grad is not None:
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
-                        loss_out[opt_idx].backward(
-                            retain_graph=True
-                        )  #(opt_idx < len(self._optimizers) - 1))
+                        loss_out[opt_idx].backward(retain_graph=True)
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
@@ -861,9 +841,6 @@ class TorchPolicy(Policy):
                     results[shard_idx] = ValueError(
                         e.args[0] + "\n" +
                         "In tower {} on device {}".format(shard_idx, device))
-
-        #for opt in self._optimizers:
-        #    opt.zero_grad()
 
         # Single device (GPU) case.
         if len(self.devices) == 1:

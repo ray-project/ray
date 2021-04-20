@@ -281,7 +281,6 @@ VTraceTFPolicy = build_tf_policy(
     loss_fn=build_vtrace_loss,
     stats_fn=stats,
     grad_stats_fn=grad_stats,
-    #postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
     before_loss_init=setup_mixins,
