@@ -1,0 +1,9 @@
+memory-leak-test-ppo:
+    env:
+        MsPacmanNoFrameskip-v4
+    run: PPO
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        num_workers: 4
+        num_envs_per_worker: 5

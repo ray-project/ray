@@ -15,6 +15,7 @@
 # c-e) Utils, Models, Agents, tagged "utils", "models", and "agents_dir".
 # f) Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
 # g) Examples directory (everything in rllib/examples/...), tagged: "examples"
+# h) memory leak tests tagged "memory_leak_tests"
 
 # The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
@@ -22,7 +23,8 @@
 # (problems: 10min timeout, not respecting ray/ci/keep_alive.sh, or even
 # `travis_wait n`, etc..).
 
-# Our travis.yml file executes all these tests in 7 different jobs, which are:
+# Our .buldkite/pipeline.yml file executes all these tests in n different jobs,
+# which are:
 # 1) everything in a) using tf2.x
 # 2) everything in a) using tf1.x
 # 3) everything in a) using torch
@@ -30,7 +32,7 @@
 # 5) everything in g)
 # 6) f), BUT only those tagged `tests_dir_A` to `tests_dir_[some letter]`
 # 7) f), BUT only those tagged `tests_dir_[some letter]` to `tests_dir_Z`
-
+# 8) everything in h)
 
 # --------------------------------------------------------------------
 # Agents learning regression tests.
@@ -680,6 +682,22 @@ py_test(
     size = "large",
     srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
     args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
+)
+
+
+# --------------------------------------------------------------------
+# Memory leak tests
+#
+# Tag: memory_leak_tests
+# --------------------------------------------------------------------
+
+py_test(
+    name = "memory_leak_ppo",
+    tags = ["memory_leak_tests"],
+    main = "tests/test_memory_leak.py",
+    size = "medium",
+    srcs = ["tests/test_memory_leak.py"],
+    args = ["--run=PPO"]
 )
 
 
