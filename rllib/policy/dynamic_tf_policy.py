@@ -536,7 +536,8 @@ class DynamicTFPolicy(TFPolicy):
                         key not in [
                             SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                            SampleBatch.REWARDS, SampleBatch.INFOS]:
+                            SampleBatch.REWARDS, SampleBatch.INFOS,
+                            SampleBatch.ACTION_PROB]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
@@ -548,7 +549,8 @@ class DynamicTFPolicy(TFPolicy):
                 if key not in all_accessed_keys and key not in [
                     SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                     SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                    SampleBatch.REWARDS, SampleBatch.INFOS] and \
+                    SampleBatch.REWARDS, SampleBatch.INFOS,
+                    SampleBatch.ACTION_PROB] and \
                         key not in self.model.view_requirements:
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from

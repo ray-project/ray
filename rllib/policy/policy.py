@@ -682,7 +682,8 @@ class Policy(metaclass=ABCMeta):
                             key not in [
                                 SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                                 SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                                SampleBatch.REWARDS, SampleBatch.INFOS]:
+                                SampleBatch.REWARDS, SampleBatch.INFOS,
+                                SampleBatch.ACTION_PROB]:
                         self.view_requirements[key].used_for_training = False
                 # Remove those not needed at all (leave those that are needed
                 # by Sampler to properly execute sample collection).
@@ -691,7 +692,8 @@ class Policy(metaclass=ABCMeta):
                     if key not in all_accessed_keys and key not in [
                         SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                         SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                        SampleBatch.REWARDS, SampleBatch.INFOS] and \
+                        SampleBatch.REWARDS, SampleBatch.INFOS,
+                        SampleBatch.ACTION_PROB] and \
                             key not in self.model.view_requirements:
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from

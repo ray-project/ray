@@ -32,6 +32,7 @@ class TestMARWIL(unittest.TestCase):
         $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
+          --no-ray-ui
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
@@ -39,7 +40,7 @@ class TestMARWIL(unittest.TestCase):
         print("data_file_cp={} exists={}".format(
             data_file_cp, os.path.isfile(data_file_cp)))
         #data_file_pend = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
-        data_file_pend = "/tmp/out/output-2021-04-16_13-49-39_worker-0_1.json"
+        data_file_pend = "/tmp/out/output-2021-04-20_18-30-38_worker-0_0.json"
         print("data_file_pend={} exists={}".format(
             data_file_pend, os.path.isfile(data_file_pend)))
 
@@ -50,6 +51,7 @@ class TestMARWIL(unittest.TestCase):
         config["beta"] = 0.0
         config["model"]["vf_share_layers"] = True
         config["grad_clip"] = 10.0
+        config["input_evaluation"] = ["is", "wis"]
 
         config["evaluation_num_workers"] = 1
         config["evaluation_interval"] = 3
@@ -59,14 +61,13 @@ class TestMARWIL(unittest.TestCase):
         #min_reward = 70.0
 
         # Test for all frameworks.
-        for fw in framework_iterator(config, frameworks=("torch", "tf")):
-            envs = [("Pendulum-v0", -800.0, data_file_pend, False), ("CartPole-v0", 70.0, data_file_cp, True)]#TODO only cartpole here
+        for fw in framework_iterator(config, frameworks=("tf", "torch")):
+            envs = [("Pendulum-v0", -800.0, data_file_pend), ("CartPole-v0", 70.0, data_file_cp)]#TODO only cartpole here
             #if fw == "tf":
             #    envs.append(("Pendulum-v0", -800.0, data_file_pend, False))
-            for env, min_reward, data_file, off_pol_est in envs:
+            for env, min_reward, data_file in envs:
                 # Learn from offline data.
                 config["input"] = [data_file]
-                config["input_evaluation"] = [] if not off_pol_est else ["is", "wis"]
                 trainer = marwil.MARWILTrainer(config=config, env=env)
                 learnt = False
                 for i in range(num_iterations):

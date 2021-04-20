@@ -22,5 +22,6 @@ pendulum-ppo:
         observation_filter: MeanStdFilter
 
         #TODO:
+
         batch_mode: complete_episodes
         output: /tmp/out
