@@ -159,7 +159,8 @@ def test_travel():
             else:
                 visited_file_paths.add(str(path))
 
-        ray._private._dir_travel(Path(tmp_dir), exclude_spec, handler)
+        ray._private.runtime_env._dir_travel(
+            Path(tmp_dir), exclude_spec, handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
 
