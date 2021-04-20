@@ -18,6 +18,11 @@ import ray
 import ray.util
 import os
 
+try:
+    import test_module
+except:
+    pass
+
 job_config = ray.job_config.JobConfig(
     runtime_env={runtime_env}
 )
@@ -42,7 +47,9 @@ except:
     print("ERROR")
     sys.exit(0)
 
-import test_module
+
+if os.environ.get("EXIT_AFTER_INIT"):
+    sys.exit(0)
 
 @ray.remote
 def run_test():
@@ -98,7 +105,7 @@ from test_module.test import one
 def start_client_server(cluster, client_mode):
     from ray._private.runtime_env import PKG_DIR
     if not client_mode:
-        return (cluster.address, None, PKG_DIR)
+        return (cluster.address, {}, PKG_DIR)
     ray.worker._global_node._ray_params.ray_client_server_port = "10003"
     ray.worker._global_node.start_ray_client_server()
     return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
@@ -118,13 +125,14 @@ The following test cases are related with runtime env. It following these steps
 def test_empty_working_dir(ray_start_cluster_head, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
     with tempfile.TemporaryDirectory() as working_dir:
         runtime_env = f"""{{
     "working_dir": r"{working_dir}",
     "py_modules": [r"{working_dir}"]
 }}"""
         # Execute the following cmd in driver with runtime_env
-        execute_statement = ""
+        execute_statement = "sys.exit(0)"
         script = driver_script.format(**locals())
         out = run_string_as_driver(script, env)
         assert out != "ERROR"
@@ -135,6 +143,7 @@ def test_empty_working_dir(ray_start_cluster_head, client_mode):
 def test_invalid_working_dir(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    env["EXIT_AFTER_INIT"] = "1"
 
     runtime_env = "{ 'working_dir': 10 }"
     # Execute the following cmd in driver with runtime_env
