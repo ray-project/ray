@@ -59,10 +59,9 @@ def run_trials(
         num_epochs,
         num_rounds,
         filenames,
+        num_mappers,
+        num_reducers,
         num_trainers,
-        batch_size,
-        batches_per_round,
-        num_rows,
         max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
@@ -80,36 +79,21 @@ def run_trials(
         shuffle = shuffle_from_memory
     all_stats = []
     if num_trials is not None:
-        print(f"Running {num_trials} shuffle trials with {num_epochs} epochs, "
-              f"{num_rounds} rounds, {num_trainers} trainers, and a batch "
-              f"size of {batch_size} over {num_rows} rows, with "
-              f"{batches_per_round} batches per round.")
-        print(f"Shuffling will be pipelined with at most "
-              f"{max_concurrent_rounds} concurrent rounds per epoch and at "
-              f"most {max_concurrent_epochs} concurrent epochs.")
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
             stats, store_stats = shuffle(
                 num_epochs,
                 num_rounds,
                 filenames,
+                num_mappers,
+                num_reducers,
                 num_trainers,
-                batch_size,
-                batches_per_round,
-                num_rows,
                 max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
             print(f"Trial {trial} done after {stats.duration} seconds.")
             all_stats.append((stats, store_stats))
     elif trials_timeout is not None:
-        print(f"Running {trials_timeout} seconds of shuffle trials with "
-              f"{num_epochs} epochs, {num_rounds} rounds, {num_trainers} "
-              f"trainers, and a batch size of {batch_size} over {num_rows} "
-              f"rows, with {batches_per_round} batches per round.")
-        print(f"Shuffling will be pipelined with at most "
-              f"{max_concurrent_rounds} concurrent rounds per epoch and at "
-              f"most {max_concurrent_epochs} concurrent epochs.")
         start = timeit.default_timer()
         trial = 0
         while timeit.default_timer() - start < trials_timeout:
@@ -118,10 +102,9 @@ def run_trials(
                 num_epochs,
                 num_rounds,
                 filenames,
+                num_mappers,
+                num_reducers,
                 num_trainers,
-                batch_size,
-                batches_per_round,
-                num_rows,
                 max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
@@ -137,19 +120,22 @@ def run_trials(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Shuffling data loader")
-    parser.add_argument("--num-rows-per-group", type=int, default=100)
-    parser.add_argument("--num-row-groups", type=int, default=100)
+    parser.add_argument("--num-rows", type=int, default=4*(10**11))
+    parser.add_argument("--num-files", type=int, default=100)
+    parser.add_argument("--max-row-group-skew", type=float, default=0.0)
     parser.add_argument("--num-row-groups-per-file", type=int, default=1)
+    parser.add_argument("--num-mappers", type=int, default=100)
+    parser.add_argument("--num-reducers", type=int, default=5)
     parser.add_argument("--num-trainers", type=int, default=5)
-    parser.add_argument(
-        "--max-concurrent-rounds", type=int, default=None)
     parser.add_argument("--num-epochs", type=int, default=10)
     parser.add_argument(
         "--max-concurrent-epochs", type=int, default=None)
+    parser.add_argument("--num-rounds", type=int, default=10)
+    parser.add_argument(
+        "--max-concurrent-rounds", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--num-trials", type=int, default=None)
     parser.add_argument("--trials-timeout", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=100)
-    parser.add_argument("--batches-per-round", type=int, default=1)
     parser.add_argument(
         "--utilization-sample-period",
         type=float,
@@ -198,28 +184,26 @@ if __name__ == "__main__":
         print("Starting a new local Ray cluster.")
         ray.init()
 
-    num_row_groups = args.num_row_groups
-    num_rows_per_group = args.num_rows_per_group
+    num_rows = args.num_rows
     num_row_groups_per_file = args.num_row_groups_per_file
+    num_files = args.num_files
+    max_row_group_skew = args.max_row_group_skew
     if not args.use_old_data:
         print(
-            f"Generating {num_row_groups} row groups with "
-            f"{num_row_groups_per_file} row groups per file and each with "
-            f"{num_rows_per_group} rows.")
+            f"Generating {num_rows} rows over {num_files} files, with "
+            f"{num_row_groups_per_file} row groups per file and at most "
+            f"{100 * max_row_group_skew:.1f}% row group skew.")
         filenames, num_bytes = generate_data(
-            num_row_groups,
-            num_rows_per_group,
+            num_rows,
+            num_files,
             num_row_groups_per_file,
+            max_row_group_skew,
             data_dir)
         print(
-            f"Generated {len(filenames)} files each containing "
-            f"{num_row_groups_per_file} row groups, where each row group "
-            f"contains {num_rows_per_group} rows, totalling "
+            f"Generated {len(filenames)} files containing {num_rows} rows "
+            f"with {num_row_groups_per_file} row groups per file, totalling "
             f"{human_readable_size(num_bytes)}.")
     else:
-        num_files = num_row_groups / num_row_groups_per_file
-        assert num_files % 1 == 0
-        num_files = int(num_files)
         filenames = [
             os.path.join(
                 data_dir,
@@ -227,18 +211,19 @@ if __name__ == "__main__":
             for file_index in range(num_files)]
         print("Not generating input data, using existing data instead.")
 
+    num_mappers = args.num_mappers
+    num_reducers = args.num_reducers
     num_trainers = args.num_trainers
     batch_size = args.batch_size
-    batches_per_round = args.batches_per_round
-    num_rows = num_row_groups * num_rows_per_group
 
     # Calculate the number of shuffle rounds.
+    num_rounds = args.num_rounds
     # TODO(Clark): Handle uneven rounds (remainders).
-    num_rounds = max(
-        num_rows / num_trainers / batch_size / batches_per_round, 1)
-    # Assert even division (no remainders, uneven rounds).
-    assert num_rounds % 1 == 0
-    num_rounds = int(num_rounds)
+    # num_rounds = max(
+    #     num_rows / num_trainers / batch_size / batches_per_round, 1)
+    # # Assert even division (no remainders, uneven rounds).
+    # assert num_rounds % 1 == 0
+    # num_rounds = int(num_rounds)
 
     max_concurrent_rounds = args.max_concurrent_rounds
     if max_concurrent_rounds is None or max_concurrent_rounds > num_rounds:
@@ -258,21 +243,35 @@ if __name__ == "__main__":
     # times = run_trials(
     #     filenames,
     #     num_trainers,
-    #     batch_size,
-    #     batches_per_round,
     #     num_rows,
     #     warmup_trials)
 
     print("\nRunning real trials.")
     use_from_disk_shuffler = args.use_from_disk_shuffler
+    # TODO(Clark): Reenable from-disk shuffler? Or delete it.
+    if use_from_disk_shuffler:
+        raise NotImplementedError(
+            "From disk shuffler not yet updated for new config.")
+    if num_trials is not None:
+        print(f"Running {num_trials} shuffle trials with {num_epochs} epochs, "
+              f"{num_rounds} rounds, {num_mappers} mappers, {num_reducers} "
+              f"reducers, {num_trainers} trainers, and a batch size of "
+              f"{batch_size} over {num_rows} rows.")
+    else:
+        print(f"Running {trials_timeout} seconds of shuffle trials with "
+              f"{num_epochs} epochs, {num_rounds} rounds, {num_mappers} "
+              f"mappers, {num_reducers} reducers, {num_trainers} trainers, "
+              f"and a batch size of {batch_size} over {num_rows} rows.")
+    print(f"Shuffling will be pipelined with at most "
+          f"{max_concurrent_rounds} concurrent rounds per epoch and at "
+          f"most {max_concurrent_epochs} concurrent epochs.")
     all_stats = run_trials(
         num_epochs,
         num_rounds,
         filenames,
+        num_mappers,
+        num_reducers,
         num_trainers,
-        batch_size,
-        batches_per_round,
-        num_rows,
         max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
@@ -288,12 +287,11 @@ if __name__ == "__main__":
         args.no_round_stats,
         args.no_consume_stats,
         use_from_disk_shuffler,
-        num_row_groups,
-        num_rows_per_group,
-        num_row_groups_per_file,
         num_rows,
+        num_row_groups_per_file,
         batch_size,
-        batches_per_round,
+        num_mappers,
+        num_reducers,
         num_trainers,
         num_epochs,
         num_rounds,

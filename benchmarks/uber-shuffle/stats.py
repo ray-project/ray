@@ -38,6 +38,7 @@ class ConsumeStats:
 
 @dataclass
 class RoundStats:
+    duration: float
     map_stats: MapStats
     reduce_stats: ReduceStats
     consume_stats: ConsumeStats
@@ -55,6 +56,7 @@ class ThrottleStats:
 
 @dataclass
 class RoundStatsFromMemory:
+    duration: float
     map_stats: MapStatsFromMemory
     reduce_stats: ReduceStats
     consume_stats: ConsumeStats
@@ -101,6 +103,7 @@ class RoundStatsCollector_:
         self._num_maps = num_maps
         self._num_reduces = num_reduces
         self._num_consumes = num_consumes
+        self._duration = None
         self._maps_started = 0
         self._maps_done = 0
         self._map_durations = []
@@ -117,6 +120,10 @@ class RoundStatsCollector_:
         self._reduce_stage_duration = None
 
         self._round_done_ev = asyncio.Event()
+
+    def round_done(self, duration):
+        self._duration = duration
+        self._round_done_ev.set()
 
     def map_start(self):
         if self._maps_started == 0:
@@ -165,7 +172,7 @@ class RoundStatsCollector_:
         self._reduce_stage_duration = end_time - self._reduce_stage_start_time
 
     def _consume_stage_done(self):
-        self._round_done_ev.set()
+        pass
 
     def get_map_stats(self):
         assert self._map_stage_duration is not None
@@ -181,7 +188,7 @@ class RoundStatsCollector_:
         return ReduceStats(self._reduce_durations, self._reduce_stage_duration)
 
     def get_consume_stats(self):
-        assert len(self._consume_times) == self._num_reduces
+        assert len(self._consume_times) == self._num_consumes
         return ConsumeStats(self._consume_times)
 
     def get_throttle_stats(self):
@@ -191,9 +198,12 @@ class RoundStatsCollector_:
 
     async def get_stats(self):
         await self._round_done_ev.wait()
+        assert self._duration is not None
         assert self._maps_done == self._num_maps
         assert self._reduces_done == self._num_reduces
+        assert self._consumes_done == self._num_consumes
         return RoundStats(
+            self._duration,
             self.get_map_stats(),
             self.get_reduce_stats(),
             self.get_consume_stats(),
@@ -215,9 +225,12 @@ class RoundStatsCollectorFromMemory_(RoundStatsCollector_):
 
     async def get_stats(self):
         await self._round_done_ev.wait()
+        assert self._duration is not None
         assert self._maps_done == self._num_maps
         assert self._reduces_done == self._num_reduces
+        assert self._consumes_done == self._num_consumes
         return RoundStatsFromMemory(
+            self._duration,
             self.get_map_stats(),
             self.get_reduce_stats(),
             self.get_consume_stats(),
@@ -243,6 +256,9 @@ class EpochStatsCollector_:
 
     def round_throttle_done(self, round_idx, duration):
         self._collectors[round_idx].throttle_done(duration)
+
+    def round_done(self, round_idx, duration):
+        self._collectors[round_idx].round_done(duration)
 
     def map_start(self, round_idx):
         self._collectors[round_idx].map_start()
@@ -278,14 +294,16 @@ class EpochStatsCollector_:
 
 
 class EpochStatsCollectorFromMemory_(EpochStatsCollector_):
-    def __init__(self, num_maps, num_reduces, num_consumes, num_rounds):
+    def __init__(
+            self, num_cache_maps, num_maps,
+            num_reduces, num_consumes, num_rounds):
         self._collectors = [
             RoundStatsCollectorFromMemory_(
                 num_maps, num_reduces, num_consumes)
             for _ in range(num_rounds)]
         self._duration = None
         self._throttle_duration = None
-        self._num_cache_maps = num_maps
+        self._num_cache_maps = num_cache_maps
         self._cache_maps_started = 0
         self._cache_maps_done = 0
         self._cache_map_durations = []
@@ -377,6 +395,9 @@ class TrialStatsCollector_:
     def epoch_done(self, epoch, duration):
         self._collectors[epoch].epoch_done(duration)
 
+    def round_done(self, epoch, round_idx, duration):
+        self._collectors[epoch].round_done(round_idx, duration)
+
     def map_start(self, epoch, round_idx):
         self._collectors[epoch].map_start(round_idx)
 
@@ -406,10 +427,12 @@ class TrialStatsCollector_:
 
 class TrialStatsCollectorFromMemory_(TrialStatsCollector_):
     def __init__(
-            self, num_epochs, num_maps, num_reduces, num_consumes, num_rounds):
+            self, num_epochs, num_cache_maps, num_maps, num_reduces,
+            num_consumes, num_rounds):
         self._collectors = [
             EpochStatsCollectorFromMemory_(
-                num_maps, num_reduces, num_consumes, num_rounds)
+                num_cache_maps, num_maps, num_reduces, num_consumes,
+                num_rounds)
             for _ in range(num_epochs)]
         self._duration = None
 
@@ -448,12 +471,11 @@ def process_stats(
         no_round_stats,
         no_consume_stats,
         use_from_disk_shuffler,
-        num_row_groups,
-        num_rows_per_group,
-        num_row_groups_per_file,
         num_rows,
+        num_row_groups_per_file,
         batch_size,
-        batches_per_round,
+        num_mappers,
+        num_reducers,
         num_trainers,
         num_epochs,
         num_rounds,
@@ -487,12 +509,11 @@ def process_stats(
     overwrite_stats = overwrite_stats
     write_mode = "w+" if overwrite_stats else "a+"
     stats_dir = stats_dir
-    hr_num_row_groups = human_readable_big_num(num_row_groups)
-    hr_num_rows_per_group = human_readable_big_num(num_rows_per_group)
+    hr_num_rows = human_readable_big_num(num_rows)
     hr_batch_size = human_readable_big_num(batch_size)
     filename = (
-        f"trial_stats_{shuffle_type}_{hr_num_row_groups}_"
-        f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
+        f"trial_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
+        "batch_size.csv")
     filename = os.path.join(stats_dir, filename)
     write_header = (
         overwrite_stats or not os.path.exists(filename) or
@@ -504,9 +525,10 @@ def process_stats(
     with open(filename, write_mode) as f:
         fieldnames = [
             "shuffle_type",
-            "row_groups_per_file",
+            "num_row_groups_per_file",
+            "num_mappers",
+            "num_reducers",
             "num_trainers",
-            "batches_per_round",
             "num_epochs",
             "max_concurrent_epochs",
             "num_rounds",
@@ -567,9 +589,10 @@ def process_stats(
             writer.writeheader()
         row = {
             "shuffle_type": shuffle_type,
-            "row_groups_per_file": num_row_groups_per_file,
+            "num_row_groups_per_file": num_row_groups_per_file,
+            "num_mappers": num_mappers,
+            "num_reducers": num_reducers,
             "num_trainers": num_trainers,
-            "batches_per_round": batches_per_round,
             "num_epochs": num_epochs,
             "max_concurrent_epochs": max_concurrent_epochs,
             "num_rounds": num_rounds,
@@ -677,8 +700,8 @@ def process_stats(
 
     if not no_epoch_stats:
         filename = (
-            f"epoch_stats_{shuffle_type}_{hr_num_row_groups}_"
-            f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
+            f"epoch_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
+            "batch_size.csv")
         filename = os.path.join(stats_dir, filename)
         write_header = (
             overwrite_stats or not os.path.exists(filename) or
@@ -687,9 +710,10 @@ def process_stats(
         with open(filename, write_mode) as f:
             fieldnames = [
                 "shuffle_type",
-                "row_groups_per_file",
+                "num_row_groups_per_file",
+                "num_mappers",
+                "num_reducers",
                 "num_trainers",
-                "batches_per_round",
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
@@ -741,9 +765,10 @@ def process_stats(
                 writer.writeheader()
             row = {
                 "shuffle_type": shuffle_type,
-                "row_groups_per_file": num_row_groups_per_file,
+                "num_row_groups_per_file": num_row_groups_per_file,
+                "num_mappers": num_mappers,
+                "num_reducers": num_reducers,
                 "num_trainers": num_trainers,
-                "batches_per_round": batches_per_round,
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
@@ -836,8 +861,8 @@ def process_stats(
     if not no_round_stats:
         # TODO(Clark): Add per-round granularity for stats.
         filename = (
-            f"round_stats_{shuffle_type}_{hr_num_row_groups}_"
-            f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
+            f"round_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
+            "batch_size.csv")
         filename = os.path.join(stats_dir, filename)
         write_header = (
             overwrite_stats or not os.path.exists(filename) or
@@ -847,9 +872,10 @@ def process_stats(
         with open(filename, write_mode) as f:
             fieldnames = [
                 "shuffle_type",
-                "row_groups_per_file",
+                "num_row_groups_per_file",
+                "num_mappers",
+                "num_reducers",
                 "num_trainers",
-                "batches_per_round",
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
@@ -857,6 +883,7 @@ def process_stats(
                 "trial",
                 "epoch",
                 "round",
+                "duration",
                 "map_stage_duration",
                 "reduce_stage_duration",
                 "avg_map_task_duration",  # across mappers
@@ -882,9 +909,10 @@ def process_stats(
                 writer.writeheader()
             row = {
                 "shuffle_type": shuffle_type,
-                "row_groups_per_file": num_row_groups_per_file,
+                "num_row_groups_per_file": num_row_groups_per_file,
+                "num_mappers": num_mappers,
+                "num_reducers": num_reducers,
                 "num_trainers": num_trainers,
-                "batches_per_round": batches_per_round,
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
@@ -897,6 +925,7 @@ def process_stats(
                     row["epoch"] = epoch
                     for round_idx, stats in enumerate(epoch_stats.round_stats):
                         row["round"] = round_idx
+                        row["duration"] = stats.duration
                         row["map_stage_duration"] = (
                             stats.map_stats.stage_duration)
                         row["reduce_stage_duration"] = (
@@ -938,8 +967,8 @@ def process_stats(
     if not no_consume_stats:
         # TODO(Clark): Add per-round granularity for stats.
         filename = (
-            f"consume_stats_{shuffle_type}_{hr_num_row_groups}_"
-            f"{hr_num_rows_per_group}_{hr_batch_size}.csv")
+            f"consume_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
+            "batch_size.csv")
         filename = os.path.join(stats_dir, filename)
         print(f"Writing out consume stats to {filename}.")
         write_header = (
@@ -948,9 +977,10 @@ def process_stats(
         with open(filename, write_mode) as f:
             fieldnames = [
                 "shuffle_type",
-                "row_groups_per_file",
+                "num_row_groups_per_file",
+                "num_mappers",
+                "num_reducers",
                 "num_trainers",
-                "batches_per_round",
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
@@ -965,9 +995,10 @@ def process_stats(
                 writer.writeheader()
             row = {
                 "shuffle_type": shuffle_type,
-                "row_groups_per_file": num_row_groups_per_file,
+                "num_row_groups_per_file": num_row_groups_per_file,
+                "num_mappers": num_mappers,
+                "num_reducers": num_reducers,
                 "num_trainers": num_trainers,
-                "batches_per_round": batches_per_round,
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
@@ -1057,7 +1088,8 @@ def collect_store_stats(
     while not is_done:
         get_time = timeit.default_timer()
         stats = get_store_stats(timeout=fetch_timeout)
-        print(f"Current object store utilization: "
-              f"{human_readable_size(stats.object_store_bytes_used)}")
+        if do_print:
+            print(f"Current object store utilization: "
+                  f"{human_readable_size(stats.object_store_bytes_used)}")
         store_stats.append((get_time, stats))
         is_done = done_event.wait(timeout=utilization_sample_period)
