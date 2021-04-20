@@ -112,7 +112,8 @@ def test_travel():
         file_paths = set()
         item_num = 0
         excludes = []
-        def construct(path, excluded = False):
+
+        def construct(path, excluded=False):
             path.mkdir(parents=True)
             if not excluded:
                 dir_paths.add(path)
@@ -123,7 +124,7 @@ def test_travel():
             for _ in range(dir_num):
                 uid = uuid.uuid5()
                 dir_path = path / uid
-                exclud_sub = random.randint(0,1) == 0
+                exclud_sub = random.randint(0, 1) == 0
                 if not excluded and exclud_sub:
                     if random.randint(0, 1) == 0:
                         excludes.append(str(dir_path.absolute()))
@@ -145,17 +146,22 @@ def test_travel():
                         else:
                             file_paths.add((path / uid, v))
                 item_num += 1
-        exclude_spec = ray._private.runtime_env._get_exclude_spec(Path(tmp_dir), excludes)
+
+        exclude_spec = ray._private.runtime_env._get_exclude_spec(
+            Path(tmp_dir), excludes)
         visited_dir_paths = set()
         visited_file_paths = set()
+
         def handler(path):
             if path.is_dir():
                 visited_dir_path.add(str(path))
             else:
                 visited_file_paths.add(str(path))
+
         ray._private._dir_travel(Path(tmp_dir), exclude_spec, handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
+
 
 """
 The following test cases are related with runtime env. It following these steps
@@ -164,6 +170,8 @@ The following test cases are related with runtime env. It following these steps
   3) Overwrite runtime_env and execute_statement in the template
   4) Execute it as a separate driver and return the result
 """
+
+
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
@@ -235,7 +243,6 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     cluster = ray_start_cluster_head
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
-
 
     create_file(working_path / "tmp_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "test_2")
