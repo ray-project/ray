@@ -853,7 +853,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
           state.pending_disconnection_workers.count(it->first) > 0) {
         continue;
       }
-      if(pending_exit_idle_workers_.count(it->first->WorkerId())) {
+      if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
         exiting_cnt += 1;
         continue;
       }
