@@ -1,33 +1,35 @@
-from datetime import datetime
-import numpy as np
 import copy
+from datetime import datetime
+import functools
 import logging
 import math
+import numpy as np
 import os
 import pickle
-import time
 import tempfile
+import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.logger import Logger, UnifiedLogger
@@ -621,38 +623,8 @@ class Trainer(Trainable):
                     lambda env_context: from_config(env, env_context)
             # Try gym/PyBullet/Vizdoom.
             else:
-
-                def _creator(env_context):
-                    import gym
-                    # Allow for PyBullet or VizdoomGym envs to be used as well
-                    # (via string). This allows for doing things like
-                    # `env=CartPoleContinuousBulletEnv-v0` or
-                    # `env=VizdoomBasic-v0`.
-                    try:
-                        import pybullet_envs
-                        pybullet_envs.getList()
-                    except (ModuleNotFoundError, ImportError):
-                        pass
-                    try:
-                        import vizdoomgym
-                        vizdoomgym.__name__  # trick LINTer.
-                    except (ModuleNotFoundError, ImportError):
-                        pass
-                    # Try creating a gym env. If this fails we can output a
-                    # decent error message.
-                    try:
-                        return gym.make(env, **env_context)
-                    except gym.error.Error:
-                        raise ValueError(
-                            "The env string you provided ({}) is a) not a "
-                            "known gym/PyBullet/VizdoomEnv environment "
-                            "specifier or b) not registered! To register your "
-                            "custom envs, do `from ray import tune; "
-                            "tune.register_env('[name]', lambda cfg: [return "
-                            "actual env from here using cfg])`. Then you can "
-                            "use [name] as your config['env'].".format(env))
-
-                self.env_creator = _creator
+                self.env_creator = functools.partial(
+                    gym_env_creator, env_descriptor=env)
         else:
             self.env_creator = lambda env_config: None
 
@@ -1167,9 +1139,10 @@ class Trainer(Trainable):
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning("simple_optimizer", error=False)
+            deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework")
+        # Multi-GPU setting: Must use TFMultiGPU if tf.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
