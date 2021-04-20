@@ -591,17 +591,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
-          rpc_address_, local_raylet_client_, core_worker_client_pool_,raylet_client_factory, 
-          std::move(lease_policy), memory_store_, task_manager_,local_raylet_id, 
-          RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
-          RayConfig::instance().max_tasks_in_flight_per_worker(),
-          RayConfig::instance().work_stealing(), boost::asio::steady_timer(io_service_));
+      rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
+      std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
+      RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
+      RayConfig::instance().max_tasks_in_flight_per_worker(),
+      RayConfig::instance().work_stealing(), boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
              uint64_t object_size) {
         reference_counter_->ReportLocalityData(object_id, locations, object_size);
       };
-  future_resolver_.reset(new FutureResolver(memory_store_, 
+  future_resolver_.reset(new FutureResolver(memory_store_,
                                             std::move(report_locality_data_callback),
                                             core_worker_client_pool_, rpc_address_));
 

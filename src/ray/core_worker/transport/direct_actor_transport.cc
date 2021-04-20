@@ -530,8 +530,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
-
-  auto steal_callback = [this, task_spec, reply](rpc::SendReplyCallback send_reply_callback, rpc::Address thief_addr) {
+  auto steal_callback = [this, task_spec, reply](
+                            rpc::SendReplyCallback send_reply_callback,
+                            rpc::Address thief_addr) {
     RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
                    << worker_context_.GetWorkerID()
                    << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
@@ -541,9 +542,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 
-
   auto dependencies = task_spec.GetDependencies(false);
-
 
   if (task_spec.IsActorTask()) {
     auto it = actor_scheduling_queues_.find(task_spec.CallerWorkerId());
@@ -556,14 +555,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    std::move(accept_callback), std::move(reject_callback), std::move(send_reply_callback), nullptr, task_spec.TaskId(),
+                    std::move(accept_callback), std::move(reject_callback),
+                    std::move(send_reply_callback), nullptr, task_spec.TaskId(),
                     dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
-        request.sequence_number(), request.client_processed_up_to(), 
-        std::move(accept_callback), std::move(reject_callback), std::move(send_reply_callback),
-        std::move(steal_callback), task_spec.TaskId(), dependencies);
+        request.sequence_number(), request.client_processed_up_to(),
+        std::move(accept_callback), std::move(reject_callback),
+        std::move(send_reply_callback), std::move(steal_callback), task_spec.TaskId(),
+        dependencies);
   }
 }
 
@@ -580,7 +581,6 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 void CoreWorkerDirectTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-
   if (normal_scheduling_queue_->Size() <= 1) {
     RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
     reply->set_number_of_tasks_stolen(0);
