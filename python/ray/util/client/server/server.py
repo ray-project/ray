@@ -255,27 +255,41 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def GetObject(self, request, context=None):
         return self._get_object(request, "", context)
 
-    def _async_get_object(self, request, client_id: str, req_id: int, context):
-        if request.id not in self.object_refs[client_id]:
+    def _async_get_object(
+            self, request, client_id: str, req_id: int,
+            context: Any) -> Optional[ray_client_pb2.GetResponse]:
+        """Attempts to schedule a callback to send the GetResponse when the
+        desired object is ready. If there is some failure in scheduling, a
+        GetResponse will be immediately returned.
+        """
+        if request.id not in self.object_refs[client_id] or not request:
             return ray_client_pb2.GetResponse(valid=False)
         try:
             assert request.asynchronous
             assert context is not None
-            objectref = self.object_refs[client_id][request.id]
-            logger.debug("async get: %s" % objectref)
+            object_ref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % object_ref)
             with disable_client_hook():
                 loop = asyncio.get_event_loop()
 
-                def f(result):
-                    serialized = dumps_from_server(result, client_id, self)
+                def send_get_response(result: Any) -> None:
+                    """Sends GetResponse to Ray client after the object is
+                    ready on the server side."""
+                    try:
+                        serialized = dumps_from_server(result, client_id, self)
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=True, data=serialized)
+                    except Exception as e:
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=False, error=cloudpickle.dumps(e))
+
                     resp = ray_client_pb2.DataResponse(
-                        get=ray_client_pb2.GetResponse(
-                            valid=True, data=serialized))
+                        get=get_resp, req_id=req_id)
                     resp.req_id = req_id
 
-                    loop.create_task(context.write(resp))
+                    asyncio.run_coroutine_threadsafe(context.write(resp), loop)
 
-                objectref._on_completed(f)
+                object_ref._on_completed(send_get_response)
                 return None
         except Exception as e:
             return ray_client_pb2.GetResponse(
@@ -284,11 +298,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _get_object(self, request, client_id: str, context=None):
         if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)
-        objectref = self.object_refs[client_id][request.id]
-        logger.debug("get: %s" % objectref)
+        object_ref = self.object_refs[client_id][request.id]
+        logger.debug("get: %s" % object_ref)
         try:
             with disable_client_hook():
-                item = ray.get(objectref, timeout=request.timeout)
+                item = ray.get(object_ref, timeout=request.timeout)
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
@@ -556,11 +570,25 @@ class ClientServerHandle:
     data_servicer: DataServicer
     logs_servicer: LogstreamServicer
     grpc_server: grpc.Server
+    loop: asyncio.BaseEventLoop
+    thread: threading.Thread
+    fut: futures.Future
 
     # Add a hook for all the cases that previously
     # expected simply a gRPC server
     def __getattr__(self, attr):
         return getattr(self.grpc_server, attr)
+
+    def shutdown(self, timeout: Optional[int] = None):
+        """Call the gRPC server's shutdown method on its asyncio event loop."""
+        if self.loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(
+                self.grpc_server.stop(timeout), self.loop)
+            thread_pool = self.fut.result()
+            # This blocks
+            # thread_pool.shutdown(1)
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            self.thread.join()
 
 
 def serve(connection_str, ray_connect_handler=None):
@@ -570,33 +598,55 @@ def serve(connection_str, ray_connect_handler=None):
                 return ray.init(job_config=job_config)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.aio.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
-        options=[
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ])
-    task_servicer = RayletServicer(ray_connect_handler)
-    data_servicer = DataServicer(task_servicer)
-    logs_servicer = LogstreamServicer()
-    ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
-        task_servicer, server)
-    ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
-        data_servicer, server)
-    ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
-        logs_servicer, server)
-    server.add_insecure_port(connection_str)
-    current_handle = ClientServerHandle(
-        task_servicer=task_servicer,
-        data_servicer=data_servicer,
-        logs_servicer=logs_servicer,
-        grpc_server=server,
-    )
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(server.start())
-    t = threading.Thread(
-        target=lambda: loop.run_until_complete(server.wait_for_termination()))
+
+    server_loop = asyncio.new_event_loop()
+
+    handle_future = futures.Future()
+
+    t = threading.Thread(target=server_loop.run_forever)
+
+    async def _run_grpc_server():
+        """Creates gRPC servicers and server. This is in a coroutine so that
+        all operations happen on the server event loop.
+        """
+        thread_pool = futures.ThreadPoolExecutor(
+            max_workers=CLIENT_SERVER_MAX_THREADS)
+        server = grpc.aio.server(
+            thread_pool,
+            options=[
+                ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+                ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ])
+        task_servicer = RayletServicer(ray_connect_handler)
+        data_servicer = DataServicer(task_servicer)
+        logs_servicer = LogstreamServicer()
+        ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
+            task_servicer, server)
+        ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
+            data_servicer, server)
+        ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
+            logs_servicer, server)
+        server.add_insecure_port(connection_str)
+        current_handle = ClientServerHandle(
+            task_servicer=task_servicer,
+            data_servicer=data_servicer,
+            logs_servicer=logs_servicer,
+            grpc_server=server,
+            loop=server_loop,
+            thread=t,
+            fut=futures.Future())
+        await server.start()
+
+        handle_future.set_result(current_handle)
+
+        await server.wait_for_termination()
+        return thread_pool
+
     t.start()
+    fut = asyncio.run_coroutine_threadsafe(_run_grpc_server(), server_loop)
+    assert not fut.done(), f"Ray Client Server Startup failed {fut.result()}"
+    current_handle = handle_future.result()
+    current_handle.fut = fut
     return current_handle
 
 
@@ -618,8 +668,8 @@ def init_and_serve(connection_str, *args, **kwargs):
     return (server_handle, info)
 
 
-def shutdown_with_server(server, _exiting_interpreter=False):
-    server.stop(1)
+def shutdown_with_server_handle(server, _exiting_interpreter=False):
+    server.shutdown(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)
 
@@ -704,7 +754,8 @@ def main():
             time.sleep(1)
 
     except KeyboardInterrupt:
-        server.stop(0)
+        loop = asyncio.get_event_loop()
+        loop.create_task(server.shutdown(0))
 
 
 if __name__ == "__main__":

@@ -65,12 +65,15 @@ class ClientObjectRef(ClientBaseRef):
     def __await__(self):
         return self.as_future().__await__()
 
-    def as_future(self):
+    def as_future(self) -> asyncio.Future:
         loop = asyncio.get_event_loop()
         fut = loop.create_future()
 
-        def set_value(data):
-            def inner_set_value():
+        def set_value(data: Any) -> None:
+            """Schedules a callback to set the exception or result
+            in the Future."""
+
+            def inner_set_value() -> None:
                 if isinstance(data, Exception):
                     fut.set_exception(data)
                 else:
@@ -79,6 +82,9 @@ class ClientObjectRef(ClientBaseRef):
             loop.call_soon_threadsafe(inner_set_value)
 
         self._on_completed(set_value)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
         return fut
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
@@ -89,7 +95,7 @@ class ClientObjectRef(ClientBaseRef):
         """
         from ray.util.client.client_pickler import loads_from_server
 
-        def deserialize_obj(resp):
+        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
             """Converts from a GetResponse proto to a python object."""
             obj = resp.get
             data = None

@@ -27,7 +27,7 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None):
     finally:
         ray._inside_client_test = False
         ray.disconnect()
-        server.stop(0)
+        server.shutdown(0)
 
 
 @contextmanager
@@ -45,7 +45,7 @@ def ray_start_cluster_client_server_pair(address):
     finally:
         ray._inside_client_test = False
         ray.disconnect()
-        server.stop(0)
+        server.shutdown(0)
 
 
 class RayClientSerializationContext:
