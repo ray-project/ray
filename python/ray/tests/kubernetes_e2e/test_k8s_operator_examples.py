@@ -54,10 +54,10 @@ def wait_for_pods(n):
 
 
 @retry_until_true
-def wait_for_logs():
+def wait_for_logs(operator_pod):
     """Check if logs indicate presence of nodes of types "head-node" and
     "worker-nodes" in the "example-cluster" cluster."""
-    cmd = f"kubectl -n {NAMESPACE} logs ray-operator-pod"\
+    cmd = f"kubectl -n {NAMESPACE} logs {operator_pod}"\
         "| grep ^example-cluster: | tail -n 100"
     log_tail = subprocess.check_output(cmd, shell=True).decode()
     return ("head-node" in log_tail) and ("worker-node" in log_tail)
@@ -97,6 +97,14 @@ def get_operator_config_path(file_name):
     return os.path.join(operator_configs, file_name)
 
 
+def pods():
+    print(">>>Checking monitor logs for head and workers.")
+    cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
+        " custom-columns=\":metadata.name\""
+    pod_list = subprocess.check_output(cmd, shell=True).decode().split()
+    return pod_list
+
+
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
 
@@ -133,7 +141,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Fill image fields
             podTypes = example_cluster_config["spec"]["podTypes"]
             podTypes2 = example_cluster2_config["spec"]["podTypes"]
-            pod_specs = ([operator_config[-1]["spec"]] + [
+            pod_specs = ([operator_config[-1]["spec"]["template"]["spec"]] + [
                 job_config["spec"]["template"]["spec"]
             ] + [podType["podConfig"]["spec"] for podType in podTypes
                  ] + [podType["podConfig"]["spec"] for podType in podTypes2])
@@ -165,8 +173,8 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
-            print(">>>Checking monitor logs for head and workers.")
-            wait_for_logs()
+            operator_pod = [pod for pod in pods() if "operator" in pod].pop()
+            wait_for_logs(operator_pod)
 
             # Delete the second cluster
             print(">>>Deleting example-cluster2.")
@@ -182,15 +190,16 @@ class KubernetesOperatorTest(unittest.TestCase):
             print(">>>Submitting a job to test Ray client connection.")
             cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
             subprocess.check_call(cmd, shell=True)
-
-            cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
-                " custom-columns=\":metadata.name\""
-            pods = subprocess.check_output(cmd, shell=True).decode().split()
-            job_pod = [pod for pod in pods if "job" in pod].pop()
+            job_pod = [pod for pod in pods() if "job" in pod].pop()
             time.sleep(10)
             wait_for_job(job_pod)
             cmd = f"kubectl -n {NAMESPACE} delete jobs --all"
             subprocess.check_call(cmd, shell=True)
+
+            # Delete operator pod. Deployment controller should recover it,
+            # allowing the rest of this test to succeed.
+            print(">>>Deleting operator pod.")
+            cmd = f"kubectl -n {NAMESPACE} delete pod {operator_pod}"
 
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
