@@ -40,7 +40,7 @@ class PlacementGroup:
     """A handle to a placement group."""
 
     @staticmethod
-    def empty():
+    def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
 
     def __init__(self,
@@ -136,7 +136,7 @@ class PlacementGroup:
         return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
 
     @staticmethod
-    def from_json_serializable(serializable_form: dict):
+    def from_json_serializable(serializable_form: dict) -> "PlacementGroup":
         """Instantiate and return a PlacementGroup from its json-serializable
         dict representation.
 
