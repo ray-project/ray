@@ -748,6 +748,8 @@ void WorkerPool::TryKillingIdleWorkers() {
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
         auto rpc_client = worker->rpc_client();
         RAY_CHECK(rpc_client);
+        RAY_CHECK(running_size > 0);
+        running_size--;
         rpc::ExitRequest request;
         rpc_client->Exit(request, [this, worker](const ray::Status &status,
                                                  const rpc::ExitReply &r) {
@@ -785,8 +787,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       } else {
         RemoveWorker(worker_state.idle, worker);
       }
-      RAY_CHECK(running_size > 0);
-      running_size--;
     }
   }
 
