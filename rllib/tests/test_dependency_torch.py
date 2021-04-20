@@ -5,7 +5,8 @@ import sys
 
 
 if __name__ == "__main__":
-    import tensorflow as tf
+    from ray.rllib.utils.framework import try_import_tf
+    tf1, tf, tfv = try_import_tf()
     import re
     tf_file = tf.__file__
     torch_file = re.sub("tensorflow", "torch", tf_file)
