@@ -19,9 +19,9 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (
-    format_actor_name, get_current_node_resource_key, get_random_letters,
-    logger, make_fastapi_class_based_view, register_custom_serializers)
+from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
+                             get_random_letters, logger,
+                             make_fastapi_class_based_view)
 
 import ray
 
@@ -614,8 +614,6 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
-    register_custom_serializers()
-
     try:
         _get_global_client()
         logger.info("Connecting to existing Serve instance.")
@@ -681,8 +679,6 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
-
-    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -1002,21 +998,22 @@ class ServeDeployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
-            raise TypeError("version must be a string if provided.")
+            raise TypeError("version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
-            raise TypeError("init_args must be a tuple if provided.")
-        if route_prefix is None:
-            route_prefix = f"/{name}"
-        else:
+            raise TypeError("init_args must be a tuple.")
+        if route_prefix is not None:
             if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string if provided.")
+                raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'")
+                raise ValueError("route_prefix must start with '/'.")
+            if route_prefix != "/" and route_prefix.endswith("/"):
+                raise ValueError(
+                    "route_prefix must not end with '/' unless it's the root.")
             if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards")
+                raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None
                 or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict if provided.")
+            raise TypeError("ray_actor_options must be a dict.")
 
         if init_args is None:
             init_args = ()
@@ -1056,7 +1053,8 @@ class ServeDeployment:
 
     def delete(self):
         """Delete this deployment."""
-        return _get_global_client().delete_deployment(self.name)
+        return _get_global_client().delete_deployment(
+            self.name, _internal=True)
 
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
@@ -1136,9 +1134,13 @@ class ServeDeployment:
         ])
 
     def __str__(self):
+        if self.route_prefix is None:
+            route_prefix = f"/{self.name}"
+        else:
+            route_prefix = self.route_prefix
         return (f"ServeDeployment(name={self.name},"
                 f"version={self.version},"
-                f"route_prefix={self.route_prefix})")
+                f"route_prefix={route_prefix})")
 
 
 @overload
@@ -1184,12 +1186,14 @@ def deployment(
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
-            under the HTTP path prefix will be routed to this deployment.
+        route_prefix (Optional[str]): Requests to paths under this HTTP path
+            prefix will be routed to this deployment. Defaults to '/{name}'.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
-            of '/a/b', requests to '/a' go to A, requests to '/a/b' go to B,
-            requests to '/a/c' go to A, and requests to '/a/b/c' go to B.
+            of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
+            to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
+            a '/' unless they're the root (just '/'), which acts as a
+            catch-all.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Arguments to pass to the
