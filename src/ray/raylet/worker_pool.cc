@@ -759,6 +759,7 @@ void WorkerPool::TryKillingIdleWorkers() {
           }
 
           // In case of failed to send request, we remove it from pool as well
+          // TODO (iycheng): We should handle the grpc failure in better way.
           if (!status.ok() || r.success()) {
             auto &worker_state = GetStateForLanguage(worker->GetLanguage());
             // If we could kill the worker properly, we remove them from the idle pool.
@@ -844,12 +845,16 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Code path of normal task or actor creation task without dynamic worker options.
     // Find an available worker which is already assigned to this job.
     // Try to pop the most recently pushed worker.
+    size_t exiting_cnt = 0;
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
           it->first->GetAssignedJobId() != task_spec.JobId() ||
-          state.pending_disconnection_workers.count(it->first) > 0 ||
-          pending_exit_idle_workers_.count(it->first->WorkerId())) {
+          state.pending_disconnection_workers.count(it->first) > 0) {
+        continue;
+      }
+      if(pending_exit_idle_workers_.count(it->first->WorkerId())) {
+        exiting_cnt += 1;
         continue;
       }
       state.idle.erase(it->first);
@@ -861,7 +866,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       idle_of_all_languages_map_.erase(worker);
       break;
     }
-    if (worker == nullptr) {
+    // If there are jobs exiting, we should re-try later.
+    // Some jobs holding the data will not exit successfully, so we can reuse them
+    // later.
+    if (worker == nullptr && exiting_cnt == 0) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
