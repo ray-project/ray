@@ -34,3 +34,4 @@ werkzeug
 git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 scikit-optimize
+pathspec==0.8.1

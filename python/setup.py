@@ -138,7 +138,7 @@ install_requires = [
     "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
-    "pathspec",
+    "pathspec==0.8.1",
 ]
 
 

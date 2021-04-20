@@ -112,7 +112,7 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _dir_travel(
         path: Path,
-        excludes: PathSpec,
+        excludes: Optional[PathSpec],
         handler: Callable,
         base: Optional[Path] = None,
 ):
@@ -121,8 +121,7 @@ def _dir_travel(
     path_str = str(path.relative_to(base))
     if path.is_dir():
         path_str += "/"
-    print(path_str)
-    if excludes.match_file(path_str):
+    if excludes is not None and excludes.match_file(path_str):
         return
     handler(path)
     if path.is_dir():
@@ -199,7 +198,6 @@ def _get_exclude_spec(path: Path, excludes: List[str]):
         with ignore_file.open("r") as f:
             return PathSpec.from_lines("gitwildmatch",
                                        f.readlines() + excludes)
-    print("excludes: ", excludes)
     return PathSpec.from_lines("gitwildmatch", excludes)
 
 

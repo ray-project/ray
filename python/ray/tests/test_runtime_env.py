@@ -2,7 +2,7 @@ import os
 import pytest
 import sys
 import unittest
-
+import random
 import tempfile
 from pathlib import Path
 import ray
@@ -65,6 +65,13 @@ sleep(10)
 """
 
 
+def create_file(p):
+    if not p.parent.exists():
+        p.parent.mkdir()
+    with p.open("w") as f:
+        f.write("Test")
+
+
 @pytest.fixture(scope="function")
 def working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -97,6 +104,59 @@ def start_client_server(cluster, client_mode):
     return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
 
 
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_travel():
+    import uuid
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_paths = set()
+        file_paths = set()
+        item_num = 0
+        excludes = []
+        def construct(path, excluded = False):
+            path.mkdir(parents=True)
+            if not excluded:
+                dir_paths.add(path)
+            if item_num > 1000:
+                return
+            dir_num = random.randint(0, 3)
+            file_num = random.randint(0, 2)
+            for _ in range(dir_num):
+                uid = uuid.uuid5()
+                dir_path = path / uid
+                exclud_sub = random.randint(0,1) == 0
+                if not excluded and exclud_sub:
+                    if random.randint(0, 1) == 0:
+                        excludes.append(str(dir_path.absolute()))
+                    else:
+                        excludes.append(str(dir_path))
+                construct(dir_path, exclud_sub or excluded)
+                item_num += 1
+            if item_num > 1000:
+                return
+
+            for _ in range(file_num):
+                uid = uuid.uuid5()
+                with (path / uid).open("w") as f:
+                    v = random.randint()
+                    f.write(str(v))
+                    if not excluded:
+                        if random.randint(0, 1) == 0:
+                            excludes.append(str(path / uid))
+                        else:
+                            file_paths.add((path / uid, v))
+                item_num += 1
+        exclude_spec = ray._private.runtime_env._get_exclude_spec(Path(tmp_dir), excludes)
+        visited_dir_paths = set()
+        visited_file_paths = set()
+        def handler(path):
+            if path.is_dir():
+                visited_dir_path.add(str(path))
+            else:
+                visited_file_paths.add(str(path))
+        ray._private._dir_travel(Path(tmp_dir), exclude_spec, handler)
+        assert file_paths == visited_file_paths
+        assert dir_paths == visited_dir_paths
+
 """
 The following test cases are related with runtime env. It following these steps
   1) Creating a temporary dir with fixture working_dir
@@ -104,8 +164,6 @@ The following test cases are related with runtime env. It following these steps
   3) Overwrite runtime_env and execute_statement in the template
   4) Execute it as a separate driver and return the result
 """
-
-
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
 @pytest.mark.parametrize("client_mode", [True, False])
 def test_single_node(ray_start_cluster_head, working_dir, client_mode):
@@ -178,11 +236,6 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
 
-    def create_file(p):
-        if not p.parent.exists():
-            p.parent.mkdir()
-        with p.open("w") as f:
-            f.write("Test")
 
     create_file(working_path / "tmp_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "test_2")
