@@ -63,6 +63,11 @@ class RuntimeEnvDict:
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
                 self.conda_env_name = conda
+            elif isinstance(conda, dict):
+                pass  # TODO(architkulkarni): add dynamic conda env installs
+            else:
+                raise TypeError("runtime_env['conda'] must be of type str or "
+                                "dict")
         if "working_dir" in runtime_env_json:
             self.working_dir = runtime_env_json["working_dir"]
         else:

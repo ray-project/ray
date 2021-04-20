@@ -351,7 +351,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
-      ray::RuntimeEnv runtime_env = ray::RuntimeEnv(),
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
