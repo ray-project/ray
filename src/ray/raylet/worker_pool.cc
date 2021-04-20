@@ -783,6 +783,7 @@ void WorkerPool::TryKillingIdleWorkers() {
           RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         });
       } else {
+        // Even it's a dead worker, we still need to remove them from the pool.
         RemoveWorker(worker_state.idle, worker);
       }
     }
@@ -844,7 +845,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Code path of normal task or actor creation task without dynamic worker options.
     // Find an available worker which is already assigned to this job.
     // Try to pop the most recently pushed worker.
-    size_t exiting_cnt = 0;
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -853,8 +853,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
           it->first->IsDead()) {
         continue;
       }
+      // These workers are exiting. So skip them.
       if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
-        exiting_cnt += 1;
         continue;
       }
       state.idle.erase(it->first);
@@ -866,10 +866,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       idle_of_all_languages_map_.erase(worker);
       break;
     }
-    // If there are jobs exiting, we should re-try later.
-    // Some jobs holding the data will not exit successfully, so we can reuse them
-    // later.
-    if (worker == nullptr && exiting_cnt == 0) {
+    if (worker == nullptr) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
