@@ -692,11 +692,11 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "memory_leak_ppo",
+    name = "test_memory_leak_ppo",
     tags = ["memory_leak_tests"],
-    main = "tests/test_memory_leak.py",
+    main = "tests/run_memory_leak_tests.py",
     size = "medium",
-    srcs = ["tests/test_memory_leak.py"],
+    srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
