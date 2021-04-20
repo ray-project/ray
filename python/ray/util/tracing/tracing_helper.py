@@ -11,7 +11,6 @@ from typing import (
     Callable,
     Dict,
     Generator,
-    List,
     MutableMapping,
     Optional,
     Sequence,
@@ -28,7 +27,6 @@ try:
     from opentelemetry import context, trace
     from opentelemetry import propagators
     from opentelemetry.context.context import Context
-    from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
     from opentelemetry.trace.propagation.textmap import DictGetter
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
@@ -37,7 +35,6 @@ except ImportError:
             "'pip install opentelemetry-api==1.0.0rc1' "
             "and 'pip install opentelemetry-sdk==1.0.0rc1' to enable tracing. "
             "See more at docs.ray.io/tracing.html")
-
 
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
@@ -54,15 +51,15 @@ class ImportFromStringError(Exception):
 
 
 def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
-    """Given a string that is in format "<module>:<attribute>", import the attribute."""
+    """Given a string that is in format "<module>:<attribute>",
+    import the attribute."""
     if not isinstance(import_str, str):
         return import_str
 
     module_str, _, attrs_str = import_str.partition(":")
     if not module_str or not attrs_str:
-        message = (
-            'Import string "{import_str}" must be in format "<module>:<attribute>".'
-        )
+        message = ('Import string "{import_str}" must be in format'
+                   '"<module>:<attribute>".')
         raise ImportFromStringError(message.format(import_str=import_str))
 
     try:
@@ -80,10 +77,10 @@ def import_from_string(import_str: Union[ModuleType, str]) -> ModuleType:
     except AttributeError:
         message = 'Attribute "{attrs_str}" not found in module "{module_str}".'
         raise ImportFromStringError(
-            message.format(attrs_str=attrs_str, module_str=module_str)
-        )
+            message.format(attrs_str=attrs_str, module_str=module_str))
 
     return instance
+
 
 class DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
@@ -151,7 +148,8 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable, method: _nameable) -> "Attributes":
+def _actor_hydrate_span_args(class_: _nameable,
+                             method: _nameable) -> "Attributes":
     """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
@@ -250,7 +248,8 @@ def _inject_tracing_into_function(function):
 
         tracer = trace.get_tracer(__name__)
 
-        assert _ray_trace_ctx is not None, f"Missing ray_trace_ctx!: {args}, {kwargs}"
+        assert (_ray_trace_ctx is not None,
+                f"Missing ray_trace_ctx!: {args}, {kwargs}")
 
         function_name = function.__module__ + "." + function.__name__
 

@@ -15,7 +15,4 @@ def _setup_tracing(*args: Any, **kwargs: Any) -> None:
     trace.get_tracer_provider().add_span_processor(
         SimpleExportSpanProcessor(
             ConsoleSpanExporter(
-                out=open(f"/tmp/spans_file{os.getpid()}.json", "a")
-                )
-        )
-    )
+                out=open(f"/tmp/spans_file{os.getpid()}.json", "a"))))
