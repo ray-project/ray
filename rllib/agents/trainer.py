@@ -1167,9 +1167,10 @@ class Trainer(Trainable):
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning("simple_optimizer", error=False)
+            deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework")
+        # Multi-GPU setting: Must use TFMultiGPU if tf.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "

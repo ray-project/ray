@@ -2212,6 +2212,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/partial_gpus",
+    main = "examples/partial_gpus.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/partial_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["examples", "examples_R"],
     size = "small",
