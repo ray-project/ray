@@ -620,6 +620,19 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 
+    # This redis client is used for health checking. We can't use `internal_kv`
+    # because it requires `ray.init` to be called, which only connect handlers
+    # should do.
+    if "redis-address" not in args:
+        address = ray._private.services.get_ray_address_to_use_or_die()
+    else:
+        address = args["redis-address"]
+    if args.redis_password is None:
+        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+    else:
+        password = args.redis_password
+    redis_client = ray._private.services.create_redis_client(address, password)
+
     ray_connect_handler = create_ray_handler(args.redis_address,
                                              args.redis_password)
 
@@ -630,11 +643,15 @@ def main():
         while True:
             health_report = {
                 "time": time.time(),
-                "is_initialized": ray.is_initialized()
             }
-            ray.experimental.internal_kv._internal_kv_put(
-                "healthcheck:ray_client_server", json.dumps(health_report),
-                overwrite=True)
+
+            try:
+                redis_client.hset("healthcheck:ray_client_server", "value",
+                                  json.dumps(health_report))
+            except Exception as e:
+                logger.error("Failed to put health check.")
+                logger.exception(e)
+
             time.sleep(1)
 
     except KeyboardInterrupt:

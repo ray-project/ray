@@ -1637,7 +1637,8 @@ def global_gc(address):
     "--component",
     required=False,
     type=str,
-    help="Health check for a specific component. Currently supports: [ray_client_server]")
+    help="Health check for a specific component. Currently supports: "
+    "[ray_client_server]")
 def healthcheck(address, redis_password, component):
     """
     THIS IS NOT A PUBLIC API.
@@ -1654,11 +1655,12 @@ def healthcheck(address, redis_password, component):
         # If no component is specified, we are health checking the core. If
         # client creation or ping fails, we will still exit with a non-zero
         # exit code.
-        redis.ping()
+        redis_client.ping()
         sys.exit(0)
 
-    report_str = redis_client.hget(f"healthcheck:{component}")
+    report_str = redis_client.hget(f"healthcheck:{component}", "value")
     if not report_str:
+        print(redis_client.keys())
         # Status was never updated
         sys.exit(1)
 
@@ -1672,15 +1674,9 @@ def healthcheck(address, redis_password, component):
 
     # If the status is too old, the service has probably already died.
     delta = cur_time - report_time
-    time_ok = delta < ray.ray_constants.RAY_HEALTHCHECK_EXPIRATION_S
+    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
 
-    component_ok = True
-
-    # A dispatch table for component specific rules.
-    if component == "ray_client_server":
-        component_ok = bool(report["is_initialized"])
-
-    if component_ok and time_ok:
+    if time_ok:
         sys.exit(0)
     else:
         sys.exit(1)
