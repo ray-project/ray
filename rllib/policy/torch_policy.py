@@ -136,27 +136,41 @@ class TorchPolicy(Policy):
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
             self.model_gpu_towers = [
-                model if config["num_gpus"] == 0 else copy.deepcopy(model)
+                model if i == 0 else copy.deepcopy(model)
                 for i in range(config["num_gpus"] or 1)
             ]
+            self.model = model
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
-            self.device = torch.device("cuda")
-            self.devices = [
-                torch.device("cuda:{}".format(id_))
-                for i, id_ in enumerate(ray.get_gpu_ids())
-                if i < config["num_gpus"]
-            ]
-            self.model_gpu_towers = nn.parallel.replicate.replicate(
-                model, [
-                    id_ for i, id_ in enumerate(ray.get_gpu_ids())
-                    if i < config["num_gpus"]
-                ])
+            self.devices = []
+            gpu_ids = ray.get_gpu_ids()
+            for i, id_ in enumerate(gpu_ids):
+                if i < config["num_gpus"]:
+                    self.devices.append(torch.device("cuda:{}".format(id_)))
+            print(f"devices={self.devices}")
+            self.device = self.devices[0] #torch.device("cuda")
+#            self.model = model.to(self.device)
+            ids = []
+            for i, id_ in enumerate(gpu_ids):
+                if i < config["num_gpus"]:
+                        ids.append(id_)
+            print(ids)
+            #self.model = model.to(torch.device("cuda"))
+            #self.model_gpu_towers = nn.parallel.replicate(
+            #    self.model, ids)
+            self.model_gpu_towers = []
+            for i, _ in enumerate(ids):
+                model_copy = copy.deepcopy(model)
+                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+            self.model = self.model_gpu_towers[0]
+            print("Policy's model-GPU towers={}".format(self.model_gpu_towers))
+            print("Policy's model's devices: {}".format([next(iter(self.model_gpu_towers[i].parameters())).device for i, id_ in enumerate(ids)]))
 
         # Move model to device.
-        self.model = model.to(self.device)
-
+        #self.model = self.model_gpu_towers[0] #model.to(self.device)
+        print("Policy's `device`={}".format(self.devices[0]))
+        
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
         # first, then its value function (e.g. in a loss function), in
@@ -317,6 +331,7 @@ class TorchPolicy(Policy):
                         raise e
             else:
                 dist_class = self.dist_class
+                print("in compute_actions_helper: input_dict[obs].device={}".format(input_dict["obs"].device))
                 dist_inputs, state_out = self.model(input_dict, state_batches,
                                                     seq_lens)
 
