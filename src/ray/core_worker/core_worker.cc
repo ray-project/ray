@@ -2761,7 +2761,7 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // Fail the request if it owns any object.
   reply->set_success(!own_objects);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  if(!own_objects) {
+  if (!own_objects) {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }
 }
