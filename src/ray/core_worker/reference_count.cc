@@ -881,7 +881,9 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
                  << reply->borrowed_refs().size();
   send_reply_callback(Status::OK(), nullptr, nullptr);
   // SANG-TODO object_status_publisher_->Publish(WAIT_FOR_REF_REMOVED_CHANNEL, reply);
-  // SANG-TODO object_status_publisher_->UnregisterSubscription(WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
+  // SANG-TODO
+  // object_status_publisher_->UnregisterSubscription(WAIT_FOR_REF_REMOVED_CHANNEL,
+  // subscriber_worker_id, object_id);
 }
 
 void ReferenceCounter::SetRefRemovedCallback(

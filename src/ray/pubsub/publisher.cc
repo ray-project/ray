@@ -21,7 +21,8 @@ namespace pubsub {
 namespace pub_internal {
 
 template <typename MessageID>
-void SubscriptionIndex<MessageID>::AddEntry(const MessageID &message_id, const SubscriberID &subscriber_id) {
+void SubscriptionIndex<MessageID>::AddEntry(const MessageID &message_id,
+                                            const SubscriberID &subscriber_id) {
   auto &subscribing_message_ids = subscribers_to_message_id_[subscriber_id];
   RAY_CHECK(subscribing_message_ids.emplace(message_id).second);
   auto &subscriber_map = message_id_to_subscribers_[message_id];
@@ -30,7 +31,8 @@ void SubscriptionIndex<MessageID>::AddEntry(const MessageID &message_id, const S
 
 template <typename MessageID>
 absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-SubscriptionIndex<MessageID>::GetSubscriberIdsByMessageId(const MessageID &message_id) const {
+SubscriptionIndex<MessageID>::GetSubscriberIdsByMessageId(
+    const MessageID &message_id) const {
   auto it = message_id_to_subscribers_.find(message_id);
   if (it == message_id_to_subscribers_.end()) {
     return absl::nullopt;
@@ -45,7 +47,8 @@ bool SubscriptionIndex<MessageID>::HasMessageId(const MessageID &message_id) con
 }
 
 template <typename MessageID>
-bool SubscriptionIndex<MessageID>::HasSubscriber(const SubscriberID &subscriber_id) const {
+bool SubscriptionIndex<MessageID>::HasSubscriber(
+    const SubscriberID &subscriber_id) const {
   return subscribers_to_message_id_.count(subscriber_id);
 }
 
@@ -75,7 +78,7 @@ bool SubscriptionIndex<MessageID>::EraseSubscriber(const SubscriberID &subscribe
 
 template <typename MessageID>
 bool SubscriptionIndex<MessageID>::EraseEntry(const MessageID &message_id,
-                                   const SubscriberID &subscriber_id) {
+                                              const SubscriberID &subscriber_id) {
   // Erase from subscribers_to_objects_;
   auto subscribers_to_message_it = subscribers_to_message_id_.find(subscriber_id);
   if (subscribers_to_message_it == subscribers_to_message_id_.end()) {
@@ -112,18 +115,21 @@ bool SubscriptionIndex<MessageID>::AssertNoLeak() const {
   return message_id_to_subscribers_.size() == 0 && subscribers_to_message_id_.size() == 0;
 }
 
-bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply, rpc::SendReplyCallback send_reply_callback) {
+bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   if (!long_polling_connection_) {
     RAY_CHECK(reply != nullptr);
     RAY_CHECK(send_reply_callback != nullptr);
-    long_polling_connection_ = absl::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
+    long_polling_connection_ =
+        absl::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
     last_connection_update_time_ms_ = get_time_ms_();
     return true;
   }
   return false;
 }
 
-void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish) {
+void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
+                              bool try_publish) {
   if (mailbox_.size() == 0) {
     mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
@@ -203,7 +209,8 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
 }
 
 template <typename MessageID>
-void Publisher::RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
+                                     const SubscriberID &subscriber_id,
                                      const MessageID &message_id) {
   RAY_LOG(DEBUG) << "message id " << message_id << " is subscribed by " << subscriber_id;
 
@@ -217,11 +224,14 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type, const 
 }
 
 template <typename MessageID>
-void Publisher::Publish(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id) {
+void Publisher::Publish(const rpc::ChannelType channel_type,
+                        std::unique_ptr<rpc::PubMessage> pub_message,
+                        const MessageID &message_id) {
   absl::MutexLock lock(&mutex_);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
-  auto maybe_subscribers = subscription_index_map_[channel_type].GetSubscriberIdsByMessageId(message_id);
+  auto maybe_subscribers =
+      subscription_index_map_[channel_type].GetSubscriberIdsByMessageId(message_id);
   if (!maybe_subscribers.has_value()) {
     return;
   }
@@ -236,7 +246,8 @@ void Publisher::Publish(const rpc::ChannelType channel_type, std::unique_ptr<rpc
 }
 
 template <typename MessageID>
-bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
+                                       const SubscriberID &subscriber_id,
                                        const MessageID &message_id) {
   absl::MutexLock lock(&mutex_);
   return subscription_index_map_[channel_type].EraseEntry(message_id, subscriber_id);
@@ -248,7 +259,9 @@ bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
 }
 
 bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
-  int erased = subscription_index_map_[rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION].EraseSubscriber(subscriber_id);
+  int erased =
+      subscription_index_map_[rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION].EraseSubscriber(
+          subscriber_id);
   // Publish messages before removing the entry. Otherwise, it can have memory leak.
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
@@ -296,10 +309,17 @@ bool Publisher::AssertNoLeak() const {
 }
 
 // We need to define this in order for the compiler to find the definition.
-// TODO(sang): Encapsulate these methods to inheritable Channel class and only define Channel classes templates here.
-template bool Publisher::UnregisterSubscription<ObjectID>(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &message_id);
-template void Publisher::Publish<ObjectID>(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const ObjectID &message_id);
-template void Publisher::RegisterSubscription<ObjectID>(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const ObjectID &message_id);
+// TODO(sang): Encapsulate these methods to inheritable Channel class and only define
+// Channel classes templates here.
+template bool Publisher::UnregisterSubscription<ObjectID>(
+    const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+    const ObjectID &message_id);
+template void Publisher::Publish<ObjectID>(const rpc::ChannelType channel_type,
+                                           std::unique_ptr<rpc::PubMessage> pub_message,
+                                           const ObjectID &message_id);
+template void Publisher::RegisterSubscription<ObjectID>(
+    const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+    const ObjectID &message_id);
 
 }  // namespace pubsub
 

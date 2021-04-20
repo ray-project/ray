@@ -76,8 +76,9 @@ class SubscriptionIndex {
 };
 
 struct LongPollConnection {
-  LongPollConnection(rpc::PubsubLongPollingReply *reply, rpc::SendReplyCallback send_reply_callback)
-   : reply(reply), send_reply_callback(send_reply_callback) {}
+  LongPollConnection(rpc::PubsubLongPollingReply *reply,
+                     rpc::SendReplyCallback send_reply_callback)
+      : reply(reply), send_reply_callback(send_reply_callback) {}
 
   rpc::PubsubLongPollingReply *reply;
   rpc::SendReplyCallback send_reply_callback;
@@ -108,7 +109,8 @@ class Subscriber {
   /// \param pub_message Message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
   /// connection. False is used only for testing.
-  void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message, bool try_publish = true);
+  void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
+                    bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -174,9 +176,8 @@ class Publisher {
       : periodical_runner_(periodical_runner),
         get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
-        subscription_index_map_({
-          { rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, pub_internal::SubscriptionIndex<ObjectID>() }
-        }),
+        subscription_index_map_({{rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+                                  pub_internal::SubscriptionIndex<ObjectID>()}}),
         publish_batch_size_(publish_batch_size) {
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
                                           subscriber_timeout_ms);
@@ -198,7 +199,9 @@ class Publisher {
   /// \param subscriber_id The node id of the subscriber.
   /// \param message_id The message_id that the subscriber is subscribing to.
   template <typename MessageID>
-  void RegisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id, const MessageID &message_id);
+  void RegisterSubscription(const rpc::ChannelType channel_type,
+                            const SubscriberID &subscriber_id,
+                            const MessageID &message_id);
 
   /// Publish the given object id to subscribers.
   ///
@@ -206,7 +209,8 @@ class Publisher {
   /// \param pub_message The message to publish.
   /// \param message_id The message id to publish.
   template <typename MessageID>
-  void Publish(const rpc::ChannelType channel_type, std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
+  void Publish(const rpc::ChannelType channel_type,
+               std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
@@ -216,7 +220,8 @@ class Publisher {
   /// \param message_id The message_id of the subscriber.
   /// \return True if erased. False otherwise.
   template <typename MessageID>
-  bool UnregisterSubscription(const rpc::ChannelType channel_type, const SubscriberID &subscriber_id,
+  bool UnregisterSubscription(const rpc::ChannelType channel_type,
+                              const SubscriberID &subscriber_id,
                               const MessageID &message_id);
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
@@ -271,7 +276,8 @@ class Publisher {
       subscribers_ GUARDED_BY(mutex_);
 
   /// Index that stores the mapping of messages <-> subscribers.
-  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex<ObjectID>> subscription_index_map_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<rpc::ChannelType, pub_internal::SubscriptionIndex<ObjectID>>
+      subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
   const uint64_t publish_batch_size_;

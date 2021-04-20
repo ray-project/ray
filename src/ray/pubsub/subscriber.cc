@@ -119,7 +119,8 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     // connection.
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
-      const auto object_id = ObjectID::FromBinary(msg.wait_for_object_eviction_message().object_id());
+      const auto object_id =
+          ObjectID::FromBinary(msg.wait_for_object_eviction_message().object_id());
       RAY_LOG(DEBUG) << "Object id " << object_id << " information was published from "
                      << publisher_id << ". Releasing the object.";
       auto maybe_subscription_callback =
