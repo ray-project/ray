@@ -628,7 +628,15 @@ def main():
     server = serve(hostport, ray_connect_handler)
     try:
         while True:
-            time.sleep(1000)
+            health_report = {
+                "time": time.time(),
+                "is_initialized": ray.is_initialized()
+            }
+            ray.experimental.internal_kv._internal_kv_put(
+                "healthcheck:ray_client_server", json.dumps(health_report),
+                overwrite=True)
+            time.sleep(1)
+
     except KeyboardInterrupt:
         server.stop(0)
 
