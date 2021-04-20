@@ -1,6 +1,8 @@
-import logging
+import asyncio
 from concurrent import futures
+import logging
 import grpc
+import grpc.aio
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
@@ -252,6 +254,32 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def GetObject(self, request, context=None):
         return self._get_object(request, "", context)
+
+    def _async_get_object(self, request, client_id: str, req_id: int, context):
+        if request.id not in self.object_refs[client_id]:
+            return ray_client_pb2.GetResponse(valid=False)
+        try:
+            assert request.asynchronous
+            assert context is not None
+            objectref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % objectref)
+            with disable_client_hook():
+                loop = asyncio.get_event_loop()
+
+                def f(result):
+                    serialized = dumps_from_server(result, client_id, self)
+                    resp = ray_client_pb2.DataResponse(
+                        get=ray_client_pb2.GetResponse(
+                            valid=True, data=serialized))
+                    resp.req_id = req_id
+
+                    loop.create_task(context.write(resp))
+
+                objectref._on_completed(f)
+                return None
+        except Exception as e:
+            return ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
 
     def _get_object(self, request, client_id: str, context=None):
         if request.id not in self.object_refs[client_id]:
@@ -542,7 +570,7 @@ def serve(connection_str, ray_connect_handler=None):
                 return ray.init(job_config=job_config)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.server(
+    server = grpc.aio.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
         options=[
             ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
@@ -564,7 +592,11 @@ def serve(connection_str, ray_connect_handler=None):
         logs_servicer=logs_servicer,
         grpc_server=server,
     )
-    server.start()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(server.start())
+    t = threading.Thread(
+        target=lambda: loop.run_until_complete(server.wait_for_termination()))
+    t.start()
     return current_handle
 
 
