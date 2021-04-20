@@ -53,7 +53,7 @@ def config_path(cluster_name: str) -> str:
 def cluster_scoped_cr_stream() -> Iterator:
     w = Watch()
     return w.stream(
-        custom_objects_api().list_namespaced_custom_object,
+        custom_objects_api().list_cluster_custom_object,
         group="cluster.ray.io",
         version="v1",
         plural="rayclusters")
@@ -62,7 +62,7 @@ def cluster_scoped_cr_stream() -> Iterator:
 def namespaced_cr_stream(namespace) -> Iterator:
     w = Watch()
     return w.stream(
-        custom_objects_api().list_cluster_custom_object,
+        custom_objects_api().list_namespaced_custom_object,
         namespace=namespace,
         group="cluster.ray.io",
         version="v1",
