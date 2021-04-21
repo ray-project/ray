@@ -702,6 +702,16 @@ py_test(
 )
 
 py_test(
+    name = "test_memory_leak_ddpg",
+    tags = ["memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "medium",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
+    args = ["--yaml-dir=tuned_examples/ddpg"]
+)
+
+py_test(
     name = "test_memory_leak_impala",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
@@ -721,6 +731,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
+py_test(
+    name = "test_memory_leak_sac",
+    tags = ["memory_leak_tests"],
+    main = "tests/run_memory_leak_tests.py",
+    size = "medium",
+    srcs = ["tests/run_memory_leak_tests.py"],
+    data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
 
 # --------------------------------------------------------------------
 # Agents (quick training test iterations via `rllib train`)
