@@ -445,6 +445,42 @@ sleep(600)
     assert out.strip().split()[-1] == "ERROR"
 
 
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_util_without_job_config(shutdown_only):
+    from ray.cluster_utils import Cluster
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        with (Path(tmp_dir) / "lib.py").open("w") as f:
+            f.write("""
+def one():
+    return 1
+                    """)
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        cluster = Cluster()
+        cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
+        (address, env, PKG_DIR) = start_client_server(cluster, True)
+        script = f"""
+import ray
+import ray.util
+import os
+
+
+ray.util.connect("{address}", job_config=None)
+
+@ray.remote
+def run():
+    from lib import one
+    return one()
+
+print(ray.get([run.remote()])[0])
+"""
+        out = run_string_as_driver(script, env)
+        print(out)
+        os.chdir(old_dir)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
