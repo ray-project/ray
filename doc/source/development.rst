@@ -115,18 +115,18 @@ The following links were correct during the writing of this section. In case the
 
 1. Enable Developer mode on Windows 10 systems.
 
-  1. Open Settings app;
-  2. Go to "Update & Security";
-  3. Go to "For Developers" on the left pane;
-  4. Turn on "Developer mode".
+   1. Open Settings app;
+   2. Go to "Update & Security";
+   3. Go to "For Developers" on the left pane;
+   4. Turn on "Developer mode".
 
 2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
 
-- ``C:\ProgramData\Miniconda3``
-- ``C:\ProgramData\Miniconda3\Scripts``
-- ``C:\ProgramData\Miniconda3\Library\bin``
+   - ``C:\ProgramData\Miniconda3``
+   - ``C:\ProgramData\Miniconda3\Scripts``
+   - ``C:\ProgramData\Miniconda3\Library\bin``
 
-3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``, if it was installed for a single user, adjust the path accordingly.
+3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
 4. Install cython:
 
