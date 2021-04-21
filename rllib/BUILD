@@ -807,18 +807,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ddpg_mountaincar_continuous_v0_num_workers_1",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "MountainCarContinuous-v0",
-        "--run", "DDPG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
     name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
     tags = ["quick_train"],
@@ -834,19 +822,6 @@ py_test(
 # DQN/APEX
 
 py_test(
-    name = "test_dqn_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "DQN",
-        "--config", "'{\"framework\": \"tf\"}'",
-        "--stop", "'{\"training_iteration\": 1}'"
-        ]
-)
-
-py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
     size = "small",
@@ -856,19 +831,6 @@ py_test(
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"lr\": 1e-3, \"exploration_config\": {\"epsilon_timesteps\": 10000, \"final_epsilon\": 0.02}, \"dueling\": false, \"hiddens\": [], \"model\": {\"fcnet_hiddens\": [64], \"fcnet_activation\": \"relu\"}}'"
-        ]
-)
-
-py_test(
-    name = "test_dqn_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "DQN",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
         ]
 )
 
@@ -971,40 +933,6 @@ py_test(
         ]
 )
 
-# MARWIL
-
-py_test(
-    name = "test_marwil_cartpole_v0_tf",
-    main = "train.py",
-    srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
-
-py_test(
-    name = "test_marwil_cartpole_v0_torch",
-    main = "train.py",
-    srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
-
 # PG
 
 py_test(
@@ -1071,45 +999,6 @@ py_test(
 )
 
 # PPO/APPO
-
-py_test(
-    name = "test_ppo_tf_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_sgd_iter\": 10, \"sgd_minibatch_size\": 64, \"train_batch_size\": 1000, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_torch_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"num_sgd_iter\": 10, \"sgd_minibatch_size\": 64, \"train_batch_size\": 1000, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v1",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4"
-        ]
-)
 
 py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
