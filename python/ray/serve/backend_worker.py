@@ -64,6 +64,8 @@ def create_backend_replica(backend_def: Union[Callable, Type[Callable], str]):
             if is_function:
                 _callable = backend
             else:
+                # This allows backends to define an async __init__ method
+                # (required for FastAPI backend definition).
                 _callable = backend.__new__(backend)
                 await sync_to_async(_callable.__init__)(*init_args)
             # Setting the context again to update the servable_object.
