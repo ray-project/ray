@@ -88,7 +88,7 @@ struct LongPollConnection {
 class Subscriber {
  public:
   explicit Subscriber(const std::function<double()> &get_time_ms,
-                      uint64_t connection_timeout_ms, const uint64_t publish_batch_size)
+                      uint64_t connection_timeout_ms, const int publish_batch_size)
       : get_time_ms_(get_time_ms),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
@@ -142,7 +142,7 @@ class Subscriber {
   /// The time in which the connection is considered as timed out.
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
-  const uint64_t publish_batch_size_;
+  const int publish_batch_size_;
   /// The last time long polling was connected in milliseconds.
   double last_connection_update_time_ms_;
 };
@@ -171,8 +171,7 @@ class Publisher {
   /// \param publish_batch_size The batch size of published messages.
   explicit Publisher(PeriodicalRunner *periodical_runner,
                      const std::function<double()> get_time_ms,
-                     const uint64_t subscriber_timeout_ms,
-                     const uint64_t publish_batch_size)
+                     const uint64_t subscriber_timeout_ms, const int publish_batch_size)
       : periodical_runner_(periodical_runner),
         get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
@@ -280,7 +279,7 @@ class Publisher {
       subscription_index_map_ GUARDED_BY(mutex_);
 
   /// The maximum number of objects to publish for each publish calls.
-  const uint64_t publish_batch_size_;
+  const int publish_batch_size_;
 };
 
 }  // namespace pubsub
