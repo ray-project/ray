@@ -6,7 +6,6 @@ import uuid
 import os
 import inspect
 from ray.util.inspect import is_cython
-from ray.util.placement_group import PlacementGroup
 import json
 import threading
 from typing import Any

@@ -73,7 +73,7 @@ def client_mode_wrap(func):
     """Wraps a function called during client mode for execution as a remote
     task.
 
-    Can be used to implement public features of Ray client which do not
+    Can be used to implement public features of ray client which do not
     belong in the main ray API (`ray.*`), yet require server-side execution.
     An example is the creation of placement groups:
     `ray.util.placement_group.placement_group()`. When called on the client
