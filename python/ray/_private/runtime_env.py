@@ -4,7 +4,7 @@ import logging
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
-# from ray.job_config import JobConfig
+from ray.job_config import JobConfig
 from enum import Enum
 
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
@@ -332,7 +332,7 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def rewrite_working_dir_uri(job_config) -> None:
+def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     """Rewrite the working dir uri field in job_config.
 
     This function is used to update the runtime field in job_config. The
@@ -356,7 +356,7 @@ def rewrite_working_dir_uri(job_config) -> None:
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
 
-def upload_runtime_env_package_if_needed(job_config) -> None:
+def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
     """Upload runtime env if it's not there.
 
     It'll check whether the runtime environment exists in the cluster or not.
