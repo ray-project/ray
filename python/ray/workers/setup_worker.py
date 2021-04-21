@@ -1,7 +1,6 @@
 import argparse
 
-# TODO(architkulkarni): move to ray.utils
-from ray.serve.utils import import_attr
+from ray._private.utils import import_attr
 parser = argparse.ArgumentParser(
     description=(
         "Set up the environment for a Ray worker and launch the worker."))

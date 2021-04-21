@@ -12,10 +12,10 @@ import ray
 from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
-from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger,
-                             import_attr)
+from ray.serve.utils import (ASGIHTTPSender, parse_request_item, _get_logger)
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
+from ray._private.utils import import_attr
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata

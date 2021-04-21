@@ -1515,7 +1515,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
   ray::RuntimeEnv new_runtime_env = task_options.runtime_env;
   runtime_env.Update(new_runtime_env);
-  if (runtime_env.conda_env_name == "") {
+  if (runtime_env.IsEmpty()) {
     runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
   }
   // TODO(ekl) offload task building onto a thread pool for performance
@@ -1566,7 +1566,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
   ray::RuntimeEnv new_runtime_env = actor_creation_options.runtime_env;
   runtime_env.Update(new_runtime_env);
-  if (runtime_env.conda_env_name == "") {
+  if (runtime_env.IsEmpty()) {
     runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
   }
   std::vector<ObjectID> return_ids;

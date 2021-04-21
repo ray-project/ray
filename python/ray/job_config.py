@@ -29,10 +29,8 @@ class JobConfig:
             self.worker_env = dict()
         else:
             self.worker_env = worker_env
+        import ray._private.runtime_env as runtime_support
         if runtime_env:
-            # TODO(architkulkarni): move import to top of file (currently doing
-            # that causes pytest to raise ImportError for some reason)
-            import ray._private.runtime_env as runtime_support
             # Remove working_dir rom the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
             without_dir = dict(runtime_env)
@@ -43,7 +41,6 @@ class JobConfig:
             self.worker_env = self._parsed_runtime_env.to_worker_env_vars(
                 self.worker_env)
         else:
-            import ray._private.runtime_env as runtime_support
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []

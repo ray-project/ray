@@ -4,7 +4,7 @@ import logging
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
-from ray.job_config import JobConfig
+# from ray.job_config import JobConfig
 from enum import Enum
 
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
@@ -64,7 +64,8 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 self.conda_env_name = conda
             elif isinstance(conda, dict):
-                pass  # TODO(architkulkarni): add dynamic conda env installs
+                # TODO(architkulkarni): add dynamic conda env installs
+                raise NotImplementedError
             else:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
@@ -331,7 +332,7 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def rewrite_working_dir_uri(job_config: JobConfig) -> None:
+def rewrite_working_dir_uri(job_config) -> None:
     """Rewrite the working dir uri field in job_config.
 
     This function is used to update the runtime field in job_config. The
@@ -355,7 +356,7 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
 
-def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
+def upload_runtime_env_package_if_needed(job_config) -> None:
     """Upload runtime env if it's not there.
 
     It'll check whether the runtime environment exists in the cluster or not.

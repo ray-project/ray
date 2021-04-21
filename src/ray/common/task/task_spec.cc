@@ -29,6 +29,8 @@ RuntimeEnv RuntimeEnv::FromProto(rpc::RuntimeEnv message) {
   return RuntimeEnv(message.conda_env_name());
 }
 
+bool RuntimeEnv::IsEmpty() const { return conda_env_name == ""; }
+
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
   absl::MutexLock lock(&mutex_);

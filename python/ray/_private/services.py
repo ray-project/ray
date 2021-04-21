@@ -1462,7 +1462,8 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
-    # inserting them into start_worker_command and later erasing them if needed.
+    # inserting them into start_worker_command and later erasing them if
+    # needed.
     start_worker_command = [
         sys.executable,
         setup_worker_path,

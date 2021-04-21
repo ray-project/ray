@@ -43,6 +43,8 @@ class RuntimeEnv {
   rpc::RuntimeEnv GetMessage() const;
 
   static RuntimeEnv FromProto(rpc::RuntimeEnv message);
+
+  bool IsEmpty() const;
 };
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
