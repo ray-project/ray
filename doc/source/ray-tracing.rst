@@ -9,7 +9,7 @@ To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to
 
 Getting Started
 ---------------
-First, install opentelemetry.
+First, install OpenTelemetry.
 .. code-block:: bash
 
     pip install opentelemetry-api==1.0.0rc1
