@@ -366,7 +366,10 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  # The 1.2.2 commit. We do this to build setproctitle from source because pypi doesn't have 3.9 wheels.
+  setproctitle_version=git+https://github.com/dvarrazzo/py-setproctitle.git@491d16e4cddaeb15f174b95536900a001b9e933a
+
+  CC=gcc pip install psutil $setproctitle_version --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"
