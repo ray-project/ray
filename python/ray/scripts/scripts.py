@@ -1641,7 +1641,7 @@ def global_gc(address):
     "[ray_client_server]")
 def healthcheck(address, redis_password, component):
     """
-    THIS IS NOT A PUBLIC API.
+    This is NOT a public api.
 
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
