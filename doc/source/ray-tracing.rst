@@ -15,7 +15,6 @@ First, install OpenTelemetry.
     pip install opentelemetry-api==1.0.0rc1
     pip install opentelemetry-sdk==1.0.0rc1
 
-
 To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. 
 
 Tracer Provider
@@ -64,18 +63,16 @@ Below is an example tracing startup hook that sets up the default tracing provid
 To run your program with the tracing hook, see the following examples.
 
 .. tabs::
-  .. code-tab:: start
+  .. code-tab:: bash
 
     $ ray start --head --tracing-startup-hook "my_library:setup_tracing"
     $ python
     >>> ray.init(address="auto")
 
 
-  .. code-tab:: init
+  .. code-tab:: python
 
-    $ python
-    >>> ray.init(_tracing_startup_hook="my_library:setup_tracing")
-
+    ray.init(_tracing_startup_hook="my_library:setup_tracing")
 
 Custom Traces
 *************
