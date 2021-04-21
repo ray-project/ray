@@ -105,6 +105,13 @@ def pods():
     return pod_list
 
 
+def num_services():
+    cmd = f"kubectl -n {NAMESPACE} get services --no-headers -o"\
+        " custom-columns=\":metadata.name\""
+    service_list = subprocess.check_output(cmd, shell=True).decode().split()
+    return len(service_list)
+
+
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
 
@@ -171,6 +178,9 @@ class KubernetesOperatorTest(unittest.TestCase):
             # six pods in the namespace.
             print(">>>Waiting for pods to join clusters.")
             wait_for_pods(6)
+            # Check that head services are present.
+            print(">>>Checking that head services are present.")
+            assert num_services() == 2
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
@@ -186,6 +196,9 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Four pods remain
             print(">>>Checking that example-cluster2 pods are gone.")
             wait_for_pods(4)
+            # Cluster 2 service has been garbage-collected.
+            print(">>>Checking that deleted cluster's service is gone.")
+            assert num_services() == 1
 
             # Check job submission
             print(">>>Submitting a job to test Ray client connection.")
@@ -223,6 +236,10 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Only operator pod remains.
             print(">>>Checking that all Ray cluster pods are gone.")
             wait_for_pods(1)
+
+            # Cluster 1 service has been garbage-collected.
+            print(">>>Checking that all Ray cluster services are gone.")
+            assert num_services() == 0
 
 
 if __name__ == "__main__":
