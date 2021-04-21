@@ -44,7 +44,7 @@ class C:
 def init_and_serve():
     server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
-    ray_client_server.shutdown_with_server(server_handle.grpc_server)
+    ray_client_server.shutdown_with_server_handle(server_handle)
     time.sleep(2)
 
 
@@ -59,7 +59,7 @@ def init_and_serve_lazy():
 
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle
-    ray_client_server.shutdown_with_server(server_handle.grpc_server)
+    ray_client_server.shutdown_with_server_handle(server_handle)
     time.sleep(2)
 
 

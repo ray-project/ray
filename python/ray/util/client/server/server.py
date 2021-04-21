@@ -548,11 +548,18 @@ class ClientServerHandle:
     data_servicer: DataServicer
     logs_servicer: LogstreamServicer
     grpc_server: grpc.Server
+    loop: asyncio.BaseEventLoop
 
     # Add a hook for all the cases that previously
     # expected simply a gRPC server
     def __getattr__(self, attr):
         return getattr(self.grpc_server, attr)
+
+    def shutdown(self, timeout: int = 0):
+        """Call the gRPC server's shutdown method on its asyncio event loop."""
+        future = asyncio.run_coroutine_threadsafe(
+            self.grpc_server.stop(timeout), self.loop)
+        future.result()
 
 
 def serve(connection_str, ray_connect_handler=None):
@@ -562,33 +569,48 @@ def serve(connection_str, ray_connect_handler=None):
                 return ray.init(job_config=job_config)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
-    server = grpc.aio.server(
-        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
-        options=[
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ])
-    task_servicer = RayletServicer(ray_connect_handler)
-    data_servicer = DataServicer(task_servicer)
-    logs_servicer = LogstreamServicer()
-    ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
-        task_servicer, server)
-    ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
-        data_servicer, server)
-    ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
-        logs_servicer, server)
-    server.add_insecure_port(connection_str)
-    current_handle = ClientServerHandle(
-        task_servicer=task_servicer,
-        data_servicer=data_servicer,
-        logs_servicer=logs_servicer,
-        grpc_server=server,
-    )
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(server.start())
-    t = threading.Thread(
-        target=lambda: loop.run_until_complete(server.wait_for_termination()))
+
+    server_loop = asyncio.new_event_loop()
+
+    handle_future = futures.Future()
+
+    async def _run_grpc_server():
+        """Creates gRPC servicers and server. This is in a coroutine so that
+        all operations happen on the server event loop.
+        """
+        server = grpc.aio.server(
+            futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+            options=[
+                ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+                ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+            ])
+        task_servicer = RayletServicer(ray_connect_handler)
+        data_servicer = DataServicer(task_servicer)
+        logs_servicer = LogstreamServicer()
+        ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
+            task_servicer, server)
+        ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
+            data_servicer, server)
+        ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
+            logs_servicer, server)
+        server.add_insecure_port(connection_str)
+        current_handle = ClientServerHandle(
+            task_servicer=task_servicer,
+            data_servicer=data_servicer,
+            logs_servicer=logs_servicer,
+            grpc_server=server,
+            loop=server_loop)
+        await server.start()
+
+        handle_future.set_result(current_handle)
+
+        await server.wait_for_termination()
+
+    t = threading.Thread(target=lambda: server_loop.run_forever(), daemon=True)
     t.start()
+    fut = asyncio.run_coroutine_threadsafe(_run_grpc_server(), server_loop)
+    assert not fut.done(), f"Ray Client Server Startup failed {fut.result()}"
+    current_handle = handle_future.result()
     return current_handle
 
 
@@ -610,8 +632,8 @@ def init_and_serve(connection_str, *args, **kwargs):
     return (server_handle, info)
 
 
-def shutdown_with_server(server, _exiting_interpreter=False):
-    server.stop(1)
+def shutdown_with_server_handle(server, _exiting_interpreter=False):
+    server.shutdown(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)
 
@@ -662,7 +684,8 @@ def main():
         while True:
             time.sleep(1000)
     except KeyboardInterrupt:
-        server.stop(0)
+        loop = asyncio.get_event_loop()
+        loop.create_task(server.shutdown(0))
 
 
 if __name__ == "__main__":
