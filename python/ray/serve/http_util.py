@@ -230,6 +230,11 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         old_endpoint = route.endpoint
         old_signature = inspect.signature(old_endpoint)
         old_parameters = list(old_signature.parameters.values())
+        if len(old_parameters) == 0:
+            # TODO(simon): make it more flexible to support no arguments.
+            raise RayServeException(
+                "Methods in FastAPI class based view must have ``self`` as "
+                "first argument.")
         old_self_parameter = old_parameters[0]
         new_self_parameter = old_self_parameter.replace(
             default=Depends(get_current_servable_instance))
@@ -241,6 +246,13 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         ]
         new_signature = old_signature.replace(parameters=new_parameters)
         setattr(route.endpoint, "__signature__", new_signature)
-        # route.endpoint.__signature__ = new_signature
+        setattr(route.endpoint, "_serve_cls", cls)
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
+
+    # Remove endpoints that belong to other class based views.
+    routes = fastapi_app.routes
+    for route in routes:
+        serve_cls = getattr(route.endpoint, "_serve_cls", None)
+        if serve_cls is not None and serve_cls != cls:
+            routes.remove(route)
