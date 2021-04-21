@@ -65,6 +65,15 @@ class RandomEnv(gym.Env):
 
 # Multi-agent version of the RandomEnv.
 RandomMultiAgentEnv = make_multiagent(lambda c: RandomEnv(c))
+# Large observation space "pre-compiled" random env (for testing).
 RandomLargeObsSpaceEnv = functools.partial(
     RandomEnv,
     config={"observation_space": gym.spaces.Box(-1.0, 1.0, (5000, ))})
+# Large observation space + cont. actions "pre-compiled" random env
+# (for testing).
+RandomLargeObsSpaceEnvContActions = functools.partial(
+    RandomEnv,
+    config={
+        "observation_space": gym.spaces.Box(-1.0, 1.0, (5000, )),
+        "action_space": gym.spaces.Box(-1.0, 1.0, (5, )),
+    })

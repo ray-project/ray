@@ -1,10 +1,10 @@
 memory-leak-test-sac:
     stop:
-        timesteps_total: 20000
+        timesteps_total: 2000
     env:
-        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnvContActions
     run: SAC
     config:
         # Works for both torch and tf.
         framework: tf
-        buffer_size: 1000  # use small buffer to catch memory leaks
+        buffer_size: 500  # use small buffer to catch memory leaks
