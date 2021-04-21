@@ -1291,7 +1291,8 @@ def connect(node,
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         worker.run_function_on_all_workers(
             lambda worker_info: sys.path.insert(1, script_directory))
-        if not job_config.client_job and job_config.get_runtime_env_uris():
+        if not job_config.client_job and len(
+                job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory))
