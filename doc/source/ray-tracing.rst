@@ -78,7 +78,7 @@ To run your program with the tracing hook, see the following examples.
   .. code-tab:: init
 
     $ python
-    >>> ray.init(_tracing_startup_hook="MyLibrary:setup_tracing")
+    >>> ray.init(_tracing_startup_hook="my_library:setup_tracing")
 
 
 Custom traces
