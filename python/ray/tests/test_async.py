@@ -76,7 +76,12 @@ def test_gather_mixup(init):
         await asyncio.sleep(n * 0.1)
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
-    tasks = [f.remote(1).as_asyncio_future(), g(2), f.remote(3).as_asyncio_future(), g(4)]
+    tasks = [
+        f.remote(1).as_asyncio_future(),
+        g(2),
+        f.remote(3).as_asyncio_future(),
+        g(4)
+    ]
     results = loop.run_until_complete(asyncio.gather(*tasks))
     assert [result[0] for result in results] == [1, 2, 3, 4]
 
@@ -96,7 +101,12 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [f.remote(0.1).as_asyncio_future(), g(7), f.remote(5).as_asyncio_future(), g(2)]
+    tasks = [
+        f.remote(0.1).as_asyncio_future(),
+        g(7),
+        f.remote(5).as_asyncio_future(),
+        g(2)
+    ]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
 

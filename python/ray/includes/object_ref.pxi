@@ -91,8 +91,12 @@ cdef class ObjectRef(BaseID):
     def __await__(self):
         return self.as_asyncio_future().__await__()
 
-    def as_asyncio_future(self):
-        """Wrap ObjectRef into an asyncio.Future object."""
+    def as_asyncio_future(self) -> asyncio.Future:
+        """Wrap ObjectRef with an asyncio.Future.
+
+        Note that the future cancellation will not cancel the correspoding
+        task when the ObjectRef representing return object of a task.
+        """
         loop = asyncio.get_event_loop()
         py_future = loop.create_future()
 
@@ -108,7 +112,13 @@ cdef class ObjectRef(BaseID):
         return py_future
 
     def as_concurrent_future(self) -> concurrent.futures.Future:
-        """Wrap ObjectRef into a concurrent.futures.Future"""
+        """Wrap ObjectRef with a concurrent.futures.Future
+
+        Note that the future cancellation will not cancel the correspoding
+        task when the ObjectRef representing return object of a task.
+        Additionally, future.running() will always be ``False`` even if the
+        underlying task is running.
+        """
         py_future = concurrent.futures.Future()
 
         self._on_completed(
