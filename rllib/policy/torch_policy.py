@@ -143,13 +143,15 @@ class TorchPolicy(Policy):
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
-            self.devices = []
             gpu_ids = ray.get_gpu_ids()
-            for i, id_ in enumerate(gpu_ids):
-                if i < config["num_gpus"]:
-                    self.devices.append(torch.device("cuda:{}".format(id_)))
+            self.devices = [
+                torch.device("cuda:{}".format(i))
+                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
             self.device = self.devices[0]
-            ids = [id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]]
+            ids = [
+                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
             self.model_gpu_towers = []
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)
