@@ -260,21 +260,27 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             assert request.asynchronous
             assert context is not None
-            objectref = self.object_refs[client_id][request.id]
-            logger.debug("async get: %s" % objectref)
+            object_ref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % object_ref)
             with disable_client_hook():
                 loop = asyncio.get_event_loop()
 
-                def f(result):
-                    serialized = dumps_from_server(result, client_id, self)
+                def send_get_response(result):
+                    try:
+                        serialized = dumps_from_server(result, client_id, self)
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=True, data=serialized)
+                    except Exception as e:
+                        ray_client_pb2.GetResponse(
+                            valid=False, error=cloudpickle.dumps(e))
+
                     resp = ray_client_pb2.DataResponse(
-                        get=ray_client_pb2.GetResponse(
-                            valid=True, data=serialized))
+                        get=get_resp, req_id=req_id)
                     resp.req_id = req_id
 
-                    loop.create_task(context.write(resp))
+                    loop.call_soon_threadsafe(lambda: context.write(resp))
 
-                objectref._on_completed(f)
+                object_ref._on_completed(send_get_response)
                 return None
         except Exception as e:
             return ray_client_pb2.GetResponse(
@@ -283,11 +289,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _get_object(self, request, client_id: str, context=None):
         if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)
-        objectref = self.object_refs[client_id][request.id]
-        logger.debug("get: %s" % objectref)
+        object_ref = self.object_refs[client_id][request.id]
+        logger.debug("get: %s" % object_ref)
         try:
             with disable_client_hook():
-                item = ray.get(objectref, timeout=request.timeout)
+                item = ray.get(object_ref, timeout=request.timeout)
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
