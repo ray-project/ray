@@ -81,7 +81,7 @@ To run your program with the tracing hook, see the following examples.
     >>> ray.init(_tracing_startup_hook="my_library:setup_tracing")
 
 
-Custom traces
+Custom Traces
 *************
 You can easily add custom tracing in your programs. Within your program, get the tracer object and then call trace.get_tracer(__name__)
 
