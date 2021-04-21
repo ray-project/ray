@@ -114,7 +114,7 @@ The following links were correct during the writing of this section. In case the
 
 **Steps**
 
-1. Enable Developer mode on Windows 10 systems.
+1. Enable Developer mode on Windows 10 systems. This is necessary so git can create symlinks.
 
    1. Open Settings app;
    2. Go to "Update & Security";
