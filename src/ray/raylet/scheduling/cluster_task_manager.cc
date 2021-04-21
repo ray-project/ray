@@ -957,19 +957,28 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
   auto allocated_instances = worker->GetAllocatedInstances();
-  if (allocated_instances == nullptr) {
+  if (allocated_instances != nullptr) {
+    if (worker->IsBlocked()) {
+      // If the worker is blocked, its CPU instances have already been released. We clear
+      // the CPU instances to avoid double freeing.
+      allocated_instances->ClearCPUInstances();
+    }
+    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
+    worker->ClearAllocatedInstances();
     return;
   }
-  if (worker->IsBlocked()) {
-    // If the worker is blocked, its CPU instances have already been released. We clear
-    // the CPU instances to avoid double freeing.
-    allocated_instances->ClearCPUInstances();
+
+  auto lifetime_allocated_instances = worker->GetLifetimeAllocatedInstances();
+  if (lifetime_allocated_instances != nullptr) {
+    if (worker->IsBlocked()) {
+      // If the worker is blocked, its CPU instances have already been released. We clear
+      // the CPU instances to avoid double freeing.
+      lifetime_allocated_instances->ClearCPUInstances();
+    }
+    cluster_resource_scheduler_->ReleaseWorkerResources(
+        worker->GetLifetimeAllocatedInstances());
+    worker->ClearLifetimeAllocatedInstances();
   }
-  cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-  worker->ClearAllocatedInstances();
-  cluster_resource_scheduler_->ReleaseWorkerResources(
-      worker->GetLifetimeAllocatedInstances());
-  worker->ClearLifetimeAllocatedInstances();
 }
 
 bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(

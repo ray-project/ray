@@ -1674,7 +1674,9 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;  // The worker may have died or is no longer processing the task.
   }
 
-  cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
+  if (cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker)) {
+    worker->MarkBlocked();
+  }
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -1689,7 +1691,9 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
+    if (cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker)) {
+      worker->MarkUnblocked();
+    }
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
