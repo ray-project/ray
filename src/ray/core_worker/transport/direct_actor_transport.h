@@ -291,7 +291,12 @@ class InboundRequest {
 
   void Accept() { accept_callback_(std::move(send_reply_callback_)); }
   void Cancel() { reject_callback_(std::move(send_reply_callback_)); }
+  // TODO(gabrieleoliaro): remove the thief_addr from the Steal arguments. It is only
+  // needed in the callback for logging/debugging.
   void Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+    reply->add_stolen_tasks_ids(task_id.Binary());
+    RAY_CHECK(TaskID::FromBinary(reply->stolen_tasks_ids(reply->stolen_tasks_ids_size() -
+                                                         1)) == task_id);
     steal_callback_(std::move(send_reply_callback_), thief_addr);
   }
 
@@ -616,12 +621,14 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
     absl::MutexLock lock(&mu_);
     size_t half = pending_normal_tasks_.size() / 2;
-    while (tasks_stolen < half) {
+
+    for (tasks_stolen = 0; tasks_stolen < half; tasks_stolen++) {
       assert(!pending_normal_tasks_.empty());
       InboundRequest tail = pending_normal_tasks_.back();
       pending_normal_tasks_.pop_back();
+      size_t stolen_task_ids = reply->stolen_tasks_ids_size();
       tail.Steal(thief_addr, reply);
-      tasks_stolen++;
+      RAY_CHECK(reply->stolen_tasks_ids_size() == stolen_task_ids + 1);
     }
 
     return tasks_stolen;

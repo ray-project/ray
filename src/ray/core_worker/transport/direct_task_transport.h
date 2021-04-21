@@ -242,8 +242,6 @@ class CoreWorkerDirectTaskSubmitter {
     int64_t lease_expiration_time;
     uint32_t tasks_in_flight;
     bool currently_stealing;
-    int64_t stolen_tasks_to_wait_for;
-    uint32_t steal_tasks_request_pending;
     google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources;
     SchedulingKey scheduling_key;
 
@@ -259,7 +257,6 @@ class CoreWorkerDirectTaskSubmitter {
           lease_expiration_time(lease_expiration_time),
           tasks_in_flight(tasks_in_flight),
           currently_stealing(currently_stealing),
-          stolen_tasks_to_wait_for(stolen_tasks_to_wait_for),
           assigned_resources(assigned_resources),
           scheduling_key(scheduling_key) {}
 
@@ -272,18 +269,12 @@ class CoreWorkerDirectTaskSubmitter {
     // Knowing whether a thief is currently stealing is important to prevent the thief
     // from initiating another StealTasks request or from being returned to the raylet
     // until stealing has completed.
-    inline bool WorkerIsStealing() const {
-      if (!currently_stealing) {
-        RAY_CHECK(stolen_tasks_to_wait_for == 0);
-      }
-      return currently_stealing;
-    }
+    inline bool WorkerIsStealing() const { return currently_stealing; }
 
     // Once stealing has begun, updated the thief's currently_stealing flag to reflect the
     // new state.
     inline void SetWorkerIsStealing() {
       RAY_CHECK(!currently_stealing);
-      RAY_CHECK(stolen_tasks_to_wait_for == 0);
       currently_stealing = true;
     }
 
@@ -291,35 +282,7 @@ class CoreWorkerDirectTaskSubmitter {
     // the new state.
     inline void SetWorkerDoneStealing() {
       RAY_CHECK(currently_stealing);
-      RAY_CHECK(stolen_tasks_to_wait_for == 0);
       currently_stealing = false;
-    }
-
-    // The following two methods are used by a thief's StealTasks request callback and a
-    // victim's PushNormalTaskRequest callback to be able to set the thief's
-    // currently_stealing flag to false only once stealing has completed. Because there is
-    // no ordering guarantee between the reply to the StealTask request and the replies to
-    // the PushNormalTask requests associated with the stolen tasks, we can declare a
-    // stealing processing concluded only after two conditions are met: (1) The owner has
-    // received a StealTasks reply from the victim, with the number of tasks that were
-    // stolen (2) The owner has received a PushNormalTask reply for each one of the stolen
-    // tasks, and the stolen tasks have been forwarded to the thief (or some other worker
-    // if the thief's pipeline has gotten full).
-
-    inline void SetReceivedOneStolenTask() {
-      RAY_CHECK(currently_stealing);
-      stolen_tasks_to_wait_for -= 1;
-      if (stolen_tasks_to_wait_for == 0) {
-        SetWorkerDoneStealing();
-      }
-    }
-
-    inline void IncrementTasksToWaitFor(uint32_t ntasks) {
-      RAY_CHECK(currently_stealing);
-      stolen_tasks_to_wait_for += ntasks;
-      if (stolen_tasks_to_wait_for == 0) {
-        SetWorkerDoneStealing();
-      }
     }
   };
 

@@ -45,6 +45,8 @@ class TaskFinisherInterface {
       const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
 
+  virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
@@ -158,7 +160,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   bool MarkTaskCanceled(const TaskID &task_id) override;
 
   /// Return the spec for a pending task.
-  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const;
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
   std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;

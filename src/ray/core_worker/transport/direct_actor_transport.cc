@@ -538,7 +538,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                    << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
     // task stolen. respond accordingly
     reply->set_task_stolen(true);
-    reply->mutable_thief_addr()->CopyFrom(thief_addr);  //.ToProto
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 

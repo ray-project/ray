@@ -78,6 +78,8 @@ message StealTasksRequest {
 
 message StealTasksReply {
   int64 number_of_tasks_stolen = 1;
+  // The TaskIDs of the tasks that were stolen
+  repeated bytes stolen_tasks_ids = 2;
 }
 
 message PushTaskRequest {
