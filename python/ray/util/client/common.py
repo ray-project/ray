@@ -79,6 +79,9 @@ class ClientObjectRef(ClientBaseRef):
             loop.call_soon_threadsafe(inner_set_value)
 
         self._on_completed(set_value)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
         return fut
 
     def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
