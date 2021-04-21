@@ -984,6 +984,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
             def __del__(self):
                 asyncio.get_event_loop().run_until_complete(shutdown_hook())
 
+        FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper
 
     return decorator

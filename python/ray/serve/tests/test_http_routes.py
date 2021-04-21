@@ -55,16 +55,16 @@ def test_routes_endpoint(serve_instance):
 
     assert len(routes) == 2, routes
     assert "/D1" in routes, routes
-    assert routes["/D1"] == ["D1", ["GET", "POST"]], routes
+    assert routes["/D1"] == ["D1", ALL_HTTP_METHODS], routes
     assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == ["D2", ["GET", "POST"]], routes
+    assert routes["/hello/world"] == ["D2", ALL_HTTP_METHODS], routes
 
     D1.delete()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1, routes
     assert "/hello/world" in routes, routes
-    assert routes["/hello/world"] == ["D2", ["GET", "POST"]], routes
+    assert routes["/hello/world"] == ["D2", ALL_HTTP_METHODS], routes
 
     D2.delete()
     routes = requests.get("http://localhost:8000/-/routes").json()
@@ -95,16 +95,16 @@ def test_deployment_options_default_route(serve_instance):
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 1
     assert "/1" in routes, routes
-    assert routes["/1"] == ["1", ["GET", "POST"]]
+    assert routes["/1"] == ["1", ALL_HTTP_METHODS]
 
     D1.options(name="2").deploy()
 
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert len(routes) == 2
     assert "/1" in routes, routes
-    assert routes["/1"] == ["1", ["GET", "POST"]]
+    assert routes["/1"] == ["1", ALL_HTTP_METHODS]
     assert "/2" in routes, routes
-    assert routes["/2"] == ["2", ["GET", "POST"]]
+    assert routes["/2"] == ["2", ALL_HTTP_METHODS]
 
 
 def test_path_prefixing(serve_instance):
