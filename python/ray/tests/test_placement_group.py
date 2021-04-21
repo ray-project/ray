@@ -246,7 +246,9 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         assert node_of_actor_2 != node_of_actor_3
 
 
-def test_placement_group_actor_resource_ids(ray_start_cluster):
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_placement_group_actor_resource_ids(ray_start_cluster,
+                                            connect_to_client):
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
@@ -258,11 +260,12 @@ def test_placement_group_actor_resource_ids(ray_start_cluster):
         cluster.add_node(num_cpus=4)
     ray.init(address=cluster.address)
 
-    g1 = ray.util.placement_group([{"CPU": 2}])
-    a1 = F.options(placement_group=g1).remote()
-    resources = ray.get(a1.f.remote())
-    assert len(resources) == 1, resources
-    assert "CPU_group_" in list(resources.keys())[0], resources
+    with connect_to_client_or_not(connect_to_client):
+        g1 = ray.util.placement_group([{"CPU": 2}])
+        a1 = F.options(placement_group=g1).remote()
+        resources = ray.get(a1.f.remote())
+        assert len(resources) == 1, resources
+        assert "CPU_group_" in list(resources.keys())[0], resources
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
