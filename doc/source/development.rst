@@ -120,7 +120,7 @@ The following links were correct during the writing of this section. In case the
    3. Go to "For Developers" on the left pane;
    4. Turn on "Developer mode".
 
-2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
+2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users, the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
 
    - ``C:\ProgramData\Miniconda3``
    - ``C:\ProgramData\Miniconda3\Scripts``
