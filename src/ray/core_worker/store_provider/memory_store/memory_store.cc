@@ -13,10 +13,10 @@ const int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
 
 // Only scan at most this many items for unhandled errors, to avoid slowdowns
 // when there are too many local objects.
-const int kMaxUnhandledErrorScanItems = 1000
+const int kMaxUnhandledErrorScanItems = 1000;
 
-    /// A class that represents a `Get` request.
-    class GetRequest {
+/// A class that represents a `Get` request.
+class GetRequest {
  public:
   GetRequest(absl::flat_hash_set<ObjectID> object_ids, size_t num_objects,
              bool remove_after_get, bool abort_if_any_object_is_exception);
