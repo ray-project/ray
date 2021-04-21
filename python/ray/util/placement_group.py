@@ -120,7 +120,7 @@ class PlacementGroup:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
-    def to_json_serializable(self) -> dict:
+    def to_dict(self) -> dict:
         """Convert this placement group into a dict for purposes of json
         serialization.
 
@@ -136,7 +136,7 @@ class PlacementGroup:
         return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
 
     @staticmethod
-    def from_json_serializable(serializable_form: dict) -> "PlacementGroup":
+    def from_dict(pg_dict: dict) -> "PlacementGroup":
         """Instantiate and return a PlacementGroup from its json-serializable
         dict representation.
 
@@ -148,18 +148,18 @@ class PlacementGroup:
         Return:
             A placement group made from the data in the input dict.
         """
-
         # Validate serialized dict
-        assert serializable_form.keys() == {"id", "bundle_cache"}
+        assert isinstance(pg_dict, dict)
+        assert pg_dict.keys() == {"id", "bundle_cache"}
         # The value associated to key "id" is a hex string.
-        assert isinstance(serializable_form["id"], str)
-        if serializable_form["bundle_cache"] is not None:
-            assert isinstance(serializable_form["bundle_cache"], list)
+        assert isinstance(pg_dict["id"], str)
+        if pg_dict["bundle_cache"] is not None:
+            assert isinstance(pg_dict["bundle_cache"], list)
 
         # Deserialize and return a Placement Group.
-        id_bytes = bytes.fromhex(serializable_form["id"])
+        id_bytes = bytes.fromhex(pg_dict["id"])
         pg_id = PlacementGroupID(id_bytes)
-        bundle_cache = serializable_form["bundle_cache"]
+        bundle_cache = pg_dict["bundle_cache"]
         return PlacementGroup(pg_id, bundle_cache)
 
     def _get_a_non_zero_resource(self, bundle: Dict):

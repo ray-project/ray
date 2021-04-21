@@ -1693,14 +1693,14 @@ def test_placement_group_client_option_serialization():
 
     # Tests conversion from dict to placement group and back.
     def dict_to_pg_to_dict(pg_dict_in):
-        pg = PlacementGroup.from_json_serializable(pg_dict_in)
-        pg_dict_out = pg.to_json_serializable()
+        pg = PlacementGroup.from_dict(pg_dict_in)
+        pg_dict_out = pg.to_dict()
         assert pg_dict_in == pg_dict_out
 
     # Tests conversion from placement group to dict and back.
     def pg_to_dict_to_pg(pg_in):
-        pg_dict = pg_in.to_json_serializable()
-        pg_out = PlacementGroup.from_json_serializable(pg_dict)
+        pg_dict = pg_in.to_dict()
+        pg_out = PlacementGroup.from_dict(pg_dict)
         assert pg_out.id == pg_in.id
         assert pg_out.bundle_cache == pg_in.bundle_cache
 

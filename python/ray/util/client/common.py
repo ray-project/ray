@@ -309,10 +309,10 @@ def set_task_options(task: ray_client_pb2.ClientTask,
         task.ClearField(field)
         return
 
-    if "placement_group" in options:
-        pg = options["placement_group"]  # type: Optional[PlacementGroup]
-        if pg:
-            options["placement_group"] = pg.to_json_serializable()
+    # If there's a non-null "placement_group" in `options`, convert the
+    # placement group to a dict so that `options` can be passed to json.dumps.
+    if options.get("placement_group", None):
+        options["placement_group"] = options["placement_group"].to_dict()
 
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str

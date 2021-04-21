@@ -512,12 +512,11 @@ def decode_options(
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
 
-    if "placement_group" in opts:
-        pg_dict = opts["placement_group"]
-        if pg_dict is not None:
-            assert isinstance(pg_dict, dict)
-            opts["placement_group"] = PlacementGroup.from_json_serializable(
-                pg_dict)
+    if opts.get("placement_group", None):
+        # Placement groups in Ray client options are serialized as dicts.
+        # Convert the dict to a PlacementGroup.
+        opts["placement_group"] = PlacementGroup.from_dict(
+            opts["placement_group"])
 
     return opts
 
