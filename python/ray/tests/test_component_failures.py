@@ -60,6 +60,18 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert ray._private.services.remaining_processes_alive()
 
 
+def test_dying_worker(ray_start_2_cpus):
+    @ray.remote(max_calls=1)
+    def foo():
+        pass
+
+    for _ in range(60):
+        ray.get([foo.remote(), foo.remote()])
+
+    # Make sure that nothing has died.
+    assert ray._private.services.remaining_processes_alive()
+
+
 # This test checks that when a driver dies in the middle of a get, the plasma
 # store and raylet will not die.
 def test_dying_driver_get(ray_start_regular):
