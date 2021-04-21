@@ -2371,11 +2371,11 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
     rpc::PubMessage pub_message;
+    pub_message.set_message_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
     auto *wait_for_object_eviction_msg =
         pub_message.mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
-    wait_for_object_eviction_msg->set_channel_type(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
     object_status_publisher_->Publish<ObjectID>(
         rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
         absl::make_unique<rpc::PubMessage>(pub_message), object_id);

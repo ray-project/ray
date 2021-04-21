@@ -18,47 +18,200 @@ namespace ray {
 
 namespace pubsub {
 
-void Subscriber::SubcribeObject(
-    const rpc::Address &publisher_address, const ObjectID &object_id,
+///////////////////////////////////////////////////////////////////////////////
+/// SubscriberChannel
+///////////////////////////////////////////////////////////////////////////////
+
+template <typename MessageID>
+void SubscriberChannel<MessageID>::Subcribe(
+    const rpc::Address &publisher_address, const std::string &message_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
-  // Make a long polling connection if we never made the one with this publisher for
-  // pubsub operations.
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto mid = MessageID::FromBinary(message_id);
+
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
     subscription_it =
-        subscription_map_.emplace(publisher_id, SubscriptionInfo(publisher_address))
-            .first;
+        subscription_map_.emplace(publisher_id, SubscriptionInfo<MessageID>()).first;
+  }
+  RAY_CHECK(subscription_it != subscription_map_.end());
+  RAY_CHECK(subscription_it->second.subscription_callback_map
+                .emplace(mid, std::make_pair(std::move(subscription_callback),
+                                             std::move(subscription_failure_callback)))
+                .second);
+}
+
+template <typename MessageID>
+bool SubscriberChannel<MessageID>::Unsubscribe(const rpc::Address &publisher_address,
+                                               const std::string &message_id) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto mid = MessageID::FromBinary(message_id);
+
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return false;
+  }
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+  auto subscription_callback_it = subscription_callback_map.find(mid);
+  if (subscription_callback_it == subscription_callback_map.end()) {
+    return false;
+  }
+  subscription_callback_map.erase(subscription_callback_it);
+  subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it->second.subscription_callback_map.size() == 0) {
+    subscription_map_.erase(subscription_it);
+  }
+  return true;
+}
+
+template <typename MessageID>
+bool SubscriberChannel<MessageID>::AssertNoLeak() const {
+  for (const auto &subscription : subscription_map_) {
+    if (subscription.second.subscription_callback_map.size() != 0) {
+      return false;
+    }
+  }
+  return subscription_map_.size() == 0;
+}
+
+template <typename MessageID>
+void SubscriberChannel<MessageID>::HandleLongPollingResponse(
+    const rpc::Address &publisher_address, const rpc::Address &subscriber_address,
+    const rpc::PubsubLongPollingReply &reply) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto subscription_it = subscription_map_.find(publisher_id);
+  // If there's no more subscription, do nothing.
+  if (subscription_it == subscription_map_.end()) {
+    return;
+  }
+
+  for (int i = 0; i < reply.pub_messages_size(); i++) {
+    const auto &msg = reply.pub_messages(i);
+    const auto channel_type = msg.channel_type();
+    const auto message_id = ParseMessageID(msg);
+    RAY_CHECK(channel_type == channel_type_);
+    RAY_LOG(DEBUG) << "Message id " << message_id << " information was published from "
+                   << publisher_id;
+
+    auto maybe_subscription_callback =
+        GetSubscriptionCallback(publisher_address, message_id);
+    if (maybe_subscription_callback.has_value()) {
+      // If the object id is still subscribed, invoke a subscription callback.
+      const auto &subscription_callback = maybe_subscription_callback.value();
+      subscription_callback(msg);
+    }
+  }
+}
+
+template <typename MessageID>
+void SubscriberChannel<MessageID>::HandleLongPollingFailureResponse(
+    const rpc::Address &publisher_address, const rpc::Address &subscriber_address) {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  const auto &subscription_it = subscription_map_.find(publisher_id);
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+
+  std::vector<MessageID> message_ids_to_unsubscribe;
+  for (const auto &message_id_it : subscription_callback_map) {
+    const auto &message_id = message_id_it.first;
+    message_ids_to_unsubscribe.push_back(message_id);
+
+    auto maybe_failure_callback = GetFailureCallback(publisher_address, message_id);
+    if (maybe_failure_callback.has_value()) {
+      // If the object id is still subscribed, invoke a failure callback.
+      const auto &failure_callback = maybe_failure_callback.value();
+      failure_callback();
+    }
+  }
+
+  for (const auto &message_id : message_ids_to_unsubscribe) {
+    // If the publisher is failed, we automatically unsubscribe objects from this
+    // publishers. If the failure callback called UnsubscribeObject, this will raise
+    // check failures.
+    RAY_CHECK(Unsubscribe(publisher_address, message_id.Binary()))
+        << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+  }
+}
+
+template <typename MessageID>
+inline absl::optional<SubscriptionCallback>
+SubscriberChannel<MessageID>::GetSubscriptionCallback(
+    const rpc::Address &publisher_address, const MessageID &message_id) const {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return absl::nullopt;
+  }
+  auto callback_it = subscription_it->second.subscription_callback_map.find(message_id);
+  bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+  if (!exist) {
+    return absl::nullopt;
+  }
+  auto subscription_callback = callback_it->second.first;
+  return absl::optional<SubscriptionCallback>{subscription_callback};
+}
+
+template <typename MessageID>
+inline absl::optional<SubscriptionFailureCallback>
+SubscriberChannel<MessageID>::GetFailureCallback(const rpc::Address &publisher_address,
+                                                 const MessageID &message_id) const {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return absl::nullopt;
+  }
+  auto callback_it = subscription_it->second.subscription_callback_map.find(message_id);
+  bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+  if (!exist) {
+    return absl::nullopt;
+  }
+  auto subscription_failure_callback = callback_it->second.second;
+  return absl::optional<SubscriptionFailureCallback>{subscription_failure_callback};
+}
+
+template <typename MessageID>
+bool SubscriberChannel<MessageID>::SubscriptionExists(const PublisherID &publisher_id) {
+  return subscription_map_.count(publisher_id);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/// Subscriber
+///////////////////////////////////////////////////////////////////////////////
+
+inline std::shared_ptr<SubscribeChannelInterface> Subscriber::Channel(
+    const rpc::ChannelType channel_type) const {
+  const auto it = channels_.find(channel_type);
+  RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
+  return it->second;
+}
+
+void Subscriber::Subcribe(const rpc::ChannelType channel_type,
+                          const rpc::Address &publisher_address,
+                          const std::string &message_id_binary,
+                          SubscriptionCallback subscription_callback,
+                          SubscriptionFailureCallback subscription_failure_callback) {
+  Channel(channel_type)
+      ->Subcribe(publisher_address, message_id_binary, std::move(subscription_callback),
+                 std::move(subscription_failure_callback));
+
+  // Make a long polling connection if we never made the one with this publisher for
+  // pubsub operations.
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto publishers_connected_it = publishers_connected_.find(publisher_id);
+  if (publishers_connected_it == publishers_connected_.end()) {
+    publishers_connected_.emplace(publisher_id);
     rpc::Address subscriber_address;
     subscriber_address.set_raylet_id(subscriber_id_.Binary());
     subscriber_address.set_ip_address(subscriber_address_);
     subscriber_address.set_port(subscriber_port_);
     MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
   }
-  RAY_CHECK(subscription_it != subscription_map_.end());
-  RAY_CHECK(
-      subscription_it->second.subscription_callback_map_
-          .emplace(object_id, std::make_pair(std::move(subscription_callback),
-                                             std::move(subscription_failure_callback)))
-          .second);
 }
 
-bool Subscriber::UnsubscribeObject(const rpc::Address &publisher_address,
-                                   const ObjectID &object_id) {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  RAY_LOG(DEBUG) << "Unsubscribing an object " << object_id << " from " << publisher_id;
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return false;
-  }
-  auto &subscription_callback_map = subscription_it->second.subscription_callback_map_;
-  auto subscription_callback_it = subscription_callback_map.find(object_id);
-  if (subscription_callback_it == subscription_callback_map.end()) {
-    return false;
-  }
-  subscription_callback_map.erase(subscription_callback_it);
-  return true;
+bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
+                             const rpc::Address &publisher_address,
+                             const std::string &message_id_binary) {
+  return Channel(channel_type)->Unsubscribe(publisher_address, message_id_binary);
 }
 
 void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
@@ -83,110 +236,58 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
-
-  auto subscription_it = subscription_map_.find(publisher_id);
-  RAY_CHECK(subscription_it != subscription_map_.end());
+  auto publishers_connected_it = publishers_connected_.find(publisher_id);
+  RAY_CHECK(publishers_connected_it != publishers_connected_.end());
 
   if (!status.ok()) {
-    // If status is not okay, we treat that the publisher is dead. Release all objects
-    // that are subscribed by this publisher.
+    // If status is not okay, we treat that the publisher is dead.
     RAY_LOG(INFO) << "A worker is dead. subscription_failure_callback will be invoked. "
                      "Publisher id:"
                   << publisher_id;
-    std::vector<ObjectID> objects_to_unsubscribe;
-    auto &subscription_callback_map = subscription_it->second.subscription_callback_map_;
-    for (const auto &object_id_it : subscription_callback_map) {
-      const auto &object_id = object_id_it.first;
-      objects_to_unsubscribe.push_back(object_id);
-
-      auto maybe_failure_callback = GetFailureCallback(publisher_address, object_id);
-      if (maybe_failure_callback.has_value()) {
-        // If the object id is still subscribed, invoke a failure callback.
-        const auto &failure_callback = maybe_failure_callback.value();
-        failure_callback(object_id);
-      }
-    }
-
-    for (const auto &object_id_to_unsubscribe : objects_to_unsubscribe) {
-      // If the publisher is failed, we automatically unsubscribe objects from this
-      // publishers. If the failure callback called UnsubscribeObject, this will raise
-      // check failures.
-      RAY_CHECK(UnsubscribeObject(publisher_address, object_id_to_unsubscribe))
-          << "Calling UnsubscribeObject inside a failure callback is not allowed.";
+    for (const auto &channel_it : channels_) {
+      channel_it.second->HandleLongPollingFailureResponse(publisher_address,
+                                                          subscriber_address);
     }
   } else {
     // Otherwise, release objects that are reported from the long polling
     // connection.
-    for (int i = 0; i < reply.pub_messages_size(); i++) {
-      const auto &msg = reply.pub_messages(i);
-      const auto object_id =
-          ObjectID::FromBinary(msg.wait_for_object_eviction_message().object_id());
-      RAY_LOG(DEBUG) << "Object id " << object_id << " information was published from "
-                     << publisher_id << ". Releasing the object.";
-      auto maybe_subscription_callback =
-          GetSubscriptionCallback(publisher_address, object_id);
-      if (maybe_subscription_callback.has_value()) {
-        // If the object id is still subscribed, invoke a subscription callback.
-        const auto &subscription_callback = maybe_subscription_callback.value();
-        subscription_callback(object_id);
-      }
+    for (const auto &channel_it : channels_) {
+      channel_it.second->HandleLongPollingResponse(publisher_address, subscriber_address,
+                                                   reply);
     }
   }
-  subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it->second.subscription_callback_map_.size() == 0) {
-    // If there's no more subscription, Erase the entry. We erase the connection entry
-    // here instead of Unsubscribe method because there could be in-flight long polling
-    // request when all of objects are unsubscribed. Since the long polling request should
-    // be sent in flight if there are still subscriptions, we can guarantee it will
-    // properly clean up metadata.
-    // TODO(sang): Send a RPC to unregister the subscriber.
-    subscription_map_.erase(subscription_it);
-  } else {
-    // If there are still subscriptions, make another long polling request.
+
+  if (SubscriptionExists(publisher_id)) {
     MakeLongPollingPubsubConnection(publisher_address, subscriber_address);
+  } else {
+    publishers_connected_.erase(publisher_id);
   }
 }
 
-inline absl::optional<SubscriptionCallback> Subscriber::GetSubscriptionCallback(
-    const rpc::Address &publisher_address, const ObjectID &object_id) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return absl::nullopt;
-  }
-  auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
-  bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
-  if (!exist) {
-    return absl::nullopt;
-  }
-  auto subscription_callback = callback_it->second.first;
-  return absl::optional<SubscriptionCallback>{subscription_callback};
-}
+inline bool Subscriber::SubscriptionExists(const PublisherID &publisher_id) {
+  bool exists = false;
 
-inline absl::optional<SubscriptionCallback> Subscriber::GetFailureCallback(
-    const rpc::Address &publisher_address, const ObjectID &object_id) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return absl::nullopt;
+  for (const auto &channel_it : channels_) {
+    if (channel_it.second->SubscriptionExists(publisher_id)) {
+      exists = true;
+    }
   }
-  auto callback_it = subscription_it->second.subscription_callback_map_.find(object_id);
-  bool exist = callback_it != subscription_it->second.subscription_callback_map_.end();
-  if (!exist) {
-    return absl::nullopt;
-  }
-  auto subscription_callback = callback_it->second.second;
-  return absl::optional<SubscriptionCallback>{subscription_callback};
+  return exists;
 }
 
 bool Subscriber::AssertNoLeak() const {
-  for (const auto &subscription : subscription_map_) {
-    if (subscription.second.subscription_callback_map_.size() != 0) {
-      return false;
+  bool leaks = false;
+  for (const auto &channel_it : channels_) {
+    if (!channel_it.second->AssertNoLeak()) {
+      leaks = true;
     }
   }
-  return subscription_map_.size() == 0;
+  return !leaks && publishers_connected_.size() == 0;
 }
+
+/// Per each message id, we need to define templates for these functions/classes here so
+/// that symbols are discoverable.
+template class SubscriberChannel<ObjectID>;
 
 }  // namespace pubsub
 

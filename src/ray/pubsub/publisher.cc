@@ -133,15 +133,17 @@ void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
   if (mailbox_.size() == 0) {
     mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
+
+  // Update the long polling reply.
   auto *next_long_polling_reply = mailbox_.back().get();
+  auto *new_pub_message = next_long_polling_reply->add_pub_messages();
+  new_pub_message->Swap(pub_message.get());
+
   // If the reply is too big, add a new entry.
   if (next_long_polling_reply->pub_messages_size() >= publish_batch_size_) {
     mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
 
-  // Update the long polling reply.
-  auto *new_pub_message = next_long_polling_reply->add_pub_messages();
-  new_pub_message->Swap(pub_message.get());
   if (try_publish) {
     PublishIfPossible();
   }
@@ -153,6 +155,11 @@ bool Subscriber::PublishIfPossible(bool force) {
   }
 
   if (force || mailbox_.size() > 0) {
+    // If force pubilsh is invoked, mailbox could be empty. Fill this up in that case.
+    if (mailbox_.size() == 0) {
+      mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
+    }
+
     // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
     long_polling_connection_->reply->Swap(mailbox_.front().get());
     long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -259,10 +266,13 @@ bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
 }
 
 bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
-  int erased =
-      subscription_index_map_[rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION].EraseSubscriber(
-          subscriber_id);
-  // Publish messages before removing the entry. Otherwise, it can have memory leak.
+  int erased = 0;
+  for (auto &index : subscription_index_map_) {
+    if (index.second.EraseSubscriber(subscriber_id)) {
+      erased += 1;
+    }
+  }
+
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     return erased;

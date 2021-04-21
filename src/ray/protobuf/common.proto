@@ -454,22 +454,23 @@ enum WorkerExitType {
   CREATION_TASK_ERROR = 4;
 }
 
+// SANG-TODO
 ///////////////////////////////////////////////////////////////////////////////
 /// Pubsub Field
 ///////////////////////////////////////////////////////////////////////////////
 
 message PubMessage {
+  ChannelType channel_type = 1;
+  bytes message_id = 2;
   oneof pub_message_oneof {
-    WaitForObjectEvictionMessage wait_for_object_eviction_message = 1;
+    WaitForObjectEvictionMessage wait_for_object_eviction_message = 3;
   }
 }
 
 message WaitForObjectEvictionMessage {
-  ChannelType channel_type = 1;
-  bytes object_id = 2;
+  bytes object_id = 1;
 }
 
-// SANG-TODO
 enum ChannelType {
   WAIT_FOR_OBJECT_EVICTION = 0;
 }
