@@ -70,11 +70,15 @@ def client_mode_should_convert():
 
 
 def client_mode_wrap(func):
-    """Decorator to wrap a function call in a task.
+    """Wraps a function called during client mode for execution as a remote
+    task.
 
-    This is useful for functions where the goal isn't to delegate
-    module calls to the ray client equivalent, but to instead implement
-    ray client features that can be executed by tasks on the server side.
+    Can be used to implement public features of Ray client which do not
+    belong in the main ray API (`ray.*`), yet require server-side execution.
+    An example is the creation of placement groups:
+    `ray.util.placement_group.placement_group()`. When called on the client
+    side, this function is wrapped in a task to facilitate interaction with
+    the GCS.
     """
     from ray.util.client import ray
 
