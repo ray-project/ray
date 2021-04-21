@@ -218,7 +218,7 @@ def test_fastapi_features(serve_instance):
     Worker.deploy()
 
     url = "http://localhost:8000/fastapi"
-    resp = requests.get(f"{url}")
+    resp = requests.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
 

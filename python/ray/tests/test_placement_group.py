@@ -96,11 +96,18 @@ def test_placement_group_strict_pack(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name", strategy="STRICT_PACK", bundles=[{
-            "CPU": 2
-        }, {
-            "CPU": 2
-        }])
+        name="name",
+        strategy="STRICT_PACK",
+        bundles=[
+            {
+                "memory": 50 * 1024 *
+                1024,  # Test memory resource spec doesn't break tests.
+                "CPU": 2
+            },
+            {
+                "CPU": 2
+            }
+        ])
     ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,

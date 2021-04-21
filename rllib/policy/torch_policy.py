@@ -109,6 +109,11 @@ class TorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
+        # Log device and worker index.
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
+        worker = get_global_worker()
+        worker_idx = worker.worker_index if worker else 0
+
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing on
         #   self.device.
@@ -122,9 +127,10 @@ class TorchPolicy(Policy):
         #   parallelization will be done.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
-            logger.info(
-                "TorchPolicy running on {}.".format("{} fake-GPUs".format(
-                    config["num_gpus"]) if config["_fake_gpus"] else "CPU"))
+            logger.info("TorchPolicy (worker={}) running on {}.".format(
+                worker_idx if worker_idx > 0 else "local",
+                "{} fake-GPUs".format(config["num_gpus"])
+                if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
             self.devices = [
                 self.device for _ in range(config["num_gpus"] or 1)
@@ -134,8 +140,8 @@ class TorchPolicy(Policy):
                 for i in range(config["num_gpus"] or 1)
             ]
         else:
-            logger.info("TorchPolicy running on {} GPU(s).".format(
-                config["num_gpus"]))
+            logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
+                worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
             self.device = torch.device("cuda")
             self.devices = [
                 torch.device("cuda:{}".format(id_))
@@ -147,6 +153,8 @@ class TorchPolicy(Policy):
                     id_ for i, id_ in enumerate(ray.get_gpu_ids())
                     if i < config["num_gpus"]
                 ])
+
+        # Move model to device.
         self.model = model.to(self.device)
 
         # Lock used for locking some methods on the object-level.
