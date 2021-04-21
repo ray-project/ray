@@ -599,6 +599,19 @@ def create_ray_handler(redis_address, redis_password):
 
     return ray_connect_handler
 
+def try_create_redis_client(args):
+    if "redis-address" not in args:
+        possible = ray._private.services.find_redis_address()
+        if len(possible) != 1:
+            return None
+        address = possible.pop()
+    else:
+        address = args["redis-address"]
+    if args.redis_password is None:
+        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+    else:
+        password = args.redis_password
+    return ray._private.services.create_redis_client(address, password)
 
 def main():
     import argparse
@@ -623,15 +636,7 @@ def main():
     # This redis client is used for health checking. We can't use `internal_kv`
     # because it requires `ray.init` to be called, which only connect handlers
     # should do.
-    if "redis-address" not in args:
-        address = ray._private.services.get_ray_address_to_use_or_die()
-    else:
-        address = args["redis-address"]
-    if args.redis_password is None:
-        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    else:
-        password = args.redis_password
-    redis_client = ray._private.services.create_redis_client(address, password)
+    redis_client = None
 
     ray_connect_handler = create_ray_handler(args.redis_address,
                                              args.redis_password)
@@ -646,6 +651,8 @@ def main():
             }
 
             try:
+                if not redis_client:
+                    redis_client = try_create_redis_client(args)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
