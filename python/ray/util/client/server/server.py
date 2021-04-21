@@ -271,14 +271,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         get_resp = ray_client_pb2.GetResponse(
                             valid=True, data=serialized)
                     except Exception as e:
-                        ray_client_pb2.GetResponse(
+                        get_resp = ray_client_pb2.GetResponse(
                             valid=False, error=cloudpickle.dumps(e))
 
                     resp = ray_client_pb2.DataResponse(
                         get=get_resp, req_id=req_id)
                     resp.req_id = req_id
 
-                    loop.call_soon_threadsafe(lambda: context.write(resp))
+                    asyncio.run_coroutine_threadsafe(context.write(resp), loop)
 
                 object_ref._on_completed(send_get_response)
                 return None
