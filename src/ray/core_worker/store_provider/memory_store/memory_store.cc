@@ -6,8 +6,17 @@
 
 namespace ray {
 
-/// A class that represents a `Get` request.
-class GetRequest {
+// Notify the user about an unhandled error after this amount of time. This only
+// applies to interactive console (e.g., IPython), see:
+// https://github.com/ray-project/ray/issues/14485 for more info.
+const int kUnhandledErrorGracePeriodNanos = 5e9;
+
+// Only scan at most this many items for unhandled errors, to avoid slowdowns
+// when there are too many local objects.
+const int kMaxUnhandledErrorScanItems = 1000
+
+    /// A class that represents a `Get` request.
+    class GetRequest {
  public:
   GetRequest(absl::flat_hash_set<ObjectID> object_ids, size_t num_objects,
              bool remove_after_get, bool abort_if_any_object_is_exception);
@@ -486,10 +495,10 @@ void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
 
 void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
   absl::MutexLock lock(&mu_);
-  int64_t threshold = absl::GetCurrentTimeNanos() - 5e9;
+  int64_t threshold = absl::GetCurrentTimeNanos() - kUnhandledErrorGracePeriodNanos;
   auto it = objects_.begin();
   int count = 0;
-  while (it != objects_.end() && count < 1000) {
+  while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {
     const auto &obj = it->second;
     if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
         unhandled_exception_handler_ != nullptr) {
