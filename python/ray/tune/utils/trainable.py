@@ -95,9 +95,10 @@ class TrainableUtil:
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found for {}"
-                                    .format(checkpoint_path))
-        return checkpoint_dir
+            raise FileNotFoundError(
+                "Checkpoint directory not found for {}".format(
+                    checkpoint_path))
+        return os.path.normpath(checkpoint_dir)
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):
