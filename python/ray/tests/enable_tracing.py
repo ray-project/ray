@@ -11,7 +11,7 @@ from typing import Any
 
 
 def _setup_tracing(*args: Any, **kwargs: Any) -> None:
-    """Open source users must provide a setup_tracing function."""
+    """Stand-in for a user-provided `setup_tracing` hook."""
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
