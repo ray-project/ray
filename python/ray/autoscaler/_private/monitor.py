@@ -112,6 +112,8 @@ class Monitor:
         worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
