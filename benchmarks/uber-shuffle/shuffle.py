@@ -2,6 +2,7 @@ import itertools
 import time
 import timeit
 import threading
+from typing import Callable, List, Iterable
 
 import pandas as pd
 import numpy as np
@@ -9,7 +10,8 @@ import numpy as np
 import ray
 
 from stats import (
-    TrialStatsCollector, TrialStatsCollectorFromMemory, collect_store_stats)
+    TrialStatsCollector, TrialStatsCollectorFromMemory, collect_store_stats,
+    TrialStatsFromMemory)
 
 
 #
@@ -18,16 +20,20 @@ from stats import (
 
 
 def shuffle_from_memory(
-        filenames,
-        batch_consumer,
-        num_epochs,
-        num_rounds,
-        num_mappers,
-        num_reducers,
-        num_trainers,
-        max_concurrent_rounds,
-        max_concurrent_epochs,
-        utilization_sample_period):
+        filenames: List[str],
+        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        num_epochs: int,
+        num_rounds: int,
+        num_mappers: int,
+        num_reducers: int,
+        num_trainers: int,
+        max_concurrent_rounds: int,
+        max_concurrent_epochs: int,
+        utilization_sample_period: float) -> (TrialStatsFromMemory, List):
+    """
+    Shuffle the provided dataset every epoch, using round-based shuffling that
+    caches the input dataset in cluster memory at the beginning of each epoch.
+    """
     stats_collector = TrialStatsCollectorFromMemory.remote(
         num_epochs, len(filenames), num_mappers, num_reducers,
         num_trainers, num_rounds)
@@ -82,6 +88,10 @@ def shuffle_from_memory(
         # Block until all epochs are done.
         ray.get(in_progress + done)
 
+        # Signal to all batch consumers that we're done producing batches.
+        for consumer_idx in range(num_trainers):
+            batch_consumer(consumer_idx, None)
+
         end = timeit.default_timer()
 
         stats_collector.trial_done.remote(end - start)
@@ -97,16 +107,16 @@ def shuffle_from_memory(
 
 @ray.remote
 def shuffle_from_memory_epoch(
-        epoch,
-        filenames,
-        batch_consumer,
-        num_rounds,
-        num_mappers,
-        num_reducers,
-        num_trainers,
-        max_concurrent_rounds,
-        trial_start,
-        stats_collector):
+        epoch: int,
+        filenames: List[str],
+        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        num_rounds: int,
+        num_mappers: int,
+        num_reducers: int,
+        num_trainers: int,
+        max_concurrent_rounds: int,
+        trial_start: float,
+        stats_collector: TrialStatsCollectorFromMemory) -> None:
     start = timeit.default_timer()
     rounds_of_partitions = cache_in_memory(
         filenames, num_rounds, num_mappers, stats_collector, epoch)
@@ -152,7 +162,11 @@ def shuffle_from_memory_epoch(
 
 
 def cache_in_memory(
-        filenames, num_rounds, num_mappers, stats_collector, epoch):
+        filenames: List[str],
+        num_rounds: int,
+        num_mappers: int,
+        stats_collector: TrialStatsCollectorFromMemory,
+        epoch: int) -> List[List[ray.ObjectRef]]:
     # TODO(Clark): In each epoch, we're currently loading the full dataset
     # from disk, shuffling each file, and partitioning these files into rounds.
     # We should optimize this so we aren't having to do a disk load at the
@@ -176,7 +190,11 @@ def cache_in_memory(
 
 @ray.remote
 def cache_round_partitions(
-        filename, num_rounds, num_mappers, stats_collector, epoch):
+        filename: str,
+        num_rounds: int,
+        num_mappers: int,
+        stats_collector: TrialStatsCollectorFromMemory,
+        epoch: int) -> List[List[ray.ObjectRef]]:
     stats_collector.cache_map_start.remote(epoch)
     start = timeit.default_timer()
     # Load file.
@@ -202,15 +220,15 @@ def cache_round_partitions(
 
 @ray.remote
 def shuffle_from_memory_round(
-        batch_consumer,
-        num_mappers,
-        num_reducers,
-        num_trainers,
-        epoch,
-        round_index,
-        trial_start,
-        stats_collector,
-        *mappers_partitions):
+        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        num_mappers: int,
+        num_reducers: int,
+        num_trainers: int,
+        epoch: int,
+        round_index: int,
+        trial_start: float,
+        stats_collector: TrialStatsCollectorFromMemory,
+        *mappers_partitions: List[List[pd.DataFrame]]) -> None:
     start = timeit.default_timer()
     chunks = []
     # mappers_partitions is a 2D (num_files, max(num_mappers, num_files))
@@ -230,8 +248,9 @@ def shuffle_from_memory_round(
             chunk = [chunk]
         chunks.append(chunk)
     shuffled = [
-        shuffle_reduce.remote(
+        shuffle_reduce.options(num_returns=num_trainers).remote(
             j,
+            num_trainers,
             stats_collector,
             epoch,
             round_index,
@@ -242,9 +261,12 @@ def shuffle_from_memory_round(
     consumers = [
         consume.remote(
             trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
-            round_index, *batches)
+            round_index, *itertools.chain.from_iterable(batches))
         for trainer_idx, batches in enumerate(
-            np.array_split(shuffled, num_trainers))]
+            zip(
+                *[
+                    chunk_it(reducer_part, num_trainers)
+                    for reducer_part in shuffled]))]
     # Free reducer chunks after passing them to consumers.
     del shuffled
     # Block until all reducers in this round are done.
@@ -257,7 +279,11 @@ def shuffle_from_memory_round(
 
 @ray.remote
 def shuffle_select_from_memory(
-        num_reducers, stats_collector, epoch, round_idx, *rows):
+        num_reducers: int,
+        stats_collector: TrialStatsCollectorFromMemory,
+        epoch: int,
+        round_idx: int,
+        *rows: pd.DataFrame) -> List[pd.DataFrame]:
     stats_collector.map_start.remote(epoch, round_idx)
     start = timeit.default_timer()
     # Concat chunks from all input partitions.
@@ -277,13 +303,16 @@ def shuffle_select_from_memory(
 
 
 @ray.remote
-def shuffle_reduce(reduce_index, stats_collector,
-                   epoch, round_index, *chunks):
+def shuffle_reduce(
+        reduce_index: int, num_trainers: int,
+        stats_collector: TrialStatsCollector, epoch: int, round_index: int,
+        *chunks: pd.DataFrame) -> List[pd.DataFrame]:
     stats_collector.reduce_start.remote(epoch, round_index)
     start = timeit.default_timer()
     # Concatenate and shuffle all rows in the chunks.
     batch = pd.concat(chunks)
     batch = batch.sample(frac=1)
+    batch = np.array_split(batch, num_trainers)
     duration = timeit.default_timer() - start
     stats_collector.reduce_done.remote(epoch, round_index, duration)
     return batch
@@ -291,9 +320,12 @@ def shuffle_reduce(reduce_index, stats_collector,
 
 @ray.remote
 def consume(
-        trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
-        round_index, *batches):
-    print(f"Epoch: {epoch}, Round: {round_index}")
+        trainer_idx: int,
+        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        trial_start: float, stats_collector: TrialStatsCollector, epoch: int,
+        round_index: int, *batches: pd.DataFrame) -> None:
+    print(f"Sending to consumer {trainer_idx} in epoch {epoch}, round "
+          f"{round_index}")
     stats_collector.consume_start.remote(epoch, round_index)
     start = timeit.default_timer()
     trial_time_to_consume = start - trial_start

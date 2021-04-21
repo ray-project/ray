@@ -1,0 +1,184 @@
+import functools
+import itertools
+from typing import TypeVar, List, Tuple, Iterable, Iterator
+
+import pandas as pd
+import ray
+from ray._private.utils import get_num_cpus
+
+from shuffle import shuffle_from_memory
+from multiqueue import MultiQueue
+
+MULTIQUEUE_ACTOR_NAME = "MultiQueue"
+
+
+# TODOs:
+#  - Usage example of iterator: 2 trainers, print and sleep.
+#  - Architecture diagram illustrating the purpose of the queue.
+#  - Add top-level documentation.
+
+
+class ShufflingDataset:
+    """
+    A shuffling dataset that yields batches upon iteration.
+
+    This dataset will kick off shuffling for max_concurrent_epochs epochs at
+    construction time in the master process (rank 0).
+
+    Args:
+        filenames (str): Paths to input Parquet files.
+        num_epochs (int): Number of training epochs.
+        num_trainers (int): Number of trainer workers.
+        batch_size (int): Size of the batches that the iterator should yield.
+        rank (int): The worker rank of the current process.
+        num_rounds (optional, int): The number of shuffle rounds that the
+            shuffler should perform. Default is 2.
+        num_mappers (optional, int): The number of shuffler mappers. Default is
+            the number of input files.
+        num_reducers (optional, int): The number of shuffler reducers. Default
+            is the number of trainers x the number of cores on the master
+            (rank 0) worker.
+        max_concurrent_rounds (optional, int): The maximum number of shuffle
+            rounds that should be executed concurrently. Default is the number
+            of rounds (no round throttling).
+        max_concurrent_epochs (optional, int): The maximum number of epochs
+            whose shuffling stages should execute concurrently. Default is 2.
+        utilization_sample_period (optional, float): How often, in seconds,
+            object store utilization should be sampled. Default is 5 seconds.
+    """
+    def __init__(
+            self,
+            filenames: List[str],
+            num_epochs: int,
+            num_trainers: int,
+            batch_size: int,
+            rank: int,
+            num_rounds: int = 2,
+            num_mappers: int = None,
+            num_reducers: int = None,
+            max_concurrent_rounds: int = None,
+            max_concurrent_epochs: int = 2,
+            max_batch_queue_size: int = 100,
+            utilization_sample_period: float = 5.0):
+        if num_mappers is None:
+            num_mappers = len(filenames)
+        if num_reducers is None:
+            num_reducers = num_trainers * get_num_cpus()
+        if max_concurrent_rounds is None:
+            max_concurrent_rounds = num_rounds
+
+        # TODO(Clark): Find way to do this without batch consumer proxy queue.
+        if rank == 0:
+            # rank == 0 --> master process
+            # Create the batch queue. Trainers will consume GPU batches
+            # through this batch queue.
+            # TODO(Clark): If the shuffle API was changed to take num_trainers
+            # batch consumers instead of a single batch consumer, instead of
+            # having a single batch multi-queue, we could create num_trainers
+            # batch queues, have each batch consumer close over heir
+            # corresponding batch queue, and have each trainer reference their
+            # single batch queue.
+            self._batch_queue = MultiQueue(
+                num_trainers, max_batch_queue_size,
+                name=MULTIQUEUE_ACTOR_NAME, connect=False)
+            # Kick off shuffle.
+            # TODO(Clark): Move the shuffle kickoff to an init() method so the
+            # user can better control when the shuffling starts?
+            # TODO(Clark): Make shuffle_from_memory non-blocking so we don't
+            # have to launch this is in a Ray task.
+            ray.remote(shuffle_from_memory).remote(
+                filenames,
+                functools.partial(
+                    batch_consumer, self._batch_queue, batch_size),
+                num_epochs,
+                num_rounds,
+                num_mappers,
+                num_reducers,
+                num_trainers,
+                max_concurrent_rounds,
+                max_concurrent_epochs,
+                utilization_sample_period)
+        else:
+            # rank != 0 --> worker process
+            # Connect to the batch queue.
+            self._batch_queue = MultiQueue(
+                num_trainers, max_batch_queue_size,
+                name=MULTIQUEUE_ACTOR_NAME, connect=True)
+
+        self._rank = rank
+
+    def __iter__(self):
+        while True:
+            # TODO(Clark): Add get_up_to queue method that can fetch up to
+            # some number of batches in a single RPC.
+            batch = self._batch_queue.get(self._rank, block=True)
+            if batch is None:
+                break
+            yield batch
+
+
+def batch_consumer(
+        queue: MultiQueue,
+        batch_size: int,
+        rank: int,
+        batches: Iterable[pd.DataFrame]):
+    """
+    Batch consumer that will be provided to the shuffler.
+    """
+    if batches is not None:
+        batches = pd.concat(batches)
+        batches = chunk(batches, batch_size)
+        queue.put_batch(rank, batches)
+    else:
+        # batches is None, so the producer is done. Send this termination
+        # signal to the queue.
+        queue.put(rank, batches)
+
+
+T = TypeVar("T")
+
+
+def chunk(iterable: Iterable[T], n: int) -> Iterator[Tuple[T, ...]]:
+    it = iter(iterable)
+    return iter(lambda: tuple(itertools.islice(it, n)), ())
+
+
+if __name__ == "__main__":
+    from data_generation import generate_data
+    from stats import human_readable_size
+    print("Starting Ray...")
+    ray.init()
+    num_rows = 10 ** 7
+    num_files = 10
+    num_row_groups_per_file = 1
+    max_row_group_skew = 0.0
+    data_dir = "data"
+    print(
+        f"Generating {num_rows} rows over {num_files} files, with "
+        f"{num_row_groups_per_file} row groups per file and at most "
+        f"{100 * max_row_group_skew:.1f}% row group skew.")
+    filenames, num_bytes = generate_data(
+        num_rows, num_files, num_row_groups_per_file, max_row_group_skew,
+        data_dir)
+    print(
+        f"Generated {len(filenames)} files containing {num_rows} rows "
+        f"with {num_row_groups_per_file} row groups per file, totalling "
+        f"{human_readable_size(num_bytes)}.")
+    num_epochs = 4
+    num_trainers = 2
+    batch_size = 20000
+    rank = 0
+    num_mappers = 4
+    num_reducers = 4
+    print("Creating shuffling dataset!")
+    ds = ShufflingDataset(
+        filenames,
+        num_epochs,
+        num_trainers,
+        batch_size,
+        rank,
+        num_mappers=num_mappers,
+        num_reducers=num_reducers)
+
+    for batch_idx, batch in enumerate(ds):
+        print(f"Consuming batch {batch_idx}!")

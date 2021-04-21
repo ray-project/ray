@@ -11,18 +11,18 @@ from stats import process_stats, human_readable_size
 
 
 # TODOs:
-# - Add support for multiple epochs in a single trial.
-# - Add task graph for from memory shuffler to external doc.
-# - Create throughput stability graph for 3 or 4 of the best round
+# - [DONE] Add support for multiple epochs in a single trial.
+# - [DONE] Add task graph for from memory shuffler to external doc.
+# - [DONE] Create throughput stability graph for 3 or 4 of the best round
 #   configurations, including both from memory and from disk shuffler results.
-# - Show that number of trainers doesn't degrade throughput.
-# - Explain 40+ second overhead and that training runs need to be at least
-#   as long as that.
-# - Note what memory footprint should be, and that it's dependent on how
+# - [DONE] Show that number of trainers doesn't degrade throughput.
+# - [DONE] Explain 40+ second overhead and that training runs need to be at
+#   least as long as that.
+# - [DONE] Note what memory footprint should be, and that it's dependent on how
 #   aggressively rounds and epochs are pipelined.
-# - Think about backpressure: calculate how many rounds we can do concurrently,
-#   apply application-level backpressure with ray.wait().
-# - Conclusions attached to those graphs.
+# - [DONE] Think about backpressure: calculate how many rounds we can do
+#   concurrently, apply application-level backpressure with ray.wait().
+# - [DONE] Conclusions attached to those graphs.
 # - Explore streaming implementation of cache map stage, where we sample and
 #   pop one round partition at a time.
 
