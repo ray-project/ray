@@ -70,7 +70,7 @@ To run your program with the tracing hook, see the following examples.
 .. tabs::
   .. code-tab:: start
 
-    $ ray start --head --tracing-startup-hook "MyLibrary:setup_tracing"
+    $ ray start --head --tracing-startup-hook "my_library:setup_tracing"
     $ python
     >>> ray.init(address="auto")
 
