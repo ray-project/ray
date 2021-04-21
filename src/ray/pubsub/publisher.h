@@ -24,6 +24,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 
@@ -99,7 +100,6 @@ class Subscriber {
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
   ///
-  /// SANG-TODO Fix issues.
   /// \return True if connection is new. False if there were already connections cached.
   bool ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
@@ -175,11 +175,14 @@ class Publisher {
       : periodical_runner_(periodical_runner),
         get_time_ms_(get_time_ms),
         subscriber_timeout_ms_(subscriber_timeout_ms),
-        subscription_index_map_({{rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
-                                  pub_internal::SubscriptionIndex<ObjectID>()}}),
         publish_batch_size_(publish_batch_size) {
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
                                           subscriber_timeout_ms);
+    // Insert index map for each channel.
+    subscription_index_map_.emplace(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+                                    pub_internal::SubscriptionIndex<ObjectID>());
+    subscription_index_map_.emplace(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
+                                    pub_internal::SubscriptionIndex<ObjectID>());
   }
 
   ~Publisher() = default;

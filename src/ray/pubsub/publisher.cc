@@ -247,7 +247,6 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
-    RAY_LOG(ERROR) << "Publish to subscriber for " << message_id;
     subscriber->QueueMessage(std::move(pub_message));
   }
 }

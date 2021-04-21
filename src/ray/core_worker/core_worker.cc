@@ -450,8 +450,25 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  core_worker_client_pool_ =
+      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+
+  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
+      /*periodical_runner=*/&periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+  object_status_subscriber_ = std::make_shared<pubsub::Subscriber>(
+      /*subscriber_id=*/GetWorkerID(),
+      /*subscriber_address=*/rpc_address_.ip_address(),
+      /*subscriber_port=*/rpc_address_.port(),
+      /*publisher_client_pool=*/*(core_worker_client_pool_.get()));
+
   reference_counter_ = std::make_shared<ReferenceCounter>(
-      rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
+      rpc_address_,
+      /*object_status_publisher=*/object_status_publisher_,
+      /*object_status_subscriber=*/object_status_subscriber_,
+      RayConfig::instance().distributed_ref_counting_enabled(),
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -549,9 +566,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id);
   }
 
-  core_worker_client_pool_ =
-      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
-
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
@@ -565,12 +579,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
-
-  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
-      /*periodical_runner=*/&periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -2486,17 +2494,23 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   }
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+  const WorkerID subscriber_worker_id =
+      WorkerID::FromBinary(request.subscriber_worker_id());
   const auto owner_address = request.reference().owner_address();
+
+  // Register for ref removed pubsub and reply. We need to reply first to avoid race
+  // condition.
+  object_status_publisher_->RegisterSubscription<ObjectID>(
+      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  // Set a callback to publish the message when the requested object ID's ref count
+  // goes to 0.
   auto ref_removed_callback =
       boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id,
-                  reply, send_reply_callback);
-  // Set a callback to send the reply when the requested object ID's ref count
-  // goes to 0.
+                  subscriber_worker_id);
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                             ref_removed_callback);
-  // SANG-TODO
-  // object_status_publisher_->RegisterSubscription(WAIT_FOR_REF_REMOVED_CHANNEL,
-  // subscriber_worker_id, object_id);
 }
 
 void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &request,

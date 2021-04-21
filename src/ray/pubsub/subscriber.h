@@ -22,6 +22,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray {
 
@@ -67,6 +68,7 @@ class SubscribeChannelInterface {
   virtual void HandleLongPollingFailureResponse(
       const rpc::Address &publisher_address, const rpc::Address &subscriber_address) = 0;
   virtual bool SubscriptionExists(const PublisherID &publisher_id) = 0;
+  virtual const rpc::ChannelType GetChannelType() const = 0;
 };
 
 template <typename MessageID>
@@ -93,6 +95,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   bool SubscriptionExists(const PublisherID &publisher_id) override;
 
+  const rpc::ChannelType GetChannelType() const override { return channel_type_; }
+
   virtual MessageID ParseMessageID(const rpc::PubMessage &msg) = 0;
 
  protected:
@@ -118,6 +122,18 @@ class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
     channel_type_ = rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION;
   }
   ~WaitForObjectEvictionChannel() = default;
+
+  ObjectID ParseMessageID(const rpc::PubMessage &msg) override {
+    return ObjectID::FromBinary(msg.message_id());
+  }
+};
+
+class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
+ public:
+  WaitForRefRemovedChannel() : SubscriberChannel() {
+    channel_type_ = rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL;
+  }
+  ~WaitForRefRemovedChannel() = default;
 
   ObjectID ParseMessageID(const rpc::PubMessage &msg) override {
     return ObjectID::FromBinary(msg.message_id());
@@ -178,7 +194,7 @@ class SubscriberInterface {
 ///
 class Subscriber : public SubscriberInterface {
  public:
-  explicit Subscriber(const PublisherID subscriber_id,
+  explicit Subscriber(const SubscriberID subscriber_id,
                       const std::string subscriber_address, const int subscriber_port,
                       rpc::CoreWorkerClientPool &publisher_client_pool)
       : subscriber_id_(subscriber_id),
@@ -187,8 +203,11 @@ class Subscriber : public SubscriberInterface {
         publisher_client_pool_(publisher_client_pool),
         wait_for_object_eviction_channel_(
             std::make_shared<WaitForObjectEvictionChannel>()),
+        wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
         channels_({{rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
-                    wait_for_object_eviction_channel_}}) {}
+                    wait_for_object_eviction_channel_},
+                   {rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
+                    wait_for_ref_removed_channel_}}) {}
 
   ~Subscriber() = default;
 
@@ -240,6 +259,8 @@ class Subscriber : public SubscriberInterface {
   absl::flat_hash_set<PublisherID> publishers_connected_;
 
   std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_;
+
+  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_;
 
   absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
       channels_;

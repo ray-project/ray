@@ -108,7 +108,7 @@ cc_proto_library(
 proto_library(
     name = "core_worker_proto",
     srcs = ["core_worker.proto"],
-    deps = [":common_proto"],
+    deps = [":common_proto", ":pubsub_proto"],
 )
 
 python_grpc_compile(
@@ -168,4 +168,16 @@ proto_library(
 python_grpc_compile(
     name = "ray_client_py_proto",
     deps = [":ray_client_proto"],
+)
+
+# Pubsub
+proto_library(
+    name = "pubsub_proto",
+    srcs = ["pubsub.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "pubsub_cc_proto",
+    deps = [":pubsub_proto"],
 )

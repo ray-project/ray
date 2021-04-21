@@ -1,0 +1,45 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+enum ChannelType {
+  WAIT_FOR_OBJECT_EVICTION = 0;
+  WAIT_FOR_REF_REMOVED_CHANNEL = 1;
+}
+
+message PubMessage {
+  ChannelType channel_type = 1;
+  bytes message_id = 2;
+  oneof pub_message_oneof {
+    WaitForObjectEvictionMessage wait_for_object_eviction_message = 3;
+    WaitForRefRemovedMessage wait_for_ref_removed_message = 4;
+  }
+}
+
+message WaitForObjectEvictionMessage {
+  bytes object_id = 1;
+}
+
+message WaitForRefRemovedMessage {
+  // The reference counts for the object that the worker was borrowing and
+  // any objects nested inside. The worker should no longer be using the object
+  // ID by the time it replies, but may have accumulated other borrowers or may
+  // still be borrowing an object ID that was nested inside.
+  repeated ObjectReferenceCount borrowed_refs = 1;
+}

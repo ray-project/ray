@@ -109,6 +109,10 @@ void SubscriberChannel<MessageID>::HandleLongPollingFailureResponse(
     const rpc::Address &publisher_address, const rpc::Address &subscriber_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
+  // If there's no more subscription, do nothing.
+  if (subscription_it == subscription_map_.end()) {
+    return;
+  }
   auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
 
   std::vector<MessageID> message_ids_to_unsubscribe;
@@ -218,7 +222,6 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
                                                  const rpc::Address &subscriber_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Make a long polling request to " << publisher_id;
-
   auto publisher_client = publisher_client_pool_.GetOrConnect(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
@@ -238,12 +241,11 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
   auto publishers_connected_it = publishers_connected_.find(publisher_id);
   RAY_CHECK(publishers_connected_it != publishers_connected_.end());
-
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
-    RAY_LOG(INFO) << "A worker is dead. subscription_failure_callback will be invoked. "
-                     "Publisher id:"
-                  << publisher_id;
+    RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
+                      "Publisher id:"
+                   << publisher_id;
     for (const auto &channel_it : channels_) {
       channel_it.second->HandleLongPollingFailureResponse(publisher_address,
                                                           subscriber_address);
