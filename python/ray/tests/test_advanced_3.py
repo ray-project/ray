@@ -73,7 +73,7 @@ def test_global_state_api(shutdown_only):
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()

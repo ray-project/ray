@@ -32,7 +32,7 @@ _ = Actor.remote()
     actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.
@@ -78,7 +78,7 @@ ray.get(_.value.remote())
     actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.

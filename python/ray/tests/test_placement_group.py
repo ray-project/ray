@@ -1129,7 +1129,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1205,7 +1205,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1428,7 +1428,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1532,7 +1532,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
