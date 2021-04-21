@@ -72,6 +72,30 @@ serve.get_deployment("test1").delete()
     assert "test1" not in serve.list_backends()
     assert "test1" not in serve.list_endpoints()
 
+    fastapi = """
+import ray
+ray.util.connect("{}")
+
+from ray import serve
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def hello():
+    return "hello"
+
+@serve.deployment
+@serve.ingress(app)
+class A:
+    pass
+
+A.deploy()
+""".format(ray_client_instance)
+    run_string_as_driver(fastapi)
+
+    assert requests.get("http://localhost:8000/A").json() == "hello"
+
 
 if __name__ == "__main__":
     import sys

@@ -56,7 +56,6 @@ class RandomKiller:
 
 class RandomTest:
     def __init__(self, max_deployments=1):
-        self.client = serve.connect()
         self.max_deployments = max_deployments
         self.weighted_actions = [
             (self.create_deployment, 1),
@@ -69,8 +68,7 @@ class RandomTest:
     def create_deployment(self):
         if len(self.deployments) == self.max_deployments:
             deployment_to_delete = self.deployments.pop()
-            self.client.delete_deployment(deployment_to_delete)
-            self.client.delete_backend(deployment_to_delete)
+            serve.delete_deployment(deployment_to_delete)
 
         new_name = "".join(
             [random.choice(string.ascii_letters) for _ in range(10)])

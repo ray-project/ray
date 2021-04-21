@@ -93,16 +93,20 @@ class VTraceLoss:
         self.value_targets = self.vtrace_returns.vs.to(device)
 
         # The policy gradients loss.
-        self.pi_loss = -torch.sum(
-            actions_logp * self.vtrace_returns.pg_advantages.to(device) *
-            valid_mask)
+        masked_pi_loss = actions_logp * \
+            self.vtrace_returns.pg_advantages.to(device) * valid_mask
+        self.pi_loss = -torch.sum(masked_pi_loss)
+        self.mean_pi_loss = -torch.mean(masked_pi_loss)
 
         # The baseline loss.
         delta = (values - self.value_targets) * valid_mask
-        self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
+        squarred_delta = torch.pow(delta, 2.0)
+        self.vf_loss = 0.5 * torch.sum(squarred_delta)
+        self.mean_vf_loss = 0.5 * torch.mean(squarred_delta)
 
         # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
+        self.mean_entropy = self.entropy / torch.sum(valid_mask)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -229,11 +233,11 @@ def stats(policy, train_batch):
 
     return {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "policy_loss": policy.loss.mean_pi_loss,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
+        "vf_loss": policy.loss.mean_vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
             torch.reshape(values_batched, [-1])),
