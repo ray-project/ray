@@ -1,7 +1,6 @@
 # This workload tests running APEX
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune import run_experiments
 
 num_redis_shards = 5

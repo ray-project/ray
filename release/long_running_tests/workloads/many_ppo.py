@@ -2,7 +2,6 @@
 # This covers https://github.com/ray-project/ray/pull/12148
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tune import run_experiments
 
 num_redis_shards = 5
