@@ -44,6 +44,14 @@ def get_build_env():
             "TRAVIS_OS_NAME": "windows",
         }
 
+    if os.environ.get("BUILDKITE"):
+        return {
+            "TRAVIS_COMMIT": os.environ["BUILDKITE_COMMIT"],
+            "TRAVIS_JOB_WEB_URL": (os.environ["BUILDKITE_BUILD_URL"] + "#" +
+                                   os.environ["BUILDKITE_BUILD_ID"]),
+            "TRAVIS_OS_NAME": "linux",
+        }
+
     keys = [
         "TRAVIS_COMMIT",
         "TRAVIS_JOB_WEB_URL",
@@ -55,6 +63,13 @@ def get_build_env():
 def get_build_config():
     if os.environ.get("GITHUB_ACTION"):
         return {"config": {"env": "Windows CI"}}
+
+    if os.environ.get("BUILDKITE"):
+        return {
+            "config": {
+                "env": "Buildkite " + os.environ["BUILDKITE_LABEL"]
+            }
+        }
 
     url = "https://api.travis-ci.com/job/{job_id}?include=job.config"
     url = url.format(job_id=os.environ["TRAVIS_JOB_ID"])

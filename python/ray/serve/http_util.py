@@ -139,3 +139,16 @@ def make_startup_shutdown_hooks(app: Callable) -> Tuple[Callable, Callable]:
         await app(scope, handler.receive, handler.send)
 
     return startup, shutdown
+
+
+async def receive_http_body(scope, receive, send):
+    body_buffer = []
+    more_body = True
+    while more_body:
+        message = await receive()
+        assert message["type"] == "http.request"
+
+        more_body = message["more_body"]
+        body_buffer.append(message["body"])
+
+    return b"".join(body_buffer)

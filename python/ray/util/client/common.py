@@ -43,7 +43,7 @@ class ClientBaseRef:
         return self.id.hex()
 
     def __eq__(self, other):
-        return self.id == other.id
+        return isinstance(other, ClientBaseRef) and self.id == other.id
 
     def __repr__(self):
         return "%s(%s)" % (

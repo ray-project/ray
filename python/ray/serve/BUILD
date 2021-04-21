@@ -42,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_http_prefix_matching",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_routes",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -209,14 +217,6 @@ py_test(
 
 py_test(
     name = "test_imported_backend",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_pydantic_serialization",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],

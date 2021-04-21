@@ -93,17 +93,21 @@ class VTraceLoss:
             self.value_targets = self.vtrace_returns.vs
 
         # The policy gradients loss.
-        self.pi_loss = -tf.reduce_sum(
-            tf.boolean_mask(actions_logp * self.vtrace_returns.pg_advantages,
-                            valid_mask))
+        masked_pi_loss = tf.boolean_mask(
+            actions_logp * self.vtrace_returns.pg_advantages, valid_mask)
+        self.pi_loss = -tf.reduce_sum(masked_pi_loss)
+        self.mean_pi_loss = -tf.reduce_mean(masked_pi_loss)
 
         # The baseline loss.
         delta = tf.boolean_mask(values - self.vtrace_returns.vs, valid_mask)
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
+        delta_squarred = tf.math.square(delta)
+        self.vf_loss = 0.5 * tf.reduce_sum(delta_squarred)
+        self.mean_vf_loss = 0.5 * tf.reduce_mean(delta_squarred)
 
         # The entropy loss.
-        self.entropy = tf.reduce_sum(
-            tf.boolean_mask(actions_entropy, valid_mask))
+        masked_entropy = tf.boolean_mask(actions_entropy, valid_mask)
+        self.entropy = tf.reduce_sum(masked_entropy)
+        self.mean_entropy = tf.reduce_mean(masked_entropy)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -225,11 +229,11 @@ def stats(policy, train_batch):
 
     return {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "policy_loss": policy.loss.mean_pi_loss,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
         "var_gnorm": tf.linalg.global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
+        "vf_loss": policy.loss.mean_vf_loss,
         "vf_explained_var": explained_variance(
             tf.reshape(policy.loss.value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
