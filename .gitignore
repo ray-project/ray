@@ -186,7 +186,3 @@ tools/prometheus*
 # ray project files
 project-id
 .mypy_cache/
-
-# cache files
-.bazel-cache/
-.pip-cache/
