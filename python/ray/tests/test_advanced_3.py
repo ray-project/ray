@@ -41,9 +41,9 @@ def test_global_state_api(shutdown_only):
     # the object ref in GCS because Raylet removes the object ref from GCS
     # asynchronously.
     # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.objects()` returns an empty dict. Here we just
-    # make sure `ray.objects()` succeeds.
-    assert len(ray.objects()) >= 0
+    # We can't assert that `ray.state.objects()` returns an empty dict. Here
+    # we just make sure `ray.state.objects()` succeeds.
+    assert len(ray.state.objects()) >= 0
 
     job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
