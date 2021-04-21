@@ -9,7 +9,7 @@ namespace ray {
 // Notify the user about an unhandled error after this amount of time. This only
 // applies to interactive console (e.g., IPython), see:
 // https://github.com/ray-project/ray/issues/14485 for more info.
-const int kUnhandledErrorGracePeriodNanos = 5e9;
+const int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
 
 // Only scan at most this many items for unhandled errors, to avoid slowdowns
 // when there are too many local objects.
