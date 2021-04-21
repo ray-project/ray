@@ -18,9 +18,10 @@ from stats import (
 
 
 def shuffle_from_memory(
+        filenames,
+        batch_consumer,
         num_epochs,
         num_rounds,
-        filenames,
         num_mappers,
         num_reducers,
         num_trainers,
@@ -68,6 +69,7 @@ def shuffle_from_memory(
             epoch = shuffle_from_memory_epoch.remote(
                 epoch_idx,
                 filenames,
+                batch_consumer,
                 num_rounds,
                 num_mappers,
                 num_reducers,
@@ -97,6 +99,7 @@ def shuffle_from_memory(
 def shuffle_from_memory_epoch(
         epoch,
         filenames,
+        batch_consumer,
         num_rounds,
         num_mappers,
         num_reducers,
@@ -127,6 +130,7 @@ def shuffle_from_memory_epoch(
             done.extend(new_done)
 
         round_ = shuffle_from_memory_round.remote(
+            batch_consumer,
             num_mappers,
             num_reducers,
             num_trainers,
@@ -198,6 +202,7 @@ def cache_round_partitions(
 
 @ray.remote
 def shuffle_from_memory_round(
+        batch_consumer,
         num_mappers,
         num_reducers,
         num_trainers,
@@ -236,11 +241,13 @@ def shuffle_from_memory_round(
     del chunks
     consumers = [
         consume.remote(
-            trial_start, stats_collector, epoch, round_index, *batches)
-        for batches in np.array_split(shuffled, num_trainers)]
+            trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
+            round_index, *batches)
+        for trainer_idx, batches in enumerate(
+            np.array_split(shuffled, num_trainers))]
     # Free reducer chunks after passing them to consumers.
     del shuffled
-    # Block until all consumers in this round are done.
+    # Block until all reducers in this round are done.
     ray.get(consumers)
     end = timeit.default_timer()
     duration = end - start
@@ -283,14 +290,22 @@ def shuffle_reduce(reduce_index, stats_collector,
 
 
 @ray.remote
-def consume(start_time, stats_collector, epoch, round_index, *batches):
+def consume(
+        trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
+        round_index, *batches):
     print(f"Epoch: {epoch}, Round: {round_index}")
-    stats_collector.consume.remote(
-        epoch, round_index, timeit.default_timer() - start_time)
+    stats_collector.consume_start.remote(epoch, round_index)
+    start = timeit.default_timer()
+    trial_time_to_consume = start - trial_start
+    batch_consumer(trainer_idx, batches)
+    end = timeit.default_timer()
+    duration = end - start
+    stats_collector.consume_done.remote(
+        epoch, round_index, duration, trial_time_to_consume)
 
 
 #
-# Disk-based shuffle, loads full file from disk in each round.
+# (LEGACY) Disk-based shuffle, loads full file from disk in each round.
 #
 
 

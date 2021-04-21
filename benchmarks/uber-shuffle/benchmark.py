@@ -55,6 +55,10 @@ DEFAULT_STATS_DIR = "./results"
 DEFAULT_UTILIZATION_SAMPLE_PERIOD = 5.0
 
 
+def dummy_batch_consumer(consumer_idx, batches):
+    pass
+
+
 def run_trials(
         num_epochs,
         num_rounds,
@@ -82,9 +86,10 @@ def run_trials(
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
             stats, store_stats = shuffle(
+                filenames,
+                dummy_batch_consumer,
                 num_epochs,
                 num_rounds,
-                filenames,
                 num_mappers,
                 num_reducers,
                 num_trainers,
@@ -99,9 +104,10 @@ def run_trials(
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
             stats, store_stats = shuffle(
+                filenames,
+                dummy_batch_consumer,
                 num_epochs,
                 num_rounds,
-                filenames,
                 num_mappers,
                 num_reducers,
                 num_trainers,

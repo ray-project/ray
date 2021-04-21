@@ -32,7 +32,7 @@ class ReduceStats(StageStats):
 
 
 @dataclass
-class ConsumeStats:
+class ConsumeStats(StageStats):
     consume_times: List[float]
 
 
@@ -111,13 +111,17 @@ class RoundStatsCollector_:
         self._reduces_started = 0
         self._reduces_done = 0
         self._reduce_durations = []
-        self._consume_times = []
+        self._consumes_started = 0
         self._consumes_done = 0
+        self._consume_times = []
+        self._consume_durations = []
         self._throttle_duration = None
         self._map_stage_start_time = None
         self._reduce_stage_start_time = None
+        self._consume_stage_start_time = None
         self._map_stage_duration = None
         self._reduce_stage_duration = None
+        self._consume_stage_duration = None
 
         self._round_done_ev = asyncio.Event()
 
@@ -148,11 +152,17 @@ class RoundStatsCollector_:
         if self._reduces_done == self._num_reduces:
             self._reduce_stage_done(timeit.default_timer())
 
-    def consume(self, consume_time):
+    def consume_start(self):
+        if self._consumes_started == 0:
+            self._consume_stage_start(timeit.default_timer())
+        self._consumes_started += 1
+
+    def consume_done(self, duration, trial_time_to_consume):
         self._consumes_done += 1
-        self._consume_times.append(consume_time)
+        self._consume_durations.append(duration)
+        self._consume_times.append(trial_time_to_consume)
         if self._consumes_done == self._num_consumes:
-            self._consume_stage_done()
+            self._consume_stage_done(timeit.default_timer())
 
     def throttle_done(self, duration):
         self._throttle_duration = duration
@@ -171,12 +181,18 @@ class RoundStatsCollector_:
         assert self._reduce_stage_start_time is not None
         self._reduce_stage_duration = end_time - self._reduce_stage_start_time
 
-    def _consume_stage_done(self):
-        pass
+    def _consume_stage_start(self, start_time):
+        self._consume_stage_start_time = start_time
+
+    def _consume_stage_done(self, end_time):
+        assert self._consume_stage_start_time is not None
+        self._consume_stage_duration = (
+            end_time - self._consume_stage_start_time)
 
     def get_map_stats(self):
         assert self._map_stage_duration is not None
         assert len(self._map_durations) == self._num_maps
+        assert len(self._read_durations) == self._num_maps
         return MapStats(
             self._map_durations,
             self._map_stage_duration,
@@ -188,8 +204,13 @@ class RoundStatsCollector_:
         return ReduceStats(self._reduce_durations, self._reduce_stage_duration)
 
     def get_consume_stats(self):
+        assert len(self._consume_durations) == self._num_consumes
         assert len(self._consume_times) == self._num_consumes
-        return ConsumeStats(self._consume_times)
+        return ConsumeStats(
+            self._consume_durations,
+            self._consume_stage_duration,
+            self._consume_times,
+        )
 
     def get_throttle_stats(self):
         if self._throttle_duration is None:
@@ -272,8 +293,12 @@ class EpochStatsCollector_:
     def reduce_done(self, round_idx, duration):
         self._collectors[round_idx].reduce_done(duration)
 
-    def consume(self, round_idx, consume_time):
-        self._collectors[round_idx].consume(consume_time)
+    def consume_start(self, round_idx):
+        self._collectors[round_idx].consume_start()
+
+    def consume_done(self, round_idx, duration, trial_time_to_consume):
+        self._collectors[round_idx].consume_done(
+            duration, trial_time_to_consume)
 
     def get_throttle_stats(self):
         if self._throttle_duration is None:
@@ -410,8 +435,12 @@ class TrialStatsCollector_:
     def reduce_done(self, epoch, round_idx, duration):
         self._collectors[epoch].reduce_done(round_idx, duration)
 
-    def consume(self, epoch, round_idx, consume_time):
-        self._collectors[epoch].consume(round_idx, consume_time)
+    def consume_start(self, epoch, round_idx):
+        self._collectors[epoch].consume_start(round_idx)
+
+    def consume_done(self, epoch, round_idx, duration, trial_time_to_consume):
+        self._collectors[epoch].consume_done(
+            round_idx, duration, trial_time_to_consume)
 
     async def get_stats(self):
         await self._trial_done_ev.wait()
@@ -552,6 +581,10 @@ def process_stats(
             "std_reduce_stage_duration",  # across epochs, rounds
             "max_reduce_stage_duration",  # across epochs, rounds
             "min_reduce_stage_duration",  # across epochs, rounds
+            "avg_consume_stage_duration",  # across epochs, rounds
+            "std_consume_stage_duration",  # across epochs, rounds
+            "max_consume_stage_duration",  # across epochs, rounds
+            "min_consume_stage_duration",  # across epochs, rounds
             "avg_map_task_duration",  # across epochs, rounds, mappers
             "std_map_task_duration",  # across epochs, rounds, mappers
             "max_map_task_duration",  # across epochs, rounds, mappers
@@ -560,6 +593,10 @@ def process_stats(
             "std_reduce_task_duration",  # across epochs, rounds, reducers
             "max_reduce_task_duration",  # across epochs, rounds, reducers
             "min_reduce_task_duration",  # across epochs, rounds, reducers
+            "avg_consume_task_duration",  # across epochs, rounds, consumers
+            "std_consume_task_duration",  # across epochs, rounds, consumers
+            "max_consume_task_duration",  # across epochs, rounds, consumers
+            "min_consume_task_duration",  # across epochs, rounds, consumers
             "avg_time_to_consume",  # across epochs, rounds, consumers
             "std_time_to_consume",  # across epochs, rounds, consumers
             "max_time_to_consume",  # across epochs, rounds, consumers
@@ -611,9 +648,11 @@ def process_stats(
             cache_map_task_durations = []
             map_task_durations = []
             map_stage_durations = []
+            read_durations = []
             reduce_task_durations = []
             reduce_stage_durations = []
-            read_durations = []
+            consume_task_durations = []
+            consume_stage_durations = []
             consume_times = []
             for epoch_stats in stats.epoch_stats:
                 epoch_durations.append(epoch_stats.duration)
@@ -625,20 +664,22 @@ def process_stats(
                         cache_map_stats.task_durations)
                     read_durations.extend(cache_map_stats.read_durations)
                 for round_stats in epoch_stats.round_stats:
+                    # Map stage.
                     map_stats = round_stats.map_stats
                     map_stage_durations.append(map_stats.stage_duration)
-                    for duration in map_stats.task_durations:
-                        map_task_durations.append(duration)
+                    map_task_durations.extend(map_stats.task_durations)
                     if use_from_disk_shuffler:
-                        for duration in map_stats.read_durations:
-                            read_durations.append(duration)
+                        read_durations.extend(map_stats.read_durations)
+                    # Reduce stage.
                     reduce_stats = round_stats.reduce_stats
                     reduce_stage_durations.append(reduce_stats.stage_duration)
-                    for duration in reduce_stats.task_durations:
-                        reduce_task_durations.append(duration)
-                    for consume_time in (
-                            round_stats.consume_stats.consume_times):
-                        consume_times.append(consume_time)
+                    reduce_task_durations.extend(reduce_stats.task_durations)
+                    # Consume stage.
+                    consume_stats = round_stats.consume_stats
+                    consume_task_durations.extend(consume_stats.task_durations)
+                    consume_stage_durations.append(
+                        consume_stats.stage_duration)
+                    consume_times.extend(consume_stats.consume_times)
 
             # Trial store stats.
             store_bytes_used = [
@@ -680,6 +721,11 @@ def process_stats(
             row["std_reduce_stage_duration"] = np.std(reduce_stage_durations)
             row["max_reduce_stage_duration"] = np.max(reduce_stage_durations)
             row["min_reduce_stage_duration"] = np.min(reduce_stage_durations)
+            row["avg_consume_stage_duration"] = np.mean(
+                consume_stage_durations)
+            row["std_consume_stage_duration"] = np.std(consume_stage_durations)
+            row["max_consume_stage_duration"] = np.max(consume_stage_durations)
+            row["min_consume_stage_duration"] = np.min(consume_stage_durations)
             row["avg_map_task_duration"] = np.mean(map_task_durations)
             row["std_map_task_duration"] = np.std(map_task_durations)
             row["max_map_task_duration"] = np.max(map_task_durations)
@@ -688,6 +734,10 @@ def process_stats(
             row["std_reduce_task_duration"] = np.std(reduce_task_durations)
             row["max_reduce_task_duration"] = np.max(reduce_task_durations)
             row["min_reduce_task_duration"] = np.min(reduce_task_durations)
+            row["avg_consume_task_duration"] = np.mean(consume_task_durations)
+            row["std_consume_task_duration"] = np.std(consume_task_durations)
+            row["max_consume_task_duration"] = np.max(consume_task_durations)
+            row["min_consume_task_duration"] = np.min(consume_task_durations)
             row["avg_time_to_consume"] = np.mean(consume_times)
             row["std_time_to_consume"] = np.std(consume_times)
             row["max_time_to_consume"] = np.max(consume_times)
@@ -731,6 +781,10 @@ def process_stats(
                 "std_reduce_stage_duration",  # across rounds
                 "max_reduce_stage_duration",  # across rounds
                 "min_reduce_stage_duration",  # across rounds
+                "avg_consume_stage_duration",  # across rounds
+                "std_consume_stage_duration",  # across rounds
+                "max_consume_stage_duration",  # across rounds
+                "min_consume_stage_duration",  # across rounds
                 "avg_map_task_duration",  # across rounds and mappers
                 "std_map_task_duration",  # across rounds and mappers
                 "max_map_task_duration",  # across rounds and mappers
@@ -739,6 +793,10 @@ def process_stats(
                 "std_reduce_task_duration",  # across rounds and reducers
                 "max_reduce_task_duration",  # across rounds and reducers
                 "min_reduce_task_duration",  # across rounds and reducers
+                "avg_consume_task_duration",  # across rounds and consumers
+                "std_consume_task_duration",  # across rounds and consumers
+                "max_consume_task_duration",  # across rounds and consumers
+                "min_consume_task_duration",  # across rounds and consumers
                 "avg_time_to_consume",  # across rounds and consumers
                 "std_time_to_consume",  # across rounds and consumers
                 "max_time_to_consume",  # across rounds and consumers
@@ -787,28 +845,34 @@ def process_stats(
                     # Get the stats from each round.
                     map_task_durations = []
                     map_stage_durations = []
+                    read_durations = []
                     reduce_task_durations = []
                     reduce_stage_durations = []
-                    read_durations = []
+                    consume_task_durations = []
+                    consume_stage_durations = []
                     consume_times = []
                     for round_stats in stats.round_stats:
+                        # Map stage.
                         map_stats = round_stats.map_stats
                         map_stage_durations.append(map_stats.stage_duration)
-                        for duration in map_stats.task_durations:
-                            map_task_durations.append(duration)
+                        map_task_durations.extend(map_stats.task_durations)
                         if use_from_disk_shuffler:
-                            for duration in map_stats.read_durations:
-                                read_durations.append(duration)
+                            read_durations.extend(map_stats.read_durations)
+                        # Reduce stage.
                         reduce_stats = round_stats.reduce_stats
                         reduce_stage_durations.append(
                             reduce_stats.stage_duration)
-                        for duration in reduce_stats.task_durations:
-                            reduce_task_durations.append(duration)
-                        for consume_time in (
-                                round_stats.consume_stats.consume_times):
-                            consume_times.append(consume_time)
+                        reduce_task_durations.extend(
+                            reduce_stats.task_durations)
+                        # Consume stage.
+                        consume_stats = round_stats.consume_stats
+                        consume_task_durations.extend(
+                            consume_stats.task_durations)
+                        consume_stage_durations.append(
+                            consume_stats.stage_duration)
+                        consume_times.extend(consume_stats.consume_times)
 
-                    # Calculate the trial stats.
+                    # Calculate the epoch stats.
                     row["avg_map_stage_duration"] = np.mean(
                         map_stage_durations)
                     row["std_map_stage_duration"] = np.std(map_stage_durations)
@@ -886,6 +950,7 @@ def process_stats(
                 "duration",
                 "map_stage_duration",
                 "reduce_stage_duration",
+                "consume_stage_duration",
                 "avg_map_task_duration",  # across mappers
                 "std_map_task_duration",  # across mappers
                 "max_map_task_duration",  # across mappers
@@ -894,6 +959,10 @@ def process_stats(
                 "std_reduce_task_duration",  # across reducers
                 "max_reduce_task_duration",  # across reducers
                 "min_reduce_task_duration",  # across reducers
+                "avg_consume_task_duration",  # across consumers
+                "std_consume_task_duration",  # across consumers
+                "max_consume_task_duration",  # across consumers
+                "min_consume_task_duration",  # across consumers
                 "avg_time_to_consume",  # across consumers
                 "std_time_to_consume",  # across consumers
                 "max_time_to_consume",  # across consumers
@@ -930,6 +999,8 @@ def process_stats(
                             stats.map_stats.stage_duration)
                         row["reduce_stage_duration"] = (
                             stats.reduce_stats.stage_duration)
+                        row["consume_stage_duration"] = (
+                            stats.consume_stats.stage_duration)
                         row["avg_map_task_duration"] = np.mean(
                             stats.map_stats.task_durations)
                         row["std_map_task_duration"] = np.std(
@@ -946,6 +1017,14 @@ def process_stats(
                             stats.reduce_stats.task_durations)
                         row["min_reduce_task_duration"] = np.min(
                             stats.reduce_stats.task_durations)
+                        row["avg_consume_task_duration"] = np.mean(
+                            stats.consume_stats.task_durations)
+                        row["std_consume_task_duration"] = np.std(
+                            stats.consume_stats.task_durations)
+                        row["max_consume_task_duration"] = np.max(
+                            stats.consume_stats.task_durations)
+                        row["min_consume_task_duration"] = np.min(
+                            stats.consume_stats.task_durations)
                         row["avg_time_to_consume"] = np.mean(
                             stats.consume_stats.consume_times)
                         row["std_time_to_consume"] = np.std(
@@ -989,6 +1068,7 @@ def process_stats(
                 "epoch",
                 "round",
                 "consumer",
+                "consume_task_duration",
                 "consume_time"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
@@ -1011,11 +1091,15 @@ def process_stats(
                     row["epoch"] = epoch
                     for round_idx, stats in enumerate(epoch_stats.round_stats):
                         row["round"] = round_idx
-                        for consumer, consume_time in enumerate(
-                                stats.consume_stats.consume_times):
+                        consume_stats = stats.consume_stats
+                        consume_task_durations = consume_stats.task_durations
+                        consume_times = consume_stats.consume_times
+                        for consumer, (duration, consume_time) in enumerate(
+                                zip(consume_task_durations, consume_times)):
                             # NOTE: Consumer identifiers are not consistent
                             # across rounds.
                             row["consumer"] = consumer
+                            row["consume_task_duration"] = duration
                             row["consume_time"] = consume_time
                             writer.writerow(row)
 
