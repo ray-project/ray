@@ -468,16 +468,36 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
-void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
+bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
   rpc::ErrorType error_type;
   // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
-  if (obj->IsException(&error_type) &&
-      // Only warn on task failures (avoid actor died, for example).
-      (error_type == rpc::ErrorType::WORKER_DIED ||
-       error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION)
+  return obj->IsException(&error_type) &&
+         // Only warn on task failures (avoid actor died, for example).
+         (error_type == rpc::ErrorType::WORKER_DIED ||
+          error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION) &&
+         !obj->WasAccessed();
+}
 
-      && !obj->WasAccessed() && unhandled_exception_handler_ != nullptr) {
+void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
+  if (IsUnhandledError(obj) && unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
+  }
+}
+
+void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
+  absl::MutexLock lock(&mu_);
+  int64_t threshold = absl::GetCurrentTimeNanos() - 5e9;
+  auto it = objects_.begin();
+  int count = 0;
+  while (it != objects_.end() && count < 1000) {
+    const auto &obj = it->second;
+    if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
+        unhandled_exception_handler_ != nullptr) {
+      obj->SetAccessed();
+      unhandled_exception_handler_(*obj);
+    }
+    it++;
+    count++;
   }
 }
 

@@ -137,6 +137,8 @@ class CoreWorkerMemoryStore {
   /// \return Total size of objects in the store.
   uint64_t UsedMemory();
 
+  void NotifyUnhandledErrors();
+
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
 
