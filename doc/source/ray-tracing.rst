@@ -1,6 +1,6 @@
 Tracing
 =======
-To help debug and monitor Ray applications, we have built in tracing into Ray libraries. 
+To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to make it easy to export traces to external tracing stacks such as Jaeger. 
 
 
 .. note::
