@@ -40,4 +40,7 @@ worker_default_node_type: cpu_8_ondemand
 
 setup_commands:
    - sudo apt update && sudo apt install -y unzip
+   - pip install --upgrade pip
+   - pip install -U tensorflow==1.14
    - pip install -U {{env["RAY_WHEEL"]}}
+   - -q "ray[all]" "gym[atari]"

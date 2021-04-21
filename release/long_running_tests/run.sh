@@ -53,12 +53,4 @@ cur_dir=$(pwd)
 cd /tmp && rm -rf wrk && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && sudo cp wrk /usr/local/bin
 cd "$cur_dir" || exit
 
-pip install --upgrade pip
-pip install -U tensorflow==1.14
-pip install -q "ray[all]" "gym[atari]"
-
-ray stop && sleep 2
-
-unset RAY_ADDRESS
 python "./workloads/$workload.py"
-

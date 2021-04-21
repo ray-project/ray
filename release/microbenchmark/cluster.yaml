@@ -15,6 +15,7 @@ available_node_types:
     cpu_64_ondemand:
         node_config:
             InstanceType: m5.16xlarge
+
         resources: {"CPU": 64}
         min_workers: 0
         max_workers: 0
@@ -24,13 +25,8 @@ auth:
 
 head_node_type: cpu_64_ondemand
 
-file_mounts: {
-    "~/microbenchmark": "."
-}
-
-setup_commands: []
-    # - pip install -U {{env["RAY_WHEEL"]}}
-    # TODO: REVERT
+setup_commands:
+    - pip install -U {{env["RAY_WHEEL"]}}
 
 head_start_ray_commands:
     - ray stop
