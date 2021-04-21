@@ -118,7 +118,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
     actions = _make_time_major(loss_actions, drop_last=True)
-    actions_logp = _make_time_major(action_dist.logp(actions), drop_last=True)
+    actions_logp = _make_time_major(action_dist.logp(loss_actions), drop_last=True)
     actions_entropy = _make_time_major(action_dist.entropy(), drop_last=True)
     dones = _make_time_major(dones, drop_last=True)
     behaviour_action_logp = _make_time_major(
