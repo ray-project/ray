@@ -83,7 +83,7 @@ To run your program with the tracing hook, see the following examples.
 
 Custom Traces
 *************
-You can easily add custom tracing in your programs. Within your program, get the tracer object and then call trace.get_tracer(__name__)
+You can easily add custom tracing in your programs. Within your program, get the tracer object and then call ``trace.get_tracer(__name__)``.
 
 See below for a simple example of adding custom tracing.
 
