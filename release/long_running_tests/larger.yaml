@@ -43,4 +43,4 @@ setup_commands:
    - pip install --upgrade pip
    - pip install -U tensorflow==1.14
    - pip install -U {{env["RAY_WHEEL"]}}
-   - -q "ray[all]" "gym[atari]"
+   - pip install -q "ray[all]" "gym[atari]"
