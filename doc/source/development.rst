@@ -104,40 +104,42 @@ Building Ray on Windows (full)
 
 **Requirements**
 
-- Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019)
-- JDK 15
-- Miniconda 3
-- git for Windows, version 2.31.1 or later
+The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
+
+- Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
+- JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
+- Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
+- git for Windows, version 2.31.1 or later (https://git-scm.com/downloads/win)
 
 **Steps**
 
 1. Enable Developer mode on Windows 10 systems.
-2. Enable symlinks on git:
 
-.. code-block:: shell
+  1. Open Settings app;
+  2. Go to "Update & Security";
+  3. Go to "For Developers" on the left pane;
+  4. Turn on "Developer mode".
 
-  git config core.symlinks=true
-
-3. Add the following Miniconda subdirectories to PATH. If Miniconda is installed in a different directory, adjust the paths accordingly.
+2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
 
 - ``C:\ProgramData\Miniconda3``
 - ``C:\ProgramData\Miniconda3\Scripts``
 - ``C:\ProgramData\Miniconda3\Library\bin``
 
-4. Define an environment variable BAZEL_SH to point to bash.exe (if git for Windows installed for all users: ``C:\Program Files\Git\bin\bash.exe``).
+3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``, if it was installed for a single user, adjust the path accordingly.
 
-5. Install cython:
+4. Install cython:
 
 .. code-block:: shell
 
   pip install cython
 
-6. Download ray source code and build it.
+5. Download ray source code and build it.
 
 .. code-block:: shell
 
   # cd to the directory under which the ray source tree will be downloaded.
-  git clone https://github.com/ray-project/ray.git
+  git clone -c core.symlinks=true https://github.com/ray-project/ray.git
   cd ray\python
   pip install -e . --verbose
 
