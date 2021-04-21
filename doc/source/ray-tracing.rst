@@ -33,7 +33,7 @@ Additional Instruments
 ~~~~~~~~~~~~~~~~~~~~~~
 If you are using a library that has built-in tracing support, the ``setup_tracing`` function you provide should also patch those libraries. You can find more documentation for the instrumentation of these libraries `here <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation>`_.
 
-Below is an example tracing startup hook that sets up the default Tracing Provider, exports spans to files in /tmp/spans, and does not have any Additional Instruments.
+Below is an example tracing startup hook that sets up the default tracing provider, exports spans to files in ``/tmp/spans``, and does not have any additional instruments.
 
 .. code-block:: python
 
