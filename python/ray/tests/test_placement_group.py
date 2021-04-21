@@ -252,7 +252,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster,
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
-            return ray.get_resource_ids()
+            return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -273,7 +273,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
                                            connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -305,7 +305,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
