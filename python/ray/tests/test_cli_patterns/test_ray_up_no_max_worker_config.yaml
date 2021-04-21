@@ -1,17 +1,11 @@
 auth:
     ssh_user: ubuntu
 cluster_name: test-cli
-docker:
-    image: rayproject/ray:1.0.0
-    container_name: raydocker
-    pull_before_run: True
-    run_options: []
 file_mounts:
     ~/tests: .
 available_node_types:
     head_node:
         resources: {}
-        max_workers: 0
         node_config:
             ImageId: latest_dlami
             InstanceType: t1.micro
