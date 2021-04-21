@@ -169,7 +169,8 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+        with ray.profiling.profile(
+                "custom_event", extra_data={"name": "custom name"}):
             pass
 
     ray.put(1)
