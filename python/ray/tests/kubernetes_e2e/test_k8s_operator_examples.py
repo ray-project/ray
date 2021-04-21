@@ -125,7 +125,8 @@ class KubernetesOperatorTest(unittest.TestCase):
                 "example_cluster.yaml")
             example_cluster2_config_path = get_operator_config_path(
                 "example_cluster2.yaml")
-            operator_config_path = get_operator_config_path("operator.yaml")
+            operator_config_path = get_operator_config_path(
+                "operator_namespaced.yaml")
             job_path = os.path.join(RAY_PATH,
                                     "doc/kubernetes/job-example.yaml")
 
