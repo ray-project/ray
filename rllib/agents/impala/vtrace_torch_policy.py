@@ -70,6 +70,45 @@ class VTraceLoss:
             config: Trainer config dict.
         """
 
+        if valid_mask is None:
+            valid_mask = torch.ones_like(actions_logp)
+
+        # Compute vtrace on the CPU for better perf
+        # (devices handled inside `vtrace.multi_from_logits`).
+        device = behaviour_action_logp[0].device
+        self.vtrace_returns = vtrace.multi_from_logits(
+            behaviour_action_log_probs=behaviour_action_logp,
+            behaviour_policy_logits=behaviour_logits,
+            target_policy_logits=target_logits,
+            actions=torch.unbind(actions, dim=2),
+            discounts=(1.0 - dones.float()) * discount,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            dist_class=dist_class,
+            model=model,
+            clip_rho_threshold=clip_rho_threshold,
+            clip_pg_rho_threshold=clip_pg_rho_threshold)
+        # Move v-trace results back to GPU for actual loss computing.
+        self.value_targets = self.vtrace_returns.vs.to(device)
+
+        # The policy gradients loss.
+        self.pi_loss = -torch.sum(
+            actions_logp * self.vtrace_returns.pg_advantages.to(device) *
+            valid_mask)
+
+        # The baseline loss.
+        delta = (values - self.value_targets) * valid_mask
+        self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
+
+        # The entropy loss.
+        self.entropy = torch.sum(actions_entropy * valid_mask)
+        self.mean_entropy = self.entropy / torch.sum(valid_mask)
+
+        # The summed weighted loss.
+        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
+                           self.entropy * entropy_coeff)
+
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
@@ -117,84 +156,36 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    actions = _make_time_major(loss_actions, drop_last=True)
-    actions_logp = _make_time_major(action_dist.logp(loss_actions), drop_last=True)
-    actions_entropy = _make_time_major(action_dist.entropy(), drop_last=True)
-    dones = _make_time_major(dones, drop_last=True)
-    behaviour_action_logp = _make_time_major(
-        behaviour_action_logp, drop_last=True)
-    behaviour_logits = _make_time_major(
-        unpacked_behaviour_logits, drop_last=True)
-    target_logits = _make_time_major(unpacked_outputs, drop_last=True)
-    rewards = _make_time_major(rewards, drop_last=True)
-    bootstrap_value = _make_time_major(values)[-1]
-    values = _make_time_major(values, drop_last=True)
-    dist_class = TorchCategorical if is_multidiscrete else dist_class
-    valid_mask = _make_time_major(mask, drop_last=True)
-
-    if valid_mask is None:
-        valid_mask = torch.ones_like(actions_logp)
-
-    # Compute vtrace on the CPU for better perf
-    # (devices handled inside `vtrace.multi_from_logits`).
-    device = behaviour_action_logp[0].device
-    _vtrace_returns = vtrace.multi_from_logits(
-        behaviour_action_log_probs=behaviour_action_logp,
-        behaviour_policy_logits=behaviour_logits,
-        target_policy_logits=target_logits,
-        actions=torch.unbind(actions, dim=2),
-        discounts=(1.0 - dones.float()) * policy.config["gamma"],
-        rewards=rewards,
-        values=values,
-        bootstrap_value=bootstrap_value,
-        dist_class=dist_class,
+    loss = VTraceLoss(
+        actions=_make_time_major(loss_actions, drop_last=True),
+        actions_logp=_make_time_major(
+            action_dist.logp(actions), drop_last=True),
+        actions_entropy=_make_time_major(
+            action_dist.entropy(), drop_last=True),
+        dones=_make_time_major(dones, drop_last=True),
+        behaviour_action_logp=_make_time_major(
+            behaviour_action_logp, drop_last=True),
+        behaviour_logits=_make_time_major(
+            unpacked_behaviour_logits, drop_last=True),
+        target_logits=_make_time_major(unpacked_outputs, drop_last=True),
+        discount=policy.config["gamma"],
+        rewards=_make_time_major(rewards, drop_last=True),
+        values=_make_time_major(values, drop_last=True),
+        bootstrap_value=_make_time_major(values)[-1],
+        dist_class=TorchCategorical if is_multidiscrete else dist_class,
         model=model,
+        valid_mask=_make_time_major(mask, drop_last=True),
+        config=policy.config,
+        vf_loss_coeff=policy.config["vf_loss_coeff"],
+        entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
-    # Move v-trace results back to GPU for actual loss computing.
-    value_targets = _vtrace_returns.vs.to(device)
 
-    # The policy gradients loss.
-    masked_pi_loss = actions_logp * \
-        _vtrace_returns.pg_advantages.to(device) * valid_mask
-    _pi_loss = -torch.sum(masked_pi_loss)
-    _mean_pi_loss = -torch.mean(masked_pi_loss)
+    # Store loss object only for multi-GPU tower 0.
+    if policy.device == values.device:
+        policy.loss = loss
 
-    # The baseline loss.
-    delta = (values - value_targets) * valid_mask
-    squared_delta = torch.pow(delta, 2.0)
-    _vf_loss = 0.5 * torch.sum(squared_delta)
-    _mean_vf_loss = 0.5 * torch.mean(squared_delta)
-
-    # The entropy loss.
-    _entropy = torch.sum(actions_entropy * valid_mask)
-    _mean_entropy = _entropy / torch.sum(valid_mask)
-
-    # The summed weighted loss.
-    _total_loss = (_pi_loss + _vf_loss * policy.config["vf_loss_coeff"] -
-                   _entropy * policy.entropy_coeff)
-    # Store per tower (for stats_fn).
-    values_batched = make_time_major(
-        policy,
-        train_batch.get("seq_lens"),
-        values,
-        drop_last=policy.config["vtrace"])
-    _explained_variance = explained_variance(
-        torch.reshape(value_targets, [-1]), torch.reshape(
-            values_batched, [-1]))
-
-    # Store stats only for multi-GPU tower 0.
-    if True:
-        policy._pi_loss = _pi_loss
-        policy._mean_pi_loss = _mean_pi_loss
-        policy._vf_loss = _vf_loss
-        policy._mean_vf_loss = _mean_vf_loss
-        policy._entropy = _entropy
-        policy._mean_entropy = _mean_entropy
-        policy._total_loss = _total_loss
-        policy._explained_variance = _explained_variance
-
-    return _total_loss
+    return loss.total_loss
 
 
 def make_time_major(policy, seq_lens, tensor, drop_last=False):
@@ -235,14 +226,22 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
 
 
 def stats(policy, train_batch):
+    values_batched = make_time_major(
+        policy,
+        train_batch.get("seq_lens"),
+        policy.model.value_function(),
+        drop_last=policy.config["vtrace"])
+
     return {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy._mean_pi_loss,
-        "entropy": policy._mean_entropy,
+        "policy_loss": policy.loss.pi_loss,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.mean_vf_loss,
-        "vf_explained_var": policy.loss.explained_variance,
+        "vf_loss": policy.loss.vf_loss,
+        "vf_explained_var": explained_variance(
+            torch.reshape(policy.loss.value_targets, [-1]),
+            torch.reshape(values_batched, [-1])),
     }
 
 
