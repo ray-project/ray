@@ -337,7 +337,7 @@ class Client:
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({**config})
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
             backend_config = config
         else:
@@ -381,7 +381,7 @@ class Client:
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({**config})
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
             backend_config = config
         else:
