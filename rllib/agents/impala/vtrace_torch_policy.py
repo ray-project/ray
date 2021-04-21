@@ -127,8 +127,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         unpacked_behaviour_logits, drop_last=True)
     target_logits = _make_time_major(unpacked_outputs, drop_last=True)
     rewards = _make_time_major(rewards, drop_last=True)
-    values = _make_time_major(values, drop_last=True)
     bootstrap_value = _make_time_major(values)[-1]
+    values = _make_time_major(values, drop_last=True)
     dist_class = TorchCategorical if is_multidiscrete else dist_class
     valid_mask = _make_time_major(mask, drop_last=True)
 
