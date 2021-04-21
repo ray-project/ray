@@ -599,6 +599,7 @@ def create_ray_handler(redis_address, redis_password):
 
     return ray_connect_handler
 
+
 def try_create_redis_client(args):
     if "redis-address" not in args:
         possible = ray._private.services.find_redis_address()
@@ -612,6 +613,7 @@ def try_create_redis_client(args):
     else:
         password = args.redis_password
     return ray._private.services.create_redis_client(address, password)
+
 
 def main():
     import argparse
