@@ -89,9 +89,9 @@ cdef class ObjectRef(BaseID):
         return cls(CObjectID.FromRandom().Binary())
 
     def __await__(self):
-        return self.as_future().__await__()
+        return self.as_asyncio_future().__await__()
 
-    def as_future(self):
+    def as_asyncio_future(self):
         """Wrap ObjectRef into an asyncio.Future object."""
         loop = asyncio.get_event_loop()
         py_future = loop.create_future()
