@@ -149,10 +149,7 @@ class TorchPolicy(Policy):
                 if i < config["num_gpus"]:
                     self.devices.append(torch.device("cuda:{}".format(id_)))
             self.device = self.devices[0]
-            ids = []
-            for i, id_ in enumerate(gpu_ids):
-                if i < config["num_gpus"]:
-                    ids.append(id_)
+            ids = [id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]]
             self.model_gpu_towers = []
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)
