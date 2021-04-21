@@ -113,6 +113,7 @@ def test_travel():
         item_num = 0
         excludes = []
         root = Path(tmp_dir) / "test"
+
         def construct(path, excluded=False, depth=0):
             nonlocal item_num
             path.mkdir(parents=True)
@@ -150,8 +151,10 @@ def test_travel():
                         else:
                             file_paths.add((str(path / uid), str(v)))
                 item_num += 1
+
         construct(root)
-        exclude_spec = ray._private.runtime_env._get_exclude_spec(root, excludes)
+        exclude_spec = ray._private.runtime_env._get_exclude_spec(
+            root, excludes)
         visited_dir_paths = set()
         visited_file_paths = set()
 
