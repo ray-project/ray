@@ -2,14 +2,16 @@ from ray.includes.unique_ids cimport CObjectID
 
 import asyncio
 import concurrent.futures
+import functools
 from typing import Callable, Any, Union
 
 import ray
 
 
 def _set_future_helper(
-    py_future: Union[asyncio.Future, concurrent.futures.Future],
     result: Any,
+    *,
+    py_future: Union[asyncio.Future, concurrent.futures.Future],
 ):
     # Issue #11030, #8841
     # If this future has result set already, we just need to
@@ -99,7 +101,7 @@ cdef class ObjectRef(BaseID):
         py_future = concurrent.futures.Future()
 
         self._on_completed(
-            functools.partial(_set_future_helper, py_future, result))
+            functools.partial(_set_future_helper, py_future=py_future))
 
         # A hack to keep a reference to the object ref for ref counting.
         py_future.object_ref = self
