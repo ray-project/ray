@@ -135,10 +135,6 @@ def get_provider_config(cluster_name, namespace, cluster_owner_reference):
     return provider_conf
 
 
-def head_service_selector(cluster_name):
-    return {"component": f"{cluster_name}-ray-head"}
-
-
 def get_cluster_owner_reference(cluster_resource: Dict[str, Any],
                                 cluster_name: str) -> Dict[str, Any]:
     return {
