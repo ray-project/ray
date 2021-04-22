@@ -31,7 +31,6 @@ def test_serve_metrics(serve_instance):
 
         expected_metrics = [
             # counter
-            "num_router_requests_total",
             "num_http_requests_total",
             "backend_queued_queries_total",
             "backend_request_counter_requests_total",

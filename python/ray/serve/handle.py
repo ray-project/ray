@@ -90,10 +90,10 @@ class RayServeHandle:
             "serve_handle_request_counter",
             description=("The number of handle.remote() calls that have been "
                          "made on this handle."),
-            tag_keys=("handle", "endpoint"))
+            tag_keys=("endpoint", "handle"))
         self.request_counter.set_default_tags({
+            "endpoint": self.endpoint_name,
             "handle": self.handle_tag,
-            "endpoint": self.endpoint_name
         })
 
         self.router: EndpointRouter = _router or self._make_router()
@@ -103,6 +103,7 @@ class RayServeHandle:
             self.controller_handle,
             self.endpoint_name,
             asyncio.get_event_loop(),
+            self.handle_tag,
         )
 
     def options(self,

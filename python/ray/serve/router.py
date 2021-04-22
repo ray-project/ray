@@ -56,6 +56,7 @@ class ReplicaSet:
             controller_handle,
             backend_tag,
             event_loop: asyncio.AbstractEventLoop,
+            handle_tag: str = "",
     ):
         self.backend_tag = backend_tag
         # NOTE(simon): We have to do this because max_concurrent_queries
@@ -80,9 +81,10 @@ class ReplicaSet:
             description=(
                 "The current number of queries to this backend waiting"
                 " to be assigned to a replica."),
-            tag_keys=("backend", "endpoint"))
+            tag_keys=("endpoint", "backend", "handle"))
         self.num_queued_queries_gauge.set_default_tags({
-            "backend": self.backend_tag
+            "backend": self.backend_tag,
+            "handle": handle_tag,
         })
 
         self.long_poll_client = LongPollClient(
@@ -196,6 +198,7 @@ class EndpointRouter:
             controller_handle: ActorHandle,
             endpoint_tag: EndpointTag,
             loop: asyncio.BaseEventLoop = None,
+            handle_tag: str = "",
     ):
         """Router process incoming queries: choose backend, and assign replica.
 
@@ -208,12 +211,7 @@ class EndpointRouter:
         self.backend_replicas: Dict[BackendTag, ReplicaSet] = dict()
         self._pending_endpoint_registered = asyncio.Event(loop=loop)
         self._loop = loop or asyncio.get_event_loop()
-
-        # -- Metrics Registration -- #
-        self.num_router_requests = metrics.Counter(
-            "serve_num_router_requests",
-            description="The number of requests processed by the router.",
-            tag_keys=("endpoint", ))
+        self._handle_tag = handle_tag
 
         self.long_poll_client = LongPollClient(
             self.controller,
@@ -242,8 +240,8 @@ class EndpointRouter:
 
     def _get_or_create_replica_set(self, tag):
         if tag not in self.backend_replicas:
-            self.backend_replicas[tag] = ReplicaSet(self.controller, tag,
-                                                    self._loop)
+            self.backend_replicas[tag] = ReplicaSet(
+                self.controller, tag, self._loop, self._handle_tag)
         return self.backend_replicas[tag]
 
     async def assign_request(
@@ -280,7 +278,5 @@ class EndpointRouter:
         for backend in shadow_backends:
             (await self._get_or_create_replica_set(backend)
              .assign_replica(query))
-
-        self.num_router_requests.inc(tags={"endpoint": endpoint})
 
         return result_ref
