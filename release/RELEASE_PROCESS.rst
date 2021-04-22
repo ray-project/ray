@@ -260,6 +260,7 @@ to proceed with the final stages of the release!
 
    .. code-block:: bash
 
+     # Need to specify extra URL since some dependencies are not on test.pypi
      pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
 
    Then start Python, make sure you can ``import ray`` and run some simple Ray
