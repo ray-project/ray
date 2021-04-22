@@ -119,8 +119,8 @@ def get_provider_config(cluster_name, namespace, cluster_owner_reference):
     head_service["metadata"]["name"] = service_name
     # Garbage-collect service upon cluster deletion.
     head_service["metadata"]["ownerReferences"] = [cluster_owner_reference]
-    # Allows  service to access the head node.
-    # The corresponding label is set on the head node in
+    # Allows service to access the head pod.
+    # The corresponding label is set on the head pod in
     # KubernetesNodeProvider.create_node().
     head_service["spec"]["selector"] = head_service_selector(cluster_name)
 

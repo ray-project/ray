@@ -19,8 +19,12 @@ import pytest
 import yaml
 
 import ray
-from test_k8s_operator_examples import\
-    get_operator_config_path, wait_for_pods, IMAGE, PULL_POLICY, NAMESPACE
+from test_k8s_operator_examples import get_operator_config_path
+from test_k8s_operator_examples import retry_until_true
+from test_k8s_operator_examples import wait_for_pods
+from test_k8s_operator_examples import IMAGE
+from test_k8s_operator_examples import PULL_POLICY
+from test_k8s_operator_examples import NAMESPACE
 
 
 def submit_scaling_job(client_port, num_tasks):
@@ -45,12 +49,25 @@ def submit_scaling_job(client_port, num_tasks):
         "complete with expected output."
 
 
+@retry_until_true
+def wait_for_operator():
+    cmd = "kubectl get pods"
+    out = subprocess.check_output(cmd, shell=True).decode()
+    for line in out.splitlines():
+        if "ray-operator" in line and "Running" in line:
+            return True
+    return False
+
+
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
         with tempfile.NamedTemporaryFile("w+") as example_cluster_file:
 
             example_cluster_config_path = get_operator_config_path(
                 "example_cluster.yaml")
+
+            crd_path = get_operator_config_path(
+                "cluster_crd.yaml")
 
             example_cluster_config = yaml.safe_load(
                 open(example_cluster_config_path).read())
@@ -77,6 +94,14 @@ class KubernetesScaleTest(unittest.TestCase):
             yaml.dump(example_cluster_config, example_cluster_file)
 
             example_cluster_file.flush()
+
+            # Test creating operator before CRD.
+            print(">>>Waiting for Ray operator to enter running state.")
+            wait_for_operator()
+
+            print(">>>Creating RayCluster CRD.")
+            cmd = f"kubectl apply -f {crd_path}"
+            subprocess.check_call(cmd, shell=True)
 
             # Start a 30-pod-cluster.
             print(">>>Starting a cluster.")
