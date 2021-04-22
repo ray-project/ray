@@ -98,6 +98,8 @@ def get_node_types(cluster_resource: Dict[str, Any],
         node_type = translate(pod_type_copy, dictionary=NODE_TYPE_FIELDS)
         metadata = node_type["node_config"]["metadata"]
         metadata.update({"ownerReferences": [cluster_owner_reference]})
+        # Prepend cluster name:
+        metadata["generateName"] = "{cluster_name}-{metadata['generateName']}"
         if name == cluster_resource["spec"]["headPodType"]:
             if "labels" not in metadata:
                 metadata["labels"] = {}
