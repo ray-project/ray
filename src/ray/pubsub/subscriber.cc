@@ -76,9 +76,8 @@ bool SubscriberChannel<MessageID>::AssertNoLeak() const {
 }
 
 template <typename MessageID>
-void SubscriberChannel<MessageID>::HandleLongPollingResponse(
-    const rpc::Address &publisher_address, const rpc::Address &subscriber_address,
-    const rpc::PubsubLongPollingReply &reply) {
+void SubscriberChannel<MessageID>::HandlePublishedMessage(
+    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -86,27 +85,24 @@ void SubscriberChannel<MessageID>::HandleLongPollingResponse(
     return;
   }
 
-  for (int i = 0; i < reply.pub_messages_size(); i++) {
-    const auto &msg = reply.pub_messages(i);
-    const auto channel_type = msg.channel_type();
-    const auto message_id = ParseMessageID(msg);
-    RAY_CHECK(channel_type == channel_type_);
-    RAY_LOG(DEBUG) << "Message id " << message_id << " information was published from "
-                   << publisher_id;
+  const auto channel_type = pub_message.channel_type();
+  const auto message_id = ParseMessageID(pub_message);
+  RAY_CHECK(channel_type == channel_type_);
+  RAY_LOG(DEBUG) << "Message id " << message_id << " information was published from "
+                 << publisher_id;
 
-    auto maybe_subscription_callback =
-        GetSubscriptionCallback(publisher_address, message_id);
-    if (maybe_subscription_callback.has_value()) {
-      // If the object id is still subscribed, invoke a subscription callback.
-      const auto &subscription_callback = maybe_subscription_callback.value();
-      subscription_callback(msg);
-    }
+  auto maybe_subscription_callback =
+      GetSubscriptionCallback(publisher_address, message_id);
+  if (maybe_subscription_callback.has_value()) {
+    // If the object id is still subscribed, invoke a subscription callback.
+    const auto &subscription_callback = maybe_subscription_callback.value();
+    subscription_callback(pub_message);
   }
 }
 
 template <typename MessageID>
-void SubscriberChannel<MessageID>::HandleLongPollingFailureResponse(
-    const rpc::Address &publisher_address, const rpc::Address &subscriber_address) {
+void SubscriberChannel<MessageID>::HandlePublisherFailure(
+    const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -247,15 +243,14 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                       "Publisher id:"
                    << publisher_id;
     for (const auto &channel_it : channels_) {
-      channel_it.second->HandleLongPollingFailureResponse(publisher_address,
-                                                          subscriber_address);
+      channel_it.second->HandlePublisherFailure(publisher_address);
     }
   } else {
-    // Otherwise, release objects that are reported from the long polling
-    // connection.
-    for (const auto &channel_it : channels_) {
-      channel_it.second->HandleLongPollingResponse(publisher_address, subscriber_address,
-                                                   reply);
+    // Otherwise, iterate on the reply and pass published messages to channels.
+    for (int i = 0; i < reply.pub_messages_size(); i++) {
+      const auto &msg = reply.pub_messages(i);
+      const auto channel_type = msg.channel_type();
+      Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
     }
   }
 

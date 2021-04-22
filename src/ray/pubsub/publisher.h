@@ -105,13 +105,15 @@ class Subscriber {
   /// Connect to the subscriber. Currently, it means we cache the long polling request to
   /// memory. Once the bidirectional gRPC streaming is enabled, we should replace it.
   ///
+  /// \param reply pubsub long polling reply.
+  /// \param send_reply_callback A callback to reply to the long polling subscriber.
   /// \return True if connection is new. False if there were already connections cached.
   bool ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
                            rpc::SendReplyCallback send_reply_callback);
 
   /// Queue the object id to publish to the subscriber.
   ///
-  /// \param pub_message Message to publish.
+  /// \param pub_message A message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
   /// connection. False is used only for testing.
   void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
@@ -154,6 +156,8 @@ class Subscriber {
 
 }  // namespace pub_internal
 
+/// Publisher interface. Note that message ids are passed as a string to avoid templated
+/// definition which doesn't go well with virutal methods.
 class PublisherInterface {
  public:
   virtual ~PublisherInterface() {}
@@ -162,7 +166,7 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param message_id The message_id that the subscriber is subscribing to.
+  /// \param message_id_binary The message_id that the subscriber is subscribing to.
   virtual void RegisterSubscription(const rpc::ChannelType channel_type,
                                     const SubscriberID &subscriber_id,
                                     const std::string &message_id_binary) = 0;
@@ -171,7 +175,7 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
-  /// \param message_id The message id to publish.
+  /// \param message_id_binary The message id to publish.
   virtual void Publish(const rpc::ChannelType channel_type,
                        std::unique_ptr<rpc::PubMessage> pub_message,
                        const std::string &message_id_binary) = 0;
@@ -181,7 +185,7 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param message_id The message_id of the subscriber.
+  /// \param message_id_binary The message_id of the subscriber.
   /// \return True if erased. False otherwise.
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const SubscriberID &subscriber_id,
@@ -196,6 +200,13 @@ class PublisherInterface {
 /// messages.
 /// - Publishes messages are batched in order to avoid gRPC message limit.
 /// - Look at CheckDeadSubscribers for failure handling mechanism.
+///
+/// How to add new publisher channel?
+///
+/// - Update pubsub.proto.
+/// - Add a new channel type -> index to subscription_index_map_.
+/// - If your SubscriptionIndex requires different id types, make sure to add template
+/// definition to the publisher.cc file.
 ///
 class Publisher : public PublisherInterface {
  public:
@@ -226,6 +237,7 @@ class Publisher : public PublisherInterface {
 
   ~Publisher() = default;
 
+  /// Cache the subscriber's long polling request's information.
   ///
   /// TODO(sang): Currently, we need to pass the callback for connection because we are
   /// using long polling internally. This should be changed once the bidirectional grpc
@@ -238,7 +250,7 @@ class Publisher : public PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param message_id The message_id that the subscriber is subscribing to.
+  /// \param message_id_binary The message_id that the subscriber is subscribing to.
   void RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
                             const std::string &message_id_binary) override;
@@ -247,7 +259,7 @@ class Publisher : public PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
-  /// \param message_id The message id to publish.
+  /// \param message_id_binary The message id to publish.
   void Publish(const rpc::ChannelType channel_type,
                std::unique_ptr<rpc::PubMessage> pub_message,
                const std::string &message_id_binary) override;
@@ -257,7 +269,7 @@ class Publisher : public PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param message_id The message_id of the subscriber.
+  /// \param message_id_binary The message_id of the subscriber.
   /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,

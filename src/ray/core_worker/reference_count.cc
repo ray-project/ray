@@ -807,7 +807,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
               object_id.Binary()));
         };
 
-        // If the publisher is failed, this callback will be called.
+        // If the borrower is failed, this callback will be called.
         const auto publisher_failed_callback = [this, addr, object_id]() {
           // When the request is failed, there's no new borrowers ref published from this
           // borrower.
@@ -896,18 +896,19 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
   }
 
   // Send the owner information about any new borrowers.
-  rpc::PubMessage pub_message;
-  pub_message.set_message_id(object_id.Binary());
-  pub_message.set_channel_type(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL);
-  auto *wait_for_ref_removed_message = pub_message.mutable_wait_for_ref_removed_message();
+  std::unique_ptr<rpc::PubMessage> pub_message;
+  pub_message->set_message_id(object_id.Binary());
+  pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL);
+  auto *wait_for_ref_removed_message =
+      pub_message->mutable_wait_for_ref_removed_message();
   ReferenceTableToProto(borrowed_refs,
                         wait_for_ref_removed_message->mutable_borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has "
-                 << wait_for_ref_removed_message->borrowed_refs().size();
+  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
+                 << wait_for_ref_removed_message->borrowed_refs().size()
+                 << " borrowed references.";
   object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
-                                    absl::make_unique<rpc::PubMessage>(pub_message),
-                                    object_id.Binary());
+                                    std::move(pub_message), object_id.Binary());
   object_status_publisher_->UnregisterSubscription(
       rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
       object_id.Binary());
