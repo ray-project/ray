@@ -202,6 +202,8 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# TODO(ekl) we can't currently support tagging these as flaky since there's
+# no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
     "test_actor.py",
