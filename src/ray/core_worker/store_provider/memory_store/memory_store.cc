@@ -477,7 +477,7 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
-bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
+inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
   rpc::ErrorType error_type;
   // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
   return obj->IsException(&error_type) &&
