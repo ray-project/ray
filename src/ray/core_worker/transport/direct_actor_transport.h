@@ -626,7 +626,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
       assert(!pending_normal_tasks_.empty());
       InboundRequest tail = pending_normal_tasks_.back();
       pending_normal_tasks_.pop_back();
-      size_t stolen_task_ids = reply->stolen_tasks_ids_size();
+      int stolen_task_ids = reply->stolen_tasks_ids_size();
       tail.Steal(thief_addr, reply);
       RAY_CHECK(reply->stolen_tasks_ids_size() == stolen_task_ids + 1);
     }
