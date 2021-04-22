@@ -842,6 +842,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
   } else {
+    int exiting_cnt = 0;
     // Code path of normal task or actor creation task without dynamic worker options.
     // Find an available worker which is already assigned to this job.
     // Try to pop the most recently pushed worker.
@@ -855,6 +856,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       }
       // These workers are exiting. So skip them.
       if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
+        exiting_cnt += 1;
         continue;
       }
       state.idle.erase(it->first);
@@ -866,7 +868,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       idle_of_all_languages_map_.erase(worker);
       break;
     }
-    if (worker == nullptr) {
+    if (worker == nullptr && exiting_cnt == 0) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
