@@ -6,7 +6,9 @@ import timeit
 import ray
 
 from data_generation import generate_data
-from shuffle import shuffle_from_disk, shuffle_from_memory
+from shuffle import (
+    shuffle_from_disk, shuffle_from_memory_with_stats,
+    shuffle_from_memory_no_stats)
 from stats import process_stats, human_readable_size
 
 
@@ -69,6 +71,7 @@ def run_trials(
         max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
+        collect_stats=True,
         use_from_disk_shuffler=False,
         num_trials=None,
         trials_timeout=None):
@@ -80,7 +83,10 @@ def run_trials(
         print(
             "Using from-memory shuffler that caches data in memory between "
             "rounds.")
-        shuffle = shuffle_from_memory
+        if collect_stats:
+            shuffle = shuffle_from_memory_with_stats
+        else:
+            shuffle = shuffle_from_memory_no_stats
     all_stats = []
     if num_trials is not None:
         for trial in range(num_trials):
@@ -96,7 +102,8 @@ def run_trials(
                 max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
-            print(f"Trial {trial} done after {stats.duration} seconds.")
+            duration = stats.duration if collect_stats else stats
+            print(f"Trial {trial} done after {duration} seconds.")
             all_stats.append((stats, store_stats))
     elif trials_timeout is not None:
         start = timeit.default_timer()
@@ -114,7 +121,8 @@ def run_trials(
                 max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
-            print(f"Trial {trial} done after {stats.duration} seconds.")
+            duration = stats.duration if collect_stats else stats
+            print(f"Trial {trial} done after {duration} seconds.")
             all_stats.append((stats, store_stats))
             trial += 1
     else:
@@ -152,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("--stats-dir", type=str, default=DEFAULT_STATS_DIR)
     parser.add_argument("--clear-old-data", action="store_true")
     parser.add_argument("--use-old-data", action="store_true")
+    parser.add_argument("--no-stats", action="store_true")
     parser.add_argument("--no-epoch-stats", action="store_true")
     parser.add_argument("--no-round-stats", action="store_true")
     parser.add_argument("--no-consume-stats", action="store_true")
@@ -271,6 +280,7 @@ if __name__ == "__main__":
     print(f"Shuffling will be pipelined with at most "
           f"{max_concurrent_rounds} concurrent rounds per epoch and at "
           f"most {max_concurrent_epochs} concurrent epochs.")
+    collect_stats = not args.no_stats
     all_stats = run_trials(
         num_epochs,
         num_rounds,
@@ -281,25 +291,29 @@ if __name__ == "__main__":
         max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
+        collect_stats,
         use_from_disk_shuffler,
         num_trials,
         trials_timeout)
 
-    process_stats(
-        all_stats,
-        args.overwrite_stats,
-        args.stats_dir,
-        args.no_epoch_stats,
-        args.no_round_stats,
-        args.no_consume_stats,
-        use_from_disk_shuffler,
-        num_rows,
-        num_row_groups_per_file,
-        batch_size,
-        num_mappers,
-        num_reducers,
-        num_trainers,
-        num_epochs,
-        num_rounds,
-        max_concurrent_epochs,
-        max_concurrent_rounds)
+    if collect_stats:
+        process_stats(
+            all_stats,
+            args.overwrite_stats,
+            args.stats_dir,
+            args.no_epoch_stats,
+            args.no_round_stats,
+            args.no_consume_stats,
+            use_from_disk_shuffler,
+            num_rows,
+            num_row_groups_per_file,
+            batch_size,
+            num_mappers,
+            num_reducers,
+            num_trainers,
+            num_epochs,
+            num_rounds,
+            max_concurrent_epochs,
+            max_concurrent_rounds)
+    else:
+        print("Shuffle trials done, no stats collected.")

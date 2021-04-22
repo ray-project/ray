@@ -1167,7 +1167,7 @@ def collect_store_stats(
         done_event,
         utilization_sample_period,
         do_print=True,
-        fetch_timeout=5):
+        fetch_timeout=10):
     is_done = False
     while not is_done:
         get_time = timeit.default_timer()

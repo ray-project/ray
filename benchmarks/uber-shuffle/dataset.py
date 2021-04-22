@@ -43,8 +43,6 @@ class ShufflingDataset:
             of rounds (no round throttling).
         max_concurrent_epochs (optional, int): The maximum number of epochs
             whose shuffling stages should execute concurrently. Default is 2.
-        utilization_sample_period (optional, float): How often, in seconds,
-            object store utilization should be sampled. Default is 5 seconds.
     """
     def __init__(
             self,
@@ -58,8 +56,7 @@ class ShufflingDataset:
             num_reducers: int = None,
             max_concurrent_rounds: int = None,
             max_concurrent_epochs: int = 2,
-            max_batch_queue_size: int = 100,
-            utilization_sample_period: float = 5.0):
+            max_batch_queue_size: int = 100):
         if num_mappers is None:
             num_mappers = len(filenames)
         if num_reducers is None:
@@ -86,7 +83,7 @@ class ShufflingDataset:
             # user can better control when the shuffling starts?
             # TODO(Clark): Make shuffle_from_memory non-blocking so we don't
             # have to launch this is in a Ray task.
-            ray.remote(shuffle_from_memory).remote(
+            self._shuffle_result = shuffle_from_memory.remote(
                 filenames,
                 functools.partial(
                     batch_consumer, self._batch_queue, batch_size),
@@ -97,13 +94,14 @@ class ShufflingDataset:
                 num_trainers,
                 max_concurrent_rounds,
                 max_concurrent_epochs,
-                utilization_sample_period)
+                collect_stats=False)
         else:
             # rank != 0 --> worker process
             # Connect to the batch queue.
             self._batch_queue = MultiQueue(
                 num_trainers, max_batch_queue_size,
                 name=MULTIQUEUE_ACTOR_NAME, connect=True)
+            self._shuffle_result = None
 
         self._rank = rank
 
@@ -115,6 +113,8 @@ class ShufflingDataset:
             if batch is None:
                 break
             yield batch
+        if self._shuffle_result is not None:
+            ray.get(self._shuffle_result)
 
 
 def batch_consumer(
@@ -127,7 +127,7 @@ def batch_consumer(
     """
     if batches is not None:
         batches = pd.concat(batches)
-        batches = chunk(batches, batch_size)
+        batches = list(chunk_df(batches, batch_size))
         queue.put_batch(rank, batches)
     else:
         # batches is None, so the producer is done. Send this termination
@@ -135,7 +135,19 @@ def batch_consumer(
         queue.put(rank, batches)
 
 
+def debug_batch_consumer(
+        rank: int,
+        batches: Iterable[pd.DataFrame]):
+    num_batches = len(batches) if batches is not None else 0
+    print(f"Received {num_batches} batches in consumer {rank}.")
+
+
 T = TypeVar("T")
+
+
+def chunk_df(df: pd.DataFrame, n: int) -> Tuple[pd.DataFrame, ...]:
+    for pos in range(0, len(df), n):
+        yield df[pos:pos + n]
 
 
 def chunk(iterable: Iterable[T], n: int) -> Iterator[Tuple[T, ...]]:
@@ -148,7 +160,7 @@ if __name__ == "__main__":
     from stats import human_readable_size
     print("Starting Ray...")
     ray.init()
-    num_rows = 10 ** 7
+    num_rows = 10 ** 6
     num_files = 10
     num_row_groups_per_file = 1
     max_row_group_skew = 0.0
@@ -165,12 +177,15 @@ if __name__ == "__main__":
         f"with {num_row_groups_per_file} row groups per file, totalling "
         f"{human_readable_size(num_bytes)}.")
     num_epochs = 4
-    num_trainers = 2
+    num_trainers = 1
     batch_size = 20000
     rank = 0
     num_mappers = 4
     num_reducers = 4
-    print("Creating shuffling dataset!")
+    print(f"Creating shuffling dataset with {batch_size} batch size, "
+          f"{num_epochs} epochs, {num_mappers} mappers, {num_reducers} "
+          f"reducers, and {num_trainers} trainers.")
+    print(f"Should consume {num_rows // batch_size} batches.")
     ds = ShufflingDataset(
         filenames,
         num_epochs,
@@ -182,3 +197,4 @@ if __name__ == "__main__":
 
     for batch_idx, batch in enumerate(ds):
         print(f"Consuming batch {batch_idx}!")
+    print("Done consuming batches.")
