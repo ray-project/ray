@@ -161,11 +161,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
+        """Handle ClusterInfo requests that only return a json blob."""
         data = None
         if request.type == ray_client_pb2.ClusterInfoType.NODES:
             data = ray.nodes()
         elif request.type == ray_client_pb2.ClusterInfoType.IS_INITIALIZED:
             data = ray.is_initialized()
+        elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
+            data = ray.timeline()
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
