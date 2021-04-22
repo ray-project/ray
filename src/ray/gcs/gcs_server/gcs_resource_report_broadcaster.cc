@@ -84,7 +84,7 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
 
   absl::MutexLock guard(&mutex_);
   for (const auto &pair : nodes_) {
-    const auto *address = pair.second;
+    const auto &address = pair.second;
     send_batch_(address, raylet_client_pool_, serialized_batch);
   }
 }

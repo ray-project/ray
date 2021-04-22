@@ -371,12 +371,11 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
 
 void GcsResourceManager::SendBatchedResourceUsage() {
   if (!resources_buffer_.empty()) {
-    rpc::ResourceUsageBatchData batch;
-    GetResourceUsageBatchForBroadcast(batch);
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
-
+    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+    GetResourceUsageBatchForBroadcast(*batch);
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch.SerializeAsString(), nullptr));
+                                       batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();
   }
 }
