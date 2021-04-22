@@ -260,12 +260,8 @@ to proceed with the final stages of the release!
 
    .. code-block:: bash
 
-     # First install ray normally because installing from test.pypi.org won't
-     # be able to install some of the other dependencies.
-     pip install ray
-     pip uninstall ray
-
-     pip install --index-url https://test.pypi.org/simple/ ray
+     # Need to specify extra URL since some dependencies are not on test.pypi
+     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
 
    Then start Python, make sure you can ``import ray`` and run some simple Ray
    scripts. Make sure that it is finding the version of Ray that you just
