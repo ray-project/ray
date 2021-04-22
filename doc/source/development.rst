@@ -71,8 +71,6 @@ For MacOS, run the following commands:
 
   pip install cython==0.29.0 pytest
 
-For Windows, see the :ref:`Windows Dependencies <windows-dependencies>` section.
-
 Ray can be built from the repository as follows.
 
 .. code-block:: bash
@@ -129,11 +127,11 @@ The following links were correct during the writing of this section. In case the
 
 3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Install cython:
+4. Install cython and pytest:
 
 .. code-block:: shell
 
-  pip install cython
+  pip install cython==0.29.0 pytest
 
 5. Download ray source code and build it.
 
