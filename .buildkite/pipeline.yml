@@ -104,7 +104,7 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,client_tests,flaky
+      --test_tag_filters=-kubernetes,-jenkins_only,+client_tests,+flaky
       --test_env=RAY_CLIENT_MODE=1
       python/ray/tests/...
 - label: ":python: (Small & Large)"
