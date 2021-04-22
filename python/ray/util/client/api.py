@@ -253,7 +253,7 @@ class ClientAPI:
     def get_gpu_ids(self) -> list:
         return []
 
-    def timeline(self, filename: Optional[str]) -> Optional[List[Any]]:
+    def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
         logger.info("Timeline will include events from other clients using "
                     "this server.")
         import ray.core.generated.ray_client_pb2 as ray_client_pb2
