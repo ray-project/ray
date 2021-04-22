@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterator
 from kubernetes.watch import Watch
 
 from ray.autoscaler._private._kubernetes import custom_objects_api
+from ray.autoscaler._private._kubernetes.node_provider import\
+    head_service_selector
 from ray.autoscaler._private.providers import _get_default_config
 
 OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
@@ -103,7 +105,6 @@ def get_node_types(cluster_resource: Dict[str, Any],
         if name == cluster_resource["spec"]["headPodType"]:
             if "labels" not in metadata:
                 metadata["labels"] = {}
-            metadata["labels"].update(head_service_selector(cluster_name))
         node_types[name] = node_type
     return node_types
 
@@ -118,6 +119,9 @@ def get_provider_config(cluster_name, namespace, cluster_owner_reference):
     head_service["metadata"]["name"] = service_name
     # Garbage-collect service upon cluster deletion.
     head_service["metadata"]["ownerReferences"] = [cluster_owner_reference]
+    # Allows  service to access the head node.
+    # The corresponding label is set on the head node in
+    # KubernetesNodeProvider.create_node().
     head_service["spec"]["selector"] = head_service_selector(cluster_name)
 
     provider_conf = {}
