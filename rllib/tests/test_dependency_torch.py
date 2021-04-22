@@ -5,6 +5,9 @@ import sys
 
 
 if __name__ == "__main__":
+    # Do not import torch for testing purposes.
+    os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
+
     from ray.rllib.utils.framework import try_import_tf
     tf1, tf, tfv = try_import_tf()
     import re
@@ -20,9 +23,6 @@ for line in traceback.format_stack():
     print(line.strip())
 raise ImportError('bad torch-importer!!')
 """, file=f)
-
-    # Do not import torch for testing purposes.
-    os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
 
     from ray.rllib.agents.a3c import A2CTrainer
     #if "torch" in sys.modules:
