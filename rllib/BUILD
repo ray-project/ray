@@ -695,7 +695,7 @@ py_test(
     name = "test_memory_leak_a3c",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/a3c/memory-leak-test-a3c.yaml"],
     args = ["--yaml-dir=tuned_examples/a3c"]
@@ -705,7 +705,7 @@ py_test(
     name = "test_memory_leak_ddpg",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ddpg/memory-leak-test-ddpg.yaml"],
     args = ["--yaml-dir=tuned_examples/ddpg"]
@@ -715,7 +715,7 @@ py_test(
     name = "test_memory_leak_impala",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
     args = ["--yaml-dir=tuned_examples/impala"]
@@ -725,7 +725,7 @@ py_test(
     name = "test_memory_leak_ppo",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -735,10 +735,10 @@ py_test(
     name = "test_memory_leak_sac",
     tags = ["memory_leak_tests"],
     main = "tests/run_memory_leak_tests.py",
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
-    args = ["--yaml-dir=tuned_examples/sac"]
+    args = ["--yaml-dir=tuned_examples/sac", "--check-iters=3"]
 )
 
 # --------------------------------------------------------------------

@@ -41,6 +41,11 @@ parser.add_argument(
     "--local-mode",
     action="store_true",
     help="Run ray in local mode for easier debugging.")
+parser.add_argument(
+    "--check-iters",
+    type=int,
+    default=10,
+    help="The number of past iters to search through for memory leaks.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -99,6 +104,7 @@ if __name__ == "__main__":
         for trial in trials:
             # Simple check: Compare 3rd entry with last one.
             mem_series = trial.metric_n_steps["perf/ram_util_percent"]["10"]
+            mem_series = mem_series[-args.check_iters:]
             std_dev_mem = np.std(mem_series)
             total_used = (
                 mem_series[-1] - mem_series[0]) / 100 * available_memory / 1e6
