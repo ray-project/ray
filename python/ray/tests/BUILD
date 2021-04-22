@@ -12,7 +12,6 @@ py_test_module_list(
   files = [
 #    "test_dynres.py",  # dyn res not implemented
     "test_async.py",
-    "test_actor.py",
     "test_actor_advanced.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
@@ -37,11 +36,22 @@ py_test_module_list(
     "test_joblib.py",
     "test_global_state.py",
     "test_global_gc.py",
+    "test_healthcheck.py",
     "test_mldataset.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_actor.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -58,11 +68,9 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_object_manager.py",
     "test_object_spilling.py",
-    "test_object_spilling_2.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
-    "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
     "test_scheduling.py",
     "test_serialization.py",
@@ -73,6 +81,17 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_k_to_z"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_spilling_2.py",
+    "test_reference_counting_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
   deps = ["//:ray_lib"],
 )
 
@@ -120,12 +139,21 @@ py_test_module_list(
   files = [
     "test_cli.py",
     "test_failure.py",
-    "test_failure_2.py",
     "test_stress_failure.py",
   ],
   size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_failure_2.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
   deps = ["//:ray_lib"],
 )
 

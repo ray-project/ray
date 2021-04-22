@@ -30,6 +30,9 @@ try:
 except ImportError:
     specs = None
 try:
+    # Suppress MuJoCo warning (dm_control uses absl logging).
+    import absl.logging
+    absl.logging.set_verbosity("error")
     from dm_control import suite
 except (ImportError, OSError):
     suite = None

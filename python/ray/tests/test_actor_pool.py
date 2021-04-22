@@ -145,6 +145,7 @@ def test_get_next_unordered_timeout(init):
         pool.get_next_unordered(timeout=0.1)
 
 
+
 def test_multiple_returns(init):
     @ray.remote
     class Foo(object):
@@ -158,6 +159,53 @@ def test_multiple_returns(init):
 
     while pool.has_next():
         assert pool.get_next(timeout=None) == [1, 2]
+
+        
+def test_pop_idle(init):
+    @ray.remote
+    class MyActor:
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x + 1
+
+        def double(self, x):
+            return 2 * x
+
+    actors = [MyActor.remote()]
+    pool = ActorPool(actors)
+
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    assert pool.pop_idle() is None
+    assert pool.has_free() is False  # actor is busy
+    assert pool.get_next() == 2
+    assert pool.has_free()
+    pool.pop_idle()  # removes actor from pool
+    assert pool.has_free() is False  # no more actors in pool
+
+
+def test_push(init):
+    @ray.remote
+    class MyActor:
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x + 1
+
+        def double(self, x):
+            return 2 * x
+
+    a1, a2 = MyActor.remote(), MyActor.remote()
+    pool = ActorPool([a1])
+
+    pool.submit(lambda a, v: a.double.remote(v), 1)
+    assert pool.has_free() is False  # actor is busy
+    with pytest.raises(ValueError):
+        pool.push(a1)
+    pool.push(a2)
+    assert pool.has_free()  # a2 is available
 
 
 if __name__ == "__main__":
