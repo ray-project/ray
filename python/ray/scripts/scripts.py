@@ -1630,6 +1630,66 @@ def global_gc(address):
     print("Triggered gc.collect() on all workers.")
 
 
+@cli.command(name="health-check", hidden=True)
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+@click.option(
+    "--component",
+    required=False,
+    type=str,
+    help="Health check for a specific component. Currently supports: "
+    "[ray_client_server]")
+def healthcheck(address, redis_password, component):
+    """
+    This is NOT a public api.
+
+    Health check a Ray or a specific component. Exit code 0 is healthy.
+    """
+
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+
+    if not component:
+        # If no component is specified, we are health checking the core. If
+        # client creation or ping fails, we will still exit with a non-zero
+        # exit code.
+        redis_client.ping()
+        sys.exit(0)
+
+    report_str = redis_client.hget(f"healthcheck:{component}", "value")
+    if not report_str:
+        # Status was never updated
+        sys.exit(1)
+
+    report = json.loads(report_str)
+
+    # TODO (Alex): We probably shouldn't rely on time here, but cloud providers
+    # have very well synchronized NTP servers, so this should be fine in
+    # practice.
+    cur_time = time.time()
+    report_time = float(report["time"])
+
+    # If the status is too old, the service has probably already died.
+    delta = cur_time - report_time
+    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+
+    if time_ok:
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
 @cli.command()
 @click.option("-v", "--verbose", is_flag=True)
 @click.option(

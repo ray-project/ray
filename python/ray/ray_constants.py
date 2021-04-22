@@ -240,6 +240,8 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
+HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
+
 # Filename of "shim process" that sets up Python worker environment.
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.
