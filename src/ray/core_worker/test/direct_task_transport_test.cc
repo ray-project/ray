@@ -28,6 +28,8 @@ namespace ray {
 // be better to use a mock clock or lease manager interface, but that's high
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
+TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
+                                const ray::FunctionDescriptor &function_descriptor);
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -88,6 +90,14 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                  &creation_task_exception = nullptr) override {}
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
+
+  absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override {
+    std::unordered_map<std::string, double> empty_resources;
+    ray::FunctionDescriptor empty_descriptor =
+        ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+    TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
+    return task;
+  }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
