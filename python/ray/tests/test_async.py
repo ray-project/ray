@@ -34,7 +34,7 @@ def test_simple(init):
         time.sleep(1)
         return np.zeros(1024 * 1024, dtype=np.uint8)
 
-    future = f.remote()._as_asyncio_future()
+    future = f.remote().as_future()
     result = asyncio.get_event_loop().run_until_complete(future)
     assert isinstance(result, np.ndarray)
 
@@ -42,7 +42,7 @@ def test_simple(init):
 def test_gather(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    futures = [obj_ref._as_asyncio_future() for obj_ref in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     results = loop.run_until_complete(asyncio.gather(*futures))
     assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
 
@@ -50,7 +50,7 @@ def test_gather(init):
 def test_wait(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks()
-    futures = [obj_ref._as_asyncio_future() for obj_ref in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     results, _ = loop.run_until_complete(asyncio.wait(futures))
     assert set(results) == set(futures)
 
@@ -58,7 +58,7 @@ def test_wait(init):
 def test_wait_timeout(init):
     loop = asyncio.get_event_loop()
     tasks = gen_tasks(10)
-    futures = [obj_ref._as_asyncio_future() for obj_ref in tasks]
+    futures = [obj_ref.as_future() for obj_ref in tasks]
     fut = asyncio.wait(futures, timeout=5)
     results, _ = loop.run_until_complete(fut)
     assert list(results)[0] == futures[0]
@@ -76,12 +76,7 @@ def test_gather_mixup(init):
         await asyncio.sleep(n * 0.1)
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
-    tasks = [
-        f.remote(1)._as_asyncio_future(),
-        g(2),
-        f.remote(3)._as_asyncio_future(),
-        g(4)
-    ]
+    tasks = [f.remote(1).as_future(), g(2), f.remote(3).as_future(), g(4)]
     results = loop.run_until_complete(asyncio.gather(*tasks))
     assert [result[0] for result in results] == [1, 2, 3, 4]
 
@@ -101,12 +96,7 @@ def test_wait_mixup(init):
 
         return asyncio.ensure_future(_g(n))
 
-    tasks = [
-        f.remote(0.1)._as_asyncio_future(),
-        g(7),
-        f.remote(5)._as_asyncio_future(),
-        g(2)
-    ]
+    tasks = [f.remote(0.1).as_future(), g(7), f.remote(5).as_future(), g(2)]
     ready, _ = loop.run_until_complete(asyncio.wait(tasks, timeout=4))
     assert set(ready) == {tasks[0], tasks[-1]}
 
@@ -135,7 +125,7 @@ async def test_garbage_collection(ray_start_regular_shared):
 def test_concurrent_future(ray_start_regular_shared):
     ref = ray.put(1)
 
-    fut = ref.as_concurrent_future()
+    fut = ref.future()
     assert isinstance(fut, concurrent.futures.Future)
     wait_for_condition(lambda: fut.done())
 
@@ -156,7 +146,7 @@ def test_concurrent_future_many(ray_start_regular_shared):
         return i
 
     refs = [task.remote(i) for i in range(100)]
-    futs = [ref.as_concurrent_future() for ref in refs]
+    futs = [ref.future() for ref in refs]
     result = set()
 
     for fut in concurrent.futures.as_completed(futs):

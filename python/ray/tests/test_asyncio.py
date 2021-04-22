@@ -120,14 +120,14 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     def task():
         return 1
 
-    assert await task.remote()._as_asyncio_future() == 1
+    assert await task.remote().as_future() == 1
 
     @ray.remote
     def task_throws():
         1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await task_throws.remote()._as_asyncio_future()
+        await task_throws.remote().as_future()
 
     # Test actor calls.
     str_len = 200 * 1024
@@ -146,14 +146,14 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     actor = Actor.remote()
 
-    actor_call_future = actor.echo.remote(2)._as_asyncio_future()
+    actor_call_future = actor.echo.remote(2).as_future()
     assert await actor_call_future == 2
 
-    promoted_to_plasma_future = actor.big_object.remote()._as_asyncio_future()
+    promoted_to_plasma_future = actor.big_object.remote().as_future()
     assert await promoted_to_plasma_future == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await actor.throw_error.remote()._as_asyncio_future()
+        await actor.throw_error.remote().as_future()
 
     kill_actor_and_wait_for_failure(actor)
     with pytest.raises(ray.exceptions.RayActorError):
@@ -187,7 +187,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     signal = SignalActor.remote()
     waiting = signal.wait.remote()
 
-    future = waiting._as_asyncio_future()
+    future = waiting.as_future()
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(future, timeout=0.1)
     assert future.cancelled()
