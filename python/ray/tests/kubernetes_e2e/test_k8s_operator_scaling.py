@@ -61,19 +61,26 @@ def wait_for_operator():
 
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
-        with tempfile.NamedTemporaryFile("w+") as example_cluster_file:
+        with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
+                tempfile.NamedTemporaryFile("w+") as operator_file:
 
             example_cluster_config_path = get_operator_config_path(
                 "example_cluster.yaml")
+            operator_config_path = get_operator_config_path(
+                "operator_cluster_scoped.yaml")
 
             crd_path = get_operator_config_path("cluster_crd.yaml")
 
+            operator_config = list(
+                yaml.safe_load_all(open(operator_config_path).read()))
             example_cluster_config = yaml.safe_load(
                 open(example_cluster_config_path).read())
 
             # Set image and pull policy
             podTypes = example_cluster_config["spec"]["podTypes"]
-            pod_specs = [podType["podConfig"]["spec"] for podType in podTypes]
+            pod_specs = [operator_config[-1]["spec"]["template"]["spec"]] + [
+                podType["podConfig"]["spec"] for podType in podTypes
+            ]
             for pod_spec in pod_specs:
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
@@ -89,8 +96,15 @@ class KubernetesScaleTest(unittest.TestCase):
             worker_type["minWorkers"] = 30
 
             yaml.dump(example_cluster_config, example_cluster_file)
+            yaml.dump_all(operator_config, operator_file)
 
-            example_cluster_file.flush()
+            files = [example_cluster_file, operator_file]
+            for file in files:
+                file.flush()
+
+            print(">>>Creating operator.")
+            cmd = f"kubectl apply -f {operator_file.name}"
+            subprocess.check_call(cmd, shell=True)
 
             # Test creating operator before CRD.
             print(">>>Waiting for Ray operator to enter running state.")
@@ -99,6 +113,8 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Creating RayCluster CRD.")
             cmd = f"kubectl apply -f {crd_path}"
             subprocess.check_call(cmd, shell=True)
+            # Takes a bit of time for CRD to register.
+            time.sleep(10)
 
             # Start a 30-pod-cluster.
             print(">>>Starting a cluster.")
