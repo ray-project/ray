@@ -1660,7 +1660,6 @@ def healthcheck(address, redis_password, component):
 
     report_str = redis_client.hget(f"healthcheck:{component}", "value")
     if not report_str:
-        print(redis_client.keys())
         # Status was never updated
         sys.exit(1)
 
