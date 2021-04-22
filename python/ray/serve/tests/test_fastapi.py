@@ -311,6 +311,41 @@ def test_fastapi_features(serve_instance):
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
+def test_fastapi_duplicate_routes(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/api/v1")
+    @serve.ingress(app)
+    class App1:
+        @app.get("/")
+        def func_v1(self):
+            return "first"
+
+    @serve.deployment(route_prefix="/api/v2")
+    @serve.ingress(app)
+    class App2:
+        @app.get("/")
+        def func_v2(self):
+            return "second"
+
+    @app.get("/ignored")
+    def ignored():
+        pass
+
+    App1.deploy()
+    App2.deploy()
+
+    resp = requests.get("http://localhost:8000/api/v1")
+    assert resp.json() == "first"
+
+    resp = requests.get("http://localhost:8000/api/v2")
+    assert resp.json() == "second"
+
+    for version in ["v1", "v2"]:
+        resp = requests.get(f"http://localhost:8000/api/{version}/ignored")
+        assert resp.status_code == 404
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
