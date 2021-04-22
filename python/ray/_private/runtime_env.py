@@ -128,7 +128,8 @@ def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
 
     def handler(path: Path):
         # Pack this path if it's an empty directory or it's a file.
-        if path.is_dir() and next(path.iterdir()) is None or path.is_file():
+        if path.is_dir() and next(path.iterdir(),
+                                  None) is None or path.is_file():
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
@@ -213,13 +214,21 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     hash_val = None
     excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
-        assert isinstance(working_dir, str)
-        assert Path(working_dir).exists()
+        if not isinstance(working_dir, str):
+            raise TypeError("`working_dir` must be a string.")
         working_dir = Path(working_dir).absolute()
+        if not working_dir.exists() or not working_dir.is_dir():
+            raise ValueError(f"working_dir {working_dir} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(working_dir, working_dir, excludes))
     for py_module in py_modules or []:
+        if not isinstance(py_module, str):
+            raise TypeError("`py_module` must be a string.")
         module_dir = Path(py_module).absolute()
+        if not module_dir.exists() or not module_dir.is_dir():
+            raise ValueError(f"py_module {py_module} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
