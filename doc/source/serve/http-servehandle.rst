@@ -47,13 +47,17 @@ Variable HTTP Routes
 Ray Serve supports capturing path parameters.  For example, in a call of the form
 
 .. code-block:: python
+
     serve.create_endpoint("my_endpoint", backend="my_backend", route="/api/{username}")
+
 the ``username`` parameter will be accessible in your backend code as follows:
 
 .. code-block:: python
+
     def my_backend(request):
         username = request.path_params["username"]
         ...
+
 Ray Serve uses Starlette's Router class under the hood for routing, so type
 conversion for path parameters is also supported, as well as multiple path parameters.  
 For example, suppose this route is used:
@@ -62,6 +66,7 @@ For example, suppose this route is used:
     
     serve.create_endpoint(
         "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+
 Then for a query to the route ``/api/123/3.14``, the ``request.path_params`` dictionary 
 available in the backend will be ``{"user_id": 123, "number": 3.14}``, where ``123`` is
 a Python int and ``3.14`` is a Python float.
