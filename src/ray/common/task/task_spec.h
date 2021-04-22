@@ -28,7 +28,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 };
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
-/// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
+/// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
@@ -36,10 +36,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskSpecification() {}
 
   /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
+  /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
     ComputeResources();
   }
 
@@ -127,9 +132,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  ///
+  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies(
+      bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
 

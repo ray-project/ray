@@ -24,12 +24,13 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/raylet/worker.h"
-#include "ray/util/periodical_runner.h"
 
 namespace ray {
 
@@ -79,6 +80,10 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -116,7 +121,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param get_time A callback to get the current time.
-  WorkerPool(boost::asio::io_service &io_service, const NodeID node_id,
+  WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
@@ -252,6 +257,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -341,7 +349,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// otherwise it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      std::vector<std::string> dynamic_options = {},
+      const std::vector<std::string> &dynamic_options = {},
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -379,6 +387,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
+    // States for io workers used for python util functions.
+    IOWorkerState util_io_worker_state;
     // States for io workers used for spilling objects.
     IOWorkerState spill_io_worker_state;
     // States for io workers used for restoring objects.
@@ -478,11 +488,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
-  boost::asio::io_service *io_service_;
+  instrumented_io_context *io_service_;
   /// Node ID of the current node.
   const NodeID node_id_;
   /// Address of the current node.

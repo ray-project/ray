@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
 
   auto promise = std::make_shared<std::promise<void>>();
   std::thread([=] {
-    boost::asio::io_service service;
+    instrumented_io_context service;
 
     // Init backend client.
     ray::gcs::RedisClientOptions redis_client_options(redis_address, redis_port,
@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
   ray::stats::Init(global_tags, metrics_agent_port);
 
   // IO Service for main loop.
-  boost::asio::io_service main_service;
+  instrumented_io_context main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
@@ -101,6 +101,8 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.pull_based_resource_reporting =
+      RayConfig::instance().pull_based_resource_reporting();
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

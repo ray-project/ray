@@ -308,16 +308,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLogdir(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a": "b"
                 },
@@ -346,16 +346,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLongFilename(self):
         def train(config, reporter):
-            assert os.path.join(ray.utils.get_user_temp_dir(), "logdir",
-                                "foo") in os.getcwd(), os.getcwd()
+            assert os.path.join(ray._private.utils.get_user_temp_dir(),
+                                "logdir", "foo") in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
         run_experiments({
             "foo": {
                 "run": "f1",
-                "local_dir": os.path.join(ray.utils.get_user_temp_dir(),
-                                          "logdir"),
+                "local_dir": os.path.join(
+                    ray._private.utils.get_user_temp_dir(), "logdir"),
                 "config": {
                     "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
                     "b" * 50: tune.sample_from(lambda spec: "long" * 40),

@@ -3,7 +3,6 @@ PyTorch policy class used for PPO.
 """
 import gym
 import logging
-import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
@@ -19,7 +18,7 @@ from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
-    convert_to_torch_tensor, explained_variance, sequence_mask
+    explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -43,7 +42,7 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch, is_training=True)
+    logits, state = model(train_batch)
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -111,8 +110,7 @@ def ppo_surrogate_loss(
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._vf_explained_var = explained_variance(
-        train_batch[Postprocessing.VALUE_TARGETS],
-        policy.model.value_function())
+        train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 
@@ -168,7 +166,7 @@ def vf_preds_fetches(
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function(),
+        SampleBatch.VF_PREDS: model.value_function(),
     }
 
 
@@ -214,33 +212,13 @@ class ValueNetworkMixin:
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
-            if config["_use_trajectory_view_api"]:
 
-                def value(**input_dict):
-                    model_out, _ = self.model.from_batch(
-                        convert_to_torch_tensor(input_dict, self.device),
-                        is_training=False)
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
-
-            # TODO: (sven) Remove once trajectory view API is all-algo default.
-            else:
-
-                def value(ob, prev_action, prev_reward, *state):
-                    model_out, _ = self.model({
-                        SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                            np.asarray([ob]), self.device),
-                        SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                            np.asarray([prev_action]), self.device),
-                        SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                            np.asarray([prev_reward]), self.device),
-                        "is_training": False,
-                    }, [
-                        convert_to_torch_tensor(np.asarray([s]), self.device)
-                        for s in state
-                    ], convert_to_torch_tensor(np.asarray([1]), self.device))
-                    # [0] = remove the batch dim.
-                    return self.model.value_function()[0]
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                input_dict = self._lazy_tensor_dict(input_dict)
+                model_out, _ = self.model(input_dict)
+                # [0] = remove the batch dim.
+                return self.model.value_function()[0].item()
 
         # When not doing GAE, we do not require the value function's output.
         else:

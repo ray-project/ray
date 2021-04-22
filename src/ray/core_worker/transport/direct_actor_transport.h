@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -51,9 +52,12 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts,
-                               bool dead = false) = 0;
+  virtual void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
+
+  virtual void CheckTimeoutTasks() = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
@@ -111,10 +115,18 @@ class CoreWorkerDirectActorTaskSubmitter
   /// ignore the command to connect.
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead = false);
+  /// \param[in] creation_task_exception Reason why the actor is dead, only applies when
+  /// dead = true. If this arg is set, it means this actor died because of an exception
+  /// thrown in creation task.
+  void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
+
+  /// Check timeout tasks that are waiting for Death info.
+  void CheckTimeoutTasks();
 
  private:
   struct ClientQueue {
@@ -122,6 +134,8 @@ class CoreWorkerDirectActorTaskSubmitter
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
+    /// Only applies when state=DEAD.
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
@@ -193,6 +207,15 @@ class CoreWorkerDirectActorTaskSubmitter
     // abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 
+    /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
+    /// For 1) the task will wait for the DEAD state notification, then mark task as
+    /// failed using the death_info in notification. For 2) we'll never receive a DEAD
+    /// notification, in this case we'll wait for a fixed timeout value and then mark it
+    /// as failed.
+    /// pair key: timestamp in ms when this task should be considered as timeout.
+    /// pair value: task specification
+    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
     absl::optional<rpc::KillActorRequest> pending_force_kill;
@@ -253,23 +276,26 @@ class CoreWorkerDirectActorTaskSubmitter
 class InboundRequest {
  public:
   InboundRequest(){};
-  InboundRequest(std::function<void()> accept_callback,
-                 std::function<void()> reject_callback, TaskID task_id,
+  InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
+                 std::function<void(rpc::SendReplyCallback)> reject_callback,
+                 rpc::SendReplyCallback send_reply_callback, TaskID task_id,
                  bool has_dependencies)
-      : accept_callback_(accept_callback),
-        reject_callback_(reject_callback),
+      : accept_callback_(std::move(accept_callback)),
+        reject_callback_(std::move(reject_callback)),
+        send_reply_callback_(std::move(send_reply_callback)),
         task_id(task_id),
         has_pending_dependencies_(has_dependencies) {}
 
-  void Accept() { accept_callback_(); }
-  void Cancel() { reject_callback_(); }
+  void Accept() { accept_callback_(std::move(send_reply_callback_)); }
+  void Cancel() { reject_callback_(std::move(send_reply_callback_)); }
   bool CanExecute() const { return !has_pending_dependencies_; }
   ray::TaskID TaskID() const { return task_id; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
-  std::function<void()> accept_callback_;
-  std::function<void()> reject_callback_;
+  std::function<void(rpc::SendReplyCallback)> accept_callback_;
+  std::function<void(rpc::SendReplyCallback)> reject_callback_;
+  rpc::SendReplyCallback send_reply_callback_;
   ray::TaskID task_id;
   bool has_pending_dependencies_;
 };
@@ -349,8 +375,10 @@ class BoundedExecutor {
 class SchedulingQueue {
  public:
   virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
-                   std::function<void()> accept_request,
-                   std::function<void()> reject_request, TaskID task_id = TaskID::Nil(),
+                   std::function<void(rpc::SendReplyCallback)> accept_request,
+                   std::function<void(rpc::SendReplyCallback)> reject_request,
+                   rpc::SendReplyCallback send_reply_callback,
+                   TaskID task_id = TaskID::Nil(),
                    const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
@@ -362,21 +390,26 @@ class SchedulingQueue {
 /// See direct_actor.proto for a description of the ordering protocol.
 class ActorSchedulingQueue : public SchedulingQueue {
  public:
-  ActorSchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                       WorkerContext &worker_context,
+  ActorSchedulingQueue(instrumented_io_context &main_io_service, DependencyWaiter &waiter,
+                       std::shared_ptr<BoundedExecutor> pool = nullptr,
+                       bool is_asyncio = false,
+                       std::shared_ptr<FiberState> fiber_state = nullptr,
                        int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : worker_context_(worker_context),
-        reorder_wait_seconds_(reorder_wait_seconds),
+      : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
-        waiter_(waiter) {}
+        waiter_(waiter),
+        pool_(pool),
+        is_asyncio_(is_asyncio),
+        fiber_state_(fiber_state) {}
 
   bool TaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(),
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback, TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
@@ -389,7 +422,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_actor_tasks_[seq_no] =
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0);
+        InboundRequest(std::move(accept_request), std::move(reject_request),
+                       std::move(send_reply_callback), task_id, dependencies.size() > 0);
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
@@ -414,24 +448,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
-    // Only call SetMaxActorConcurrency to configure threadpool size when the
-    // actor is not async actor. Async actor is single threaded.
-    int max_concurrency = worker_context_.CurrentActorMaxConcurrency();
-    if (worker_context_.CurrentActorIsAsync()) {
-      // If this is an async actor, initialize the fiber state once.
-      if (!is_asyncio_) {
-        RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-        fiber_state_.reset(new FiberState(max_concurrency));
-        is_asyncio_ = true;
-      }
-    } else {
-      // If this is a concurrency actor (not async), initialize the thread pool once.
-      if (max_concurrency != 1 && !pool_) {
-        RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
-        pool_.reset(new BoundedExecutor(max_concurrency));
-      }
-    }
-
     // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_actor_tasks_.empty() &&
            pending_actor_tasks_.begin()->first < next_seq_no_) {
@@ -452,7 +468,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       if (is_asyncio_) {
         // Process async actor task.
         fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
-      } else if (pool_) {
+      } else if (pool_ != nullptr) {
         // Process concurrent actor task.
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
@@ -495,8 +511,6 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
   }
 
-  // Worker context.
-  WorkerContext &worker_context_;
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
@@ -511,13 +525,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::unique_ptr<BoundedExecutor> pool_;
+  std::shared_ptr<BoundedExecutor> pool_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// If use_asyncio_ is true, fiber_state_ contains the running state required
+  /// If is_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  std::shared_ptr<FiberState> fiber_state_;
   friend class SchedulingQueueTest;
 };
 
@@ -534,15 +548,17 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Add a new task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request,
-           TaskID task_id = TaskID::Nil(),
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback, TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
     pending_normal_tasks_.push_back(
-        InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
+        InboundRequest(std::move(accept_request), std::move(reject_request),
+                       std::move(send_reply_callback), task_id, dependencies.size() > 0));
   }
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
@@ -596,7 +612,7 @@ class CoreWorkerDirectTaskReceiver {
   using OnTaskDone = std::function<ray::Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               boost::asio::io_service &main_io_service,
+                               instrumented_io_context &main_io_service,
                                const TaskHandler &task_handler,
                                const OnTaskDone &task_done)
       : worker_context_(worker_context),
@@ -629,7 +645,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
-  boost::asio::io_service &task_main_io_service_;
+  instrumented_io_context &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
   /// Shared pool for producing new core worker clients.
@@ -644,6 +660,20 @@ class CoreWorkerDirectTaskReceiver {
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
       std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
+  /// The max number of concurrent calls to allow.
+  /// 0 indicates that the value is not set yet.
+  int max_concurrency_ = 0;
+  /// If concurrent calls are allowed, holds the pool for executing these tasks.
+  std::shared_ptr<BoundedExecutor> pool_;
+  /// Whether this actor use asyncio for concurrency.
+  bool is_asyncio_ = false;
+  /// If use_asyncio_ is true, fiber_state_ contains the running state required
+  /// to enable continuation and work together with python asyncio.
+  std::shared_ptr<FiberState> fiber_state_;
+
+  /// Set the max concurrency of an actor.
+  /// This should be called once for the actor creation task.
+  void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
 };
 
 }  // namespace ray

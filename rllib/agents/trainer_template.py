@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -159,19 +160,32 @@ def build_trainer(
 
         @override(Trainer)
         def step(self):
-            res = next(self.train_exec_impl)
-
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
-            # self._iteration will be 0. We check `self._iteration+1` in the
-            # if-statement below to reflect that the first training iteration
-            # is already over.
-            if (self.config["evaluation_interval"] and (self._iteration + 1) %
-                    self.config["evaluation_interval"] == 0):
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                res.update(evaluation_metrics)
+            # self._iteration will be 0.
+            evaluate_this_iter = self.config["evaluation_interval"] and \
+                                 (self._iteration + 1) % \
+                                 self.config["evaluation_interval"] == 0
+
+            # No evaluation necessary.
+            if not evaluate_this_iter:
+                res = next(self.train_exec_impl)
+            # We have to evaluate in this training iteration.
+            else:
+                # No parallelism.
+                if not self.config["evaluation_parallel_to_training"]:
+                    res = next(self.train_exec_impl)
+                # Kick off evaluation-loop (and parallel train() call,
+                # if requested).
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    eval_future = executor.submit(self._evaluate)
+                    # Parallelism.
+                    if self.config["evaluation_parallel_to_training"]:
+                        res = next(self.train_exec_impl)
+                    evaluation_metrics = eval_future.result()
+                    assert isinstance(evaluation_metrics, dict), \
+                        "_evaluate() needs to return a dict."
+                    res.update(evaluation_metrics)
             return res
 
         @override(Trainer)

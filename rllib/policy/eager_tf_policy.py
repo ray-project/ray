@@ -15,11 +15,9 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -28,8 +26,10 @@ logger = logging.getLogger(__name__)
 
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
-        x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, x)
+        dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
+        if x.seq_lens is not None:
+            dict_["seq_lens"] = x.seq_lens
+        return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
     # Special handling of "Repeated" values.
@@ -41,7 +41,8 @@ def _convert_to_tf(x, dtype=None):
     if x is not None:
         d = dtype
         x = tf.nest.map_structure(
-            lambda f: tf.convert_to_tensor(f, d) if f is not None else None, x)
+            lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
+            else tf.convert_to_tensor(f, d) if f is not None else None, x)
     return x
 
 
@@ -200,7 +201,7 @@ def build_eager_tf_policy(
         action_sampler_fn=None,
         action_distribution_fn=None,
         mixins=None,
-        obs_include_prev_action_reward=True,
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
         get_batch_divisibility_req=None,
         # Deprecated args.
         extra_action_fetches_fn=None):
@@ -224,11 +225,28 @@ def build_eager_tf_policy(
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
+
+            # Log device and worker index.
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info(
+                    "TF-eager Policy (worker={}) running on GPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info(
+                    "TF-eager Policy (worker={}) running on CPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+
             self._is_training = False
             self._loss_initialized = False
             self._sess = None
@@ -406,13 +424,12 @@ def build_eager_tf_policy(
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            if obs_include_prev_action_reward:
-                if prev_action_batch is not None:
-                    input_dict[SampleBatch.PREV_ACTIONS] = \
-                        tf.convert_to_tensor(prev_action_batch)
-                if prev_reward_batch is not None:
-                    input_dict[SampleBatch.PREV_REWARDS] = \
-                        tf.convert_to_tensor(prev_reward_batch)
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             return self._compute_action_helper(input_dict, state_batches,
                                                episodes, explore, timestep)
@@ -429,7 +446,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             # Pack internal state inputs into (separate) list.
             state_batches = [
@@ -552,13 +569,12 @@ def build_eager_tf_policy(
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            if obs_include_prev_action_reward:
-                if prev_action_batch is not None:
-                    input_dict[SampleBatch.PREV_ACTIONS] = \
-                        tf.convert_to_tensor(prev_action_batch)
-                if prev_reward_batch is not None:
-                    input_dict[SampleBatch.PREV_REWARDS] = \
-                        tf.convert_to_tensor(prev_reward_batch)
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -610,7 +626,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = {"_state": super().get_state()}
-            state["_optimizer_variables"] = self._optimizer.variables()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             return state
 
         @override(Policy)
@@ -733,15 +752,12 @@ def build_eager_tf_policy(
                 })
             return fetches
 
-        def _lazy_tensor_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(_convert_to_tf)
-            return train_batch
-
-        def _lazy_numpy_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(convert_to_non_tf_type)
-            return train_batch
+        def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+            # TODO: (sven): Keep for a while to ensure backward compatibility.
+            if not isinstance(postprocessed_batch, SampleBatch):
+                postprocessed_batch = SampleBatch(postprocessed_batch)
+            postprocessed_batch.set_get_interceptor(_convert_to_tf)
+            return postprocessed_batch
 
         @classmethod
         def with_tracing(cls):

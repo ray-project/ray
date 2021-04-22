@@ -16,8 +16,10 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -32,11 +34,40 @@ namespace raylet {
 
 using ::testing::_;
 
+class MockSubscriber : public pubsub::SubscriberInterface {
+ public:
+  void SubcribeObject(
+      const rpc::Address &owner_address, const ObjectID &object_id,
+      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    callbacks.push_back(std::make_pair(object_id, subscription_callback));
+  }
+
+  bool PublishObjectEviction() {
+    if (callbacks.empty()) {
+      return false;
+    }
+    auto object_id = callbacks.front().first;
+    auto callback = callbacks.front().second;
+    callback(object_id);
+    callbacks.pop_front();
+    return true;
+  }
+
+  MOCK_METHOD2(UnsubscribeObject,
+               bool(const rpc::Address &publisher_address, const ObjectID &object_id));
+
+  bool AssertNoLeak() const override { return true; }
+
+  std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
+};
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  void WaitForObjectEviction(
-      const rpc::WaitForObjectEvictionRequest &request,
-      const rpc::ClientCallback<rpc::WaitForObjectEvictionReply> &callback) override {
+  void SubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      const rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply> &callback)
+      override {
     eviction_callbacks.push_back(callback);
   }
 
@@ -45,7 +76,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     }
     auto callback = eviction_callbacks.front();
-    auto reply = rpc::WaitForObjectEvictionReply();
+    auto reply = rpc::SubscribeForObjectEvictionReply();
     callback(status, reply);
     eviction_callbacks.pop_front();
     return true;
@@ -69,7 +100,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::deque<rpc::ClientCallback<rpc::WaitForObjectEvictionReply>> eviction_callbacks;
+  std::deque<rpc::ClientCallback<rpc::SubscribeForObjectEvictionReply>>
+      eviction_callbacks;
   std::unordered_map<ObjectID, std::string> object_urls;
   std::deque<rpc::ClientCallback<rpc::AddSpilledUrlReply>> spilled_url_callbacks;
 };
@@ -161,11 +193,18 @@ class MockIOWorker : public MockWorker {
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
  public:
+  MOCK_METHOD1(PushUtilWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
   MOCK_METHOD1(PushSpillWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushRestoreWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushDeleteWorker, void(const std::shared_ptr<WorkerInterface> &worker));
+
+  void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
+    callback(io_worker);
+  }
 
   void PopSpillWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
@@ -275,15 +314,18 @@ class MockObjectBuffer : public Buffer {
 class LocalObjectManagerTest : public ::testing::Test {
  public:
   LocalObjectManagerTest()
-      : owner_client(std::make_shared<MockWorkerClient>()),
+      : subscriber_(std::make_shared<MockSubscriber>()),
+        owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
-        manager(manager_node_id_, free_objects_batch_size,
+        max_fused_object_count_(15),
+        manager(manager_node_id_, "address", 1234, free_objects_batch_size,
                 /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
                 /*automatic_object_delete_enabled=*/true,
                 /*max_io_workers=*/2,
                 /*min_spilling_size=*/0,
                 /*is_external_storage_type_fs=*/true,
+                /*max_fused_object_count*/ max_fused_object_count_,
                 /*on_objects_freed=*/
                 [&](const std::vector<ObjectID> &object_ids) {
                   for (const auto &object_id : object_ids) {
@@ -294,39 +336,28 @@ class LocalObjectManagerTest : public ::testing::Test {
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
                 },
-                /*restore_object_from_remote_node=*/
-                [&](const ObjectID &object_id, const std::string spilled_url,
-                    const NodeID &node_id) {
-                  if (remote_node_set_restore_requested_.count(node_id) == 0) {
-                    remote_node_set_restore_requested_.emplace(
-                        node_id, std::unordered_set<ObjectID>());
-                  }
-                  remote_node_set_restore_requested_[node_id].emplace(object_id);
-                }),
+                /*core_worker_subscriber=*/subscriber_),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize("object_spilling_config,YQ==");
   }
 
-  void TearDown() {
-    unevictable_objects_.clear();
-    remote_node_set_restore_requested_.clear();
-  }
+  void TearDown() { unevictable_objects_.clear(); }
 
   std::string BuildURL(const std::string url, int offset = 0, int num_objects = 1) {
     return url + "?" + "num_objects=" + std::to_string(num_objects) +
            "&offset=" + std::to_string(offset);
   }
 
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   size_t free_objects_batch_size = 3;
+  std::shared_ptr<MockSubscriber> subscriber_;
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
   MockObjectInfoAccessor object_table;
   NodeID manager_node_id_;
+  size_t max_fused_object_count_;
   LocalObjectManager manager;
-  std::unordered_map<NodeID, std::unordered_set<ObjectID>>
-      remote_node_set_restore_requested_;
 
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
@@ -349,8 +380,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
     std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    std::unique_ptr<RayObject> object(
-        new RayObject(nullptr, meta_buffer, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(nullptr, meta_buffer, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -359,6 +390,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
@@ -375,24 +408,23 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
-  // Make sure the restore request is no-op and return not found if the object wasn't
-  // spilled yet.
-  manager.AsyncRestoreSpilledObject(
-      object_ids[0], "url0", manager_node_id_,
-      [&](const Status &status) { ASSERT_TRUE(status.ok()); });
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    ASSERT_FALSE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+  }
   for (size_t i = 0; i < object_ids.size(); i++) {
     if (RayConfig::instance().ownership_based_object_directory_enabled()) {
       ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
@@ -408,11 +440,10 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
   // Subsequent calls should be deduped, so that only one callback should be fired.
   for (int i = 0; i < 10; i++) {
-    manager.AsyncRestoreSpilledObject(object_id, url, manager_node_id_,
-                                      [&](const Status &status) {
-                                        ASSERT_TRUE(status.ok());
-                                        num_times_fired++;
-                                      });
+    manager.AsyncRestoreSpilledObject(object_id, url, [&](const Status &status) {
+      ASSERT_TRUE(status.ok());
+      num_times_fired++;
+    });
   }
   ASSERT_EQ(num_times_fired, 0);
 
@@ -424,23 +455,6 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   worker_pool.io_worker_client->ReplyRestoreObjects(10);
   // The restore should've been invoked.
   ASSERT_EQ(num_times_fired, 1);
-
-  // If the object wasn't spilled on the current node, it should request restoration to
-  // remote nodes.
-  ObjectID remote_object_id = ObjectID::FromRandom();
-  const auto remote_object_url = BuildURL("remote_url");
-  NodeID remote_node_id = NodeID::FromRandom();
-  manager.AsyncRestoreSpilledObject(remote_object_id, remote_object_url, remote_node_id,
-                                    [&](const Status &status) {
-                                      ASSERT_TRUE(status.ok());
-                                      num_times_fired++;
-                                    });
-  // Make sure the remote call was invoked.
-  ASSERT_FALSE(worker_pool.io_worker_client->ReplyRestoreObjects(10));
-  ASSERT_TRUE(remote_node_set_restore_requested_.count(remote_node_id) > 0);
-  ASSERT_TRUE(remote_node_set_restore_requested_[remote_node_id].count(remote_object_id) >
-              0);
-  ASSERT_EQ(num_times_fired, 2);
 }
 
 TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
@@ -453,8 +467,8 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -506,8 +520,8 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -568,8 +582,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
     total_size += object_size;
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -640,6 +654,69 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   ASSERT_FALSE(manager.SpillObjectsOfSize(0));
 }
 
+TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
+  ///
+  /// Test objects are only fused up to max_fused_object_count.
+  ///
+
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  int64_t total_size = 0;
+  int64_t object_size = 1000;
+
+  for (size_t i = 0; i < max_fused_object_count_ + 5; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
+    total_size += object_size;
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
+  for (const auto &id : object_ids) {
+    ASSERT_EQ((*unpins)[id], 0);
+  }
+
+  // Make sure only max_fused_object_count_ objects are spilled although we requested to
+  // spill as much as total size. It is because we limit the max fused number of objects
+  // to be 10.
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < max_fused_object_count_; i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  // Objects should get freed even though we didn't wait for the owner's notice
+  // to evict.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+  for (size_t i = 0; i < urls.size(); i++) {
+    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+      ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
+    } else {
+      ASSERT_TRUE(object_table.ReplyAsyncAddSpilledUrl());
+    }
+  }
+  if (RayConfig::instance().ownership_based_object_directory_enabled()) {
+    ASSERT_EQ(owner_client->object_urls.size(), max_fused_object_count_);
+    for (auto &object_url : owner_client->object_urls) {
+      auto it = std::find(urls.begin(), urls.end(), object_url.second);
+      ASSERT_TRUE(it != urls.end());
+      ASSERT_EQ((*unpins)[object_url.first], 1);
+    }
+  } else {
+    ASSERT_EQ(object_table.object_urls.size(), max_fused_object_count_);
+    for (auto &object_url : object_table.object_urls) {
+      auto it = std::find(urls.begin(), urls.end(), object_url.second);
+      ASSERT_TRUE(it != urls.end());
+      ASSERT_EQ((*unpins)[object_url.first], 1);
+    }
+  }
+}
+
 TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   rpc::Address owner_address;
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -654,8 +731,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   unevictable_objects_.emplace(object_id);
   auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
   total_size += object_size;
-  std::unique_ptr<RayObject> object(
-      new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+  auto object =
+      std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
   objects.push_back(std::move(object));
 
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -683,8 +760,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -773,8 +850,8 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
 
   ObjectID object_id = ObjectID::FromRandom();
   auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-  std::unique_ptr<RayObject> object(
-      new RayObject(std::move(data_buffer), nullptr, std::vector<ObjectID>()));
+  auto object = std::make_unique<RayObject>(std::move(data_buffer), nullptr,
+                                            std::vector<ObjectID>());
 
   std::vector<std::unique_ptr<RayObject>> objects;
   objects.push_back(std::move(object));
@@ -817,6 +894,41 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ASSERT_EQ((*unpins)[object_id], 1);
 }
 
+TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
+  // First, spill objects.
+  std::vector<ObjectID> object_ids;
+  std::vector<std::unique_ptr<RayObject>> objects;
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    ObjectID object_id = ObjectID::FromRandom();
+    object_ids.push_back(object_id);
+    auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.SpillObjects(object_ids,
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+
+  EXPECT_CALL(worker_pool, PushSpillWorker(_));
+  std::vector<std::string> urls;
+  for (size_t i = 0; i < 2; i++) {
+    urls.push_back(BuildURL("url" + std::to_string(i)));
+  }
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
+
+  for (size_t i = 0; i < free_objects_batch_size; i++) {
+    if (i < urls.size()) {
+      ASSERT_EQ(urls[i], manager.GetSpilledObjectURL(object_ids[i]));
+    } else {
+      ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+    }
+  }
+}
+
 TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
   // Make sure the delete queue won't delete any object when there are no spilled objects.
   rpc::Address owner_address;
@@ -829,8 +941,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object = std::make_unique<RayObject>(std::move(data_buffer), nullptr,
+                                              std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -839,6 +951,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -857,8 +971,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -888,6 +1002,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   // // Make sure all spilled objects are deleted.
@@ -909,8 +1025,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -944,6 +1060,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -952,6 +1070,9 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // The last reference is deleted.
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
+  EXPECT_CALL(*subscriber_,
+              UnsubscribeObject(_, object_ids[free_objects_batch_size - 1]));
+  ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Now the object is deleted.
@@ -970,8 +1091,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -1002,6 +1123,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // // Now, deletion queue would process only the first object. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
@@ -1041,8 +1164,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    std::unique_ptr<RayObject> object(
-        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    auto object =
+        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -1073,6 +1196,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
+    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
   // The spilled objects should be deleted as number of spilled urls exceeds the batch

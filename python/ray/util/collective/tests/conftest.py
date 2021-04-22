@@ -34,8 +34,9 @@ def clean_up():
         except ValueError:
             actor = None
         if actor:
-            logger.debug("Killing actor with group_key: '{}' and store: '{}'."
-                         .format(group_key, store_name))
+            logger.debug(
+                "Killing actor with group_key: '{}' and store: '{}'.".format(
+                    group_key, store_name))
             ray.kill(actor)
 
 
@@ -72,7 +73,15 @@ def ray_start_distributed_multigpu_2_nodes_4_gpus():
 
 @pytest.fixture
 def ray_start_single_node():
-    # Please start this fixture in a cluster with 2 cpus.
     address_info = ray.init(num_cpus=8)
     yield address_info
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_distributed_2_nodes():
+    # The cluster has a setup of 2 nodes.
+    # no GPUs!
+    ray.init("auto")
+    yield
     ray.shutdown()

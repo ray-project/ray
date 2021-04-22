@@ -141,9 +141,12 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
+      -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
+      -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
+      -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
@@ -153,7 +156,10 @@ test_python() {
       -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
+      -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_failure
+      -python/ray/tests:test_failure_2
+      -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
@@ -170,8 +176,6 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_cluster_launcher
-      -python/ray/tests:test_k8s_operator_examples
       -python/ray/tests:test_k8s_operator_mock
     )
   fi
@@ -191,7 +195,7 @@ test_python() {
 test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
+  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run the cpp example
   bazel run //cpp/example:example
 

@@ -16,6 +16,7 @@
 
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
 #include "ray/core_worker/actor_handle.h"
@@ -32,11 +33,11 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
-#include "ray/util/periodical_runner.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -63,7 +64,8 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *results,
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -91,7 +93,8 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
-        metrics_agent_port(-1) {}
+        metrics_agent_port(-1),
+        connect_on_start(true) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -150,6 +153,8 @@ struct CoreWorkerOptions {
       delete_spilled_objects;
   /// Function to call on error objects never retrieved.
   std::function<void(const RayObject &error)> unhandled_exception_handler;
+  std::function<void(const std::string &, const std::vector<std::string> &)>
+      run_on_util_worker_handler;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -167,6 +172,10 @@ struct CoreWorkerOptions {
   /// The port number of a metrics agent that imports metrics from core workers.
   /// -1 means there's no such agent.
   int metrics_agent_port;
+  /// If false, the constructor won't connect and notify raylets that it is
+  /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
+  /// TODO(sang): Use this method for Java and cpp frontend too.
+  bool connect_on_start;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -293,9 +302,6 @@ class CoreWorkerProcess {
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
-  /// The global instance of `CoreWorkerProcess`.
-  static std::unique_ptr<CoreWorkerProcess> instance_;
-
   /// The various options.
   const CoreWorkerOptions options_;
 
@@ -336,12 +342,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
+  /// Connect to the raylet and notify that the core worker is ready.
+  /// If the options.connect_on_start is false, it doesn't need to be explicitly
+  /// called.
+  void ConnectToRaylet();
+
   /// Gracefully disconnect the worker from Raylet.
   /// If this function is called during shutdown, Raylet will treat it as an intentional
   /// disconnect.
   ///
   /// \return Void.
-  void Disconnect();
+  void Disconnect(rpc::WorkerExitType exit_type = rpc::WorkerExitType::INTENDED_EXIT,
+                  const std::shared_ptr<LocalMemoryBuffer>
+                      &creation_task_exception_pb_bytes = nullptr);
 
   /// Shut down the worker completely.
   ///
@@ -863,9 +876,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
-                                   rpc::WaitForObjectEvictionReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleSubscribeForObjectEviction(
+      const rpc::SubscribeForObjectEvictionRequest &request,
+      rpc::SubscribeForObjectEvictionReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  // Implements gRPC server handler.
+  void HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &request,
+                               rpc::PubsubLongPollingReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
@@ -916,6 +935,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleLocalGC(const rpc::LocalGCRequest &request, rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
+  // Run request on an python-based IO worker
+  void HandleRunOnUtilWorker(const rpc::RunOnUtilWorkerRequest &request,
+                             rpc::RunOnUtilWorkerReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   // Spill objects to external storage.
   void HandleSpillObjects(const rpc::SpillObjectsRequest &request,
                           rpc::SpillObjectsReply *reply,
@@ -965,6 +989,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
 
+  // Get gcs_client
+  std::shared_ptr<gcs::GcsClient> GetGcsClient() const;
+
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
@@ -978,7 +1005,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// (WORKER mode only) Exit the worker. This is the entrypoint used to shutdown a
   /// worker.
-  void Exit(bool intentional);
+  void Exit(rpc::WorkerExitType exit_type,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
 
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
@@ -1129,7 +1158,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
 
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
@@ -1189,6 +1218,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
+  // Server that handles pubsub operations of raylets / core workers.
+  std::shared_ptr<pubsub::Publisher> object_status_publisher_;
+
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
@@ -1230,7 +1262,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  instrumented_io_context task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;

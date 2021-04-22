@@ -37,8 +37,8 @@ class NodeManagerClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
 
   /// Get current node stats.
@@ -103,9 +103,6 @@ class NodeManagerWorkerClient
   /// Ask the raylet to spill an object to external storage.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
 
-  /// Ask the raylet to restore an object from external storage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, RestoreSpilledObject, grpc_client_, )
-
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
 
@@ -120,8 +117,8 @@ class NodeManagerWorkerClient
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   NodeManagerWorkerClient(const std::string &address, const int port,
                           ClientCallManager &client_call_manager) {
-    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+    grpc_client_ = std::make_unique<GrpcClient<NodeManagerService>>(address, port,
+                                                                    client_call_manager);
   };
 
   /// The RPC client.

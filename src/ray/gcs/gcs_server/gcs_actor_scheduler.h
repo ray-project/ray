@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
@@ -96,7 +97,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
-      boost::asio::io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+      instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
@@ -265,7 +266,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
-  boost::asio::io_context &io_context_;
+  instrumented_io_context &io_context_;
   /// The actor info accessor.
   gcs::GcsActorTable &gcs_actor_table_;
   /// Map from node ID to the set of actors for whom we are trying to acquire a lease from

@@ -195,7 +195,12 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   virtual std::string CallString() const {
     const std::string &class_name = typed_message_->class_name();
     const std::string &function_name = typed_message_->function_name();
-    return class_name.empty() ? function_name : class_name + "." + function_name;
+    if (class_name.empty()) {
+      return function_name.substr(function_name.find_last_of(".") + 1);
+    } else {
+      return class_name.substr(class_name.find_last_of(".") + 1) + "." +
+             function_name.substr(function_name.find_last_of(".") + 1);
+    }
   }
 
   const std::string &ModuleName() const { return typed_message_->module_name(); }
@@ -262,6 +267,8 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   const std::string &ExecFunctionOffset() const {
     return typed_message_->exec_function_offset();
   }
+
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
 
  private:
   const rpc::CppFunctionDescriptor *typed_message_;
@@ -330,7 +337,8 @@ class FunctionDescriptorBuilder {
   /// \return a ray::CppFunctionDescriptor
   static FunctionDescriptor BuildCpp(const std::string &lib_name,
                                      const std::string &function_offset,
-                                     const std::string &exec_function_offset);
+                                     const std::string &exec_function_offset,
+                                     const std::string &function_name);
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///

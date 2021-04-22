@@ -109,6 +109,9 @@ table ResourceIdSetInfo {
 // This message is sent from a worker to the node manager.
 table DisconnectClient {
   disconnect_type: int;
+  // Creation task exception serialized by protobuf.
+  // Contains a RayException defined in common.pb
+  creation_task_exception_pb: [ubyte];
 }
 
 table ResourceIdSetInfos {

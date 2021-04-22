@@ -1,5 +1,3 @@
-import asyncio
-from functools import singledispatch
 import importlib
 from itertools import groupby
 import json
@@ -7,20 +5,20 @@ import logging
 import random
 import string
 import time
-from typing import Iterable, List, Dict, Tuple
+from typing import Iterable, Tuple
 import os
-from ray.serve.exceptions import RayServeException
 from collections import UserDict
-from pathlib import Path
 
 import starlette.requests
+import starlette.responses
 import requests
 import numpy as np
 import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.serve.exceptions import RayServeException
+from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -85,19 +83,24 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    arg = request_item.args[0] if len(request_item.args) == 1 else None
+    if len(request_item.args) <= 1:
+        arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-    # If the input data from handle is web request, we don't need to wrap
-    # it in ServeRequest.
-    if isinstance(arg, starlette.requests.Request):
-        return arg
+        # If the input data from handle is web request, we don't need to wrap
+        # it in ServeRequest.
+        if isinstance(arg, starlette.requests.Request):
+            return (arg, ), {}
+        elif isinstance(arg, HTTPRequestWrapper):
+            return (build_starlette_request(arg.scope, arg.body), ), {}
+        elif request_item.metadata.use_serve_request:
+            return (ServeRequest(
+                arg,
+                request_item.kwargs,
+                headers=request_item.metadata.http_headers,
+                method=request_item.metadata.http_method,
+            ), ), {}
 
-    return ServeRequest(
-        arg,
-        request_item.kwargs,
-        headers=request_item.metadata.http_headers,
-        method=request_item.metadata.http_method,
-    )
+    return request_item.args, request_item.kwargs
 
 
 def _get_logger():
@@ -180,159 +183,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     return name
 
 
-def get_conda_env_dir(env_name):
-    """Given a environment name like `tf1`, find and validate the
-    corresponding conda directory. Untested on Windows.
-    """
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix is None:
-        # The caller is neither in a conda env or in (base).  This is rare
-        # because by default, new terminals start in (base), but we can still
-        # support this case.
-        conda_exe = os.environ.get("CONDA_EXE")
-        if conda_exe is None:
-            raise RayServeException(
-                "Ray Serve cannot find environment variables set by conda. "
-                "Please verify conda is installed.")
-        # Example: CONDA_EXE=$HOME/anaconda3/bin/python
-        # Strip out the /bin/python by going up two parent directories.
-        conda_prefix = str(Path(conda_exe).parent.parent)
-
-    # There are two cases:
-    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
-    #    CONDA_PREFIX=$HOME/anaconda3
-    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
-    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
-    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
-        # Caller is running in base conda env.
-        # Not recommended by conda, but we can still try to support it.
-        env_dir = os.path.join(conda_prefix, "envs", env_name)
-    else:
-        # Now `conda_prefix` should be something like
-        # $HOME/anaconda3/envs/$env_name
-        # We want to strip the $env_name component.
-        conda_envs_dir = os.path.split(conda_prefix)[0]
-        env_dir = os.path.join(conda_envs_dir, env_name)
-    if not os.path.isdir(env_dir):
-        raise ValueError(
-            "conda env " + env_name +
-            " not found in conda envs directory. Run `conda env list` to " +
-            "verify the name is correct.")
-    return env_dir
-
-
-@singledispatch
-def chain_future(src, dst):
-    """Base method for chaining futures together.
-
-    Chaining futures means the output from source future(s) are written as the
-    results of the destination future(s). This method can work with the
-    following inputs:
-        - src: Future, dst: Future
-        - src: List[Future], dst: List[Future]
-    """
-    raise NotImplementedError()
-
-
-@chain_future.register(asyncio.Future)
-def _chain_future_single(src: asyncio.Future, dst: asyncio.Future):
-    asyncio.futures._chain_future(src, dst)
-
-
-@chain_future.register(list)
-def _chain_future_list(src: List[asyncio.Future], dst: List[asyncio.Future]):
-    if len(src) != len(dst):
-        raise ValueError(
-            "Source and destination list doesn't have the same length. "
-            "Source: {}. Destination: {}.".foramt(len(src), len(dst)))
-
-    for s, d in zip(src, dst):
-        chain_future(s, d)
-
-
-def unpack_future(src: asyncio.Future, num_items: int) -> List[asyncio.Future]:
-    """Unpack the result of source future to num_items futures.
-
-    This function takes in a Future and splits its result into many futures. If
-    the result of the source future is an exception, then all destination
-    futures will have the same exception.
-    """
-    dest_futures = [
-        asyncio.get_event_loop().create_future() for _ in range(num_items)
-    ]
-
-    def unwrap_callback(fut: asyncio.Future):
-        exception = fut.exception()
-        if exception is not None:
-            [f.set_exception(exception) for f in dest_futures]
-            return
-
-        result = fut.result()
-        assert len(result) == num_items
-        for item, future in zip(result, dest_futures):
-            future.set_result(item)
-
-    src.add_done_callback(unwrap_callback)
-
-    return dest_futures
-
-
-def try_schedule_resources_on_nodes(
-        requirements: List[dict],
-        ray_resource: Dict[str, Dict] = None,
-) -> List[bool]:
-    """Test given resource requirements can be scheduled on ray nodes.
-
-    Args:
-        requirements(List[dict]): The list of resource requirements.
-        ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
-            node id. By default it reads from
-            ``ray.state.state._available_resources_per_node()``.
-    Returns:
-        successfully_scheduled(List[bool]): A list with the same length as
-            requirements. Each element indicates whether or not the requirement
-            can be satisied.
-    """
-
-    if ray_resource is None:
-        ray_resource = ray.state.state._available_resources_per_node()
-
-    successfully_scheduled = []
-
-    for resource_dict in requirements:
-        # Filter out zero value
-        resource_dict = {k: v for k, v in resource_dict.items() if v > 0}
-
-        for node_id, node_resource in ray_resource.items():
-            # Check if we can schedule on this node
-            feasible = True
-
-            for key, count in resource_dict.items():
-                # Fix legacy behaviour in all memory objects
-                if "memory" in key:
-                    memory_resource = node_resource.get(key, 0)
-                    if memory_resource > 0:
-                        # Convert from chunks to bytes
-                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
-                    if memory_resource - count < 0:
-                        feasible = False
-
-                elif node_resource.get(key, 0) - count < 0:
-                    feasible = False
-
-            # If we can, schedule it on this node
-            if feasible:
-                for key, count in resource_dict.items():
-                    node_resource[key] -= count
-
-                successfully_scheduled.append(True)
-                break
-        else:
-            successfully_scheduled.append(False)
-
-    return successfully_scheduled
-
-
 def get_all_node_ids():
     """Get IDs for all nodes in the cluster.
 
@@ -377,11 +227,8 @@ def import_attr(full_path: str):
     return getattr(module, attr_name)
 
 
-async def mock_imported_function(batch):
-    result = []
-    for request in batch:
-        result.append(await request.body())
-    return result
+async def mock_imported_function(request):
+    return await request.body()
 
 
 class MockImportedBackend:
@@ -399,17 +246,11 @@ class MockImportedBackend:
     def reconfigure(self, config):
         self.config = config
 
-    def __call__(self, batch):
-        return [{
-            "arg": self.arg,
-            "config": self.config
-        } for _ in range(len(batch))]
+    def __call__(self, request):
+        return {"arg": self.arg, "config": self.config}
 
-    async def other_method(self, batch):
-        responses = []
-        for request in batch:
-            responses.append(await request.body())
-        return responses
+    async def other_method(self, request):
+        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,

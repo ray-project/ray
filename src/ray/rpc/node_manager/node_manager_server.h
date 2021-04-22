@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
@@ -37,7 +38,6 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
   RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)  \
-  RPC_SERVICE_HANDLER(NodeManagerService, RestoreSpilledObject)   \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig)
 
@@ -110,10 +110,6 @@ class NodeManagerServiceHandler {
                                            RequestObjectSpillageReply *reply,
                                            SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRestoreSpilledObject(const RestoreSpilledObjectRequest &request,
-                                          RestoreSpilledObjectReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleReleaseUnusedBundles(const ReleaseUnusedBundlesRequest &request,
                                           ReleaseUnusedBundlesReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
@@ -130,7 +126,7 @@ class NodeManagerGrpcService : public GrpcService {
   ///
   /// \param[in] io_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  NodeManagerGrpcService(boost::asio::io_service &io_service,
+  NodeManagerGrpcService(instrumented_io_context &io_service,
                          NodeManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 

@@ -12,7 +12,9 @@ import numpy as np
 import logging
 import collections
 from numbers import Number
-from typing import List, Dict
+from typing import Dict
+from typing import List
+from typing import Optional
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.gcs_utils import PlacementGroupTableData
@@ -21,6 +23,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, NODE_KIND_UNMANAGED, NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +54,8 @@ class ResourceDemandScheduler:
                  head_node_type: NodeType,
                  upscaling_speed: float = 1) -> None:
         self.provider = provider
-        self.node_types = copy.deepcopy(node_types)
+        self.node_types = _convert_memory_unit(node_types)
+        self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
@@ -68,7 +72,7 @@ class ResourceDemandScheduler:
         inferered resources are not lost.
         """
         new_node_types = copy.deepcopy(node_types)
-        final_node_types = new_node_types
+        final_node_types = _convert_memory_unit(new_node_types)
         if self.is_legacy_yaml(new_node_types):  # If new configs are legacy.
             if self.is_legacy_yaml():  # If old configs were legacy.
 
@@ -92,6 +96,7 @@ class ResourceDemandScheduler:
 
         self.provider = provider
         self.node_types = copy.deepcopy(final_node_types)
+        self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
@@ -144,6 +149,8 @@ class ResourceDemandScheduler:
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
             self._infer_legacy_node_resources_if_needed(max_resources_by_ip)
+
+        self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
@@ -264,6 +271,51 @@ class ResourceDemandScheduler:
                 return {NODE_TYPE_LEGACY_WORKER: max(1, workers_to_add)}
             else:
                 return {}
+
+    def _update_node_resources_from_runtime(
+            self, nodes: List[NodeID],
+            max_resources_by_ip: Dict[NodeIP, ResourceDict]):
+        """Update static node type resources with runtime resources
+
+        This will update the cached static node type resources with the runtime
+        resources. Because we can not know the correctly memory or
+        object_store_memory from config file.
+        """
+        need_update = len(self.node_types) != len(self.node_resource_updated)
+
+        if not need_update:
+            return
+        for node_id in nodes:
+            tags = self.provider.node_tags(node_id)
+
+            if TAG_RAY_USER_NODE_TYPE not in tags:
+                continue
+
+            node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            if (node_type in self.node_resource_updated
+                    or node_type not in self.node_types):
+                # continue if the node type has been updated or is not an known
+                # node type
+                continue
+            ip = self.provider.internal_ip(node_id)
+            runtime_resources = max_resources_by_ip.get(ip)
+            if runtime_resources:
+                runtime_resources = copy.deepcopy(runtime_resources)
+                resources = self.node_types[node_type].get("resources", {})
+                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                    if key in runtime_resources:
+                        resources[key] = runtime_resources[key]
+                self.node_types[node_type]["resources"] = resources
+
+                node_kind = tags[TAG_RAY_NODE_KIND]
+                if node_kind == NODE_KIND_WORKER:
+                    # Here, we do not record the resources have been updated
+                    # if it is the head node kind. Because it need be updated
+                    # by worker kind runtime resource. The most difference
+                    # between head and worker is the memory resources. The head
+                    # node needs to configure redis memory which is not needed
+                    # for worker nodes.
+                    self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
             self, max_resources_by_ip: Dict[NodeIP, ResourceDict]
@@ -503,6 +555,24 @@ class ResourceDemandScheduler:
         return out
 
 
+def _convert_memory_unit(node_types: Dict[NodeType, NodeTypeConfigDict]
+                         ) -> Dict[NodeType, NodeTypeConfigDict]:
+    """Convert memory and object_store_memory to memory unit"""
+    node_types = copy.deepcopy(node_types)
+    for node_type in node_types:
+        res = node_types[node_type].get("resources", {})
+        if "memory" in res:
+            size = float(res["memory"])
+            res["memory"] = ray_constants.to_memory_units(size, False)
+        if "object_store_memory" in res:
+            size = float(res["object_store_memory"])
+            res["object_store_memory"] = ray_constants.to_memory_units(
+                size, False)
+        if res:
+            node_types[node_type]["resources"] = res
+    return node_types
+
+
 def _node_type_counts_to_node_resources(
         node_types: Dict[NodeType, NodeTypeConfigDict],
         node_type_counts: Dict[NodeType, int]) -> List[ResourceDict]:
@@ -665,7 +735,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
 
 
 def _utilization_score(node_resources: ResourceDict,
-                       resources: List[ResourceDict]) -> float:
+                       resources: List[ResourceDict]) -> Optional[float]:
     remaining = copy.deepcopy(node_resources)
     is_gpu_node = "GPU" in node_resources
     any_gpu_task = any("GPU" in r for r in resources)
@@ -686,8 +756,17 @@ def _utilization_score(node_resources: ResourceDict,
 
     util_by_resources = []
     for k, v in node_resources.items():
+        # Don't divide by zero.
+        if v < 1:
+            # Could test v == 0 on the nose, but v < 1 feels safer.
+            # (Note that node resources are integers.)
+            continue
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
+
+    # Could happen if node_resources has only zero values.
+    if not util_by_resources:
+        return None
 
     # Prioritize using all resources first, then prioritize overall balance
     # of multiple resources.

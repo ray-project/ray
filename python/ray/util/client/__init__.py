@@ -1,5 +1,5 @@
 from typing import List, Tuple, Dict, Any
-
+from ray.job_config import JobConfig
 import os
 import sys
 import logging
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2020-02-22"
+CURRENT_PROTOCOL_VERSION = "2021-04-09"
 
 
 class RayAPIStub:
@@ -29,6 +29,7 @@ class RayAPIStub:
 
     def connect(self,
                 conn_str: str,
+                job_config: JobConfig = None,
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
@@ -38,6 +39,7 @@ class RayAPIStub:
 
         Args:
             conn_str: Connection string, in the form "[host]:port"
+            job_config: The job config of the server.
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
             connection_retries: number of connection attempts to make
@@ -67,12 +69,26 @@ class RayAPIStub:
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
+            self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
+            self._register_serializers()
             return conn_info
         except Exception:
             self.disconnect()
             raise
+
+    def _register_serializers(self):
+        """Register the custom serializer addons at the client side.
+
+        The server side should have already registered the serializers via
+        regular worker's serialization_context mechanism.
+        """
+        import ray.serialization_addons
+        from ray.util.client.ray_client_helpers import (
+            RayClientSerializationContext)
+        ctx = RayClientSerializationContext()
+        ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],
                         ignore_version: bool) -> None:

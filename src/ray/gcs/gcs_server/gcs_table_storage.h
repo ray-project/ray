@@ -16,6 +16,7 @@
 
 #include <utility>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -420,7 +421,7 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(boost::asio::io_service &main_io_service) {
+  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service) {
     store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));

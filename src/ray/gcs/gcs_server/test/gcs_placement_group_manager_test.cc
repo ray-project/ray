@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -130,7 +131,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
  private:
   std::unique_ptr<std::thread> thread_io_service_;
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;

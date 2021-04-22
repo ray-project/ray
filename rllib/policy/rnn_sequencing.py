@@ -355,7 +355,7 @@ def timeslice_along_seq_lens_with_overlap(
     """
     if seq_lens is None:
         seq_lens = sample_batch.seq_lens
-    assert seq_lens is not None and seq_lens != [], \
+    assert seq_lens is not None and len(seq_lens) > 0, \
         "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
     # Generate n slices based on self.seq_lens.
     start = 0
@@ -391,16 +391,16 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.data.items()
+                for k, v in sample_batch.items()
             }
         else:
-            data = {k: v[begin:end] for k, v in sample_batch.data.items()}
+            data = {k: v[begin:end] for k, v in sample_batch.items()}
 
         if zero_init_states_:
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = np.zeros_like(sample_batch.data[key][0:1])
+                data[key] = np.zeros_like(sample_batch[key][0:1])
                 del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)
@@ -410,8 +410,8 @@ def timeslice_along_seq_lens_with_overlap(
             i = 0
             key = "state_in_{}".format(i)
             while key in data:
-                data[key] = sample_batch.data["state_out_{}".format(i)][
-                    begin - 1:begin]
+                data[key] = sample_batch["state_out_{}".format(i)][begin -
+                                                                   1:begin]
                 del data["state_out_{}".format(i)]
                 i += 1
                 key = "state_in_{}".format(i)

@@ -76,12 +76,17 @@ class RayTaskError(RayError):
                  ip=None):
         """Initialize a RayTaskError."""
         import ray
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
             self.proctitle = setproctitle.getproctitle()
         self.pid = pid or os.getpid()
-        self.ip = ip or ray._private.services.get_node_ip_address()
+        self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
         # TODO(edoakes): should we handle non-serializable exception objects?
@@ -108,6 +113,10 @@ class RayTaskError(RayError):
         class cls(RayTaskError, cause_cls):
             def __init__(self, cause):
                 self.cause = cause
+                # BaseException implements a __reduce__ method that returns
+                # a tuple with the type and the value of self.args.
+                # https://stackoverflow.com/a/49715949/2213289
+                self.args = (cause, )
 
             def __getattr__(self, name):
                 return getattr(self.cause, name)
@@ -154,11 +163,48 @@ class RayActorError(RayError):
 
     This exception could happen either because the actor process dies while
     executing a task, or because a task is submitted to a dead actor.
+
+    If the actor is dead because of an exception thrown in its creation tasks,
+    RayActorError will contains this exception.
     """
 
+    def __init__(self,
+                 function_name=None,
+                 traceback_str=None,
+                 cause=None,
+                 proctitle=None,
+                 pid=None,
+                 ip=None):
+        # Traceback handling is similar to RayTaskError, so we create a
+        # RayTaskError to reuse its function.
+        # But we don't want RayActorError to inherit from RayTaskError, since
+        # they have different meanings.
+        self.creation_task_error = None
+        if function_name and traceback_str and cause:
+            self.creation_task_error = RayTaskError(
+                function_name, traceback_str, cause, proctitle, pid, ip)
+
+    def has_creation_task_error(self):
+        return self.creation_task_error is not None
+
+    def get_creation_task_error(self):
+        if self.creation_task_error is not None:
+            return self.creation_task_error
+        return None
+
     def __str__(self):
-        return ("The actor died unexpectedly before finishing this task. "
-                "Check python-core-worker-*.log files for more information.")
+        if self.creation_task_error:
+            return ("The actor died because of an error" +
+                    " raised in its creation task, " +
+                    self.creation_task_error.__str__())
+        return ("The actor died unexpectedly before finishing this task.")
+
+    @staticmethod
+    def from_task_error(task_error):
+        return RayActorError(task_error.function_name,
+                             task_error.traceback_str, task_error.cause,
+                             task_error.proctitle, task_error.pid,
+                             task_error.ip)
 
 
 class RaySystemError(RayError):
