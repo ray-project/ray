@@ -40,7 +40,7 @@ matrix:
         # cc bazel tests (w/o RLlib)
         # NOTE: core_worker_test is out-of-date and should already covered by Python
         # tests.
-        - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/... -core_worker_test
+        - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky -- //:all -rllib/... -core_worker_test
 
         # ray serve tests
         - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
@@ -49,7 +49,7 @@ matrix:
         - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
 
         # bazel python tests. This should be run last to keep its logs at the end of travis logs.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...; fi
         # NO MORE TESTS BELOW, keep them above.
 
     - os: osx
@@ -66,7 +66,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky python/ray/tests/...; fi
 
     - os: osx
       osx_image: xcode7
@@ -82,7 +82,7 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
-        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky python/ray/tests/...; fi
 
     # Build MacOS wheels and MacOS jars
     - os: osx

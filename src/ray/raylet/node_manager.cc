@@ -109,7 +109,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   std::stringstream buffer;
   const auto owner_worker_id =
       WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
   buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
          << owner_worker_id << " / " << owner_node_id;
   return buffer.str();
@@ -816,8 +816,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     auto &worker = pair.second;
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    const auto owner_node_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
