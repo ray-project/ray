@@ -168,7 +168,7 @@ To get started, we need to apply the `Kubernetes Custom Resource Definition`_ (C
 
 (2) Picking a Kubernetes Namespace
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The rest of the Kubernetes resources we will use are `namespaced`_.
+We will launch Ray clusters within a Kubernetes `namespace`_.
 You can use an existing namespace for your Ray clusters or create a new one if you have permissions.
 For this example, we will create a namespace called ``ray``.
 
@@ -183,19 +183,41 @@ For this example, we will create a namespace called ``ray``.
 (3) Launching the Operator Pod
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To launch the operator in our namespace, we execute the following command.
+Ray provides both namespaced and cluster-scoped Operators.
 
-.. code-block:: shell
+- The namespaced Operator manages all Ray clusters within a single Kubernetes namespace.
+- The cluster-scoped Operator manages all Ray clusters across your Kubernetes cluster.
 
- $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
+Choose the option that suits your needs.
+However, do not simultaneously run namespaced and cluster-scoped Ray Operators within one Kubernetes cluster, as this will lead to unintended effects.
 
- serviceaccount/ray-operator-serviceaccount created
- role.rbac.authorization.k8s.io/ray-operator-role created
- rolebinding.rbac.authorization.k8s.io/ray-operator-rolebinding created
- pod/ray-operator-pod created
+.. tabs::
+   .. group-tab:: Namespaced Operator
 
-The output shows that we've launched a Pod named ``ray-operator-pod``. This is the pod that runs the operator process.
+        .. code-block:: shell
+
+         $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_namespaced.yaml
+
+         serviceaccount/ray-operator-serviceaccount created
+         role.rbac.authorization.k8s.io/ray-operator-role created
+         rolebinding.rbac.authorization.k8s.io/ray-operator-rolebinding created
+         deployment.apps/ray-operator created
+
+   .. group-tab:: Cluster-scoped Operator
+
+        .. code-block:: shell
+
+         $ kubectl apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_cluster_scoped.yaml
+
+         serviceaccount/ray-operator-serviceaccount created
+         clusterrole.rbac.authorization.k8s.io/ray-operator-clusterrole created
+         clusterrolebinding.rbac.authorization.k8s.io/ray-operator-clusterrolebinding created
+         deployment.apps/ray-operator created
+
+The output shows that we've launched a `Deployment`_ named ``ray-operator``.
+This Deployment maintains one Pod, which runs the operator process.
 The ServiceAccount, Role, and RoleBinding we have created grant the operator pod the `permissions`_ it needs to manage Ray clusters.
+
 
 .. _operator-launch:
 
@@ -223,9 +245,9 @@ Our RayCluster configuration specifies ``minWorkers:2`` in the second entry of `
  example-cluster-ray-head-hbxvv     1/1     Running   0          72s
  example-cluster-ray-worker-4hvv6   1/1     Running   0          64s
  example-cluster-ray-worker-78kp5   1/1     Running   0          64s
- ray-operator-pod                   1/1     Running   0          2m33s
+ ray-operator-d5f655d9-lhspx        1/1     Running   0          2m33s
 
-We see four pods: the operator, the Ray head node, and two Ray worker nodes.
+We see four pods: the operator pod, the Ray head node, and two Ray worker nodes.
 
 Let's launch another cluster in the same namespace, this one specifiying ``minWorkers:1``.
 
@@ -250,7 +272,7 @@ We confirm that both clusters are running in our namespace.
  example-cluster-ray-worker-qltnp    1/1     Running   0          10m
  example-cluster2-ray-head-kj5mg     1/1     Running   0          10s
  example-cluster2-ray-worker-qsgnd   1/1     Running   0          1s
- ray-operator-pod                    1/1     Running   0          10m
+ ray-operator-d5f655d9-lhspx         1/1     Running   0          10m
 
 Now we can :ref:`run Ray programs<ray-k8s-run>` on our Ray clusters.
 
@@ -260,11 +282,11 @@ Monitoring
 ----------
 Autoscaling logs are written to the operator pod's ``stdout`` and can be accessed with :code:`kubectl logs`.
 Each line of output is prefixed by the name of the cluster followed by a colon.
-The following command gets the last hundred lines of autoscaling logs for our second cluster.
+The following command gets the last hundred lines of autoscaling logs for our second cluster. (Be sure to substitute the name of your operator pod from the above ``get pods`` command.)
 
 .. code-block:: shell
 
- $ kubectl -n ray logs ray-operator-pod | grep ^example-cluster2: | tail -n 100
+ $ kubectl -n ray logs ray-operator-d5f655d9-lhspx | grep ^example-cluster2: | tail -n 100
 
 The output should include monitoring updates that look like this:
 
@@ -298,7 +320,7 @@ Either of the next two commands will delete our second cluster ``example-cluster
  # OR
  $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
 
-The pods associated with ``example-cluster2``  go into the ``TERMINATING`` phase. In a few moments, we check that these pods are gone:
+The pods associated with ``example-cluster2`` are marked for termination. In a few moments, we check that these pods are gone:
 
 .. code-block:: shell
 
@@ -307,16 +329,30 @@ The pods associated with ``example-cluster2``  go into the ``TERMINATING`` phase
  example-cluster-ray-head-th4wv     1/1     Running   0          57m
  example-cluster-ray-worker-q9pjn   1/1     Running   0          56m
  example-cluster-ray-worker-qltnp   1/1     Running   0          56m
- ray-operator-pod                   1/1     Running   0          57m
+ ray-operator-d5f655d9-lhspx        1/1     Running   0          57m
 
 Only the operator pod and the first ``example-cluster`` remain.
 
-To finish clean-up, we delete the cluster ``example-cluster`` and then the operator's resources.
+Next, we delete ``example-cluster``:
 
 .. code-block:: shell
 
  $ kubectl -n ray delete raycluster example-cluster
- $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
+
+Finally, we delete the operator:
+
+.. tabs::
+   .. group-tab:: Namespaced Operator
+
+        .. code-block:: shell
+
+         $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_namespaced.yaml
+
+   .. group-tab:: Cluster-scoped Operator
+
+        .. code-block:: shell
+
+         $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_cluster_scoped.yaml
 
 If you like, you can delete the RayCluster customer resource definition.
 (Using the operator again will then require reapplying the CRD.)
@@ -561,11 +597,6 @@ After running the above command locally, the Dashboard will be accessible at ``h
 You can also monitor the state of the cluster with ``kubectl logs`` when using the :ref:`Operator <operator-logs>` or with ``ray monitor`` when using
 the :ref:`Ray Cluster Launcher <cluster-launcher-commands>`.
 
-.. warning::
-   The Dashboard currently shows resource limits of the physical host each Ray node is running on,
-   rather than the limits of the container the node is running in.
-   This is a known bug tracked `here <https://github.com/ray-project/ray/issues/11172>`_.
-
 
 .. _k8s-comparison:
 
@@ -625,4 +656,5 @@ Questions or Issues?
 .. _`annotation`: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/#attaching-metadata-to-objects
 .. _`permissions`: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 .. _`minikube`: https://minikube.sigs.k8s.io/docs/start/
-.. _`namespaced`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+.. _`namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+.. _`Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/

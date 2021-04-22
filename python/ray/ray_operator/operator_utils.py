@@ -42,7 +42,6 @@ NODE_TYPE_FIELDS = {
     "workerSetupCommands": "worker_setup_commands"
 }
 
-
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
 
@@ -79,18 +78,15 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     namespace = cluster_resource["metadata"]["namespace"]
     cluster_owner_reference = get_cluster_owner_reference(
         cluster_resource, cluster_name)
-    config["available_node_types"] = get_node_types(cluster_resource,
-                                                    cluster_name,
-                                                    cluster_owner_reference)
+    config["available_node_types"] = get_node_types(
+        cluster_resource, cluster_name, cluster_owner_reference)
     config["cluster_name"] = cluster_name
-    config["provider"] = get_provider_config(cluster_name,
-                                             namespace,
+    config["provider"] = get_provider_config(cluster_name, namespace,
                                              cluster_owner_reference)
     return config
 
 
-def get_node_types(cluster_resource: Dict[str, Any],
-                   cluster_name: str,
+def get_node_types(cluster_resource: Dict[str, Any], cluster_name: str,
                    cluster_owner_reference: Dict[str, Any]) -> Dict[str, Any]:
     node_types = {}
     for pod_type in cluster_resource["spec"]["podTypes"]:
