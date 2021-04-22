@@ -2384,11 +2384,12 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     auto *wait_for_object_eviction_msg =
         pub_message.mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
-    object_status_publisher_->Publish<ObjectID>(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
-        absl::make_unique<rpc::PubMessage>(pub_message), object_id);
-    object_status_publisher_->UnregisterSubscription<ObjectID>(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
+    object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+                                      absl::make_unique<rpc::PubMessage>(pub_message),
+                                      object_id.Binary());
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
+        object_id.Binary());
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
@@ -2401,8 +2402,9 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    object_status_publisher_->RegisterSubscription<ObjectID>(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id);
+    object_status_publisher_->RegisterSubscription(
+        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
+        object_id.Binary());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
@@ -2492,18 +2494,20 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                            send_reply_callback)) {
     return;
   }
+
+  // We need to reply first to avoid race condition where publish
+  // happens before subscriber receives the reply.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
   const WorkerID subscriber_worker_id =
       WorkerID::FromBinary(request.subscriber_worker_id());
   const auto owner_address = request.reference().owner_address();
 
-  // Register for ref removed pubsub and reply. We need to reply first to avoid race
-  // condition.
-  object_status_publisher_->RegisterSubscription<ObjectID>(
-      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      object_id.Binary());
   // Set a callback to publish the message when the requested object ID's ref count
   // goes to 0.
   auto ref_removed_callback =

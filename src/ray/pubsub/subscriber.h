@@ -51,10 +51,10 @@ class SubscribeChannelInterface {
  public:
   virtual ~SubscribeChannelInterface(){};
 
-  virtual void Subcribe(const rpc::Address &publisher_address,
-                        const std::string &message_id,
-                        SubscriptionCallback subscription_callback,
-                        SubscriptionFailureCallback subscription_failure_callback) = 0;
+  virtual void Subscribe(const rpc::Address &publisher_address,
+                         const std::string &message_id,
+                         SubscriptionCallback subscription_callback,
+                         SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   virtual bool Unsubscribe(const rpc::Address &publisher_address,
                            const std::string &message_id) = 0;
@@ -77,9 +77,9 @@ class SubscriberChannel : public SubscribeChannelInterface {
   SubscriberChannel() {}
   ~SubscriberChannel() = default;
 
-  void Subcribe(const rpc::Address &publisher_address, const std::string &message_id,
-                SubscriptionCallback subscription_callback,
-                SubscriptionFailureCallback subscription_failure_callback) override;
+  void Subscribe(const rpc::Address &publisher_address, const std::string &message_id,
+                 SubscriptionCallback subscription_callback,
+                 SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::Address &publisher_address,
                    const std::string &message_id) override;
@@ -155,11 +155,11 @@ class SubscriberInterface {
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
-  virtual void Subcribe(const rpc::ChannelType channel_type,
-                        const rpc::Address &publisher_address,
-                        const std::string &message_id_binary,
-                        SubscriptionCallback subscription_callback,
-                        SubscriptionFailureCallback subscription_failure_callback) = 0;
+  virtual void Subscribe(const rpc::ChannelType channel_type,
+                         const rpc::Address &publisher_address,
+                         const std::string &message_id_binary,
+                         SubscriptionCallback subscription_callback,
+                         SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   /// Unsubscribe the object.
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
@@ -211,11 +211,11 @@ class Subscriber : public SubscriberInterface {
 
   ~Subscriber() = default;
 
-  void Subcribe(const rpc::ChannelType channel_type,
-                const rpc::Address &publisher_address,
-                const std::string &message_id_binary,
-                SubscriptionCallback subscription_callback,
-                SubscriptionFailureCallback subscription_failure_callback) override;
+  void Subscribe(const rpc::ChannelType channel_type,
+                 const rpc::Address &publisher_address,
+                 const std::string &message_id_binary,
+                 SubscriptionCallback subscription_callback,
+                 SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,

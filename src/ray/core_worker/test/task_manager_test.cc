@@ -14,11 +14,14 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
 
@@ -38,8 +41,10 @@ class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest(bool lineage_pinning_enabled = false)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
+        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(),
+            rpc::Address(), publisher_, subscriber_,
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
         manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
@@ -52,6 +57,8 @@ class TaskManagerTest : public ::testing::Test {
                  }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
+  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
+  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
   bool all_nodes_alive_ = true;
   std::vector<ObjectID> objects_to_recover_;

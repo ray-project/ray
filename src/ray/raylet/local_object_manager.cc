@@ -82,9 +82,9 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
           auto owner_dead_callback = [this, object_id]() {
             ReleaseFreedObject(object_id);
           };
-          core_worker_subscriber_->Subcribe(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
-                                            owner_address, object_id.Binary(),
-                                            subscription_callback, owner_dead_callback);
+          core_worker_subscriber_->Subscribe(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+                                             owner_address, object_id.Binary(),
+                                             subscription_callback, owner_dead_callback);
         });
   }
 }

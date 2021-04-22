@@ -816,7 +816,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         };
 
         absl::MutexLock lock(&mutex_);
-        object_status_subscriber_->Subcribe(
+        object_status_subscriber_->Subscribe(
             rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, addr.ToProto(),
             object_id.Binary(), message_published_callback, publisher_failed_callback);
       });
@@ -905,11 +905,12 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has "
                  << wait_for_ref_removed_message->borrowed_refs().size();
-  object_status_publisher_->Publish<ObjectID>(
-      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
-      absl::make_unique<rpc::PubMessage>(pub_message), object_id);
-  object_status_publisher_->UnregisterSubscription<ObjectID>(
-      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id, object_id);
+  object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
+                                    absl::make_unique<rpc::PubMessage>(pub_message),
+                                    object_id.Binary());
+  object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      object_id.Binary());
 }
 
 void ReferenceCounter::SetRefRemovedCallback(

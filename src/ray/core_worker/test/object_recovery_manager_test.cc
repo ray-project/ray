@@ -14,12 +14,15 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/pubsub/mock_pubsub.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -110,7 +113,9 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
-            rpc::Address(), /*distributed_ref_counting_enabled=*/true,
+            rpc::Address(), std::make_shared<mock_pubsub::MockPublisher>(),
+            std::make_shared<mock_pubsub::MockSubscriber>(),
+            /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
         manager_(rpc::Address(),
                  [&](const std::string &ip, int port) { return raylet_client_; },

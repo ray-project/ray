@@ -23,7 +23,7 @@ namespace pubsub {
 ///////////////////////////////////////////////////////////////////////////////
 
 template <typename MessageID>
-void SubscriberChannel<MessageID>::Subcribe(
+void SubscriberChannel<MessageID>::Subscribe(
     const rpc::Address &publisher_address, const std::string &message_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
@@ -189,14 +189,14 @@ inline std::shared_ptr<SubscribeChannelInterface> Subscriber::Channel(
   return it->second;
 }
 
-void Subscriber::Subcribe(const rpc::ChannelType channel_type,
-                          const rpc::Address &publisher_address,
-                          const std::string &message_id_binary,
-                          SubscriptionCallback subscription_callback,
-                          SubscriptionFailureCallback subscription_failure_callback) {
+void Subscriber::Subscribe(const rpc::ChannelType channel_type,
+                           const rpc::Address &publisher_address,
+                           const std::string &message_id_binary,
+                           SubscriptionCallback subscription_callback,
+                           SubscriptionFailureCallback subscription_failure_callback) {
   Channel(channel_type)
-      ->Subcribe(publisher_address, message_id_binary, std::move(subscription_callback),
-                 std::move(subscription_failure_callback));
+      ->Subscribe(publisher_address, message_id_binary, std::move(subscription_callback),
+                  std::move(subscription_failure_callback));
 
   // Make a long polling connection if we never made the one with this publisher for
   // pubsub operations.

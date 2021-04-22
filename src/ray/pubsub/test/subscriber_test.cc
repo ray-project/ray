@@ -105,8 +105,8 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   ASSERT_FALSE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
@@ -138,8 +138,8 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   for (int i = 0; i < 5; i++) {
     const auto object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
-    subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                          failure_callback);
+    subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                           failure_callback);
     objects_batched.push_back(object_id);
   }
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
@@ -164,8 +164,8 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
 
   // The object information is published.
@@ -196,8 +196,8 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
   const auto object_id_not_subscribed = ObjectID::FromRandom();
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
 
   // The object information is published.
   std::vector<ObjectID> objects_batched;
@@ -220,8 +220,8 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
 
   const auto owner_addr = GenerateOwnerAddress();
   const auto object_id = ObjectID::FromRandom();
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
   ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary()));
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
@@ -245,8 +245,8 @@ TEST_F(SubscriberTest, TestLongPollingFailure) {
   auto failure_callback = [this, object_id]() {
     object_failed_to_subscribe_.emplace(object_id);
   };
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
 
   // Long polling failed.
   std::vector<ObjectID> objects_batched;
@@ -275,8 +275,8 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
     ASSERT_TRUE(false);
   };
 
-  subscriber_->Subcribe(channel, owner_addr, object_id.Binary(), subscription_callback,
-                        failure_callback);
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
   std::vector<ObjectID> objects_batched;
   objects_batched.push_back(object_id);
   ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));

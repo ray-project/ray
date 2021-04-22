@@ -43,11 +43,11 @@ class SubscriptionIndex {
 
   /// Add a new entry to the index.
   /// NOTE: If the entry already exists, it raises assert failure.
-  void AddEntry(const MessageID &message_id, const SubscriberID &subscriber_id);
+  void AddEntry(const std::string &message_id_binary, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
   absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByMessageId(const MessageID &message_id) const;
+  GetSubscriberIdsByMessageId(const std::string &message_id_binary) const;
 
   /// Erase the subscriber from the index. Returns the number of erased subscribers.
   /// NOTE: It cannot erase subscribers that were never added.
@@ -56,10 +56,11 @@ class SubscriptionIndex {
   /// Erase the object id and subscriber id from the index. Return the number of erased
   /// entries.
   /// NOTE: It cannot erase subscribers that were never added.
-  bool EraseEntry(const MessageID &message_id, const SubscriberID &subscriber_id);
+  bool EraseEntry(const std::string &message_id_binary,
+                  const SubscriberID &subscriber_id);
 
   /// Return true if the object id exists in the index.
-  bool HasMessageId(const MessageID &message_id) const;
+  bool HasMessageId(const std::string &message_id_binary) const;
 
   /// Returns true if object id or subscriber id exists in the index.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
@@ -68,6 +69,10 @@ class SubscriptionIndex {
   bool AssertNoLeak() const;
 
  private:
+  const MessageID ParseBinary(const std::string &message_id_binary) const {
+    return MessageID::FromBinary(message_id_binary);
+  }
+
   /// Mapping from message id -> subscribers.
   absl::flat_hash_map<MessageID, absl::flat_hash_set<SubscriberID>>
       message_id_to_subscribers_;
@@ -149,6 +154,40 @@ class Subscriber {
 
 }  // namespace pub_internal
 
+class PublisherInterface {
+ public:
+  virtual ~PublisherInterface() {}
+
+  /// Register the subscription.
+  ///
+  /// \param channel_type The type of the channel.
+  /// \param subscriber_id The node id of the subscriber.
+  /// \param message_id The message_id that the subscriber is subscribing to.
+  virtual void RegisterSubscription(const rpc::ChannelType channel_type,
+                                    const SubscriberID &subscriber_id,
+                                    const std::string &message_id_binary) = 0;
+
+  /// Publish the given object id to subscribers.
+  ///
+  /// \param channel_type The type of the channel.
+  /// \param pub_message The message to publish.
+  /// \param message_id The message id to publish.
+  virtual void Publish(const rpc::ChannelType channel_type,
+                       std::unique_ptr<rpc::PubMessage> pub_message,
+                       const std::string &message_id_binary) = 0;
+
+  /// Unregister subscription. It means the given object id won't be published to the
+  /// subscriber anymore.
+  ///
+  /// \param channel_type The type of the channel.
+  /// \param subscriber_id The node id of the subscriber.
+  /// \param message_id The message_id of the subscriber.
+  /// \return True if erased. False otherwise.
+  virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
+                                      const SubscriberID &subscriber_id,
+                                      const std::string &message_id_binary) = 0;
+};
+
 /// Protocol detail
 ///
 /// - Subscriber always send a long polling connection as long as there are subscribed
@@ -158,7 +197,7 @@ class Subscriber {
 /// - Publishes messages are batched in order to avoid gRPC message limit.
 /// - Look at CheckDeadSubscribers for failure handling mechanism.
 ///
-class Publisher {
+class Publisher : public PublisherInterface {
  public:
   /// Pubsub coordinator constructor.
   ///
@@ -200,19 +239,18 @@ class Publisher {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param message_id The message_id that the subscriber is subscribing to.
-  template <typename MessageID>
   void RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
-                            const MessageID &message_id);
+                            const std::string &message_id_binary) override;
 
   /// Publish the given object id to subscribers.
   ///
   /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
   /// \param message_id The message id to publish.
-  template <typename MessageID>
   void Publish(const rpc::ChannelType channel_type,
-               std::unique_ptr<rpc::PubMessage> pub_message, const MessageID &message_id);
+               std::unique_ptr<rpc::PubMessage> pub_message,
+               const std::string &message_id_binary) override;
 
   /// Unregister subscription. It means the given object id won't be published to the
   /// subscriber anymore.
@@ -221,10 +259,9 @@ class Publisher {
   /// \param subscriber_id The node id of the subscriber.
   /// \param message_id The message_id of the subscriber.
   /// \return True if erased. False otherwise.
-  template <typename MessageID>
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,
-                              const MessageID &message_id);
+                              const std::string &message_id_binary) override;
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.
