@@ -25,6 +25,7 @@ def test_healthcheck():
     assert res.returncode != 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses unix SIGKILL")
 def test_healthcheck_ray_client_server():
     res = subprocess.run(
         ["ray", "health-check", "--component", "ray_client_server"])
