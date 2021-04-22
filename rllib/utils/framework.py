@@ -175,13 +175,15 @@ def try_import_torch(error=False):
         return _torch_stubs()
 
     try:
+        print("trying to import torch")
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError as e:
-        if error:
-            raise e
-        return _torch_stubs()
+    except Exception as e:
+        print("failed!")
+        #if error:
+        raise e
+        #return _torch_stubs()
 
 
 def _torch_stubs():
