@@ -133,7 +133,7 @@
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
 
-- label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning tests with tf=2.x (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -182,7 +182,7 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: everything else"
+- label: ":brain: RLlib: Misc - Agents, Env, Model, Evaluation, Optimizers, Policy, Utils"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -191,11 +191,11 @@
     # "learning_tests|quick_train|examples|tests_dir".
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-memory_leak_tests
+      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-memory_leak_tests,-quick_train,-examples,-tests_dir
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {1/2}"
+- label: ":brain: RLlib: Example Scripts {1/2}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -205,7 +205,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C,examples_D --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {2/2}"
+- label: ":brain: RLlib: Example Scripts {2/2}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -216,7 +216,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (A-L)"
+- label: ":brain: RLlib: Tests Dir (A-L)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -224,7 +224,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (M-Z)"
+- label: ":brain: RLlib: Tests Dir (M-Z)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
