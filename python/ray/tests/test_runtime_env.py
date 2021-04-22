@@ -8,6 +8,7 @@ from pathlib import Path
 import ray
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
+import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
 from time import sleep
