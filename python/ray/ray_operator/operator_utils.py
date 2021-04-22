@@ -123,6 +123,9 @@ def get_provider_config(cluster_name, namespace, cluster_owner_reference):
     provider_conf["use_internal_ips"] = True
     provider_conf["namespace"] = namespace
     provider_conf["services"] = [head_service]
+
+    # Signal to autoscaler that operator is in use:
+    provider_conf["_operator"] = True
     return provider_conf
 
 
