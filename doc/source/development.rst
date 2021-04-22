@@ -145,7 +145,7 @@ The following links were correct during the writing of this section. In case the
   pip install -e . --verbose
 
 Fast, Debug, and Optimized Builds
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------
 
 Currently, Ray is built with optimizations, which can take a long time and
 interfere with debugging. To perform fast, debug, or optimized builds, you can
