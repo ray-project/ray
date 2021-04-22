@@ -93,16 +93,13 @@ class VTraceLoss:
         self.value_targets = self.vtrace_returns.vs.to(device)
 
         # The policy gradients loss.
-        masked_pi_loss = actions_logp * \
-            self.vtrace_returns.pg_advantages.to(device) * valid_mask
-        self.pi_loss = -torch.sum(masked_pi_loss)
-        self.mean_pi_loss = -torch.mean(masked_pi_loss)
+        self.pi_loss = -torch.sum(
+            actions_logp * self.vtrace_returns.pg_advantages.to(device) *
+            valid_mask)
 
         # The baseline loss.
         delta = (values - self.value_targets) * valid_mask
-        squarred_delta = torch.pow(delta, 2.0)
-        self.vf_loss = 0.5 * torch.sum(squarred_delta)
-        self.mean_vf_loss = 0.5 * torch.mean(squarred_delta)
+        self.vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
 
         # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
@@ -159,7 +156,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    policy.loss = VTraceLoss(
+    loss = VTraceLoss(
         actions=_make_time_major(loss_actions, drop_last=True),
         actions_logp=_make_time_major(
             action_dist.logp(actions), drop_last=True),
@@ -184,7 +181,11 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    return policy.loss.total_loss
+    # Store loss object only for multi-GPU tower 0.
+    if policy.device == values.device:
+        policy.loss = loss
+
+    return loss.total_loss
 
 
 def make_time_major(policy, seq_lens, tensor, drop_last=False):
@@ -233,11 +234,11 @@ def stats(policy, train_batch):
 
     return {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy.loss.mean_pi_loss,
+        "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.mean_vf_loss,
+        "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
             torch.reshape(policy.loss.value_targets, [-1]),
             torch.reshape(values_batched, [-1])),
