@@ -88,29 +88,6 @@ cdef class ObjectRef(BaseID):
     def from_random(cls):
         return cls(CObjectID.FromRandom().Binary())
 
-    def __await__(self):
-        return self.as_asyncio_future().__await__()
-
-    def as_asyncio_future(self) -> asyncio.Future:
-        """Wrap ObjectRef with an asyncio.Future.
-
-        Note that the future cancellation will not cancel the correspoding
-        task when the ObjectRef representing return object of a task.
-        """
-        loop = asyncio.get_event_loop()
-        py_future = loop.create_future()
-
-        def callback(result):
-            loop = py_future._loop
-            loop.call_soon_threadsafe(
-                functools.partial(_set_future_helper, py_future, result))
-
-        self._on_completed(callback)
-
-        # A hack to keep a reference to the object ref for ref counting.
-        py_future.object_ref = self
-        return py_future
-
     def as_concurrent_future(self) -> concurrent.futures.Future:
         """Wrap ObjectRef with a concurrent.futures.Future
 
@@ -127,6 +104,17 @@ cdef class ObjectRef(BaseID):
         # A hack to keep a reference to the object ref for ref counting.
         py_future.object_ref = self
         return py_future
+
+    def __await__(self):
+        return self._as_asyncio_future().__await__()
+
+    def _as_asyncio_future(self) -> asyncio.Future:
+        """Wrap ObjectRef with an asyncio.Future.
+
+        Note that the future cancellation will not cancel the correspoding
+        task when the ObjectRef representing return object of a task.
+        """
+        return asyncio.wrap_future(self.as_concurrent_future())
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.
