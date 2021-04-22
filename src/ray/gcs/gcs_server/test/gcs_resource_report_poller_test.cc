@@ -28,7 +28,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
   GcsResourceReportPollerTest()
       : current_time_(0),
         gcs_resource_report_poller_(
-            nullptr, nullptr, [](const rpc::ResourcesData &) {},
+            nullptr, [](const rpc::ResourcesData &) {},
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,

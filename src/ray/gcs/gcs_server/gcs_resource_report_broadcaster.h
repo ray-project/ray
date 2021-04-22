@@ -1,0 +1,43 @@
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
+
+namespace ray {
+namespace gcs {
+
+/// Broadcasts resource report batches to raylets from a separate thread.
+class GcsResourceReportBroadcaster {
+
+ public:
+
+  GcsResourceReportBroadcaster(
+                               std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+                               std::function<void(rpc::ResourceUsageBatchData &)> get_resource_usage_batch_for_broadcast,
+                               std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &)> send_batch
+                               );
+
+  ~GcsResourceReportBroadcaster();
+
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Start a thread to broadcast resource reports..
+  void Start();
+
+  /// Stop broadcasting resource reports.
+  void Stop();
+
+  /// Event handler when a new node joins the cluster.
+  void HandleNodeAdded(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
+
+  /// Event handler when a node leaves the cluster.
+  void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
+
+ private:
+  // The shared, thread safe pool of raylet clients, which we use to minimize connections.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// See GcsResourcManager::GetResourceUsageBatchForBroadcast. This is passed as an argument for unit testing purposes only.
+  std::function<void(rpc::ResourceUsageBatchData &)> get_resource_usage_batch_for_broadcast_;
+  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &)> send_batch_;
+
+
+}

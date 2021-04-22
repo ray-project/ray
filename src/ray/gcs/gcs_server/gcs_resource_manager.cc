@@ -181,6 +181,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
       resources_data->resource_load_changed()) {
+    absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
   }
 }
@@ -327,7 +328,10 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
-  resources_buffer_.erase(node_id);
+  {
+    absl::MutexLock guard(&resource_buffer_mutex_);
+    resources_buffer_.erase(node_id);
+  }
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
 }
@@ -357,16 +361,22 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
   return true;
 }
 
+void GcsResourceManager::GetResourceUsageBatchForBroadcast(
+    rpc::ResourceUsageBatchData &buffer) {
+  absl::MutexLock guard(&resource_buffer_mutex_);
+  for (auto &resources : resources_buffer_) {
+    buffer.add_batch()->Swap(&resources.second);
+  }
+}
+
 void GcsResourceManager::SendBatchedResourceUsage() {
   if (!resources_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    for (auto &resources : resources_buffer_) {
-      batch->add_batch()->Swap(&resources.second);
-    }
-    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
+    rpc::ResourceUsageBatchData batch;
+    GetResourceUsageBatchForBroadcast(batch);
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
 
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch->SerializeAsString(), nullptr));
+                                       batch.SerializeAsString(), nullptr));
     resources_buffer_.clear();
   }
 }

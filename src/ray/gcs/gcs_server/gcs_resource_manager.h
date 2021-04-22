@@ -150,6 +150,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
 
+  /// Move the lightweight heartbeat information for broadcast into the buffer. This
+  /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
+  ///
+  /// \param buffer return parameter
+  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBatchData &buffer)
+      LOCKS_EXCLUDED(resource_buffer_mutex_);
+
  private:
   /// Delete the scheduling resources of the specified node.
   ///
@@ -165,8 +172,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
-  /// A buffer containing resource usage received from node managers in the last tick.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_;
+
+  /// Protect the lightweight heartbeat deltas which are accessed by different threads.
+  absl::Mutex resource_buffer_mutex_;
+  /// A buffer containing the lightweight heartbeats since the last broadcast.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_
+      GUARDED_BY(resource_buffer_mutex_);
 
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;

@@ -300,8 +300,7 @@ void GcsServer::InitTaskInfoHandler() {
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
   if (config_.pull_based_resource_reporting) {
     gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
-        gcs_resource_manager_, raylet_client_pool_,
-        [this](const rpc::ResourcesData &report) {
+        raylet_client_pool_, [this](const rpc::ResourcesData &report) {
           gcs_resource_manager_->UpdateFromResourceReport(report);
         }));
 
