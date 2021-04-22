@@ -25,8 +25,8 @@ spec:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster-ray-head-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-head-
       spec:
         restartPolicy: Never
 
@@ -81,8 +81,8 @@ spec:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster-ray-worker-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-worker-
       spec:
         restartPolicy: Never
         volumes:
