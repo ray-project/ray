@@ -3,9 +3,12 @@ from ray.includes.unique_ids cimport CObjectID
 import asyncio
 import concurrent.futures
 import functools
+import logging
 from typing import Callable, Any, Union
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 
 def _set_future_helper(
@@ -116,6 +119,8 @@ cdef class ObjectRef(BaseID):
         Note that the future cancellation will not cancel the correspoding
         task when the ObjectRef representing return object of a task.
         """
+        logger.warning("ref.as_future() is deprecated in favor of "
+                       "asyncio.wrap_future(ref.future()).")
         return asyncio.wrap_future(self.future())
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
