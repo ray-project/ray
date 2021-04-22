@@ -66,17 +66,14 @@ class KubernetesScaleTest(unittest.TestCase):
             example_cluster_config_path = get_operator_config_path(
                 "example_cluster.yaml")
 
-            crd_path = get_operator_config_path(
-                "cluster_crd.yaml")
+            crd_path = get_operator_config_path("cluster_crd.yaml")
 
             example_cluster_config = yaml.safe_load(
                 open(example_cluster_config_path).read())
 
             # Set image and pull policy
             podTypes = example_cluster_config["spec"]["podTypes"]
-            pod_specs = [
-                podType["podConfig"]["spec"] for podType in podTypes
-            ]
+            pod_specs = [podType["podConfig"]["spec"] for podType in podTypes]
             for pod_spec in pod_specs:
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
