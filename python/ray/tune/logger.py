@@ -309,12 +309,12 @@ class UnifiedLogger(Logger):
     def _init(self):
         self._loggers = []
         for cls in self._logger_cls_list:
-            #try:
-            self._loggers.append(cls(self.config, self.logdir, self.trial))
-            #except Exception as exc:
-            #    if log_once(f"instantiate:{cls.__name__}"):
-            #        logger.warning("Could not instantiate %s: %s.",
-            #                       cls.__name__, str(exc))
+            try:
+                self._loggers.append(cls(self.config, self.logdir, self.trial))
+            except Exception as exc:
+                if log_once(f"instantiate:{cls.__name__}"):
+                    logger.warning("Could not instantiate %s: %s.",
+                                   cls.__name__, str(exc))
 
     def on_result(self, result):
         for _logger in self._loggers:
