@@ -34,9 +34,9 @@ def submit_scaling_job(client_port, num_tasks):
     futures = [f.remote(i) for i in range(num_tasks)]
 
     print(">>>Verifying scale-up.")
-    # Operator pod plus number of tasks
-    # (each Ray pod has 1 CPU).
-    wait_for_pods(num_tasks + 1)
+    # Expect as many pods as tasks.
+    # (each Ray pod has 1 CPU)
+    wait_for_pods(num_tasks)
 
     print(">>>Waiting for task output.")
     task_output = ray.get(futures, timeout=360)
@@ -47,21 +47,17 @@ def submit_scaling_job(client_port, num_tasks):
 
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
-        with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
-                tempfile.NamedTemporaryFile("w+") as operator_file:
+        with tempfile.NamedTemporaryFile("w+") as example_cluster_file:
 
             example_cluster_config_path = get_operator_config_path(
                 "example_cluster.yaml")
-            operator_config_path = get_operator_config_path("operator.yaml")
 
-            operator_config = list(
-                yaml.safe_load_all(open(operator_config_path).read()))
             example_cluster_config = yaml.safe_load(
                 open(example_cluster_config_path).read())
 
             # Set image and pull policy
             podTypes = example_cluster_config["spec"]["podTypes"]
-            pod_specs = [operator_config[-1]["spec"]] + [
+            pod_specs = [
                 podType["podConfig"]["spec"] for podType in podTypes
             ]
             for pod_spec in pod_specs:
@@ -79,22 +75,18 @@ class KubernetesScaleTest(unittest.TestCase):
             worker_type["minWorkers"] = 30
 
             yaml.dump(example_cluster_config, example_cluster_file)
-            yaml.dump_all(operator_config, operator_file)
 
-            files = [example_cluster_file, operator_file]
-            for file in files:
-                file.flush()
+            example_cluster_file.flush()
 
-            # Start operator and a 30-pod-cluster.
-            print(">>>Starting operator and a cluster.")
-            for file in files:
-                cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
-                subprocess.check_call(cmd, shell=True)
+            # Start a 30-pod-cluster.
+            print(">>>Starting a cluster.")
+            cd = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
+            subprocess.check_call(cd, shell=True)
 
             # Check that autoscaling respects minWorkers by waiting for
             # 32 pods in the namespace.
             print(">>>Waiting for pods to join cluster.")
-            wait_for_pods(32)
+            wait_for_pods(31)
 
             # Check scale-down.
             print(">>>Decreasing min workers to 0.")
@@ -108,7 +100,7 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
-            wait_for_pods(2)
+            wait_for_pods(1)
 
             # Test scale up and scale down after task submission.
             command = f"kubectl -n {NAMESPACE}"\
@@ -132,7 +124,7 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
-            wait_for_pods(2)
+            wait_for_pods(1)
 
     def __del__(self):
         # To be safer, kill again:
