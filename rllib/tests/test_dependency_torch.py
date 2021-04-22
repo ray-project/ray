@@ -10,19 +10,18 @@ if __name__ == "__main__":
 
     from ray.rllib.utils.framework import try_import_tf
     tf1, tf, tfv = try_import_tf()
-    #import re
-    #tf_file = tf.__file__
-    #torch_file = re.sub("tensorflow", "torch", tf_file)
-    #print(torch_file)
-    #assert os.path.isfile(torch_file)
-    #with open(torch_file, "w") as f:
-    #    print("""
-#import traceback
-#print('someone is trying to import torch!')
-#for line in traceback.format_stack():
-#    print(line.strip())
-#raise ImportError('bad torch-importer!!')
-#""", file=f)
+    import re
+    tf_file = tf.__file__
+    torch_file = re.sub("tensorflow", "torch", tf_file)
+    print(torch_file)
+    assert os.path.isfile(torch_file)
+    with open(torch_file, "w") as f:
+        print("""
+import traceback
+print('someone is trying to import torch!')
+for line in traceback.format_stack():
+    print(line.strip())
+""", file=f)
 
     from ray.rllib.agents.a3c import A2CTrainer
     #if "torch" in sys.modules:
