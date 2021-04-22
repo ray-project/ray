@@ -6,8 +6,8 @@ import os
 import time
 from dataclasses import dataclass
 from functools import wraps
-from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
-                    Type, Union, overload)
+from typing import (Any, Callable, Dict, List, Optional, Tuple, Type, Union,
+                    overload)
 from warnings import warn
 from weakref import WeakValueDictionary
 
@@ -29,9 +29,6 @@ from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
                              get_random_letters, logger)
 
 import ray
-
-if TYPE_CHECKING:
-    from fastapi import APIRouter, FastAPI  # noqa: F401
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None

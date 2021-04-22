@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+import starlette.responses
 from starlette.routing import Route
 
 import ray
@@ -350,10 +350,10 @@ def test_fastapi_duplicate_routes(serve_instance):
 
 
 def test_asgi_compatible(serve_instance):
-    async def homepage(request):
-        return JSONResponse({"hello": "world"})
+    async def homepage(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
 
-    app = Starlette(routes=[Route('/', homepage)])
+    app = Starlette(routes=[Route("/", homepage)])
 
     @serve.deployment
     @serve.ingress(app)
