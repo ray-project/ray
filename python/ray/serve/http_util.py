@@ -233,7 +233,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if len(old_parameters) == 0:
             # TODO(simon): make it more flexible to support no arguments.
             raise RayServeException(
-                "Methods in FastAPI class based view must have ``self`` as "
+                "Methods in FastAPI class-based view must have ``self`` as "
                 "their first argument.")
         old_self_parameter = old_parameters[0]
         new_self_parameter = old_self_parameter.replace(
