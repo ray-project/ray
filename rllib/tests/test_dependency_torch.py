@@ -29,7 +29,7 @@ if __name__ == "__main__":
     #    import inspect
     #    print(inspect.getframeinfo(inspect.getouterframes(inspect.currentframe())[1][0])[0])
     assert "torch" not in sys.modules, \
-        "PyTorch initially present, when it shouldn't!"
+        "`torch` initially present, when it shouldn't!"
 
     # Note: No ray.init(), to test it works without Ray
     trainer = A2CTrainer(
@@ -40,8 +40,8 @@ if __name__ == "__main__":
     trainer.train()
 
     assert "torch" not in sys.modules, \
-        "PyTorch should not be imported after creating and " \
-        "training A3C agent!"
+        "`torch` should not be imported after creating and " \
+        "training A3CTrainer!"
 
     # Clean up.
     del os.environ["RLLIB_TEST_NO_TORCH_IMPORT"]
