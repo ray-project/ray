@@ -12,22 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/pubsub/subscriber.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 
 namespace ray {
 
 namespace mock_pubsub {
 
-/// NOTE: When you use these classes, please include #include "gmock/gmock.h" in the test file.
+/// NOTE: When you use these classes, please include #include "gmock/gmock.h" in the test
+/// file.
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  MOCK_METHOD5(Subscribe, void(const rpc::ChannelType channel_type,
-                               const rpc::Address &owner_address,
-                               const std::string &message_id_binary,
-                               pubsub::SubscriptionCallback subscription_callback,
-                               pubsub::SubscriptionFailureCallback subscription_failure_callback));
+  MOCK_METHOD5(Subscribe,
+               void(const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address,
+                    const std::string &message_id_binary,
+                    pubsub::SubscriptionCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
 
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
@@ -38,22 +40,19 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
 class MockPublisher : public pubsub::PublisherInterface {
  public:
-  MOCK_METHOD3(RegisterSubscription, void(
-      const rpc::ChannelType channel_type,
-      const pubsub::SubscriberID &subscriber_id,
-      const std::string &message_id_binary));
+  MOCK_METHOD3(RegisterSubscription, void(const rpc::ChannelType channel_type,
+                                          const pubsub::SubscriberID &subscriber_id,
+                                          const std::string &message_id_binary));
 
-  MOCK_METHOD3(Publish, void(
-      const rpc::ChannelType channel_type,
-      std::unique_ptr<rpc::PubMessage> pub_message,
-      const std::string &message_id_binary));
+  MOCK_METHOD3(Publish, void(const rpc::ChannelType channel_type,
+                             std::unique_ptr<rpc::PubMessage> pub_message,
+                             const std::string &message_id_binary));
 
-  MOCK_METHOD3(UnregisterSubscription, bool(
-      const rpc::ChannelType channel_type,
-      const pubsub::SubscriberID &subscriber_id,
-      const std::string &message_id_binary));
+  MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,
+                                            const pubsub::SubscriberID &subscriber_id,
+                                            const std::string &message_id_binary));
 };
 
-} // namespace mock_pubsub
+}  // namespace mock_pubsub
 
-} // namespace pubsub
+}  // namespace ray
