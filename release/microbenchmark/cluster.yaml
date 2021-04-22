@@ -1,7 +1,7 @@
 cluster_name: ray-release-microbenchmark
 
 docker:
-    image: anyscale/ray:latest
+    image: rayproject/ray:latest
     container_name: ray_container
     pull_before_run: False
 
@@ -15,6 +15,7 @@ available_node_types:
     cpu_64_ondemand:
         node_config:
             InstanceType: m5.16xlarge
+
         resources: {"CPU": 64}
         min_workers: 0
         max_workers: 0

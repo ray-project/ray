@@ -1,4 +1,4 @@
-cluster_name: ray-release-long-running-tests
+cluster_name: ray-release-long-running-tests-threenode
 
 docker:
     image: anyscale/ray-ml:nightly
@@ -29,10 +29,10 @@ available_node_types:
             BlockDeviceMappings:
               - DeviceName: /dev/sda1
                 Ebs:
-                  VolumeSize: 200
+                  VolumeSize: 350
         resources: {"CPU": 8}
-        min_workers: 0
-        max_workers: 0
+        min_workers: 3
+        max_workers: 3
 
 head_node_type: cpu_8_ondemand
 worker_default_node_type: cpu_8_ondemand
@@ -41,6 +41,5 @@ worker_default_node_type: cpu_8_ondemand
 setup_commands:
    - sudo apt update && sudo apt install -y unzip
    - pip install --upgrade pip
-   - pip install -U tensorflow==1.14
    - pip install -U {{env["RAY_WHEEL"]}}
-   - pip install -q "ray[all]" "gym[atari]"
+   - pip install -q "ray[all]"

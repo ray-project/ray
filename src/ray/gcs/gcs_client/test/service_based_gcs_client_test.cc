@@ -1027,16 +1027,23 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
 
   // NOTE: In the process of actor registration, if the callback function of
   // `WaitForActorOutOfScope` is executed first, and then the callback function of
-  // `ActorTable().Put` is executed, the actor registration fails; otherwise, the actor
-  // registration succeeds. So we can't assert whether the actor is registered
+  // `ActorTable().Put` is executed, the actor registration fails, we will receive one
+  // notification message; otherwise, the actor registration succeeds, we will receive
+  // two notification messages. So we can't assert whether the actor is registered
   // successfully.
   RegisterActor(actor_table_data, false);
 
-  // We should receive a new notification from the subscribe channel.
-  WaitForExpectedCount(num_subscribe_all_notifications,
-                       expected_num_subscribe_all_notifications);
-  WaitForExpectedCount(num_subscribe_one_notifications,
-                       expected_num_subscribe_one_notifications);
+  // We should receive new notification from the subscribe channel.
+  auto condition_subscribe_all = [&num_subscribe_all_notifications,
+                                  expected_num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_all, timeout_ms_.count()));
+  auto condition_subscribe_one = [&num_subscribe_one_notifications,
+                                  expected_num_subscribe_one_notifications]() {
+    return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_one, timeout_ms_.count()));
 
   // Restart GCS server.
   RestartGcsServer();
@@ -1046,8 +1053,11 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
   expected_num_subscribe_one_notifications += 2;
-  WaitForExpectedCount(num_subscribe_one_notifications,
-                       expected_num_subscribe_one_notifications);
+  auto condition_subscribe_one_restart = [&num_subscribe_one_notifications,
+                                          expected_num_subscribe_one_notifications]() {
+    return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_one_restart, timeout_ms_.count()));
 
   // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
   // client will register the actor again. When an actor is registered, the status in GCS
@@ -1061,13 +1071,11 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // `DEAD`, we will fetch one record, so `num_subscribe_all_notifications` will increase
   // by 2.
   expected_num_subscribe_all_notifications += 2;
-  auto condition = [&num_subscribe_all_notifications,
-                    expected_num_subscribe_all_notifications]() {
-    return num_subscribe_all_notifications == expected_num_subscribe_all_notifications ||
-           num_subscribe_all_notifications ==
-               expected_num_subscribe_all_notifications + 1;
+  auto condition_subscribe_all_restart = [&num_subscribe_all_notifications,
+                                          expected_num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
   };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_all_restart, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
