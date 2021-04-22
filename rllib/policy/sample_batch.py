@@ -559,6 +559,9 @@ class SampleBatch(dict):
         i = 0
         slices = []
         if self.seq_lens is not None and len(self.seq_lens) > 0:
+            assert np.all(self.seq_lens < slice_size), \
+                "ERROR: `slice_size` must be larger than the max. seq-len " \
+                "in the batch!"
             start_pos = 0
             current_slize_size = 0
             idx = 0
