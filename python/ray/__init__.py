@@ -99,7 +99,6 @@ __all__ = [
     "get_runtime_context",
     "actor",
     "actors",
-    "workers",
     "available_resources",
     "cancel",
     "cluster_resources",
