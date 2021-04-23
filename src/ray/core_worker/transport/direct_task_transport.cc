@@ -287,7 +287,7 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
                          << victim_addr.worker_id;
 
           thief_entry.SetWorkerDoneStealing();
-          
+
           if (thief_entry.tasks_in_flight == 0) {
             RAY_LOG(DEBUG)
                 << "Thief " << thief_addr.worker_id
@@ -304,10 +304,17 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
             // Get the task_id of the stolen task, and obtain the corresponding task_spec
             // from the TaskManager
             TaskID stolen_task_id = TaskID::FromBinary(reply.stolen_tasks_ids(i));
-            auto stolen_task_spec = task_finisher_->GetTaskSpec(stolen_task_id);
+            auto stolen_task_spec = *(task_finisher_->GetTaskSpec(stolen_task_id));
+            assert(stolen_task_spec);
 
             // delete the stolen task from the executing_tasks map if it is still there.
             executing_tasks_.erase(stolen_task_id);
+
+            // Add the task to the queue
+            RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
+                           << " back to the queue (of current size="
+                           << scheduling_key_entry.task_queue.size() << ")!";
+            scheduling_key_entry.task_queue.push_back(stolen_task_spec);
 
             // Ordinarily, the thief's pipeline does not get filled between the moment
             // when stealing starts and the moment when the victim responds with the
