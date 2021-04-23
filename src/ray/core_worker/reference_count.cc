@@ -815,6 +815,12 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
           CleanupBorrowersOnRefRemoved({}, object_id, addr);
         };
 
+        // If the request was failed, we just invoke the failure callback right away.
+        if (!status.ok()) {
+          publisher_failed_callback();
+          return;
+        }
+
         absl::MutexLock lock(&mutex_);
         object_status_subscriber_->Subscribe(
             rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, addr.ToProto(),
