@@ -2496,15 +2496,17 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
     return;
   }
 
-  // We need to reply first to avoid race condition where publish
-  // happens before subscriber receives the reply.
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
   const WorkerID subscriber_worker_id =
       WorkerID::FromBinary(request.subscriber_worker_id());
   const auto owner_address = request.reference().owner_address();
+
+  // We need to reply first to avoid race condition where publish
+  // happens before subscriber receives the reply.
+  // Note that this function should be called after accessing fields from the request.
+  // Otherwise, request could be GC'ed.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 
   object_status_publisher_->RegisterSubscription(
       rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
