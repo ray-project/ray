@@ -506,19 +506,32 @@ class Trainer(Trainable):
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
+            # Default logdir prefix containing the agent's name and the
+            # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
                                               timestr)
+            if not os.path.exists(DEFAULT_RESULTS_DIR):
+                os.makedirs(DEFAULT_RESULTS_DIR)
+            logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
-            def default_logger_creator(config):
-                """Creates a Unified logger with a default logdir prefix
-                containing the agent name and the env id
-                """
-                if not os.path.exists(DEFAULT_RESULTS_DIR):
-                    os.makedirs(DEFAULT_RESULTS_DIR)
-                logdir = tempfile.mkdtemp(
-                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, loggers=None)
+            # Allow users to more precisely configure the created logger
+            # via "logger_config.type".
+            if config.get("logger_config") and "type" in config["logger_config"]:
+
+                def default_logger_creator(config):
+                    """Creates a custom logger with the default prefix."""
+                    cfg = config["logger_config"].copy()
+                    cls = cfg.pop("type")
+                    return from_config(cls=cls, _args=[cfg, logdir])
+
+            # If no `type` given, use tune's UnifiedLogger as last resort.
+            else:
+
+                def default_logger_creator(config):
+                    """Creates a Unified logger with the default prefix."""
+                    return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
