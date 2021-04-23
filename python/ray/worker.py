@@ -601,6 +601,12 @@ def init(
             development, and the API is subject to change.
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        _tracing_startup_hook (str): If provided, turns on and sets up tracing
+        for Ray. Must be the name of a function that takes no arguments and
+        sets up a Tracer Provider, Remote Span Processors, and
+        (optional) additional instruments. See more at
+        docs.ray.io/tracing.html. It is currently under active development,
+        and the API is subject to change.
 
     Returns:
         Address information about the started processes.
