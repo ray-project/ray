@@ -19,7 +19,7 @@ First, install OpenTelemetry.
 To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. The tracing startup hook is expected to be a function that will be called with no args or kwargs. This hook needs to be available in the Python environment of all the worker processes.
 
 Tracer Provider
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 This configures how to collect traces. View the TracerProvider API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
 
 Remote Span Processors
@@ -87,7 +87,7 @@ If you want to provide your own custom tracing startup hook, provide your startu
 
 Custom Traces
 *************
-You can easily add custom tracing in your programs. Within your program, get the tracer object and then call ``trace.get_tracer(__name__)``.
+You can easily add custom tracing in your programs. Within your program, get the tracer object with ``trace.get_tracer(__name__)`` and start a new span with ``tracer.start_as_current_span(...)``.
 
 See below for a simple example of adding custom tracing.
 
