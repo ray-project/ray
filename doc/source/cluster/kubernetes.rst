@@ -186,7 +186,7 @@ For this example, we will create a namespace called ``ray``.
 Ray provides both namespaced and cluster-scoped Operators.
 
 - The namespaced Operator manages all Ray clusters within a single Kubernetes namespace.
-- The cluster-scoped Operator manages all Ray clusters across your Kubernetes cluster.
+- The cluster-scoped Operator manages all Ray clusters, across all namespaces of your Kubernetes cluster.
 
 Choose the option that suits your needs.
 However, do not simultaneously run namespaced and cluster-scoped Ray Operators within one Kubernetes cluster, as this will lead to unintended effects.
