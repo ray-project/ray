@@ -418,7 +418,7 @@ The following command submits a Job which executes an `example Ray program`_.
 
 .. code-block:: yaml
 
-  $ kubectl create -f ray/doc/kubernetes/job-example.yaml
+  $ kubectl -n ray create -f ray/doc/kubernetes/job-example.yaml
 
 The program executed by the Job waits for three Ray nodes to connect and then tests object transfer
 between the nodes. Note that the program uses the environment variables
