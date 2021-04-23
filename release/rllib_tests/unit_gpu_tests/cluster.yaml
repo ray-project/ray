@@ -33,5 +33,4 @@ head_node_type: gpu_ondemand
 setup_commands:
     - sudo apt update
     - sudo apt-get install -y libglib2.0-0 libcudnn8=8.0.5.39-1+cuda11.0 curl unzip gcc python3-dev
-#    - pip install -U {{env["RAY_WHEEL"]}}
-    - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.3.0/cb3661e547662f309a0cc55c5495b3adb779a309/ray-1.3.0-cp37-cp37m-manylinux2014_x86_64.whl
+    - pip install -U {{env["RAY_WHEEL"]}}

@@ -93,8 +93,7 @@ def pg_launcher(pre_created_pgs, num_pgs_to_create):
     pgs = []
     pgs += pre_created_pgs
     for i in range(num_pgs_to_create):
-        pgs.append(
-            placement_group(bundles, strategy="STRICT_SPREAD"))
+        pgs.append(placement_group(bundles, strategy="STRICT_SPREAD"))
 
     pgs_removed = []
     pgs_unremoved = []
