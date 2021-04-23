@@ -3,8 +3,9 @@ from ray.util.client import ray
 from ray.util.client.options import validate_options
 
 import asyncio
-import uuid
+import concurrent.futures
 import os
+import uuid
 import inspect
 from ray.util.inspect import is_cython
 import json
@@ -66,20 +67,19 @@ class ClientObjectRef(ClientBaseRef):
         return self.as_future().__await__()
 
     def as_future(self) -> asyncio.Future:
-        loop = asyncio.get_event_loop()
-        fut = loop.create_future()
+        return asyncio.wrap_future(self.future())
+
+    def future(self) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
 
         def set_value(data: Any) -> None:
             """Schedules a callback to set the exception or result
             in the Future."""
 
-            def inner_set_value() -> None:
-                if isinstance(data, Exception):
-                    fut.set_exception(data)
-                else:
-                    fut.set_result(data)
-
-            loop.call_soon_threadsafe(inner_set_value)
+            if isinstance(data, Exception):
+                fut.set_exception(data)
+            else:
+                fut.set_result(data)
 
         self._on_completed(set_value)
 
