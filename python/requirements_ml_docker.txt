@@ -1,0 +1,4 @@
+ipython
+tensorflow-gpu>=2.4.0
+torch
+torchvision
