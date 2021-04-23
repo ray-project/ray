@@ -463,9 +463,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
-
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
       options_.check_signals,
@@ -492,6 +489,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             },
             "CoreWorker.HandleException");
       }));
+
+  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
+                                       kInternalHeartbeatMillis);
 
   auto check_node_alive_fn = [this](const NodeID &node_id) {
     auto node = gcs_client_->Nodes().Get(node_id);
@@ -895,7 +895,7 @@ void CoreWorker::CheckForRayletFailure() {
 void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
 
-  // retry tasks
+  // Retry tasks.
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -905,9 +905,18 @@ void CoreWorker::InternalHeartbeat() {
     }
     to_resubmit_.pop_front();
   }
-  // check timeout tasks that are waiting for Death info
+
+  // Check timeout tasks that are waiting for death info.
   if (direct_actor_submitter_ != nullptr) {
     direct_actor_submitter_->CheckTimeoutTasks();
+  }
+
+  // Check for unhandled exceptions to raise after a timeout on the driver.
+  // Only do this for TTY, since shells like IPython sometimes save references
+  // to the result and prevent normal result deletion from handling.
+  // See also: https://github.com/ray-project/ray/issues/14485
+  if (options_.worker_type == WorkerType::DRIVER && options_.interactive) {
+    memory_store_->NotifyUnhandledErrors();
   }
 }
 

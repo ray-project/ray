@@ -128,6 +128,7 @@ py_test_module_list(
     "test_ray_init.py",
     "test_shuffle.py",
     "test_tempfile.py",
+    "test_unhandled_error.py",
   ],
   size = "small",
   extra_srcs = SRCS,
