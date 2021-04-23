@@ -11,7 +11,7 @@ Getting Started
 ---------------
 First, install OpenTelemetry.
 
-.. code-block:: bash
+.. code-block::
 
     pip install opentelemetry-api==1.0.0rc1
     pip install opentelemetry-sdk==1.0.0rc1
@@ -63,8 +63,7 @@ Below is an example tracing startup hook that sets up the default tracing provid
 For open-source users who want to experiment with tracing, Ray has a default tracing startup hook that exports spans to the folder ``/tmp/spans``. To run using this default hook, you can run the following code sample to set up tracing and trace a simple Ray task.
 
 .. tabs::
-
-  .. code-tab:: bash
+  .. code-tab::
 
     $ ray start --head --tracing-startup-hook=ray.util.tracing.enable_tracing:setup_tracing
     $ python
@@ -74,7 +73,6 @@ For open-source users who want to experiment with tracing, Ray has a default tra
             return 1
 
         obj_ref = my_function.remote()
-
 
   .. code-tab:: python
 
