@@ -152,12 +152,11 @@ def translate(configuration: Dict[str, Any],
 
 
 def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
-               status: str) -> None:
+               cluster_namespace: str, status: str) -> None:
     # TODO: Add retry logic in case of 409 due to old resource version.
-    namespace = cluster_cr["metadata"]["namespace"]
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
-        .patch_namespaced_custom_object_status(namespace=namespace,
+        .patch_namespaced_custom_object_status(namespace=cluster_namespace,
                                                group="cluster.ray.io",
                                                version="v1",
                                                plural="rayclusters",
