@@ -1,5 +1,3 @@
-from ray.tests.test_tracing import spans_dir
-
 import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -7,6 +5,8 @@ from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
     SimpleExportSpanProcessor,
 )
+
+spans_dir = "/tmp/spans/"
 
 
 def setup_tracing() -> None:
@@ -17,6 +17,6 @@ def setup_tracing() -> None:
     trace.get_tracer_provider().add_span_processor(
         SimpleExportSpanProcessor(
             ConsoleSpanExporter(
-                out=open(f"{spans_dir}/{os.getpid()}.txt", "w"),
+                out=open(f"{spans_dir}{os.getpid()}.txt", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
             )))

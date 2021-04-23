@@ -4,13 +4,13 @@ import json
 import os
 import pytest
 import shutil
-import tempfile
+# import tempfile
 
 import ray
 from ray.test_utils import check_call_ray
+from ray.tests.enable_tracing import spans_dir
 
-# Create temporary spans folder for trace output.
-spans_dir = tempfile.gettempdir() + "/spans"
+# spans_dir = tempfile.gettempdir() + "/spans"
 
 
 @pytest.fixture()
