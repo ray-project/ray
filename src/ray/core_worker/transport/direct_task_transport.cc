@@ -285,6 +285,9 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
         if (number_of_tasks_stolen == 0) {
           RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: "
                          << victim_addr.worker_id;
+
+          thief_entry.SetWorkerDoneStealing();
+          
           if (thief_entry.tasks_in_flight == 0) {
             RAY_LOG(DEBUG)
                 << "Thief " << thief_addr.worker_id
@@ -361,6 +364,7 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
               }
             }
           }
+          thief_entry.SetWorkerDoneStealing();
         }
       }));
 }
