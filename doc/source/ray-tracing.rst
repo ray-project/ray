@@ -35,6 +35,8 @@ Below is an example tracing startup hook that sets up the default tracing provid
   
   
   def setup_tracing() -> None:
+      # Creates /tmp/spans folder
+      os.makedirs("/tmp/spans", exist_ok=True)
       # Sets the tracer_provider. This is only allowed once per execution
       # context and will log a warning if attempted multiple times.
       trace.set_tracer_provider(TracerProvider())
