@@ -248,7 +248,7 @@ struct GcsServerMocker {
 
     /// ResourceUsageInterface
     void UpdateResourceUsage(
-                               const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
+        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
       RAY_CHECK(false) << "Unused";
     };
 
