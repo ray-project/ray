@@ -7,10 +7,9 @@ from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
     SimpleExportSpanProcessor,
 )
-from typing import Any
 
 
-def _setup_tracing(*args: Any, **kwargs: Any) -> None:
+def setup_tracing() -> None:
     """Stand-in for a user-provided `setup_tracing` hook."""
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.

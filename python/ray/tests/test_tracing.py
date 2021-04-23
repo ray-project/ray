@@ -33,7 +33,7 @@ def ray_start_cli_tracing(scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
     check_call_ray([
         "start", "--head", "--tracing-startup-hook",
-        "ray.tests.enable_tracing:_setup_tracing"
+        "ray.tests.enable_tracing:setup_tracing"
     ], )
     ray.init(address="auto")
     yield
@@ -44,7 +44,7 @@ def ray_start_cli_tracing(scope="function"):
 @pytest.fixture()
 def ray_start_init_tracing(scope="function"):
     """Call ray.init with tracing-startup-hook, and clean up at end of test."""
-    ray.init(_tracing_startup_hook="ray.tests.enable_tracing:_setup_tracing")
+    ray.init(_tracing_startup_hook="ray.tests.enable_tracing:setup_tracing")
     yield
     ray.shutdown()
 

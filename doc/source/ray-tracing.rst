@@ -15,8 +15,7 @@ First, install OpenTelemetry.
     pip install opentelemetry-api==1.0.0rc1
     pip install opentelemetry-sdk==1.0.0rc1
 
-To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. 
-
+To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. The tracing startup hook is expected to be a function that will be called with no args or kwargs.
 Tracer Provider
 ~~~~~~~~~~~~~~~~
 This configures how to collect traces. View the TracerProvider API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
@@ -44,35 +43,45 @@ Below is an example tracing startup hook that sets up the default tracing provid
       ConsoleSpanExporter,
       SimpleExportSpanProcessor,
   )
-  from typing import Any
   
   
-  def setup_tracing(*args: Any, **kwargs: Any) -> None:
+  def setup_tracing() -> None:
       # Sets the tracer_provider. This is only allowed once per execution
       # context and will log a warning if attempted multiple times.
       trace.set_tracer_provider(TracerProvider())
       trace.get_tracer_provider().add_span_processor(
           SimpleExportSpanProcessor(
               ConsoleSpanExporter(
-                  out=open(f"/tmp/spans_file{os.getpid()}.json", "a")
+                  out=open(f"/tmp/spans/{os.getpid()}.json", "a")
                   )
           )
       )
 
-    
-To run your program with the tracing hook, see the following examples.
 
+For open-source users who want to experiment with tracing, Ray has a default tracing startup hook that exports spans to the folder ``/tmp/spans``. To run using this default hook, you can run the following code sample to set up tracing and trace a simple Ray task.
 .. tabs::
   .. code-tab:: bash
 
-    $ ray start --head --tracing-startup-hook "my_library:setup_tracing"
+    $ ray start --head --tracing-startup-hook=ray.util.tracing.enable_tracing:setup_tracing
     $ python
     >>> ray.init(address="auto")
+    >>> @ray.remote
+        def my_function():
+            return 1
+
+        obj_ref = my_function.remote()
 
 
   .. code-tab:: python
 
-    ray.init(_tracing_startup_hook="my_library:setup_tracing")
+    >>> ray.init(_tracing_startup_hook="ray.util.tracing.enable_tracing:setup_tracing")
+    >>> @ray.remote
+        def my_function():
+            return 1
+
+        obj_ref = my_function.remote()
+
+If you want to provide your own custom tracing startup hook, provide your startup hook in the format of ``module:attribute`` where the attribute is the ``setup_tracing`` function to be run.
 
 Custom Traces
 *************
