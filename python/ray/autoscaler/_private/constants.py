@@ -81,6 +81,7 @@ RAY_PROCESSES = [
     ["ray.util.client.server", False],
     ["redis-server", False],
     ["default_worker.py", False],  # Python worker.
+    ["setup_worker.py", False],  # Python environment setup worker.
     ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
     ["io.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
     ["log_monitor.py", False],
