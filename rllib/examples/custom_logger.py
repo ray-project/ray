@@ -27,6 +27,7 @@ parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
+
 class MyPrintLogger(Logger):
     """Logs results by simply printing out everything.
     """
@@ -56,11 +57,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None)
 
     config = {
-        "env": "CartPole-v0" if args.run not in ["DDPG", "TD3"] else \
-            "Pendulum-v0",
+        "env": "CartPole-v0"
+        if args.run not in ["DDPG", "TD3"] else "Pendulum-v0",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
@@ -96,7 +97,7 @@ if __name__ == "__main__":
             "prefix": "ABC",
             # Optional: Custom logdir (do not define this here
             # for using ~/ray_results/...).
-            #"logdir": "/somewhere/on/my/file/system/"
+            # "logdir": "/somewhere/on/my/file/system/"
         }
     }
 
@@ -106,7 +107,8 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    results = tune.run(
+        args.run, config=config, stop=stop, verbose=2, loggers=[MyPrintLogger])
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
