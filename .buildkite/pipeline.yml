@@ -88,7 +88,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
 - label: ":python: (Flaky tests)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
