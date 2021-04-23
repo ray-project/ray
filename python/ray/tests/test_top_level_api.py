@@ -48,6 +48,13 @@ def test_non_ray_modules():
             mod), f"Module {mod} should not be reachable via ray.{name}"
 
 
+def test_for_strings():
+    strings = getmembers(ray, lambda obj: isinstance(obj, str))
+    for string, _ in strings:
+        assert string.startswith("__"), f"Invalid string: {string} found in "
+        "top level Ray. Please delete at the end of __init__.py."
+
+
 if __name__ == "__main__":
     import pytest
     import sys
