@@ -10,6 +10,10 @@ from ray.autoscaler._private._kubernetes.node_provider import\
     head_service_selector
 from ray.autoscaler._private.providers import _get_default_config
 
+RAY_API_GROUP = "cluster.ray.io"
+RAY_API_VERSION = "v1"
+RAYCLUSTER_PLURAL = "rayclusters"
+
 OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 # Operator is namespaced if the above environment variable is set,
 # cluster-scoped otherwise:
@@ -55,9 +59,9 @@ def cluster_scoped_cr_stream() -> Iterator:
     w = Watch()
     return w.stream(
         custom_objects_api().list_cluster_custom_object,
-        group="cluster.ray.io",
-        version="v1",
-        plural="rayclusters")
+        group=RAY_API_GROUP,
+        version=RAY_API_VERSION,
+        plural=RAYCLUSTER_PLURAL)
 
 
 def namespaced_cr_stream(namespace) -> Iterator:
@@ -65,9 +69,9 @@ def namespaced_cr_stream(namespace) -> Iterator:
     return w.stream(
         custom_objects_api().list_namespaced_custom_object,
         namespace=namespace,
-        group="cluster.ray.io",
-        version="v1",
-        plural="rayclusters")
+        group=RAY_API_GROUP,
+        version=RAY_API_VERSION,
+        plural=RAYCLUSTER_PLURAL)
 
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:

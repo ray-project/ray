@@ -20,11 +20,13 @@ logger = logging.getLogger(__name__)
 MAX_TAG_RETRIES = 3
 DELAY_BEFORE_TAG_RETRY = .5
 
+RAY_COMPONENT_LABEL = "cluster.ray.io/component"
+
 
 def head_service_selector(cluster_name: str) -> Dict[str, str]:
     """Selector for Operator-configured head service.
     """
-    return {"cluster.ray.io/component": f"{cluster_name}-ray-head"}
+    return {RAY_COMPONENT_LABEL: f"{cluster_name}-ray-head"}
 
 
 def to_label_selector(tags):
