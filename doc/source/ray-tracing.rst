@@ -10,12 +10,14 @@ To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to
 Getting Started
 ---------------
 First, install OpenTelemetry.
+
 .. code-block:: bash
 
     pip install opentelemetry-api==1.0.0rc1
     pip install opentelemetry-sdk==1.0.0rc1
 
 To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. The tracing startup hook is expected to be a function that will be called with no args or kwargs.
+
 Tracer Provider
 ~~~~~~~~~~~~~~~~
 This configures how to collect traces. View the TracerProvider API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
@@ -32,7 +34,7 @@ Additional Instruments
 If you are using a library that has built-in tracing support, the ``setup_tracing`` function you provide should also patch those libraries. You can find more documentation for the instrumentation of these libraries `here <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation>`_.
 
 Below is an example tracing startup hook that sets up the default tracing provider, exports spans to files in ``/tmp/spans``, and does not have any additional instruments.
-
+ 
 .. code-block:: python
 
   import ray
@@ -59,7 +61,9 @@ Below is an example tracing startup hook that sets up the default tracing provid
 
 
 For open-source users who want to experiment with tracing, Ray has a default tracing startup hook that exports spans to the folder ``/tmp/spans``. To run using this default hook, you can run the following code sample to set up tracing and trace a simple Ray task.
+
 .. tabs::
+
   .. code-tab:: bash
 
     $ ray start --head --tracing-startup-hook=ray.util.tracing.enable_tracing:setup_tracing
