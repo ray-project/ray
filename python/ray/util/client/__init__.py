@@ -149,7 +149,7 @@ class RayAPIStub:
         import ray.util.client.server.server as ray_client_server
         server_handle, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
-        self._server = server_handle
+        self._server = server_handle.grpc_server
         self.connect("localhost:50051")
         self._connected_with_init = True
         return address_info
@@ -159,8 +159,8 @@ class RayAPIStub:
         import ray.util.client.server.server as ray_client_server
         if self._server is None:
             return
-        ray_client_server.shutdown_with_server_handle(self._server,
-                                                      _exiting_interpreter)
+        ray_client_server.shutdown_with_server(self._server,
+                                               _exiting_interpreter)
         self._server = None
 
 

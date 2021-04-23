@@ -504,7 +504,7 @@ def test_startup_retry(ray_start_regular_shared):
     time.sleep(3)
     server = ray_client_server.serve("localhost:50051")
     thread.join()
-    server.shutdown(0)
+    server.stop(0)
     ray_client._inside_client_test = False
 
 
@@ -519,7 +519,7 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 
     def stop_server(server):
         time.sleep(2)
-        server.shutdown(0)
+        server.stop(0)
 
     server = ray_client_server.serve("localhost:50051")
     ray_client.connect("localhost:50051")

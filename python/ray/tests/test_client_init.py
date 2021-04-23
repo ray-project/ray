@@ -44,7 +44,7 @@ class C:
 def init_and_serve():
     server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
-    ray_client_server.shutdown_with_server_handle(server_handle)
+    ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
 
 
@@ -59,7 +59,7 @@ def init_and_serve_lazy():
 
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle
-    ray_client_server.shutdown_with_server_handle(server_handle)
+    ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
 
 
@@ -206,20 +206,15 @@ def test_max_clients(init_and_serve):
     def get_job_id(api):
         return api.get_runtime_context().worker.current_job_id
 
-    apis = []
     for i in range(3):
         api1 = RayAPIStub()
         info1 = api1.connect("localhost:50051")
 
         assert info1["num_clients"] == i + 1, info1
-        apis.append(api1)
 
     with pytest.raises(ConnectionError):
         api = RayAPIStub()
         _ = api.connect("localhost:50051")
-
-    for api in apis:
-        api.disconnect()
 
 
 if __name__ == "__main__":

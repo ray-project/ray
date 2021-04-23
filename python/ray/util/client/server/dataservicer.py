@@ -25,7 +25,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         self.clients_lock = Lock()
         self.num_clients = 0  # guarded by self.clients_lock
 
-    async def Datapath(self, request_iterator, context):
+    def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata["client_id"]
         accepted_connection = False
@@ -34,7 +34,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
         logger.debug(f"New data connection from client {client_id}: ")
         try:
-            async for req in request_iterator:
+            for req in request_iterator:
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
@@ -48,17 +48,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 else:
                     assert accepted_connection
                     if req_type == "get":
-                        get_resp = None
-                        if req.get.asynchronous:
-                            get_resp = self.basic_service._async_get_object(
-                                req.get, client_id, req.req_id, context)
-                            if get_resp is None:
-                                # The response for this request will be sent
-                                # when the object is ready.
-                                continue
-                        else:
-                            get_resp = self.basic_service._get_object(
-                                req.get, client_id)
+                        get_resp = self.basic_service._get_object(
+                            req.get, client_id)
                         resp = ray_client_pb2.DataResponse(get=get_resp)
                     elif req_type == "put":
                         put_resp = self.basic_service._put_object(
@@ -85,7 +76,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         raise Exception(f"Unreachable code: Request type "
                                         f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
-                await context.write(resp)
+                yield resp
         except grpc.RpcError as e:
             logger.debug(f"Closing data channel: {e}")
         finally:
