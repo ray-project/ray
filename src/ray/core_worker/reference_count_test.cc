@@ -66,6 +66,65 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
 };
 
+/// The 2 classes below are implemented to support distributed mock test using
+/// MockWorkerClient. How it works; if Publish is called, the corresponding callback from
+/// the Subscriber is called.
+// class MockDistributedSubscriber;
+// class MockDistributedPublisher;
+
+// using SubscriptionCallbackMap =
+//     std::unordered_map<> static SubscriptionIndex<ObjectID> directory;
+
+// class MockDistributedSubscriber; : public pubsub::SubscriberInterface {
+//  public:
+//   MockDistributedSubscriber(SubscriptionIndex<ObjectID> directory)
+//       : directory_(directory) {}
+
+//   ~MockDistributedSubscriber() = default;
+
+//   void Subscribe(
+//       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+//       const std::string &message_id_binary, SubscriptionCallback subscription_callback,
+//       SubscriptionFailureCallback subscription_failure_callback) override {}
+
+//   bool Unsubscribe(const rpc::ChannelType channel_type,
+//                    const rpc::Address &publisher_address,
+//                    const std::string &message_id_binary) override {
+//     return true;
+//   }
+
+//   /// Testing only. Return true if there's no metadata remained in the private
+//   attribute. bool AssertNoLeak() const override { return true; }
+
+//   SubscriptionIndex<ObjectID> directory_;
+// };
+
+// class MockDistributedPublisher; : public pubsub::PublisherInterface {
+//  public:
+//   MockDistributedPublisher(SubscriptionIndex<ObjectID> directory)
+//       : directory_(directory) {}
+
+//   ~MockDistributedPublisher() = default;
+
+//   void RegisterSubscription(const rpc::ChannelType channel_type,
+//                             const SubscriberID &subscriber_id,
+//                             const std::string &message_id_binary) {
+//     RAY_CHECK(false) << "No need to implement it for testing.";
+//   }
+
+//   void Publish(const rpc::ChannelType channel_type,
+//                std::unique_ptr<rpc::PubMessage> pub_message,
+//                const std::string &message_id_binary) {}
+
+//   bool UnregisterSubscription(const rpc::ChannelType channel_type,
+//                               const SubscriberID &subscriber_id,
+//                               const std::string &message_id_binary) {
+//     return true;
+//   }
+
+//   SubscriptionIndex<ObjectID> directory_;
+// };
+
 // class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 //  public:
 //   // Helper function to generate a random address.

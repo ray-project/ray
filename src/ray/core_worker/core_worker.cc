@@ -2378,12 +2378,14 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
-    std::unique_ptr<rpc::PubMessage> pub_message;
+
+    std::unique_ptr<rpc::PubMessage> pub_message = absl::make_unique<rpc::PubMessage>();
     pub_message->set_message_id(object_id.Binary());
     pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
     auto *wait_for_object_eviction_msg =
         pub_message->mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
+
     object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
                                       std::move(pub_message), object_id.Binary());
     object_status_publisher_->UnregisterSubscription(
