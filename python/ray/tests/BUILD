@@ -62,11 +62,9 @@ py_test_module_list(
     "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multi_node_3.py",
-    "test_multi_tenancy.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
-    "test_object_manager.py",
     "test_object_spilling.py",
     "test_output.py",
     "test_reconstruction.py",
@@ -87,7 +85,9 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_object_spilling_2.py",
+    "test_object_manager.py",
     "test_reference_counting_2.py",
+    "test_multi_tenancy.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -202,6 +202,8 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# TODO(ekl) we can't currently support tagging these as flaky since there's
+# no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
     "test_actor.py",
