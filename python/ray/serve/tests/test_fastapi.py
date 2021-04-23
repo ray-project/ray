@@ -11,8 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+import ray
 from ray import serve
-from ray.serve.utils import make_fastapi_class_based_view
+from ray.serve.http_util import make_fastapi_class_based_view
 
 
 def test_fastapi_function(serve_instance):
@@ -76,14 +77,24 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
+        def other(self, msg: str):
+            return msg
+
     A.deploy()
 
+    # Test HTTP calls.
     resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
     resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
     resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
+
+    # Test handle calls.
+    handle = A.get_handle()
+    assert ray.get(handle.b.remote(41)) == 42
+    assert ray.get(handle.c.remote(41)) == 40
+    assert ray.get(handle.other.remote("world")) == "world"
 
 
 def test_make_fastapi_cbv_util():
@@ -218,7 +229,7 @@ def test_fastapi_features(serve_instance):
     Worker.deploy()
 
     url = "http://localhost:8000/fastapi"
-    resp = requests.get(f"{url}")
+    resp = requests.get(f"{url}/")
     assert resp.status_code == 404
     assert "x-process-time" in resp.headers
 
@@ -298,6 +309,41 @@ def test_fastapi_features(serve_instance):
             "Origin": "https://googlebot.com"
         })
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
+
+
+def test_fastapi_duplicate_routes(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/api/v1")
+    @serve.ingress(app)
+    class App1:
+        @app.get("/")
+        def func_v1(self):
+            return "first"
+
+    @serve.deployment(route_prefix="/api/v2")
+    @serve.ingress(app)
+    class App2:
+        @app.get("/")
+        def func_v2(self):
+            return "second"
+
+    @app.get("/ignored")
+    def ignored():
+        pass
+
+    App1.deploy()
+    App2.deploy()
+
+    resp = requests.get("http://localhost:8000/api/v1")
+    assert resp.json() == "first"
+
+    resp = requests.get("http://localhost:8000/api/v2")
+    assert resp.json() == "second"
+
+    for version in ["v1", "v2"]:
+        resp = requests.get(f"http://localhost:8000/api/{version}/ignored")
+        assert resp.status_code == 404
 
 
 if __name__ == "__main__":

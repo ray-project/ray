@@ -624,7 +624,7 @@ py_test(
 # PPO: DDPPO
 py_test(
     name = "test_ddppo",
-    tags = ["agents_dir"],
+    tags = ["agents_dir", "flaky"],
     size = "small",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
@@ -1170,7 +1170,7 @@ py_test(
 
 py_test(
     name = "test_distributions",
-    tags = ["models"],
+    tags = ["models", "flaky"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
@@ -1262,7 +1262,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils"],
+    tags = ["utils", "flaky"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1434,7 +1434,7 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I"],
+    tags = ["tests_dir", "tests_dir_I", "flaky"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )
@@ -1852,7 +1852,7 @@ py_test(
 py_test(
     name = "examples/custom_env_torch",
     main = "examples/custom_env.py",
-    tags = ["examples", "examples_C"],
+    tags = ["examples", "examples_C", "flaky"],
     size = "medium",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test", "--torch"]
@@ -2209,6 +2209,15 @@ py_test(
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=DQN"]
+)
+
+py_test(
+    name = "examples/partial_gpus",
+    main = "examples/partial_gpus.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/partial_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
 )
 
 py_test(

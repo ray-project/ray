@@ -109,6 +109,11 @@ class TorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
+        # Log device and worker index.
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
+        worker = get_global_worker()
+        worker_idx = worker.worker_index if worker else 0
+
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing on
         #   self.device.
@@ -122,32 +127,36 @@ class TorchPolicy(Policy):
         #   parallelization will be done.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
-            logger.info(
-                "TorchPolicy running on {}.".format("{} fake-GPUs".format(
-                    config["num_gpus"]) if config["_fake_gpus"] else "CPU"))
+            logger.info("TorchPolicy (worker={}) running on {}.".format(
+                worker_idx if worker_idx > 0 else "local",
+                "{} fake-GPUs".format(config["num_gpus"])
+                if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
             self.devices = [
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
             self.model_gpu_towers = [
-                model if config["num_gpus"] == 0 else copy.deepcopy(model)
+                model if i == 0 else copy.deepcopy(model)
                 for i in range(config["num_gpus"] or 1)
             ]
+            self.model = model
         else:
-            logger.info("TorchPolicy running on {} GPU(s).".format(
-                config["num_gpus"]))
-            self.device = torch.device("cuda")
+            logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
+                worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
+            gpu_ids = ray.get_gpu_ids()
             self.devices = [
-                torch.device("cuda:{}".format(id_))
-                for i, id_ in enumerate(ray.get_gpu_ids())
-                if i < config["num_gpus"]
+                torch.device("cuda:{}".format(i))
+                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
             ]
-            self.model_gpu_towers = nn.parallel.replicate.replicate(
-                model, [
-                    id_ for i, id_ in enumerate(ray.get_gpu_ids())
-                    if i < config["num_gpus"]
-                ])
-        self.model = model.to(self.device)
+            self.device = self.devices[0]
+            ids = [
+                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
+            self.model_gpu_towers = []
+            for i, _ in enumerate(ids):
+                model_copy = copy.deepcopy(model)
+                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+            self.model = self.model_gpu_towers[0]
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -492,7 +501,7 @@ class TorchPolicy(Policy):
                 len_ -= shard_len
                 start += shard_len
 
-        # Copy weights of main model to all towers.
+            # Copy weights of main model to all towers.
             state_dict = self.model.state_dict()
             for tower in self.model_gpu_towers:
                 tower.load_state_dict(state_dict)
@@ -508,7 +517,9 @@ class TorchPolicy(Policy):
                 if tower_outputs[0][0][i] is not None:
                     all_grads.append(
                         torch.mean(
-                            torch.stack([t[0][i] for t in tower_outputs]),
+                            torch.stack([
+                                t[0][i].to(self.device) for t in tower_outputs
+                            ]),
                             dim=0))
                 else:
                     all_grads.append(None)
@@ -789,8 +800,7 @@ class TorchPolicy(Policy):
                                     param.grad is not None:
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
-                        loss_out[opt_idx].backward(
-                            retain_graph=(opt_idx < len(self._optimizers) - 1))
+                        loss_out[opt_idx].backward(retain_graph=True)
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
@@ -857,7 +867,7 @@ class TorchPolicy(Policy):
         for shard_idx in range(len(sample_batches)):
             output = results[shard_idx]
             if isinstance(output, Exception):
-                output.reraise()
+                raise output
             outputs.append(results[shard_idx])
         return outputs
 

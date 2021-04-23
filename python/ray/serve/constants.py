@@ -48,6 +48,3 @@ ALL_HTTP_METHODS = [
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
     "PATCH"
 ]
-
-#: Path suffix used to wildcard all subpaths.
-WILDCARD_PATH_SUFFIX = "/{wildcard:path}"
