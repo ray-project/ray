@@ -233,6 +233,20 @@ def build_eager_tf_policy(
             assert tf.executing_eagerly()
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
+
+            # Log device and worker index.
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info(
+                    "TF-eager Policy (worker={}) running on GPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info(
+                    "TF-eager Policy (worker={}) running on CPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+
             self._is_training = False
             self._loss_initialized = False
             self._sess = None
@@ -432,7 +446,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             # Pack internal state inputs into (separate) list.
             state_batches = [

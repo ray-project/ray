@@ -1,5 +1,5 @@
 """Tests launch, teardown, and update of multiple Ray clusters using Kubernetes
-operator."""
+operator. Also tests submission of jobs via Ray client."""
 import copy
 import sys
 import os
@@ -12,20 +12,28 @@ import kubernetes
 import pytest
 import yaml
 
+from ray.autoscaler._private._kubernetes.node_provider import\
+    KubernetesNodeProvider
+
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
+
 NAMESPACE_ENV = "KUBERNETES_OPERATOR_TEST_NAMESPACE"
 NAMESPACE = os.getenv(NAMESPACE_ENV, "test-k8s-operator")
 
+PULL_POLICY_ENV = "KUBERNETES_OPERATOR_TEST_PULL_POLICY"
+PULL_POLICY = os.getenv(PULL_POLICY_ENV, "Always")
+
 RAY_PATH = os.path.abspath(
     os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 
 def retry_until_true(f):
     # Retry 60 times with 1 second delay between attempts.
     def f_with_retries(*args, **kwargs):
-        for _ in range(120):
+        for _ in range(240):
             if f(*args, **kwargs):
                 return
             else:
@@ -57,20 +65,27 @@ def wait_for_logs():
 
 @retry_until_true
 def wait_for_job(job_pod):
+    print(">>>Checking job logs.")
     cmd = f"kubectl -n {NAMESPACE} logs {job_pod}"
     try:
-        out = subprocess.check_output(cmd, shell=True).decode()
+        out = subprocess.check_output(
+            cmd, shell=True, stderr=subprocess.STDOUT).decode()
     except subprocess.CalledProcessError as e:
+        print(">>>Failed to check job logs.")
         print(e.output.decode())
-        raise (e)
-    return ("success" in out.lower())
+        return False
+    success = "success" in out.lower()
+    if success:
+        print(">>>Job submission succeeded.")
+    else:
+        print(">>>Job logs do not indicate job sucess:")
+        print(out)
+    return success
 
 
 def kubernetes_configs_directory():
-    here = os.path.realpath(__file__)
-    ray_python_root = os.path.dirname(os.path.dirname(here))
-    relative_path = "autoscaler/kubernetes"
-    return os.path.join(ray_python_root, relative_path)
+    relative_path = "python/ray/autoscaler/kubernetes"
+    return os.path.join(RAY_PATH, relative_path)
 
 
 def get_kubernetes_config_path(name):
@@ -84,6 +99,14 @@ def get_operator_config_path(file_name):
 
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
+
+        # Validate terminate_node error handling
+        provider = KubernetesNodeProvider({
+            "namespace": NAMESPACE
+        }, "default_cluster_name")
+        # 404 caught, no error
+        provider.terminate_node("no-such-node")
+
         with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
                 tempfile.NamedTemporaryFile("w+") as example_cluster2_file,\
                 tempfile.NamedTemporaryFile("w+") as operator_file,\
@@ -116,7 +139,7 @@ class KubernetesOperatorTest(unittest.TestCase):
                  ] + [podType["podConfig"]["spec"] for podType in podTypes2])
             for pod_spec in pod_specs:
                 pod_spec["containers"][0]["image"] = IMAGE
-                pod_spec["containers"][0]["imagePullPolicy"] = "IfNotPresent"
+                pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
 
             # Dump to temporary files
             yaml.dump(example_cluster_config, example_cluster_file)
@@ -130,27 +153,33 @@ class KubernetesOperatorTest(unittest.TestCase):
                 file.flush()
 
             # Start operator and two clusters
+            print(">>>Starting operator and two clusters.")
             for file in files:
                 cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
                 subprocess.check_call(cmd, shell=True)
 
             # Check that autoscaling respects minWorkers by waiting for
             # six pods in the namespace.
+            print(">>>Waiting for pods to join clusters.")
             wait_for_pods(6)
 
             # Check that logging output looks normal (two workers connected to
             # ray cluster example-cluster.)
+            print(">>>Checking monitor logs for head and workers.")
             wait_for_logs()
 
             # Delete the second cluster
+            print(">>>Deleting example-cluster2.")
             cmd = f"kubectl -n {NAMESPACE} delete -f"\
                 f"{example_cluster2_file.name}"
             subprocess.check_call(cmd, shell=True)
 
             # Four pods remain
+            print(">>>Checking that example-cluster2 pods are gone.")
             wait_for_pods(4)
 
             # Check job submission
+            print(">>>Submitting a job to test Ray client connection.")
             cmd = f"kubectl -n {NAMESPACE} create -f {job_file.name}"
             subprocess.check_call(cmd, shell=True)
 
@@ -165,21 +194,24 @@ class KubernetesOperatorTest(unittest.TestCase):
 
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
+            print(">>>Updating cluster size.")
             example_cluster_edit = copy.deepcopy(example_cluster_config)
             example_cluster_edit["spec"]["podTypes"][1]["minWorkers"] = 3
             yaml.dump(example_cluster_edit, example_cluster_file)
             example_cluster_file.flush()
             cm = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
             subprocess.check_call(cm, shell=True)
-
+            print(">>>Checking that new cluster size is respected.")
             wait_for_pods(5)
 
             # Delete the first cluster
+            print(">>>Deleting second cluster.")
             cmd = f"kubectl -n {NAMESPACE} delete -f"\
                 f"{example_cluster_file.name}"
             subprocess.check_call(cmd, shell=True)
 
             # Only operator pod remains.
+            print(">>>Checking that all Ray cluster pods are gone.")
             wait_for_pods(1)
 
 

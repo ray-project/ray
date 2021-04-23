@@ -52,6 +52,7 @@ def test_auto_local_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.skip(reason="Temporarily disabled due to flakyniess.")
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):
@@ -90,7 +91,7 @@ def test_global_gc(shutdown_only):
             return (local_ref() is None and
                     not any(ray.get([a.has_garbage.remote() for a in actors])))
 
-        wait_for_condition(check_refs_gced)
+        wait_for_condition(check_refs_gced, timeout=60)
     finally:
         gc.enable()
 

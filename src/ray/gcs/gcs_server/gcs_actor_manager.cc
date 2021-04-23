@@ -996,14 +996,16 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
       RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
-    const auto &actor_id = sorted_destroyed_actor_list_.begin()->first;
+    const auto &actor_id = sorted_destroyed_actor_list_.front().first;
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(actor_id, nullptr));
     destroyed_actors_.erase(actor_id);
-    sorted_destroyed_actor_list_.erase(sorted_destroyed_actor_list_.begin());
+    sorted_destroyed_actor_list_.pop_front();
   }
-  destroyed_actors_.emplace(actor->GetActorID(), actor);
-  sorted_destroyed_actor_list_.emplace_back(
-      actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+
+  if (destroyed_actors_.emplace(actor->GetActorID(), actor).second) {
+    sorted_destroyed_actor_list_.emplace_back(
+        actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+  }
 }
 
 void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,

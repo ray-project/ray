@@ -86,12 +86,13 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
   placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
-
+  internal_kv_accessor_ = std::make_unique<ServiceBasedInternalKVAccessor>(this);
   // Init gcs service address check timer.
   periodical_runner_.reset(new PeriodicalRunner(io_service));
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      "GcsClient.deadline_timer.check_gcs_service_address");
 
   is_connected_ = true;
 

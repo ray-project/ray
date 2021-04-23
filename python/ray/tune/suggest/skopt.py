@@ -1,7 +1,7 @@
 import copy
 import logging
 import pickle
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
@@ -276,16 +276,21 @@ class SkOptSearch(Searcher):
             self._skopt_opt.tell(skopt_trial_info,
                                  self._metric_op * result[self._metric])
 
+    def get_state(self) -> Dict[str, Any]:
+        state = self.__dict__.copy()
+        return state
+
+    def set_state(self, state: Dict[str, Any]):
+        self.__dict__.update(state)
+
     def save(self, checkpoint_path: str):
-        trials_object = (self._initial_points, self._skopt_opt)
-        with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(trials_object, outputFile)
+        with open(checkpoint_path, "wb") as f:
+            pickle.dump((self._initial_points, self._skopt_opt), f)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as inputFile:
-            trials_object = pickle.load(inputFile)
-        self._initial_points = trials_object[0]
-        self._skopt_opt = trials_object[1]
+        with open(checkpoint_path, "rb") as f:
+            state = pickle.load(f)
+        self._initial_points, self._skopt_opt = state
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:

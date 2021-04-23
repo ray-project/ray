@@ -78,7 +78,6 @@ if __name__ == "__main__":
 
     def policy_mapping_fn(agent_id):
         pol_id = random.choice(policy_ids)
-        print(f"mapping {agent_id} to {pol_id}")
         return pol_id
 
     config = {

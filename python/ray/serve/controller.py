@@ -1,14 +1,17 @@
 import asyncio
 from collections import defaultdict
 import inspect
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
+from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
+    BackendInfo,
     BackendTag,
+    EndpointInfo,
     EndpointTag,
     GoalId,
     NodeId,
@@ -16,7 +19,10 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
+from ray.serve.constants import (
+    ALL_HTTP_METHODS,
+    RESERVED_VERSION_TAG,
+)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -32,7 +38,7 @@ CHECKPOINT_KEY = "serve-controller-checkpoint"
 CONTROL_LOOP_PERIOD_S = 0.1
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -107,8 +113,14 @@ class ServeController:
     async def run_control_loop(self) -> None:
         while True:
             async with self.write_lock:
-                self.http_state.update()
-                self.backend_state.update()
+                try:
+                    self.http_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating HTTP state: {e}")
+                try:
+                    self.backend_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating backend state: {e}")
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -165,7 +177,7 @@ class ServeController:
             endpoint: str,
             traffic_dict: Dict[str, float],
             route: Optional[str],
-            methods: List[str],
+            methods: Set[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -179,8 +191,13 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.endpoint_state.create_endpoint(endpoint, route, methods,
-                                                TrafficPolicy(traffic_dict))
+            self.endpoint_state.create_endpoint(
+                endpoint, EndpointInfo(methods, route=route),
+                TrafficPolicy(traffic_dict))
+
+        # TODO(simon): Use GoalID mechanism for this so client can check for
+        # goal id and http_state complete the goal id.
+        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
 
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
@@ -196,8 +213,13 @@ class ServeController:
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
-            return self.backend_state.deploy_backend(
-                backend_tag, backend_config, replica_config)
+            backend_info = BackendInfo(
+                worker_class=create_backend_replica(
+                    replica_config.backend_def),
+                version=RESERVED_VERSION_TAG,
+                backend_config=backend_config,
+                replica_config=replica_config)
+            return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -217,16 +239,17 @@ class ServeController:
                                     config_options: BackendConfig) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
-            existing_backend_info = self.backend_state.get_backend(backend_tag)
-            if existing_backend_info is None:
+            existing_info = self.backend_state.get_backend(backend_tag)
+            if existing_info is None:
                 raise ValueError(f"Backend {backend_tag} is not registered.")
 
-            existing_replica_config = existing_backend_info.replica_config
-            new_backend_config = existing_backend_info.backend_config.copy(
-                update=config_options.dict(exclude_unset=True))
-
-            return self.backend_state.deploy_backend(
-                backend_tag, new_backend_config, existing_replica_config)
+            backend_info = BackendInfo(
+                worker_class=existing_info.worker_class,
+                version=existing_info.version,
+                backend_config=existing_info.backend_config.copy(
+                    update=config_options.dict(exclude_unset=True)),
+                replica_config=existing_info.replica_config)
+            return self.backend_state.deploy_backend(backend_tag, backend_info)
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -250,30 +273,10 @@ class ServeController:
             self.kv_store.delete(CHECKPOINT_KEY)
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig,
-                     version: Optional[str]) -> Optional[GoalId]:
-        # By default the path prefix is the deployment name.
-        if replica_config.path_prefix is None:
-            replica_config.path_prefix = f"/{name}"
-            # Backend config should be synchronized so the backend worker
-            # is aware of it.
-            backend_config.internal_metadata.path_prefix = f"/{name}"
-
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            # {wildcard:path} is used so HTTPProxy's Starlette router can match
-            # arbitrary path.
-            http_route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-            http_methods = [
-                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
-                "TRACE", "PATCH"
-            ]
-        else:
-            http_route = replica_config.path_prefix
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
+                     replica_config: ReplicaConfig, version: Optional[str],
+                     route_prefix: Optional[str]) -> Optional[GoalId]:
+        if route_prefix is not None:
+            assert route_prefix.startswith("/")
 
         python_methods = []
         if inspect.isclass(replica_config.backend_def):
@@ -282,28 +285,53 @@ class ServeController:
                 python_methods.append(method_name)
 
         async with self.write_lock:
-            if version is None:
-                version = RESERVED_VERSION_TAG
-            else:
-                if version == RESERVED_VERSION_TAG:
-                    # TODO(edoakes): this is unlikely to ever be hit, but it's
-                    # still ugly and should be removed once the old codepath
-                    # can be deleted.
-                    raise ValueError(
-                        f"Version {RESERVED_VERSION_TAG} is reserved and "
-                        "cannot be used by applications.")
-            goal_id = self.backend_state.deploy_backend(
-                name, backend_config, replica_config, version)
-            self.endpoint_state.create_endpoint(
-                name,
-                http_route,
-                http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
-                python_methods=python_methods)
+            backend_info = BackendInfo(
+                worker_class=create_backend_replica(
+                    replica_config.backend_def),
+                version=version,
+                backend_config=backend_config,
+                replica_config=replica_config)
+
+            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            endpoint_info = EndpointInfo(
+                ALL_HTTP_METHODS,
+                route=route_prefix,
+                python_methods=python_methods,
+                legacy=False)
+            self.endpoint_state.update_endpoint(name, endpoint_info,
+                                                TrafficPolicy({
+                                                    name: 1.0
+                                                }))
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
         return self.backend_state.delete_backend(name, force_kill=False)
+
+    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+        """Get the current information about a deployment.
+
+        Args:
+            name(str): the name of the deployment.
+
+        Returns:
+            (BackendInfo, route)
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
+        backend_info: BackendInfo = self.backend_state.get_backend(name)
+        if backend_info is None:
+            raise KeyError(f"Deployment {name} does not exist.")
+
+        route = self.endpoint_state.get_endpoint_route(name)
+
+        return backend_info, route
+
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all active deployments."""
+        return {
+            name: (self.backend_state.get_backend(name),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs()
+        }

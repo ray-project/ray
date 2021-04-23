@@ -1,0 +1,20 @@
+# Runs on a p2.8xlarge single head node machine.
+# Should reach ~400 reward in about 1h and after 15-20M ts.
+atari-impala:
+    env:
+        BreakoutNoFrameskip-v4
+    run: IMPALA
+    config:
+        # Works for both torch and tf.
+        framework: torch
+        rollout_fragment_length: 50
+        train_batch_size: 4000
+        num_gpus: 4
+        num_workers: 31
+        num_gpus_per_worker: 0  # works also for partial GPUs (<1.0) per worker
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
