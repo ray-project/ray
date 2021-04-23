@@ -1,6 +1,5 @@
 import os
 import logging
-from os.path import dirname
 import platform
 import sys
 
@@ -54,7 +53,8 @@ if (platform.system() == "Linux"
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
 python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
-so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
+so_path = os.path.join(
+    os.path.dirname(__file__), "_raylet" + python_shared_lib_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL
