@@ -109,7 +109,7 @@ matrix:
           --test_env=CONDA_SHLVL
           --test_env=CONDA_PREFIX
           --test_env=CONDA_DEFAULT_ENV
-          python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/..
+          python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
 
     # Build MacOS wheels and MacOS jars
     - os: osx
