@@ -13,6 +13,7 @@ from weakref import WeakValueDictionary
 
 from starlette.requests import Request
 
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
@@ -963,7 +964,13 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         make_fastapi_class_based_view(app, cls)
-        startup_hook, shutdown_hook = make_startup_shutdown_hooks(app)
+
+        # Free the state of the app so subsequent modification won't affect
+        # this ingress deployment. We don't use copy.copy here to avoid
+        # recursion issue.
+        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+
+        startup_hook, shutdown_hook = make_startup_shutdown_hooks(frozen_app)
 
         class FastAPIWrapper(cls):
             async def __init__(self, *args, **kwargs):
@@ -974,7 +981,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
-                await app(
+                await frozen_app(
                     request.scope,
                     request._receive,
                     sender,

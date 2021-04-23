@@ -141,7 +141,8 @@ class OverrideDefaultResourceRequest:
 
 
 def make_learner_thread(local_worker, config):
-    if config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1:
+    if not config["simple_optimizer"] and (
+            config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1):
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
                 config["num_gpus"], config["num_data_loader_buffers"]))

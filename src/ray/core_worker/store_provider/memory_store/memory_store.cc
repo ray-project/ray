@@ -6,6 +6,15 @@
 
 namespace ray {
 
+// Notify the user about an unhandled error after this amount of time. This only
+// applies to interactive console (e.g., IPython), see:
+// https://github.com/ray-project/ray/issues/14485 for more info.
+const int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
+
+// Only scan at most this many items for unhandled errors, to avoid slowdowns
+// when there are too many local objects.
+const int kMaxUnhandledErrorScanItems = 1000;
+
 /// A class that represents a `Get` request.
 class GetRequest {
  public:
@@ -468,16 +477,36 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
-void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
+inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
   rpc::ErrorType error_type;
   // TODO(ekl) note that this doesn't warn on errors that are stored in plasma.
-  if (obj->IsException(&error_type) &&
-      // Only warn on task failures (avoid actor died, for example).
-      (error_type == rpc::ErrorType::WORKER_DIED ||
-       error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION)
+  return obj->IsException(&error_type) &&
+         // Only warn on task failures (avoid actor died, for example).
+         (error_type == rpc::ErrorType::WORKER_DIED ||
+          error_type == rpc::ErrorType::TASK_EXECUTION_EXCEPTION) &&
+         !obj->WasAccessed();
+}
 
-      && !obj->WasAccessed() && unhandled_exception_handler_ != nullptr) {
+void CoreWorkerMemoryStore::OnDelete(std::shared_ptr<RayObject> obj) {
+  if (IsUnhandledError(obj) && unhandled_exception_handler_ != nullptr) {
     unhandled_exception_handler_(*obj);
+  }
+}
+
+void CoreWorkerMemoryStore::NotifyUnhandledErrors() {
+  absl::MutexLock lock(&mu_);
+  int64_t threshold = absl::GetCurrentTimeNanos() - kUnhandledErrorGracePeriodNanos;
+  auto it = objects_.begin();
+  int count = 0;
+  while (it != objects_.end() && count < kMaxUnhandledErrorScanItems) {
+    const auto &obj = it->second;
+    if (IsUnhandledError(obj) && obj->CreationTimeNanos() < threshold &&
+        unhandled_exception_handler_ != nullptr) {
+      obj->SetAccessed();
+      unhandled_exception_handler_(*obj);
+    }
+    it++;
+    count++;
   }
 }
 
