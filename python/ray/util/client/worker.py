@@ -8,7 +8,9 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from functools import partial
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -57,6 +59,30 @@ def backoff(timeout: int) -> int:
     if timeout > MAX_TIMEOUT_SEC:
         timeout = MAX_TIMEOUT_SEC
     return timeout
+
+
+def short_polling_loop(
+        getter_function: Callable[[float], Any],
+        deadline: Optional[float],
+        log_retry_message: str = "Internal retry for short polling loop"
+) -> Any:
+    res = None
+    # Implement non-blocking get with a short-polling loop. This allows
+    # cancellation of gets via Ctrl-C, since we never block for long.
+    while True:
+        try:
+            if deadline:
+                op_timeout = min(MAX_BLOCKING_OPERATION_TIME_S,
+                                 max(deadline - time.monotonic(), 0.001))
+            else:
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
+            res = getter_function(op_timeout)
+            break
+        except GetTimeoutError:
+            if deadline and time.monotonic() > deadline:
+                raise
+            logger.debug(log_retry_message)
+    return res
 
 
 class Worker:
@@ -178,29 +204,14 @@ class Worker:
             raise Exception("Can't get something that's not a "
                             "list of IDs or just an ID: %s" % type(vals))
         if timeout is None:
-            timeout = 0
             deadline = None
         else:
             deadline = time.monotonic() + timeout
         out = []
         for obj_ref in to_get:
-            res = None
-            # Implement non-blocking get with a short-polling loop. This allows
-            # cancellation of gets via Ctrl-C, since we never block for long.
-            while True:
-                try:
-                    if deadline:
-                        op_timeout = min(
-                            MAX_BLOCKING_OPERATION_TIME_S,
-                            max(deadline - time.monotonic(), 0.001))
-                    else:
-                        op_timeout = MAX_BLOCKING_OPERATION_TIME_S
-                    res = self._get(obj_ref, op_timeout)
-                    break
-                except GetTimeoutError:
-                    if deadline and time.monotonic() > deadline:
-                        raise
-                    logger.debug("Internal retry for get {}".format(obj_ref))
+            res = short_polling_loop(
+                partial(self._get, obj_ref), deadline,
+                f"Internal retry for getting {obj_ref}")
             out.append(res)
         if single:
             out = out[0]
