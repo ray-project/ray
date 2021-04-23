@@ -16,7 +16,7 @@ First, install OpenTelemetry.
     pip install opentelemetry-api==1.0.0rc1
     pip install opentelemetry-sdk==1.0.0rc1
 
-To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. The tracing startup hook is expected to be a function that will be called with no args or kwargs.
+To enable tracing, you must provide a tracing startup hook with a function that will set up the Tracer Provider, Remote Span Processors, and Additional Instruments. The tracing startup hook is expected to be a function that will be called with no args or kwargs. This hook needs to be available in the Python environment of all the worker processes.
 
 Tracer Provider
 ~~~~~~~~~~~~~~~~
