@@ -3,6 +3,30 @@
 import os
 import sys
 
+from ray.tune.logger import Logger
+
+class MyPrintLogger(Logger):
+    """Logs results by simply printing out everything.
+    """
+
+    def _init(self):
+        # Custom init function.
+        print("Initializing ...")
+        # Setting up our log-line prefix.
+        self.prefix = self.config.get("prefix")
+
+    def on_result(self, result: dict):
+        # Define, what should happen on receiving a `result` (dict).
+        print(f"{self.prefix}: {result}")
+
+    def close(self):
+        # Releases all resources used by this logger.
+        print("Closing")
+
+    def flush(self):
+        # Flushing all possible disk writes to permanent storage.
+        print("Flushing ;)", flush=True)
+
 
 if __name__ == "__main__":
     # Do not import torch for testing purposes.
@@ -37,7 +61,7 @@ if __name__ == "__main__":
             # Disable the logger due to a sort-import attempt of torch
             # inside the tensorboardX.SummaryWriter class.
             "logger_config": {
-                "type": "ray.tune.logger.NoopLogger",
+                "type": MyPrintLogger, #"ray.tune.logger.NoopLogger",
             },
         })
     trainer.train()

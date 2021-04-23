@@ -524,7 +524,11 @@ class Trainer(Trainable):
                     """Creates a custom logger with the default prefix."""
                     cfg = config["logger_config"].copy()
                     cls = cfg.pop("type")
-                    return from_config(cls=cls, _args=[cfg, logdir])
+                    # Provide default for logdir, in case the user does
+                    # not specify this in the "logger_config" dict.
+                    logdir_ = cfg.pop("logdir", logdir)
+                    return from_config(
+                        cls=cls, _args=[cfg], logdir=logdir_)
 
             # If no `type` given, use tune's UnifiedLogger as last resort.
             else:
