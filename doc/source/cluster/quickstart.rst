@@ -32,19 +32,19 @@ Before we start, you will need to install some Python dependencies as follows:
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[full]' boto3
+            $ pip install -U 'ray[default]' boto3
 
     .. group-tab:: Azure
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[full]' azure-cli azure-core
+            $ pip install -U 'ray[default]' azure-cli azure-core
 
     .. group-tab:: GCP
 
         .. code-block:: shell
 
-            $ pip install -U 'ray[full]' google-api-python-client
+            $ pip install -U 'ray[default]' google-api-python-client
 
 Next, if you're not set up to use your cloud provider from the command line, you'll have to configure your credentials:
 

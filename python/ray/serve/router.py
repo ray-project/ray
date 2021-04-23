@@ -30,6 +30,12 @@ class RequestMetadata:
 
     is_shadow_query: bool = False
 
+    # Determines whether or not the backend implementation will be presented
+    # with a ServeRequest object or directly passed args and kwargs. This is
+    # used to maintain backward compatibility and will be removed in the
+    # future.
+    use_serve_request: bool = True
+
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
         self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
@@ -40,9 +46,6 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
-
-    # Fields used by backend worker to perform timing measurement.
-    tick_enter_replica: Optional[float] = None
 
 
 class ReplicaSet:
@@ -115,6 +118,8 @@ class ReplicaSet:
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
+            logger.debug(
+                f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -185,7 +190,7 @@ class ReplicaSet:
         return assigned_ref
 
 
-class Router:
+class EndpointRouter:
     def __init__(
             self,
             controller_handle: ActorHandle,

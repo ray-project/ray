@@ -48,6 +48,9 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "rnn",
             "max_seq_len": 20,
+            "custom_model_config": {
+                "cell_size": 32,
+            },
         },
         "framework": "torch" if args.torch else "tf",
     }
@@ -57,6 +60,32 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
+
+    # To run the Trainer without tune.run, using our RNN model and
+    # manual state-in handling, do the following:
+
+    # Example (use `config` from the above code):
+    # >> import numpy as np
+    # >> from ray.rllib.agents.ppo import PPOTrainer
+    # >>
+    # >> trainer = PPOTrainer(config)
+    # >> lstm_cell_size = config["model"]["custom_model_config"]["cell_size"]
+    # >> env = RepeatAfterMeEnv({})
+    # >> obs = env.reset()
+    # >>
+    # >> # range(2) b/c h- and c-states of the LSTM.
+    # >> init_state = state = [
+    # ..     np.zeros([lstm_cell_size], np.float32) for _ in range(2)
+    # .. ]
+    # >>
+    # >> while True:
+    # >>     a, state_out, _ = trainer.compute_action(obs, state)
+    # >>     obs, reward, done, _ = env.step(a)
+    # >>     if done:
+    # >>         obs = env.reset()
+    # >>         state = init_state
+    # >>     else:
+    # >>         state = state_out
 
     results = tune.run(args.run, config=config, stop=stop, verbose=1)
 

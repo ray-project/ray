@@ -243,9 +243,17 @@ class ClientAPI:
         """
         return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
+    # Client process isn't assigned any GPUs.
+    def get_gpu_ids(self) -> list:
+        return []
+
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
         return self.is_initialized()
+
+    def _internal_kv_exists(self, key: bytes) -> bool:
+        """Hook for internal_kv._internal_kv_exists."""
+        return self.worker.internal_kv_exists(as_bytes(key))
 
     def _internal_kv_get(self, key: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_get."""
@@ -278,6 +286,10 @@ class ClientAPI:
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""
         return self.worker._get_converted(key)
+
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return self.worker._converted_key_exists(key)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

@@ -95,9 +95,10 @@ class TrainableUtil:
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found for {}"
-                                    .format(checkpoint_path))
-        return checkpoint_dir
+            raise FileNotFoundError(
+                "Checkpoint directory not found for {}".format(
+                    checkpoint_path))
+        return os.path.normpath(checkpoint_dir)
 
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir, index, override=False):
@@ -149,12 +150,12 @@ class TrainableUtil:
             FileNotFoundError if the directory is not found.
         """
         marker_paths = glob.glob(
-            os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
+            os.path.join(glob.escape(logdir), "checkpoint_*/.is_checkpoint"))
         iter_chkpt_pairs = []
         for marker_path in marker_paths:
             chkpt_dir = os.path.dirname(marker_path)
             metadata_file = glob.glob(
-                os.path.join(chkpt_dir, "*.tune_metadata"))
+                os.path.join(glob.escape(chkpt_dir), "*.tune_metadata"))
             if len(metadata_file) != 1:
                 raise ValueError(
                     "{} has zero or more than one tune_metadata.".format(
