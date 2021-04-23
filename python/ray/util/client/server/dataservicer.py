@@ -52,7 +52,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
             queue_filler_thread = Thread(target=fill_queue, daemon=True)
             queue_filler_thread.start()
-
+            """For non `async get` requests, this loop yields immediately
+            For `async get` requests, this loop:
+                 1) does not yield, it just continues
+                 2) When the result is ready, it yields
+            """
             for req in iter(request_queue.get, None):
                 if isinstance(req, ray_client_pb2.DataResponse):
                     # Early shortcut if this is the result of an async get.
