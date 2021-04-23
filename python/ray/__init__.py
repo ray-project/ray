@@ -136,3 +136,6 @@ __all__ += [
     "UniqueID",
     "PlacementGroupID",
 ]
+
+# Remove modules from top-level ray. This prevents things like: ray.os.path
+del ctypes, logging, os, platform, sys
