@@ -14,7 +14,7 @@ RUN sudo apt-get update \
         libgtk2.0-dev \
         zlib1g-dev \
         libgl1-mesa-dev \
-    && $HOME/anaconda3/bin/pip install -U pip
+    && $HOME/anaconda3/bin/pip install -U pip \
     && $HOME/anaconda3/bin/pip --use-deprecated=legacy-resolver --no-cache-dir install -r requirements.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_rllib.txt \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_tune.txt \
@@ -25,4 +25,3 @@ RUN sudo apt-get update \
     && sudo rm requirements.txt && sudo rm requirements_ml_docker.txt \
     && sudo rm requirements_tune.txt && sudo rm requirements_rllib.txt \
     && sudo apt-get clean
-
