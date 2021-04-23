@@ -11,6 +11,7 @@ SRCS = [] + select({
 py_test_module_list(
   files = [
 #    "test_dynres.py",  # dyn res not implemented
+    "test_actor_pool.py",
     "test_async.py",
     "test_actor_advanced.py",
     "test_actor_failures.py",
@@ -97,7 +98,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_pool.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -128,6 +128,7 @@ py_test_module_list(
     "test_ray_init.py",
     "test_shuffle.py",
     "test_tempfile.py",
+    "test_unhandled_error.py",
   ],
   size = "small",
   extra_srcs = SRCS,

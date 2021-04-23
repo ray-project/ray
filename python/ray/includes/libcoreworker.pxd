@@ -235,6 +235,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
+        c_bool interactive
         c_string node_ip_address
         int node_manager_port
         c_string raylet_ip_address

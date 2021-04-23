@@ -222,6 +222,9 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
+# The default module path to a Python function that sets up the worker env.
+DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup"
+
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
@@ -238,3 +241,8 @@ DEFAULT_OBJECT_PREFIX = "ray_spilled_objects"
 GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
+
+# Filename of "shim process" that sets up Python worker environment.
+# Should be kept in sync with kSetupWorkerFilename in
+# src/ray/common/constants.h.
+SETUP_WORKER_FILENAME = "setup_worker.py"
