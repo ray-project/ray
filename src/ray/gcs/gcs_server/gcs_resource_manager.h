@@ -44,7 +44,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                              bool broadcast_resource_usage);
 
   virtual ~GcsResourceManager() {}
 
@@ -183,6 +184,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Whether or not to broadcast resource usage via redis.
+  const bool broadcast_resource_usage_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.

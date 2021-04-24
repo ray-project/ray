@@ -148,6 +148,10 @@ void GcsServer::Stop() {
       gcs_resource_report_poller_->Stop();
     }
 
+    if (config_.grpc_based_resource_broadcast) {
+      gcs_resource_report_broadcaster_->Stop();
+    }
+
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
@@ -183,8 +187,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
+  RAY_LOG(ERROR) << "Should broadcast (from gcs server) " << (!config_.grpc_based_resource_broadcast);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      main_service_, gcs_pub_sub_, gcs_table_storage_);
+                                                               main_service_, gcs_pub_sub_, gcs_table_storage_, !config_.grpc_based_resource_broadcast);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -313,7 +318,7 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  if (config_.pull_based_resource_reporting) {
+  if (config_.grpc_based_resource_broadcast) {
     gcs_resource_report_broadcaster_.reset(new GcsResourceReportBroadcaster(
         raylet_client_pool_,
         [this](rpc::ResourceUsageBatchData &buffer) {
@@ -363,6 +368,9 @@ void GcsServer::InstallEventListeners() {
     if (config_.pull_based_resource_reporting) {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
     }
+    if (config_.grpc_based_resource_broadcast) {
+      gcs_resource_report_broadcaster_->HandleNodeAdded(*node);
+    }
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -375,6 +383,9 @@ void GcsServer::InstallEventListeners() {
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
         if (config_.pull_based_resource_reporting) {
           gcs_resource_report_poller_->HandleNodeRemoved(*node);
+        }
+        if (config_.grpc_based_resource_broadcast) {
+          gcs_resource_report_broadcaster_->HandleNodeRemoved(*node);
         }
       });
 

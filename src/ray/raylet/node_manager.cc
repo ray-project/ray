@@ -522,7 +522,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
     resources_data.set_should_global_gc(true);
-    resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
 

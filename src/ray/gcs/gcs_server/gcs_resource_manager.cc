@@ -21,14 +21,21 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool broadcast_resource_usage)
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {
-  periodical_runner_.RunFnPeriodically(
-      [this] { SendBatchedResourceUsage(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds(),
-      "GcsResourceManager.deadline_timer.send_batched_resource_usage");
+      gcs_table_storage_(gcs_table_storage),
+      broadcast_resource_usage_(broadcast_resource_usage)
+{
+  if (broadcast_resource_usage_) {
+    RAY_LOG(ERROR) << "should broadcast: " << broadcast_resource_usage_;
+    RAY_LOG(ERROR) << "Broadcasting resource usage for no reason...";
+
+    periodical_runner_.RunFnPeriodically(
+                                         [this] { SendBatchedResourceUsage(); },
+                                         RayConfig::instance().raylet_report_resources_period_milliseconds(),
+                                         "GcsResourceManager.deadline_timer.send_batched_resource_usage");
+  }
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -78,6 +85,8 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
+      // TODO (Alex): I don't think anything subscribes to this? RESOLVE BEFORE MERGING
+      /*
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
@@ -85,6 +94,7 @@ void GcsResourceManager::HandleUpdateResources(
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));
+      */
 
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
@@ -131,6 +141,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
+      RAY_CHECK(false) << "Unused codepath";
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));
@@ -374,6 +385,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     GetResourceUsageBatchForBroadcast(*batch);
     stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
+    // RAY_CHECK(false) << "remove this check...";
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();

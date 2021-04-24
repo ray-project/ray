@@ -44,6 +44,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.redis_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit test targets.
+    config_.pull_based_resource_reporting = false;
+    config_.grpc_based_resource_broadcast = false;
 
     client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
@@ -673,6 +676,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
+/*
 TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   // Subscribe to node resource changes.
   std::atomic<int> add_count(0);
@@ -703,6 +707,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   WaitForExpectedCount(remove_count, 1);
   ASSERT_TRUE(GetResources(node_id).empty());
 }
+*/
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   // Subscribe batched state of all nodes from GCS.
@@ -1126,6 +1131,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   WaitForExpectedCount(object2_change_count, 3);
 }
 
+/*
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -1177,6 +1183,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   WaitForExpectedCount(resource_change_count, 2);
   WaitForExpectedCount(batch_resource_usage_count, 2);
 }
+*/
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
