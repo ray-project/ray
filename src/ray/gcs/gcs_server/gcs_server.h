@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_broadcaster.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -121,6 +122,9 @@ class GcsServer {
   /// Initialize resource report polling.
   void InitResourceReportPolling(const GcsInitData &gcs_init_data);
 
+  /// Initialize resource report broadcasting.
+  void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
+
   /// Install event listeners.
   void InstallEventListeners();
 
@@ -190,6 +194,8 @@ class GcsServer {
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   /// Resource report poller.
   std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
+  /// Resource report broadcaster.
+  std::unique_ptr<GcsResourceReportBroadcaster> gcs_resource_report_broadcaster_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.

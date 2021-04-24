@@ -107,6 +107,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
 
+  // Init resource report broadcasting.
+  InitResourceReportBroadcasting(gcs_init_data);
+
   // Install event listeners.
   InstallEventListeners();
 
@@ -306,6 +309,21 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 
     gcs_resource_report_poller_->Initialize(gcs_init_data);
     gcs_resource_report_poller_->Start();
+  }
+}
+
+void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
+  if (config_.pull_based_resource_reporting) {
+    gcs_resource_report_broadcaster_.reset(new GcsResourceReportBroadcaster(
+        raylet_client_pool_,
+        [this](rpc::ResourceUsageBatchData &buffer) {
+          gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
+        }
+
+        ));
+
+    gcs_resource_report_broadcaster_->Initialize(gcs_init_data);
+    gcs_resource_report_broadcaster_->Start();
   }
 }
 
