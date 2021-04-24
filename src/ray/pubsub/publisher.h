@@ -66,7 +66,7 @@ class SubscriptionIndex {
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
-  bool AssertNoLeak() const;
+  bool CheckNoLeaks() const;
 
  private:
   const MessageID ParseBinary(const std::string &message_id_binary) const {
@@ -127,7 +127,7 @@ class Subscriber {
   bool PublishIfPossible(bool force = false);
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
-  bool AssertNoLeak() const;
+  bool CheckNoLeaks() const;
 
   /// Return true if the subscriber is disconnected (if the subscriber is dead).
   /// The subscriber is considered to be dead if there was no long polling connection for
@@ -303,7 +303,7 @@ class Publisher : public PublisherInterface {
   void CheckDeadSubscribers();
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
-  bool AssertNoLeak() const;
+  bool CheckNoLeaks() const;
 
  private:
   bool UnregisterSubscriberInternal(const SubscriberID &subscriber_id)

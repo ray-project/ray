@@ -65,7 +65,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &message_id_binary));
 
-  bool AssertNoLeak() const override { return true; }
+  bool CheckNoLeaks() const override { return true; }
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION;
   std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;

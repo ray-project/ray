@@ -35,7 +35,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &message_id_binary));
 
-  bool AssertNoLeak() const override { return true; };
+  bool CheckNoLeaks() const override { return true; };
 };
 
 class MockPublisher : public pubsub::PublisherInterface {

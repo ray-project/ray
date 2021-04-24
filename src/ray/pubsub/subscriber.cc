@@ -66,7 +66,7 @@ bool SubscriberChannel<MessageID>::Unsubscribe(const rpc::Address &publisher_add
 }
 
 template <typename MessageID>
-bool SubscriberChannel<MessageID>::AssertNoLeak() const {
+bool SubscriberChannel<MessageID>::CheckNoLeaks() const {
   for (const auto &subscription : subscription_map_) {
     if (subscription.second.subscription_callback_map.size() != 0) {
       return false;
@@ -262,20 +262,18 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
 }
 
 inline bool Subscriber::SubscriptionExists(const PublisherID &publisher_id) {
-  bool exists = false;
-
   for (const auto &channel_it : channels_) {
     if (channel_it.second->SubscriptionExists(publisher_id)) {
-      exists = true;
+      return true;
     }
   }
-  return exists;
+  return false;
 }
 
-bool Subscriber::AssertNoLeak() const {
+bool Subscriber::CheckNoLeaks() const {
   bool leaks = false;
   for (const auto &channel_it : channels_) {
-    if (!channel_it.second->AssertNoLeak()) {
+    if (!channel_it.second->CheckNoLeaks()) {
       leaks = true;
     }
   }

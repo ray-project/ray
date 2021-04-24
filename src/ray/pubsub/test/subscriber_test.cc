@@ -119,7 +119,7 @@ TEST_F(SubscriberTest, TestBasicSubscription) {
 
   // Here, once the long polling request is replied, the metadata is cleaned up.
   ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
-  ASSERT_TRUE(subscriber_->AssertNoLeak());
+  ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }
 
 TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
@@ -232,7 +232,7 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   // Make sure the long polling is not invoked since there's no more subscribed object to
   // this owner.
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
-  ASSERT_TRUE(subscriber_->AssertNoLeak());
+  ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }
 
 TEST_F(SubscriberTest, TestLongPollingFailure) {
@@ -283,7 +283,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   // Since we unsubscribe the object in the subscription callback, there shouldn't be any
   // long polling request in flight.
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
-  ASSERT_TRUE(subscriber_->AssertNoLeak());
+  ASSERT_TRUE(subscriber_->CheckNoLeaks());
 }
 // TODO(sang): Need to add a network failure test once we support network failure
 // properly.

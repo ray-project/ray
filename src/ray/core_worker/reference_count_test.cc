@@ -140,7 +140,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
   }
 
   /// Testing only. Return true if there's no metadata remained in the private
-  bool AssertNoLeak() const override { return true; }
+  bool CheckNoLeaks() const override { return true; }
 
   pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;

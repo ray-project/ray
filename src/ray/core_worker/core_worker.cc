@@ -2391,9 +2391,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     std::unique_ptr<rpc::PubMessage> pub_message = absl::make_unique<rpc::PubMessage>();
     pub_message->set_message_id(object_id.Binary());
     pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
-    auto *wait_for_object_eviction_msg =
-        pub_message->mutable_wait_for_object_eviction_message();
-    wait_for_object_eviction_msg->set_object_id(object_id.Binary());
+    pub_message->mutable_wait_for_object_eviction_message()->set_object_id(object_id.Binary());
 
     object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
                                       std::move(pub_message), object_id.Binary());

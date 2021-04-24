@@ -97,7 +97,7 @@ class SubscribeChannelInterface {
   virtual const rpc::ChannelType GetChannelType() const = 0;
 
   /// Return true if there's no metadata leak.
-  virtual bool AssertNoLeak() const = 0;
+  virtual bool CheckNoLeaks() const = 0;
 };
 
 template <typename MessageID>
@@ -113,7 +113,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
   bool Unsubscribe(const rpc::Address &publisher_address,
                    const std::string &message_id) override;
 
-  bool AssertNoLeak() const override;
+  bool CheckNoLeaks() const override;
 
   void HandlePublishedMessage(const rpc::Address &publisher_address,
                               const rpc::PubMessage &pub_message) override;
@@ -209,7 +209,7 @@ class SubscriberInterface {
                            const std::string &message_id_binary) = 0;
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
-  virtual bool AssertNoLeak() const = 0;
+  virtual bool CheckNoLeaks() const = 0;
 
   virtual ~SubscriberInterface() {}
 };
@@ -266,7 +266,7 @@ class Subscriber : public SubscriberInterface {
   std::shared_ptr<SubscribeChannelInterface> Channel(
       const rpc::ChannelType channel_type) const;
 
-  bool AssertNoLeak() const override;
+  bool CheckNoLeaks() const override;
 
  private:
   /// Create a long polling connection to the publisher for receiving the published

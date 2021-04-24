@@ -174,7 +174,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
     subscription_index.EraseEntry(oid.Binary(), node_id);
   }
   ASSERT_FALSE(subscription_index.HasMessageId(oid.Binary()));
-  ASSERT_TRUE(subscription_index.AssertNoLeak());
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
@@ -202,7 +202,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   for (int i = 1; i < 6; i++) {
     subscription_index.EraseSubscriber(node_ids[i]);
   }
-  ASSERT_TRUE(subscription_index.AssertNoLeak());
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriber) {
@@ -256,7 +256,7 @@ TEST_F(PublisherTest, TestSubscriber) {
   for (auto oid : published_objects) {
     ASSERT_TRUE(object_ids_published.count(oid) > 0);
   }
-  ASSERT_TRUE(subscriber->AssertNoLeak());
+  ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriberBatchSize) {
@@ -364,7 +364,7 @@ TEST_F(PublisherTest, TestSubscriberActiveTimeout) {
   ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
   ASSERT_FALSE(subscriber->IsDisconnected());
 
-  ASSERT_TRUE(subscriber->AssertNoLeak());
+  ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriberDisconnected) {
@@ -423,7 +423,7 @@ TEST_F(PublisherTest, TestSubscriberDisconnected) {
   ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
   ASSERT_TRUE(subscriber->IsDisconnected());
 
-  ASSERT_TRUE(subscriber->AssertNoLeak());
+  ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
@@ -469,7 +469,7 @@ TEST_F(PublisherTest, TestSubscriberTimeoutComplicated) {
   ASSERT_FALSE(subscriber->IsActiveConnectionTimedOut());
   ASSERT_TRUE(subscriber->IsDisconnected());
 
-  ASSERT_TRUE(subscriber->AssertNoLeak());
+  ASSERT_TRUE(subscriber->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestBasicSingleSubscriber) {
@@ -706,7 +706,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   // Connection should be replied (removed) when the subscriber is unregistered.
   int erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_EQ(erased, 0);
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 
   // New subscriber is registsered for some reason. Since there's no new long polling
   // connection for the timeout, it should be removed.
@@ -717,7 +717,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionExisted) {
   object_status_publisher_->CheckDeadSubscribers();
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_EQ(erased, 0);
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
 
 TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
@@ -754,7 +754,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   current_time_ += subscriber_timeout_ms_;
   object_status_publisher_->CheckDeadSubscribers();
   // Make sure the registration is cleaned up.
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 
   /// Test the case where there's no connection coming at all when there was a
   /// registration.
@@ -768,7 +768,7 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   current_time_ += subscriber_timeout_ms_;
   object_status_publisher_->CheckDeadSubscribers();
   // Make sure the registration is cleaned up.
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
 
 // Unregistration an entry.
@@ -811,7 +811,7 @@ TEST_F(PublisherTest, TestUnregisterSubscription) {
   ASSERT_EQ(long_polling_connection_replied, false);
   // Metadata won't be removed until we unregsiter the subscriber.
   object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
 
 // Unregistration a subscriber.
@@ -852,7 +852,7 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   erased = object_status_publisher_->UnregisterSubscriber(subscriber_node_id);
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
-  ASSERT_TRUE(object_status_publisher_->AssertNoLeak());
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
 
 }  // namespace ray

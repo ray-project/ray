@@ -116,7 +116,7 @@ bool SubscriptionIndex<MessageID>::EraseEntry(const std::string &message_id_bina
 }
 
 template <typename MessageID>
-bool SubscriptionIndex<MessageID>::AssertNoLeak() const {
+bool SubscriptionIndex<MessageID>::CheckNoLeaks() const {
   return message_id_to_subscribers_.size() == 0 && subscribers_to_message_id_.size() == 0;
 }
 
@@ -178,7 +178,7 @@ bool Subscriber::PublishIfPossible(bool force) {
   return false;
 }
 
-bool Subscriber::AssertNoLeak() const {
+bool Subscriber::CheckNoLeaks() const {
   return !long_polling_connection_ && mailbox_.size() == 0;
 }
 
@@ -304,19 +304,20 @@ void Publisher::CheckDeadSubscribers() {
   }
 }
 
-bool Publisher::AssertNoLeak() const {
+bool Publisher::CheckNoLeaks() const {
   absl::MutexLock lock(&mutex_);
   for (const auto &subscriber : subscribers_) {
-    if (!subscriber.second->AssertNoLeak()) {
+    if (!subscriber.second->CheckNoLeaks()) {
       return false;
     }
   }
 
-  bool no_leak = true;
   for (const auto &index : subscription_index_map_) {
-    no_leak = no_leak && index.second.AssertNoLeak();
+    if (!index.second.CheckNoLeaks()) {
+      return false;
+    }
   }
-  return no_leak;
+  return true;
 }
 
 }  // namespace pubsub
