@@ -4,7 +4,7 @@ import logging
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
-from pathspec import PathSpec
+from ray._private.thirdparty.pathspec import PathSpec
 from ray.job_config import JobConfig
 from enum import Enum
 
