@@ -79,11 +79,13 @@ For open-source users who want to experiment with tracing, Ray has a default tra
 If you want to provide your own custom tracing startup hook, provide your startup hook in the format of ``module:attribute`` where the attribute is the ``setup_tracing`` function to be run.
 
 .. _tracer-provider:
+
 Tracer Provider
 ~~~~~~~~~~~~~~~
 This configures how to collect traces. View the TracerProvider API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.TracerProvider>`__.
 
 .. _remote-span-processors:
+
 Remote Span Processors
 ~~~~~~~~~~~~~~~~~~~~~~
 This configures where to export traces to. View the SpanProcessor API `here <https://open-telemetry.github.io/opentelemetry-python/sdk/trace.html#opentelemetry.sdk.trace.SpanProcessor>`__.
@@ -91,6 +93,7 @@ This configures where to export traces to. View the SpanProcessor API `here <htt
 Users who want to experiment with tracing can configure their remote span processors to export spans to a local JSON file. Serious users developing locally can push their traces to Jaeger containers via the `Jaeger exporter <https://open-telemetry.github.io/opentelemetry-python/exporter/jaeger/jaeger.html>`_.
 
 .. _additional-instruments:
+
 Additional Instruments
 ~~~~~~~~~~~~~~~~~~~~~~
 If you are using a library that has built-in tracing support, the ``setup_tracing`` function you provide should also patch those libraries. You can find more documentation for the instrumentation of these libraries `here <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation>`_.

@@ -11,6 +11,7 @@ spans_dir = "/tmp/spans/"
 
 def setup_tracing() -> None:
     """Stand-in for a user-provided `setup_tracing` hook."""
+    os.makedirs("/tmp/spans", exist_ok=True)
     # Sets the tracer_provider. This is only allowed once per execution
     # context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
