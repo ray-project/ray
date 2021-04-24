@@ -44,7 +44,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.redis_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit test targets.
+    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
+    // test targets.
     config_.pull_based_resource_reporting = false;
     config_.grpc_based_resource_broadcast = false;
 

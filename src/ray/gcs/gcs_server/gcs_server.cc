@@ -187,9 +187,11 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  RAY_LOG(ERROR) << "Should broadcast (from gcs server) " << (!config_.grpc_based_resource_broadcast);
+  RAY_LOG(ERROR) << "Should broadcast (from gcs server) "
+                 << (!config_.grpc_based_resource_broadcast);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-                                                               main_service_, gcs_pub_sub_, gcs_table_storage_, !config_.grpc_based_resource_broadcast);
+      main_service_, gcs_pub_sub_, gcs_table_storage_,
+      !config_.grpc_based_resource_broadcast);
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
