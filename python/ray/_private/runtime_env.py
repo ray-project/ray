@@ -112,25 +112,24 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _dir_travel(
         path: Path,
-        excludes: Optional[PathSpec],
+        excludes: List[Callable],
         handler: Callable,
-        base: Optional[Path] = None,
 ):
-    if base is None:
-        base = path
-    path_str = str(path.relative_to(base))
-    if path.is_dir():
-        path_str += "/"
-    if excludes is not None and excludes.match_file(path_str):
-        return
+    e = _get_gitignore(path)
+    if e:
+        excludes.append(e)
+    for exclude in excludes:
+        if exclude(path):
+            return
     handler(path)
     if path.is_dir():
         for sub_path in path.iterdir():
-            _dir_travel(sub_path, excludes, handler, base)
+            _dir_travel(sub_path, excludes, handler)
+    if e:
+        excludes.pop()
 
-
-def _zip_module(root: Path, relative_path: Path, excludes: PathSpec,
-                zip_handler: ZipFile) -> None:
+def _zip_module(root: Path, relative_path: Path,
+                excludes: Optional[Callable], zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
 
     def handler(path: Path):
@@ -144,14 +143,14 @@ def _zip_module(root: Path, relative_path: Path, excludes: PathSpec,
                     "Consider excluding this file from the working directory.")
             to_path = path.relative_to(relative_path)
             zip_handler.write(path, to_path)
-
+    excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler)
 
 
 def _hash_modules(
         root: Path,
         relative_path: Path,
-        excludes: PathSpec,
+        excludes: Optional[Callable],
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -172,7 +171,7 @@ def _hash_modules(
                     data = f.read(BUF_SIZE)
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
-
+    excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler)
     return hash_val
 
@@ -189,17 +188,27 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     return (protocol, uri.netloc)
 
 
-def _get_exclude_spec(path: Path, excludes: List[str]):
+def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
+    def match(p: Path):
+        path_str = str(p.relative_to(path))
+        path_str += "/"
+        return pathspec.match_file(path_str)
+    return match
+
+
+def _get_gitignore(path: Path) -> Optional[Callable]:
     ignore_file = path / ".gitignore"
-    excludes = [
-        e if not Path(e).is_absolute() else str(Path(e).relative_to(path))
-        for e in excludes
-    ]
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
-            return PathSpec.from_lines("gitwildmatch",
-                                       f.readlines() + excludes)
-    return PathSpec.from_lines("gitwildmatch", excludes)
+            pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
+        def match(p: Path):
+            path_str = str(p.relative_to(path))
+            path_str += "/"
+            return parspec.match_file(path_str)
+        return match
+    else:
+        return None
 
 
 # TODO(yic): Fix this later to handle big directories in better way
@@ -241,8 +250,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
                              " directory")
         hash_val = _xor_bytes(
             hash_val,
-            _hash_modules(working_dir, working_dir,
-                          _get_exclude_spec(working_dir, excludes)))
+            _hash_modules(working_dir, working_dir, _get_excludes(working_dir, excludes)))
     for py_module in py_modules or []:
         if not isinstance(py_module, str):
             raise TypeError("`py_module` must be a string.")
@@ -252,8 +260,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
                              " directory")
         hash_val = _xor_bytes(
             hash_val,
-            _hash_modules(module_dir, module_dir.parent,
-                          _get_exclude_spec(module_dir, excludes)))
+            _hash_modules(module_dir, module_dir.parent, None))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
@@ -276,12 +283,10 @@ def create_project_package(working_dir: str, py_modules: List[str],
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(working_path, working_path,
-                        _get_exclude_spec(working_path, excludes), zip_handler)
+            _zip_module(working_path, working_path, _get_excludes(working_path, excludes), zip_handler)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(module_path, module_path.parent,
-                        _get_exclude_spec(module_path, excludes), zip_handler)
+            _zip_module(module_path, module_path.parent, None, zip_handler)
 
 
 def fetch_package(pkg_uri: str) -> int:

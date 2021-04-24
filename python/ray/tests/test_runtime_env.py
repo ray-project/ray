@@ -167,8 +167,7 @@ def test_travel():
                 item_num += 1
 
         construct(root)
-        exclude_spec = ray._private.runtime_env._get_exclude_spec(
-            root, excludes)
+        exclude_spec = ray._private.runtime_env._get_excludes(root, excludes)
         visited_dir_paths = set()
         visited_file_paths = set()
 
@@ -179,7 +178,7 @@ def test_travel():
                 with open(path) as f:
                     visited_file_paths.add((str(path), f.read()))
 
-        ray._private.runtime_env._dir_travel(root, exclude_spec, handler)
+        ray._private.runtime_env._dir_travel(root, [exclude_spec], handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
 
