@@ -356,7 +356,7 @@ def _inject_tracing_into_class(_cls):
             """
             # If tracing feature flag is not on, perform a no-op
             if not is_tracing_enabled():
-                return _cls
+                return method(self, *_args, **_kwargs)
 
             tracer: trace.Tracer = trace.get_tracer(__name__)
 
@@ -397,7 +397,7 @@ def _inject_tracing_into_class(_cls):
             """
             # If tracing feature flag is not on, perform a no-op
             if not is_tracing_enabled():
-                return _cls
+                return method(self, *_args, **_kwargs)
 
             tracer = trace.get_tracer(__name__)
 

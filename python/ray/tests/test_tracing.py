@@ -4,13 +4,10 @@ import json
 import os
 import pytest
 import shutil
-# import tempfile
 
 import ray
 from ray.test_utils import check_call_ray
 from ray.tests.enable_tracing import spans_dir
-
-# spans_dir = tempfile.gettempdir() + "/spans"
 
 
 @pytest.fixture()
@@ -89,6 +86,7 @@ def task_helper():
     # The spans could show up in a different order, so just check that
     # all spans are as expected
     span_names = get_span_dict(span_list)
+    assert span_names is None
     return span_names == {
         "test_tracing.f ray.remote": 1,
         "test_tracing.f ray.remote_worker": 1,
