@@ -60,6 +60,11 @@ def pad_batch_to_sequences_of_same_size(
             Policy ViewRequirements dict to be able to infer whether
             e.g. dynamic max'ing should be applied over the seq_lens.
     """
+    if batch.zero_padded:
+        return
+
+    batch.zero_padded = True
+
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0

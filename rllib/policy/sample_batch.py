@@ -2,7 +2,7 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Dict, List, Set, Union
+from typing import Dict, List, Optional, Set, Union
 
 from ray.util import log_once
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
@@ -365,19 +365,28 @@ class SampleBatch(dict):
                 _time_major=self.time_major)
 
     @PublicAPI
-    def timeslices(self, k: int) -> List["SampleBatch"]:
+    def timeslices(self, size=None, num_slices=None,
+                   k: Optional[int] = None) -> List["SampleBatch"]:
         """Returns SampleBatches, each one representing a k-slice of this one.
 
         Will start from timestep 0 and produce slices of size=k.
 
         Args:
-            k (int): The size (in timesteps) of each returned SampleBatch.
+            size (int): The size (in timesteps) of each returned SampleBatch.
+            num_slices (int): The number of slices to produce.
+            k (int): Obsoleted: Use size or num_slices instead!
+                The size (in timesteps) of each returned SampleBatch.
 
         Returns:
             List[SampleBatch]: The list of (new) SampleBatches (each one of
                 size k).
         """
-        slices = self._get_slice_indices(k)
+        if size is None and num_slices is None:
+            deprecation_warning("k", "size and num_slices")
+            assert k is not None
+            size = k
+
+        slices = self._get_slice_indices(size)
         timeslices = [self.slice(i, j) for i, j in slices]
         return timeslices
 
@@ -557,7 +566,7 @@ class SampleBatch(dict):
 
     def _get_slice_indices(self, slice_size):
         i = 0
-        slices = []
+        data_slices = []
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             assert np.all(self.seq_lens < slice_size), \
                 "ERROR: `slice_size` must be larger than the max. seq-len " \
@@ -568,9 +577,9 @@ class SampleBatch(dict):
             while idx < len(self.seq_lens):
                 seq_len = self.seq_lens[idx]
                 current_slize_size += seq_len
-                # Complete minibatch -> Append to slices.
+                # Complete minibatch -> Append to data_slices.
                 if current_slize_size >= slice_size:
-                    slices.append((start_pos, start_pos + slice_size))
+                    data_slices.append((start_pos, start_pos + slice_size))
                     start_pos += slice_size
                     if current_slize_size > slice_size:
                         overhead = current_slize_size - slice_size
@@ -580,9 +589,9 @@ class SampleBatch(dict):
                 idx += 1
         else:
             while i < self.count:
-                slices.append((i, i + slice_size))
+                data_slices.append((i, i + slice_size))
                 i += slice_size
-        return slices
+        return data_slices
 
     # TODO: deprecate
     @property

@@ -65,7 +65,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -120,7 +120,10 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+        # Test w/ LSTMs.
+        config["model"]["use_lstm"] = True
+
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False
