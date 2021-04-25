@@ -105,16 +105,16 @@ Status CreateRequestQueue::ProcessRequests() {
       if (spill_objects_callback_()) {
         oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      }
-      if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
+      } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
         return Status::ObjectStoreFull("Waiting for grace period.");
+      } else {
+        // Raise OOM. In this case, the request will be marked as OOM.
+        // We don't return so that we can process the next entry right away.
+        FinishRequest(request_it);
       }
-      // Raise OOM. In this case, the request will be marked as OOM.
-      // We don't return so that we can process the next entry right away.
-      FinishRequest(request_it);
     }
   }
   return Status::OK();
