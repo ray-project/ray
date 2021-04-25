@@ -170,7 +170,7 @@ if __name__ == "__main__":
         default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
-        "--num-ps", type=int, default=1, help="Sets number of parameter server for training.")
+        "--num-ps", type=int, default=0, help="Sets number of parameter server for training.")
     parser.add_argument(
         "--num-epochs", type=int, default=20, help="Number of epochs to train.")
     parser.add_argument(
@@ -199,7 +199,11 @@ if __name__ == "__main__":
     # os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/data/shanyx/cuda-10.1"
 
     args, _ = parser.parse_known_args()
-    ray.init(num_gpus=args.num_workers, num_cpus=args.num_workers, log_to_driver=True)
+    print(f"Using workers {args.num_workers} servers {args.num_ps}")
+    if args.address:
+        ray.init(args.address)
+    else:
+        ray.init(num_gpus=args.num_workers, num_cpus=args.num_workers, log_to_driver=True, resources={"server":args.num_ps})
 
     if args.trainer == "ar":
         trainer = make_ar_trainer(args)

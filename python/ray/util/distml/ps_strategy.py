@@ -28,7 +28,7 @@ class ParameterServerStrategy(BaseTrainer):
 
         self.assignments = None
 
-        self.num_cpus_per_server = 1
+        self.num_cpus_per_server = 1 + 1
         self.num_gpus_per_server = 1
 
         self._use_tqdm = use_tqdm
@@ -117,8 +117,8 @@ class ParameterServerStrategy(BaseTrainer):
         self.server_group = DataParallelGroup(**servergroup_init_args)
 
         # Once the group is created, we start it.
-        self.worker_group.start_actors(self.num_workers)
         self.server_group.start_actors(self.num_ps)  # server at the last num_ps processes.
+        self.worker_group.start_actors(self.num_workers)
 
         worker_rets = self.worker_group.test_connection()
         server_rets = self.server_group.test_connection()
@@ -192,6 +192,36 @@ class ParameterServerStrategy(BaseTrainer):
         self._collector.save("validate_epoch")
         return stats[0] # validate result should be the same in all workers
 
+    @func_timer
+    def step(self):
+        loss_vals = []
+        rets = []
+        metrics = {}
+
+        for worker_idx, worker in enumerate(self.worker_group.actors):
+            groupStart()
+            for server_idx, server in enumerate(self.server_group.actors):
+                # every server sends its shard to the worker
+                server.send_params.remote(worker_idx)
+            # the worker receives shards from ps, compute loss, gradients
+            # and sends these gradients to every server
+            worker.compute_recv_params.remote()
+            groupEnd()
+
+        for worker_idx, worker in enumerate(self.worker_group.actors):
+            groupStart()
+            loss_val = worker.compute_calculate_and_send.remote()
+            for server in self.server_group.actors:
+                rets.append(server.update.remote(worker_idx))
+            groupEnd()
+            loss_vals.append(loss_val)
+ 
+        loss_vals = ray.get(loss_vals)
+        ray.get(rets)
+        train_loss_list = [d["train_loss"] for d in loss_vals]
+        metrics["train_loss"] = np.mean(train_loss_list)
+        return metrics
+
     # @func_timer
     # def step(self):
     #     loss_vals = []
@@ -199,53 +229,23 @@ class ParameterServerStrategy(BaseTrainer):
     #     metrics = {}
 
     #     for worker_idx, worker in enumerate(self.worker_group.actors):
-    #         groupStart()
     #         for server_idx, server in enumerate(self.server_group.actors):
     #             # every server sends its shard to the worker
     #             server.send_params.remote(worker_idx)
     #         # the worker receives shards from ps, compute loss, gradients
     #         # and sends these gradients to every server
-    #         worker.compute_recv_params.remote()
-    #         groupEnd()
+    #         loss_val = worker.compute.remote()
+    #         loss_vals.append(loss_val)
+    #     loss_vals = ray.get(loss_vals)
 
     #     for worker_idx, worker in enumerate(self.worker_group.actors):
-    #         groupStart()
-    #         loss_val = worker.compute_calculate_and_send.remote()
     #         for server in self.server_group.actors:
     #             rets.append(server.update.remote(worker_idx))
-    #         groupEnd()
-    #         loss_vals.append(loss_val)
- 
-    #     loss_vals = ray.get(loss_vals)
+                
     #     ray.get(rets)
     #     train_loss_list = [d["train_loss"] for d in loss_vals]
     #     metrics["train_loss"] = np.mean(train_loss_list)
     #     return metrics
-
-    # @func_timer
-    def step(self):
-        loss_vals = []
-        rets = []
-        metrics = {}
-
-        for worker_idx, worker in enumerate(self.worker_group.actors):
-            for server_idx, server in enumerate(self.server_group.actors):
-                # every server sends its shard to the worker
-                server.send_params.remote(worker_idx)
-            # the worker receives shards from ps, compute loss, gradients
-            # and sends these gradients to every server
-            loss_val = worker.compute.remote()
-            loss_vals.append(loss_val)
-
-        for worker_idx, worker in enumerate(self.worker_group.actors):
-            for server in self.server_group.actors:
-                rets.append(server.update.remote(worker_idx))
-                
-        loss_vals = ray.get(loss_vals)
-        ray.get(rets)
-        train_loss_list = [d["train_loss"] for d in loss_vals]
-        metrics["train_loss"] = np.mean(train_loss_list)
-        return metrics
 
 
 class PS(object):  # HUI: In server, the saved params is operator tensor, not cupy
@@ -314,7 +314,7 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
         for name, p in self.get_params().items():
             if gradients[name] is not None:
                 self.grad_buffer[name] += gradients[name]
-
+                
     def send_params(self, dst_rank):
         """ Send this param shard to the destination worker """
         for name, v in self.params.items():
@@ -331,14 +331,18 @@ class PS(object):  # HUI: In server, the saved params is operator tensor, not cu
             to_recv = self.params[key]
             recv_list.append(self.training_operator.zeros(to_recv.shape, cpu=False))
 
+        print(f"rank {self.rank} {len(keys)}")
         for i in range(len(keys)):
             v = self.training_operator.to_cupy(recv_list[i])
+            print(f"rank {self.rank} {i} {v} {v.shape}")
             col.recv(v, src_rank, self.group_name)
-
+            print(f"rank {self.rank} {i}")
         for i in range(len(keys)):
             grads[keys[i]] = recv_list[i]
 
         self._inc_gradients(grads)
+
+        print(f"rank {self.rank} {grad_counts}")
         if not self.grad_counts[src_rank]:
             self.grad_counts[src_rank] = 1
         else:
@@ -618,10 +622,12 @@ class DataParallelGroup:
         if self.is_server:
             # make an actor
             RemoteActor = ray.remote(num_cpus=self._num_cpus_per_actor,
-                                       num_gpus=self._num_gpus_per_actor)(PS)
+                                     num_gpus=self._num_gpus_per_actor,
+                                     )(PS) # resources={"server":1}
         else:
             RemoteActor = ray.remote(num_cpus=self._num_cpus_per_actor,
-                                       num_gpus=self._num_gpus_per_actor)(Worker)
+                                     num_gpus=self._num_gpus_per_actor,
+                                     )(Worker) #resources={"worker":1}
 
         self._distributed_actors = [
             RemoteActor.remote(**self._params)

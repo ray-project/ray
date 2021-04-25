@@ -199,7 +199,11 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
     num_cpus = 4 if args.smoke_test else None
-    ray.init(num_gpus=args.num_workers, num_cpus=num_cpus, log_to_driver=True)
+
+    if args.address:
+        ray.init(args.address)
+    else:
+        ray.init(num_gpus=args.num_workers, num_cpus=args.num_workers, log_to_driver=True, resources={"server":args.num_ps})
 
     if args.trainer == "ar":
         trainer = make_ar_trainer(args)

@@ -66,7 +66,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trainer", type=str, default="ar", help="Trainer type, Optional: ar, ps")
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     tf.config.experimental.set_visible_devices([], 'GPU')
     args, _ = parser.parse_known_args()
 
@@ -151,10 +151,10 @@ if __name__ == "__main__":
         for idx, batch in enumerate(train_loader):
             batch = tf2numpy(batch)
             with collector.record("train_batch"):
-                start_time = time.time()
+                # start_time = time.time()
                 loss_val, grad = value_and_grad(loss_func)(optimizer.target, batch)
                 optimizer = optimizer.apply_gradient(grad) # Return the updated optimizer with parameters.
-                print("time spending", time.time() - start_time)
+                # print("time spending", time.time() - start_time)
             if idx % 10 == 0:
                 print('Loss step {}: '.format(idx), loss_val.item())
 

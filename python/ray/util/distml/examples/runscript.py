@@ -3,8 +3,6 @@ import subprocess
 from itertools import combinations
 
 
-
-
 def combine(temp_list, n):
     '''根据n获得列表中的所有可能组合（n个元素为一组）'''
     temp_list2 = []

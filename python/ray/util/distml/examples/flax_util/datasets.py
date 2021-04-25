@@ -2,7 +2,7 @@ from .input_pipeline import create_pretrain_dataset
 import jax.numpy as jnp
 
 def make_wiki_train_loader(batch_size=8):
-    inputs = [f"./flax_util/sample_data_tfrecord/bert-pretrain-shard{i}.tfrecord" for i in range(16)]
+    inputs = [f"/data3/huangrunhui/proj2/tmp_ray/ray/python/ray/util/distml/examples/flax_util/sample_data_tfrecord/bert-pretrain-shard{i}.tfrecord" for i in range(16)]
 
     train_dataset = create_pretrain_dataset(inputs, 
                                             seq_length=128, 
