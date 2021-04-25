@@ -61,26 +61,18 @@ if os.path.exists(so_path):
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 import ray._raylet  # noqa: E402
-
 _config = ray._raylet.Config()
 del ray._raylet
 
-from ray.profiling import profile  # noqa: E402
 from ray.state import (  # noqa: E402
-    jobs, nodes, actors, objects, timeline, object_transfer_timeline,
-    cluster_resources, available_resources,
+    timeline, cluster_resources, available_resources,
 )
 from ray.worker import (  # noqa: E402,F401
     cancel, get, get_actor, get_gpu_ids,
-    get_resource_ids, get_dashboard_url, init, is_initialized, put, kill,
-    remote, shutdown, show_in_dashboard, wait,
+    init, is_initialized, put, kill,
+    remote, shutdown, wait,
 )
-# We import ray.actor because some code is run in actor.py which initializes
-# some functions in the worker.
-import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
-from ray.cross_language import java_function, java_actor_class  # noqa: E402
-from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
@@ -89,31 +81,21 @@ __version__ = "2.0.0.dev0"
 
 __all__ = [
     "__version__",
-    "get_runtime_context",
-    "actors",
     "available_resources",
     "cancel",
     "cluster_resources",
     "get",
     "get_actor",
     "get_gpu_ids",
-    "get_resource_ids",
-    "get_dashboard_url",
     "init",
     "is_initialized",
     "java_actor_class",
     "java_function",
-    "jobs",
     "kill",
     "method",
-    "nodes",
-    "objects",
-    "object_transfer_timeline",
-    "profile",
     "put",
     "remote",
     "shutdown",
-    "show_in_dashboard",
     "timeline",
     "util",
     "wait",
@@ -126,3 +108,5 @@ del (actor, autoscaler, cloudpickle, core, exceptions,
      remote_function, resource_spec, serialization, serialization_addons, so_path, state,
      thirdparty_files, worker)
 del _config, _private
+
+del cross_language, external_storage
