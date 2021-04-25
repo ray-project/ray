@@ -144,10 +144,7 @@ def test_travel():
                 dir_path = path / uid
                 exclud_sub = random.randint(0, 5) == 0
                 if not excluded and exclud_sub:
-                    if random.randint(0, 1) == 0:
-                        excludes.append(str(dir_path.absolute()))
-                    else:
-                        excludes.append(str(dir_path))
+                    excludes.append(str(dir_path.relative_to(root)))
                 if not excluded:
                     construct(dir_path, exclud_sub or excluded, depth + 1)
                 item_num += 1
@@ -161,7 +158,7 @@ def test_travel():
                     f.write(str(v))
                     if not excluded:
                         if random.randint(0, 5) == 0:
-                            excludes.append(str(path / uid))
+                            excludes.append(str((path / uid).relative_to(root)))
                         else:
                             file_paths.add((str(path / uid), str(v)))
                 item_num += 1
@@ -351,22 +348,20 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
         "excludes": [
-            # exclude by absolute path
-            r"{tmp_dir_test_3}",
             # exclude by relative path
-            r"{str(working_path / "test2")}",
+            r"test2",
             # exclude by dir
-            r"{str(working_path / "tmp_dir" / "sub_dir")}",
+            r"{str(Path("tmp_dir") / "sub_dir")}",
             # exclude part of the dir
-            r"{str(working_path / "tmp_dir" / "test_1")}",
+            r"{str(Path("tmp_dir") / "test_1")}",
             # exclude part of the dir
-            r"{str(working_path / "tmp_dir" / "test_2")}",
+            r"{str(Path("tmp_dir") / "test_2")}",
         ]
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
     assert out.strip().split("\n")[-1] == \
-        "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
+        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

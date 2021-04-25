@@ -189,23 +189,26 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+    path = path.absolute()
     pathspec = PathSpec.from_lines("gitwildmatch", excludes)
     def match(p: Path):
-        path_str = str(p.relative_to(path))
+        path_str = str(p.absolute().relative_to(path))
         path_str += "/"
         return pathspec.match_file(path_str)
     return match
 
 
 def _get_gitignore(path: Path) -> Optional[Callable]:
+    path = path.absolute()
     ignore_file = path / ".gitignore"
     if ignore_file.is_file():
         with ignore_file.open("r") as f:
             pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
         def match(p: Path):
-            path_str = str(p.relative_to(path))
-            path_str += "/"
-            return parspec.match_file(path_str)
+            path_str = str(p.absolute().relative_to(path))
+            if p.is_dir():
+                path_str += "/"
+            return pathspec.match_file(path_str)
         return match
     else:
         return None
