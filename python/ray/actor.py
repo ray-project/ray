@@ -11,8 +11,7 @@ import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
-from ray import ActorClassID, Language
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import ActorClassID, Language, PythonFunctionDescriptor
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_convert_actor

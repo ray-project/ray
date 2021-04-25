@@ -32,9 +32,9 @@ import ray._private.runtime_env as runtime_env
 import ray._private.import_thread as import_thread
 import ray
 import setproctitle
-import ray.state
+from ray.state import state
 
-from ray import (
+from ray._raylet import (
     ActorID,
     JobID,
     ObjectRef,
@@ -827,7 +827,7 @@ def shutdown(_exiting_interpreter=False):
         del global_worker.core_worker
 
     # Disconnect global state from GCS.
-    ray.state.state.disconnect()
+    state.disconnect()
 
     # Shut down the Ray processes.
     global _global_node
@@ -870,8 +870,8 @@ def custom_excepthook(type, value, tb):
         worker_type = ray.gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
-        ray.state.state._check_connected()
-        ray.state.state.add_worker(worker_id, worker_type, worker_info)
+        state._check_connected()
+        state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1228,7 +1228,7 @@ def connect(node,
     # Create an object for interfacing with the global state.
     # Note, global state should be intialized after `CoreWorker`, because it
     # will use glog, which is intialized in `CoreWorker`.
-    ray.state.state._initialize_global_state(
+    state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environmen will be prepared

@@ -62,12 +62,8 @@ if os.path.exists(so_path):
 
 import ray._raylet  # noqa: E402
 
-from ray._raylet import (  # noqa: E402
-    ActorClassID, ActorID, NodeID, Config as _Config, JobID, WorkerID,
-    FunctionID, ObjectID, ObjectRef, TaskID, UniqueID, Language,
-    PlacementGroupID)
-
-_config = _Config()
+_config = ray._raylet.Config()
+del ray._raylet
 
 from ray.profiling import profile  # noqa: E402
 from ray.state import (  # noqa: E402
@@ -75,12 +71,10 @@ from ray.state import (  # noqa: E402
     cluster_resources, available_resources,
 )
 from ray.worker import (  # noqa: E402,F401
-    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
+    cancel, get, get_actor, get_gpu_ids,
     get_resource_ids, get_dashboard_url, init, is_initialized, put, kill,
     remote, shutdown, show_in_dashboard, wait,
 )
-import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
@@ -95,9 +89,7 @@ __version__ = "2.0.0.dev0"
 
 __all__ = [
     "__version__",
-    "_config",
     "get_runtime_context",
-    "actor",
     "actors",
     "available_resources",
     "cancel",
@@ -108,13 +100,11 @@ __all__ = [
     "get_resource_ids",
     "get_dashboard_url",
     "init",
-    "internal",
     "is_initialized",
     "java_actor_class",
     "java_function",
     "jobs",
     "kill",
-    "Language",
     "method",
     "nodes",
     "objects",
@@ -127,22 +117,12 @@ __all__ = [
     "timeline",
     "util",
     "wait",
-    "LOCAL_MODE",
-    "SCRIPT_MODE",
-    "WORKER_MODE",
 ]
 
-# ID types
-__all__ += [
-    "ActorClassID",
-    "ActorID",
-    "NodeID",
-    "JobID",
-    "WorkerID",
-    "FunctionID",
-    "ObjectID",
-    "ObjectRef",
-    "TaskID",
-    "UniqueID",
-    "PlacementGroupID",
-]
+del CDLL, ctypes, dirname, logging, os, sys, platform
+del (actor, autoscaler, cloudpickle, core, exceptions,
+     gcs_utils, job_config, logger, node, pickle5_path,
+     profiling, python_shared_lib_suffix, ray_constants,
+     remote_function, resource_spec, serialization, serialization_addons, so_path, state,
+     thirdparty_files, worker)
+del _config, _private
