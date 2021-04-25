@@ -487,10 +487,10 @@ class TorchPolicy(Policy):
                     view_requirements=self.view_requirements,
                 )
 
-        for b in batches:
+        for b, d in zip(batches, self.devices):
             b.is_training = True
             b["seq_lens"] = b.seq_lens
-            self._lazy_tensor_dict(b)
+            self._lazy_tensor_dict(b, device=d)
 
         # Multi-GPU case: Slice inputs into n (roughly) equal batches.
         if len(self.devices) > 1:
