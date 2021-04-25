@@ -254,8 +254,9 @@ class ClientAPI:
         return []
 
     def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
-        logger.info("Timeline will include events from other clients using "
-                    "this server.")
+        logger.warning("Timeline will include events from other clients using "
+                       "this server.")
+        # This should be imported here, otherwise, it will error doc build.
         import ray.core.generated.ray_client_pb2 as ray_client_pb2
         all_events = self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.TIMELINE)
