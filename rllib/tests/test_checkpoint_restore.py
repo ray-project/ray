@@ -129,10 +129,10 @@ def ckpt_restore_test(alg_name, tfe=False):
             alg2.stop()
 
 
-class TestCheckpointRestore(unittest.TestCase):
+class TestCheckpointRestorePG(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=10, object_store_memory=1e9)
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls):
@@ -141,11 +141,21 @@ class TestCheckpointRestore(unittest.TestCase):
     def test_a3c_checkpoint_restore(self):
         ckpt_restore_test("A3C")
 
+    def test_ppo_checkpoint_restore(self):
+        ckpt_restore_test("PPO")
+
+
+class TestCheckpointRestoreOffPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_apex_ddpg_checkpoint_restore(self):
         ckpt_restore_test("APEX_DDPG")
-
-    def test_ars_checkpoint_restore(self):
-        ckpt_restore_test("ARS")
 
     def test_ddpg_checkpoint_restore(self):
         ckpt_restore_test("DDPG")
@@ -153,17 +163,33 @@ class TestCheckpointRestore(unittest.TestCase):
     def test_dqn_checkpoint_restore(self):
         ckpt_restore_test("DQN")
 
-    def test_es_checkpoint_restore(self):
-        ckpt_restore_test("ES")
-
-    def test_ppo_checkpoint_restore(self):
-        ckpt_restore_test("PPO")
-
     def test_sac_checkpoint_restore(self):
         ckpt_restore_test("SAC")
+
+
+class TestCheckpointRestoreEvolutionAlgos(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=5)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_ars_checkpoint_restore(self):
+        ckpt_restore_test("ARS")
+
+    def test_es_checkpoint_restore(self):
+        ckpt_restore_test("ES")
 
 
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(
+        pytest.main(
+            ["-v", __file__ + ("" if class_ is None else "::" + class_)]))
