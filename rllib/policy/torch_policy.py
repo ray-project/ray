@@ -20,7 +20,6 @@ from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
-from ray.rllib.utils.sgd import minibatches
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
@@ -470,6 +469,7 @@ class TorchPolicy(Policy):
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
         # For multi-GPU, split the batch into n slices (n=#GPUs).
+        from ray.rllib.utils.sgd import minibatches
         batches = list(
             minibatches(
                 postprocessed_batch,
