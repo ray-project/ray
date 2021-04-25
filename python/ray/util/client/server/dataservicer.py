@@ -1,10 +1,10 @@
 import ray
 import logging
 import grpc
-import queue
+from queue import Queue
 import sys
 
-from typing import TYPE_CHECKING
+from typing import Any, Iterator, TYPE_CHECKING, Union
 from threading import Lock, Thread
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -19,8 +19,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+QUEUE_JOIN_SECONDS = 5
 
-def fill_queue(grpc_input_generator, output_queue) -> None:
+
+def fill_queue(
+        grpc_input_generator: Iterator[ray_client_pb2.DataRequest],
+        output_queue:
+        "Queue[Union[ray_client_pb2.DataRequest, ray_client_pb2.DataResponse]]"
+) -> None:
     """
     Pushes incoming requests to a shared output_queue.
     """
@@ -31,6 +37,7 @@ def fill_queue(grpc_input_generator, output_queue) -> None:
         logger.debug("closing dataservicer reader thread "
                      f"grpc error reading request_iterator: {e}")
     finally:
+        # Set the sentinel value for the output_queue
         output_queue.put(None)
 
 
@@ -43,15 +50,15 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def Datapath(self, request_iterator, context):
         metadata = {k: v for k, v in context.invocation_metadata()}
         client_id = metadata["client_id"]
-        accepted_connection = False
         if client_id == "":
             logger.error("Client connecting with no client_id")
             return
         logger.debug(f"New data connection from client {client_id}: ")
-        if not self._init(client_id, context):
+        accepted_connection = self._init(client_id, context)
+        if not accepted_connection:
             return
         try:
-            request_queue = queue.Queue()
+            request_queue = Queue()
             queue_filler_thread = Thread(
                 target=fill_queue,
                 daemon=True,
@@ -67,53 +74,52 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     # Early shortcut if this is the result of an async get.
                     yield req
                     continue
+
+                assert isinstance(req, ray_client_pb2.DataRequest)
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
                     resp_init = self.basic_service.Init(req.init)
                     resp = ray_client_pb2.DataResponse(init=resp_init, )
-                    logger.debug(f"Accepted data connection from {client_id}. "
-                                 f"Total clients: {self.num_clients}")
-                    accepted_connection = True
-                else:
-                    assert accepted_connection
-                    if req_type == "get":
-                        get_resp = None
-                        if req.get.asynchronous:
-                            get_resp = self.basic_service._async_get_object(
-                                req.get, client_id, req.req_id, request_queue)
-                            if get_resp is None:
-                                # The response for this request will be sent
-                                # when the object is ready.
-                                continue
-                        else:
-                            get_resp = self.basic_service._get_object(
-                                req.get, client_id)
-                        resp = ray_client_pb2.DataResponse(get=get_resp)
-                    elif req_type == "put":
-                        put_resp = self.basic_service._put_object(
-                            req.put, client_id)
-                        resp = ray_client_pb2.DataResponse(put=put_resp)
-                    elif req_type == "release":
-                        released = []
-                        for rel_id in req.release.ids:
-                            rel = self.basic_service.release(client_id, rel_id)
-                            released.append(rel)
-                        resp = ray_client_pb2.DataResponse(
-                            release=ray_client_pb2.ReleaseResponse(
-                                ok=released))
-                    elif req_type == "connection_info":
-                        resp = ray_client_pb2.DataResponse(
-                            connection_info=self._build_connection_response())
-                    elif req_type == "prep_runtime_env":
-                        with self.clients_lock:
-                            resp_prep = self.basic_service.PrepRuntimeEnv(
-                                req.prep_runtime_env)
-                            resp = ray_client_pb2.DataResponse(
-                                prep_runtime_env=resp_prep)
+                elif req_type == "get":
+                    get_resp = None
+                    if req.get.asynchronous:
+                        get_resp = self.basic_service._async_get_object(
+                            req.get, client_id, req.req_id, request_queue)
+                        if get_resp is None:
+                            # Skip sending a response for this request and
+                            # continue to the next requst. The response for
+                            # this request will be sent when the object is
+                            # ready.
+                            continue
                     else:
-                        raise Exception(f"Unreachable code: Request type "
-                                        f"{req_type} not handled in Datapath")
+                        get_resp = self.basic_service._get_object(
+                            req.get, client_id)
+                    resp = ray_client_pb2.DataResponse(get=get_resp)
+                elif req_type == "put":
+                    put_resp = self.basic_service._put_object(
+                        req.put, client_id)
+                    resp = ray_client_pb2.DataResponse(put=put_resp)
+                elif req_type == "release":
+                    released = []
+                    for rel_id in req.release.ids:
+                        rel = self.basic_service.release(client_id, rel_id)
+                        released.append(rel)
+                    resp = ray_client_pb2.DataResponse(
+                        release=ray_client_pb2.ReleaseResponse(
+                            ok=released))
+                elif req_type == "connection_info":
+                    resp = ray_client_pb2.DataResponse(
+                        connection_info=self._build_connection_response())
+                elif req_type == "prep_runtime_env":
+                    with self.clients_lock:
+                        resp_prep = self.basic_service.PrepRuntimeEnv(
+                            req.prep_runtime_env)
+                        resp = ray_client_pb2.DataResponse(
+                            prep_runtime_env=resp_prep)
+                else:
+                    raise Exception(f"Unreachable code: Request type "
+                                    f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
                 yield resp
         except grpc.RpcError as e:
@@ -121,12 +127,15 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)
-            queue_filler_thread.join()
+            queue_filler_thread.join(QUEUE_JOIN_SECONDS)
+            if queue_filler_thread.is_alive():
+                logger.error(
+                    "Queue filler thread failed to  join before timeout: {}".
+                    format(QUEUE_JOIN_SECONDS))
             with self.clients_lock:
-                if accepted_connection:
-                    # Could fail before client accounting happens
-                    self.num_clients -= 1
-                    logger.debug(f"Removed clients. {self.num_clients}")
+                # Could fail before client accounting happens
+                self.num_clients -= 1
+                logger.debug(f"Removed clients. {self.num_clients}")
 
                 # It's important to keep the Ray shutdown
                 # within this locked context or else Ray could hang.
@@ -135,7 +144,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
-    def _init(self, client_id, context):
+    def _init(self, client_id: str, context: Any):
         """
         Checks if resources allow for another client.
         Returns a boolean indicating if initialization was successful.
@@ -156,6 +165,9 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 return False
             self.num_clients += 1
+            logger.debug(f"Accepted data connection from {client_id}. "
+                         f"Total clients: {self.num_clients}")
+
             return True
 
     def _build_connection_response(self):

@@ -265,7 +265,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)
         try:
-            assert request.asynchronous
             object_ref = self.object_refs[client_id][request.id]
             logger.debug("async get: %s" % object_ref)
             with disable_client_hook():
