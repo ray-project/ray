@@ -20,6 +20,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def fill_queue(grpc_input_generator, output_queue) -> None:
+    """
+    Pushes incoming requests to a shared output_queue.
+    """
+    try:
+        for req in grpc_input_generator:
+            output_queue.put(req)
+    except grpc.RpcError as e:
+        logger.debug("closing dataservicer reader thread "
+                     f"grpc error reading request_iterator: {e}")
+    finally:
+        output_queue.put(None)
+
+
 class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, basic_service: "RayletServicer"):
         self.basic_service = basic_service
@@ -34,23 +48,14 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             logger.error("Client connecting with no client_id")
             return
         logger.debug(f"New data connection from client {client_id}: ")
+        if not self._init(client_id, context):
+            return
         try:
             request_queue = queue.Queue()
-
-            def fill_queue() -> None:
-                """
-                Pushes incoming requests to a shared request_queue.
-                """
-                try:
-                    for req in request_iterator:
-                        request_queue.put(req)
-                except grpc.RpcError as e:
-                    logger.debug("closing dataservicer reader thread "
-                                 f"grpc error reading request_iterator: {e}")
-                finally:
-                    request_queue.put(None)
-
-            queue_filler_thread = Thread(target=fill_queue, daemon=True)
+            queue_filler_thread = Thread(
+                target=fill_queue,
+                daemon=True,
+                args=(request_iterator, request_queue))
             queue_filler_thread.start()
             """For non `async get` requests, this loop yields immediately
             For `async get` requests, this loop:
@@ -65,10 +70,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp = None
                 req_type = req.WhichOneof("type")
                 if req_type == "init":
-                    resp = self._init(req.init, client_id)
-                    if resp is None:
-                        context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
-                        return
+                    resp_init = self.basic_service.Init(req.init)
+                    resp = ray_client_pb2.DataResponse(init=resp_init, )
                     logger.debug(f"Accepted data connection from {client_id}. "
                                  f"Total clients: {self.num_clients}")
                     accepted_connection = True
@@ -132,7 +135,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
-    def _init(self, req_init, client_id):
+    def _init(self, client_id, context):
+        """
+        Checks if resources allow for another client.
+        Returns a boolean indicating if initialization was successful.
+        """
         with self.clients_lock:
             threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
             if self.num_clients >= threshold:
@@ -146,10 +153,10 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         "threshold by setting the "
                         "RAY_CLIENT_SERVER_MAX_THREADS env var "
                         f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
-                return None
-            resp_init = self.basic_service.Init(req_init)
+                context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+                return False
             self.num_clients += 1
-            return ray_client_pb2.DataResponse(init=resp_init, )
+            return True
 
     def _build_connection_response(self):
         with self.clients_lock:
