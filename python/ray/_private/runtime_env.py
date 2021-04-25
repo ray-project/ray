@@ -116,17 +116,16 @@ def _dir_travel(
         handler: Callable,
 ):
     e = _get_gitignore(path)
-    if e:
+    if e is not None:
         excludes.append(e)
-    for exclude in excludes:
-        if exclude(path):
-            return
-    handler(path)
-    if path.is_dir():
-        for sub_path in path.iterdir():
-            _dir_travel(sub_path, excludes, handler)
-    if e:
-        excludes.pop()
+    skip = any([e(path) for e in excludes])
+    if not skip:
+        handler(path)
+        if path.is_dir():
+            for sub_path in path.iterdir():
+                _dir_travel(sub_path, excludes, handler)
+    if e is not None:
+        x = excludes.pop()
 
 def _zip_module(root: Path, relative_path: Path,
                 excludes: Optional[Callable], zip_handler: ZipFile) -> None:
