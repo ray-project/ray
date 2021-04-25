@@ -3,6 +3,8 @@ from inspect import getmembers, isfunction
 import ray
 
 
+# NOTE: Before adding a new API to Ray (and modifying this test), the new API
+# must have Ray Client support.
 def test_api_functions():
     # These are pulled from the "Python API" of the Ray Docs
     # util.queue.Queue & util.ActorPool are removed because they are under
