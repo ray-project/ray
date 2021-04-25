@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 # number of simultaneous in-flight requests.
 INT32_MAX = (2**31) - 1
 
+ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
+
 
 class DataClient:
     def __init__(self, channel: "grpc._channel.Channel", client_id: str,
@@ -37,8 +39,7 @@ class DataClient:
 
         # NOTE: Dictionary insertion is guaranteed to complete before lookup
         # and/or removal because of synchronization via the request_queue.
-        self.asyncio_waiting_data: Dict[int, Callable[
-            [ray_client_pb2.DataResponse], None]] = {}
+        self.asyncio_waiting_data: Dict[int, ResponseCallable] = {}
         self._req_id = 0
         self._client_id = client_id
         self._metadata = metadata
@@ -71,9 +72,9 @@ class DataClient:
                     logger.debug(f"Got unawaited response {response}")
                     continue
                 if response.req_id in self.asyncio_waiting_data:
-                    cb = self.asyncio_waiting_data.pop(response.req_id)
+                    callback = self.asyncio_waiting_data.pop(response.req_id)
                     try:
-                        cb(response)
+                        callback(response)
                     except Exception:
                         logger.exception("Callback error:")
                 else:
@@ -125,8 +126,7 @@ class DataClient:
 
     def _async_send(self,
                     req: ray_client_pb2.DataRequest,
-                    callback: Optional[Callable[[ray_client_pb2.DataResponse],
-                                                None]] = None) -> None:
+                    callback: Optional[ResponseCallable] = None) -> None:
         req_id = self._next_id()
         req.req_id = req_id
         if callback:
@@ -159,11 +159,10 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.get
 
-    def RegisterGetCallback(
-            self,
-            request: ray_client_pb2.GetRequest,
-            callback: Callable[[ray_client_pb2.DataResponse], None],
-            context=None) -> None:
+    def RegisterGetCallback(self,
+                            request: ray_client_pb2.GetRequest,
+                            callback: ResponseCallable,
+                            context=None) -> None:
         datareq = ray_client_pb2.DataRequest(get=request, )
         self._async_send(datareq, callback)
 
