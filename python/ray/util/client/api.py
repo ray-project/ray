@@ -287,6 +287,10 @@ class ClientAPI:
         """Given a UUID, return the converted object"""
         return self.worker._get_converted(key)
 
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return self.worker._converted_key_exists(key)
+
     def __getattr__(self, key: str):
         if not key.startswith("_"):
             raise NotImplementedError(

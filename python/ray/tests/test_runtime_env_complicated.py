@@ -124,7 +124,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
-def test_job_config_conda_env(conda_envs):
+def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
 
     tf_version = "2.2.0"

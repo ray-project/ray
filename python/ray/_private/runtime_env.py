@@ -16,8 +16,6 @@ from urllib.parse import urlparse
 import os
 import sys
 
-from ray._private.utils import get_conda_env_dir
-
 # We need to setup this variable before
 # using this module
 PKG_DIR = None
@@ -60,16 +58,24 @@ class RuntimeEnvDict:
     """
 
     def __init__(self, runtime_env_json: dict):
+        self.conda_env_name = None
         if "conda" in runtime_env_json:
-            self.conda = runtime_env_json["conda"]
-        else:
-            self.conda = None
+            conda = runtime_env_json["conda"]
+            if isinstance(conda, str):
+                self.conda_env_name = conda
+            elif isinstance(conda, dict):
+                # TODO(architkulkarni): add dynamic conda env installs
+                raise NotImplementedError
+            else:
+                raise TypeError("runtime_env['conda'] must be of type str or "
+                                "dict")
         if "working_dir" in runtime_env_json:
             self.working_dir = runtime_env_json["working_dir"]
         else:
             self.working_dir = None
         # TODO(ekl) we should have better schema validation here.
-        # TODO(ekl) support env_vars, docker, py_modules
+        # TODO(ekl) support py_modules
+        # TODO(architkulkarni) support env_vars, docker
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -79,9 +85,6 @@ class RuntimeEnvDict:
         """
         if override_environment_variables is None:
             override_environment_variables = {}
-        if self.conda:
-            conda_env_dir = get_conda_env_dir(self.conda)
-            override_environment_variables.update(PYTHONHOME=conda_env_dir)
         if self.working_dir:
             override_environment_variables.update(
                 RAY_RUNTIME_ENV_FILES=self.working_dir)
@@ -128,7 +131,8 @@ def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
 
     def handler(path: Path):
         # Pack this path if it's an empty directory or it's a file.
-        if path.is_dir() and next(path.iterdir()) is None or path.is_file():
+        if path.is_dir() and next(path.iterdir(),
+                                  None) is None or path.is_file():
             file_size = path.stat().st_size
             if file_size >= FILE_SIZE_WARNING:
                 logger.warning(
@@ -213,13 +217,21 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     hash_val = None
     excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
-        assert isinstance(working_dir, str)
-        assert Path(working_dir).exists()
+        if not isinstance(working_dir, str):
+            raise TypeError("`working_dir` must be a string.")
         working_dir = Path(working_dir).absolute()
+        if not working_dir.exists() or not working_dir.is_dir():
+            raise ValueError(f"working_dir {working_dir} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(working_dir, working_dir, excludes))
     for py_module in py_modules or []:
+        if not isinstance(py_module, str):
+            raise TypeError("`py_module` must be a string.")
         module_dir = Path(py_module).absolute()
+        if not module_dir.exists() or not module_dir.is_dir():
+            raise ValueError(f"py_module {py_module} must be an existing"
+                             " directory")
         hash_val = _xor_bytes(
             hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None

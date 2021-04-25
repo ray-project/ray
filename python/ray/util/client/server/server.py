@@ -31,6 +31,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -510,6 +511,13 @@ def decode_options(
         return None
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
+
+    if opts.get("placement_group", None):
+        # Placement groups in Ray client options are serialized as dicts.
+        # Convert the dict to a PlacementGroup.
+        opts["placement_group"] = PlacementGroup.from_dict(
+            opts["placement_group"])
+
     return opts
 
 
@@ -600,6 +608,21 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
+def try_create_redis_client(args):
+    if "redis-address" not in args:
+        possible = ray._private.services.find_redis_address()
+        if len(possible) != 1:
+            return None
+        address = possible.pop()
+    else:
+        address = args["redis-address"]
+    if args.redis_password is None:
+        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+    else:
+        password = args.redis_password
+    return ray._private.services.create_redis_client(address, password)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -620,6 +643,11 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 
+    # This redis client is used for health checking. We can't use `internal_kv`
+    # because it requires `ray.init` to be called, which only connect handlers
+    # should do.
+    redis_client = None
+
     ray_connect_handler = create_ray_handler(args.redis_address,
                                              args.redis_password)
 
@@ -628,7 +656,21 @@ def main():
     server = serve(hostport, ray_connect_handler)
     try:
         while True:
-            time.sleep(1000)
+            health_report = {
+                "time": time.time(),
+            }
+
+            try:
+                if not redis_client:
+                    redis_client = try_create_redis_client(args)
+                redis_client.hset("healthcheck:ray_client_server", "value",
+                                  json.dumps(health_report))
+            except Exception as e:
+                logger.error("Failed to put health check.")
+                logger.exception(e)
+
+            time.sleep(1)
+
     except KeyboardInterrupt:
         server.stop(0)
 

@@ -540,6 +540,35 @@ def test_starlette_request(serve_instance):
     assert resp == long_string
 
 
+def test_variable_routes(serve_instance):
+    def f(starlette_request):
+        return starlette_request.path_params
+
+    serve.create_backend("f", f)
+    serve.create_endpoint("basic", backend="f", route="/api/{username}")
+
+    # Test multiple variables and test type conversion
+    serve.create_endpoint(
+        "complex",
+        backend="f",
+        route="/api/{user_id:int}/{number:float}",
+        methods=["POST"])
+
+    assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
+        "username": "scaly"
+    }
+
+    assert requests.post("http://127.0.0.1:8000/api/23/12.345").json() == {
+        "user_id": 23,
+        "number": 12.345
+    }
+
+    assert requests.get("http://127.0.0.1:8000/-/routes").json() == {
+        "/api/{username}": ["basic", ["GET"]],
+        "/api/{user_id:int}/{number:float}": ["complex", ["POST"]]
+    }
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
