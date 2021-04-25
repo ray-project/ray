@@ -100,16 +100,13 @@ Status CreateRequestQueue::ProcessRequests() {
       }
 
       if (oom_start_time_ns_ == -1) {
-        // RAY_LOG(DEBUG) << "@lsf reset oom_start_time_ns_";
         oom_start_time_ns_ = now;
       }
       if (spill_objects_callback_()) {
-        // RAY_LOG(DEBUG) << "@lsf spill_objects_callback_()";
-        oom_start_time_ns_ = now;
+        oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for spilling.");
       }
       if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
-        // RAY_LOG(DEBUG) << "@lsf now - oom_start_time_ns_ < oom_grace_period_ns_";
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
