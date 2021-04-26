@@ -248,8 +248,8 @@ def _inject_tracing_into_function(function):
 
         tracer = trace.get_tracer(__name__)
 
-        assert (_ray_trace_ctx is not None,
-                f"Missing ray_trace_ctx!: {args}, {kwargs}")
+        assert _ray_trace_ctx is not None, (
+            f"Missing ray_trace_ctx!: {args}, {kwargs}")
 
         function_name = function.__module__ + "." + function.__name__
 
