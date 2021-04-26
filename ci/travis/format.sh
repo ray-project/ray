@@ -93,7 +93,6 @@ YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
     '--recursive'
     '--parallel'
-    '-e' "$ROOT/python/ray/_private/thirdparty"
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
@@ -117,6 +116,7 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
     '--exclude' 'python/ray/thirdparty_files/*'
+    '--exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(
