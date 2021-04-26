@@ -51,7 +51,7 @@ class RayCluster():
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(name=self.name, target=f)
-        # Kill subprocess if monitor dies
+        # Kill subprocess if main operator process terminates.
         self.subprocess.daemon = True
         self.subprocess.start()
         if wait_to_finish:
