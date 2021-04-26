@@ -81,7 +81,7 @@ def short_polling_loop(
         except GetTimeoutError:
             if deadline and time.monotonic() > deadline:
                 raise
-            logger.debug(log_retry_message)
+            logger.error(log_retry_message)
     return res
 
 
@@ -290,7 +290,7 @@ class Worker:
 
         # Once the real deadline is passed, we want to pass up an actual
         # tuple, not an error.
-        final_call = time.monotonic() > deadline
+        final_call = deadline and time.monotonic() > deadline
         if len(client_ready_object_ids) < num_returns and not final_call:
             raise GetTimeoutError("Fake Timemout Error for non-blocking wait")
 
@@ -318,7 +318,7 @@ class Worker:
 
         two_lists = short_polling_loop(
             partial(self._wait, [object_ref.id for object_ref in object_refs],
-                    num_returns), deadline,
+                    num_returns, deadline), deadline,
             f"Internal retry for ray.wait on {object_refs}")
 
         return two_lists
