@@ -31,8 +31,9 @@ class RayCluster():
         namespace_dir = operator_utils.namespace_dir(self.namespace)
         if not os.path.isdir(namespace_dir):
             os.mkdir(namespace_dir)
-        self.config_path = operator_utils.config_path(self.namespace,
-                                                      self.name)
+        self.config_path = operator_utils.config_path(
+            cluster_namespace=self.namespace,
+            cluster_name=self.name)
 
         # Tracks metadata.generation field of associated custom resource.
         # K8s increments this field whenever the spec of the custom resource is
