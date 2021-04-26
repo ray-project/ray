@@ -82,7 +82,7 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id, changed_resources, reply,
+    auto on_done = [node_id, changed_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       // TODO (Alex): I don't think anything subscribes to this? RESOLVE BEFORE MERGING
@@ -141,7 +141,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      RAY_CHECK(false) << "Unused codepath";
+      // RAY_CHECK(false) << "Unused codepath";
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));
@@ -381,6 +381,7 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
 }
 
 void GcsResourceManager::SendBatchedResourceUsage() {
+  absl::MutexLock guard(&resource_buffer_mutex_);
   if (!resources_buffer_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     GetResourceUsageBatchForBroadcast(*batch);
