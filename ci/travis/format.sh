@@ -93,10 +93,11 @@ YAPF_FLAGS=(
     '--style' "$ROOT/.style.yapf"
     '--recursive'
     '--parallel'
+    '-e' "$ROOT/python/ray/_private/thirdparty"
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
-# should be set to do a more stringent check. 
+# should be set to do a more stringent check.
 MYPY_FLAGS=(
     '--follow-imports=skip'
     '--ignore-missing-imports'
@@ -143,7 +144,7 @@ shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
 
-# Runs mypy on each argument in sequence. This is different than running mypy 
+# Runs mypy on each argument in sequence. This is different than running mypy
 # once on the list of arguments.
 mypy_on_each() {
     pushd python/ray

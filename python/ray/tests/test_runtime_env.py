@@ -158,7 +158,8 @@ def test_travel():
                     f.write(str(v))
                     if not excluded:
                         if random.randint(0, 5) == 0:
-                            excludes.append(str((path / uid).relative_to(root)))
+                            excludes.append(
+                                str((path / uid).relative_to(root)))
                         else:
                             file_paths.add((str(path / uid), str(v)))
                 item_num += 1
