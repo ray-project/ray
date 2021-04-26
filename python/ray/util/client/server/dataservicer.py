@@ -106,8 +106,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         rel = self.basic_service.release(client_id, rel_id)
                         released.append(rel)
                     resp = ray_client_pb2.DataResponse(
-                        release=ray_client_pb2.ReleaseResponse(
-                            ok=released))
+                        release=ray_client_pb2.ReleaseResponse(ok=released))
                 elif req_type == "connection_info":
                     resp = ray_client_pb2.DataResponse(
                         connection_info=self._build_connection_response())
