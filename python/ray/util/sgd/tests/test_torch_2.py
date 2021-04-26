@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import pytest
 import torch
@@ -15,12 +13,11 @@ from ray.tune.utils import merge_dicts
 from ray.util.data.examples.mlp_identity_torch import make_train_operator
 from ray.util.sgd.data.examples import mlp_identity
 from ray.util.sgd.torch import TorchTrainer
-from ray.util.sgd.torch.constants import SCHEDULER_STEP
 from ray.util.sgd.torch.examples.train_example import (
-    model_creator, optimizer_creator, data_creator, LinearDataset)
+    model_creator, optimizer_creator, data_creator)
 from ray.util.sgd.torch.training_operator import (
-    get_test_operator, get_test_metrics_operator, TrainingOperator)
-from ray.util.sgd.utils import (NUM_SAMPLES, BATCH_COUNT, BATCH_SIZE)
+    get_test_operator, TrainingOperator)
+from ray.util.sgd.utils import BATCH_COUNT
 
 @pytest.fixture
 def ray_start_2_cpus():

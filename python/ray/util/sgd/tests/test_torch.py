@@ -8,12 +8,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import ray
-import ray.util.data as ml_data
-import ray.util.iter as parallel_it
-from ray import tune
-from ray.tune.utils import merge_dicts
-from ray.util.data.examples.mlp_identity_torch import make_train_operator
-from ray.util.sgd.data.examples import mlp_identity
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.constants import SCHEDULER_STEP
 from ray.util.sgd.torch.examples.train_example import (
