@@ -32,18 +32,19 @@ class RayCluster():
         if not os.path.isdir(namespace_dir):
             os.mkdir(namespace_dir)
         self.config_path = operator_utils.config_path(
-            cluster_namespace=self.namespace,
-            cluster_name=self.name)
+            cluster_namespace=self.namespace, cluster_name=self.name)
 
         # Tracks metadata.generation field of associated custom resource.
         # K8s increments this field whenever the spec of the custom resource is
         # updated.
         self._generation = 0
 
-        self.setup_logging()
-
         self.subprocess = None  # type: Optional[mp.Process]
+        # Monitor logs for this cluster will be prefixed by the monitor
+        # subprocess name:
         self.subprocess_name = ",".join([self.name, self.namespace])
+
+        self.setup_logging()
 
     def set_config(self, config: Dict[str, Any]) -> None:
         self.config = config
@@ -60,9 +61,8 @@ class RayCluster():
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
-        self.subprocess = mp.Process(name=self.subprocess_name,
-                                     target=f,
-                                     daemon=True)
+        self.subprocess = mp.Process(
+            name=self.subprocess_name, target=f, daemon=True)
         self.subprocess.start()
         if wait_to_finish:
             self.subprocess.join()
@@ -110,9 +110,16 @@ class RayCluster():
         self.delete_config()
 
     def setup_logging(self) -> None:
+        """Add a log handler which appends the name and namespace of this
+        cluster to the cluster's monitor logs.
+        """
         self.handler = logging.StreamHandler()
-        self.handler.addFilter(lambda rec: rec.processName == self.name)
-        logging_format = ":".join([self.name, ray_constants.LOGGER_FORMAT])
+        # Filter by subprocess name to get this cluster's monitor logs.
+        self.handler.addFilter(
+            lambda rec: rec.processName == self.subprocess_name)
+        # Lines start with "<cluster name>,<cluster namespace>:"
+        logging_format = ":".join(
+            [self.subprocess_name, ray_constants.LOGGER_FORMAT])
         self.handler.setFormatter(logging.Formatter(logging_format))
         operator_utils.root_logger.addHandler(self.handler)
 
