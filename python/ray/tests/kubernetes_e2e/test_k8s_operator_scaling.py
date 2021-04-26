@@ -129,6 +129,7 @@ class KubernetesScaleTest(unittest.TestCase):
             subprocess.check_call(cd, shell=True)
 
             print(">>>Starting a cluster with same name in another namespace")
+            # Assumes a namespace called {NAMESPACE}2 has been created.
             cd = f"kubectl -n {NAMESPACE}2 apply -f "\
                 f"{example_cluster_file2.name}"
             subprocess.check_call(cd, shell=True)
