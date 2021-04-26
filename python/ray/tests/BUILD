@@ -165,6 +165,7 @@ py_test_module_list(
     "test_runtime_env_complicated.py"
   ],
   size = "large",
+  tags = ["exclusive"],
   extra_srcs = SRCS,
   deps = ["//:ray_lib"],
 )
