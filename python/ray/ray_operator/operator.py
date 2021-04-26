@@ -24,7 +24,15 @@ class RayCluster():
     def __init__(self, config: Dict[str, Any]):
         self.set_config(config)
         self.name = self.config["cluster_name"]
-        self.config_path = operator_utils.config_path(self.name)
+        self.namespace = self.config["provider"]["namespace"]
+
+        # Make directory for configs of clusters in the namespace,
+        # if the director doesn't exist already.
+        namespace_dir = operator_utils.namespace_dir(self.namespace)
+        if not os.path.isdir(namespace_dir):
+            os.mkdir(namespace_dir)
+        self.config_path = operator_utils.config_path(self.namespace,
+                                                      self.name)
 
         # Tracks metadata.generation field of associated custom resource.
         # K8s increments this field whenever the spec of the custom resource is
@@ -34,6 +42,7 @@ class RayCluster():
         self.setup_logging()
 
         self.subprocess = None  # type: Optional[mp.Process]
+        self.subprocess_name = ",".join([self.name, self.namespace])
 
     def set_config(self, config: Dict[str, Any]) -> None:
         self.config = config
@@ -50,9 +59,9 @@ class RayCluster():
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
-        self.subprocess = mp.Process(name=self.name, target=f)
-        # Kill subprocess if main operator process terminates.
-        self.subprocess.daemon = True
+        self.subprocess = mp.Process(name=self.subprocess_name,
+                                     target=f,
+                                     daemon=True)
         self.subprocess.start()
         if wait_to_finish:
             self.subprocess.join()

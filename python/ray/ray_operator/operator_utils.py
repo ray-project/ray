@@ -50,9 +50,17 @@ root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
 
 
-def config_path(cluster_name: str) -> str:
+def namespace_dir(namespace: str) -> str:
+    """Directory in which to store configs for Ray clusters in a given
+    namespace."""
+    return os.path.join(RAY_CONFIG_DIR, namespace)
+
+
+def config_path(cluster_name: str, cluster_namespace: str) -> str:
+    """Where to store a cluster's config, given the cluster's name and
+    namespace."""
     file_name = cluster_name + CONFIG_SUFFIX
-    return os.path.join(RAY_CONFIG_DIR, file_name)
+    return os.path.join(namespace_dir(cluster_namespace), file_name)
 
 
 def cluster_scoped_cr_stream() -> Iterator:

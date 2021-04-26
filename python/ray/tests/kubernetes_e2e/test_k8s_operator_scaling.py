@@ -62,6 +62,7 @@ def wait_for_operator():
 class KubernetesScaleTest(unittest.TestCase):
     def test_scaling(self):
         with tempfile.NamedTemporaryFile("w+") as example_cluster_file, \
+                tempfile.NamedTemporaryFile("w+") as example_cluster_file2, \
                 tempfile.NamedTemporaryFile("w+") as operator_file:
 
             example_cluster_config_path = get_operator_config_path(
@@ -95,7 +96,13 @@ class KubernetesScaleTest(unittest.TestCase):
             # Key for the first part of this test:
             worker_type["minWorkers"] = 30
 
+            # Config for a small cluster with the same name to be launched
+            # in another namespace.
+            example_cluster_config2 = copy.deepcopy(example_cluster_config)
+            example_cluster_config2["spec"]["podTypes"][1]["minWorkers"] = 1
+
             yaml.dump(example_cluster_config, example_cluster_file)
+            yaml.dump(example_cluster_config2, example_cluster_file2)
             yaml.dump_all(operator_config, operator_file)
 
             files = [example_cluster_file, operator_file]
@@ -116,15 +123,21 @@ class KubernetesScaleTest(unittest.TestCase):
             # Takes a bit of time for CRD to register.
             time.sleep(10)
 
-            # Start a 30-pod-cluster.
+            # Start a 30-pod cluster.
             print(">>>Starting a cluster.")
             cd = f"kubectl -n {NAMESPACE} apply -f {example_cluster_file.name}"
             subprocess.check_call(cd, shell=True)
 
+            print(">>>Starting a cluster with same name in another namespace")
+            cd = f"kubectl -n {NAMESPACE}2 apply -f "\
+                f"{example_cluster_file2.name}"
+            subprocess.check_call(cd, shell=True)
+
             # Check that autoscaling respects minWorkers by waiting for
-            # 32 pods in the namespace.
+            # 32 pods in one namespace and 2 pods in the other.
             print(">>>Waiting for pods to join cluster.")
             wait_for_pods(31)
+            wait_for_pods(2, namespace=f"{NAMESPACE}2")
 
             # Check scale-down.
             print(">>>Decreasing min workers to 0.")
@@ -154,10 +167,10 @@ class KubernetesScaleTest(unittest.TestCase):
                 submit_scaling_job(client_port="10001", num_tasks=15)
                 # Clean up
                 self.proc.kill()
-            except Exception as e:
+            except Exception:
                 # Clean up on failure
                 self.proc.kill()
-                raise (e)
+                raise
 
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
