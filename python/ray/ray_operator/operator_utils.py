@@ -1,9 +1,11 @@
 import copy
 import logging
 import os
+import time
 from typing import Any, Dict, Iterator
 
 from kubernetes.watch import Watch
+from kubernetes.client.rest import ApiException
 
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private._kubernetes.node_provider import\
@@ -13,6 +15,9 @@ from ray.autoscaler._private.providers import _get_default_config
 RAY_API_GROUP = "cluster.ray.io"
 RAY_API_VERSION = "v1"
 RAYCLUSTER_PLURAL = "rayclusters"
+
+MAX_STATUS_RETRIES = 3
+DELAY_BEFORE_STATUS_RETRY = .5
 
 OPERATOR_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 # Operator is namespaced if the above environment variable is set,
@@ -48,6 +53,8 @@ NODE_TYPE_FIELDS = {
 
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
+
+logger = logging.getLogger(__name__)
 
 
 def namespace_dir(namespace: str) -> str:
@@ -163,9 +170,44 @@ def translate(configuration: Dict[str, Any],
     }
 
 
-def set_status(cluster_cr: Dict[str, Any], cluster_name: str,
-               cluster_namespace: str, status: str) -> None:
-    # TODO: Add retry logic in case of 409 due to old resource version.
+def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
+    """Sets status.phase field for a RayCluster with the given name and
+    namespace.
+
+    Just in case, handles the 409 error that would arise if the RayCluster
+    API object is modified between retrieval and patch.
+
+    Args:
+        cluster_name: Name of the Ray cluster.
+        cluster_namespace: Namespace in which the Ray cluster is running.
+        status: String to set for the RayCluster object's status.phase field.
+
+    """
+    for _ in range(MAX_STATUS_RETRIES - 1):
+        try:
+            _set_status(cluster_name, cluster_namespace, status)
+            return
+        except ApiException as e:
+            if e.status == 409:
+                logger.info("Caught a 409 error while setting"
+                            " RayCluster status. Retrying...")
+                time.sleep(DELAY_BEFORE_STATUS_RETRY)
+                continue
+            else:
+                raise
+    # One more try
+    _set_status(cluster_name, cluster_namespace, status)
+
+
+def _set_status(cluster_name: str,
+                cluster_namespace: str,
+                status: str) -> None:
+    cluster_cr = custom_objects_api()\
+        .get_namespaced_custom_object(namespace=cluster_namespace,
+                                      group="cluster.ray.io",
+                                      version="v1",
+                                      plural="rayclusters",
+                                      name=cluster_name)
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
         .patch_namespaced_custom_object_status(namespace=cluster_namespace,

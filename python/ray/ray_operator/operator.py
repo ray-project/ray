@@ -2,6 +2,7 @@ import logging
 import multiprocessing as mp
 import os
 import time
+import threading
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -18,6 +19,9 @@ from ray.ray_operator import operator_utils
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
+
+# Queue to process cluster status updates.
+cluster_status_q = mp.Queue()  # type: mp.Queue[Tuple[str, str, str]]
 
 
 class RayCluster():
@@ -75,8 +79,11 @@ class RayCluster():
         self.do_in_subprocess(self._create_or_update)
 
     def _create_or_update(self) -> None:
-        self.start_head()
-        self.start_monitor()
+        try:
+            self.start_head()
+            self.start_monitor()
+        except Exception:
+            cluster_status_q.put((self.name, self.namespace, "Error"))
 
     def start_head(self) -> None:
         self.write_config()
@@ -163,8 +170,7 @@ def handle_event(event_type, cluster_cr, cluster_name, cluster_namespace):
         cluster_action(event_type, cluster_cr, cluster_name, cluster_namespace)
     except Exception:
         logger.exception(f"Error while updating RayCluster {cluster_name}.")
-        operator_utils.set_status(cluster_cr, cluster_name, cluster_namespace,
-                                  "Error")
+        cluster_status_q.put((cluster_name, cluster_namespace, "Error"))
 
 
 def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
@@ -176,8 +182,7 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
 
     if event_type == "ADDED":
 
-        operator_utils.set_status(cluster_cr, cluster_name, cluster_namespace,
-                                  "Running")
+        cluster_status_q.put((cluster_name, cluster_namespace, "Running"))
 
         ray_cluster = RayCluster(cluster_config)
 
@@ -205,7 +210,17 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         del ray_clusters[cluster_identifier]
 
 
+def status_handling_loop():
+    while True:
+        cluster_name, cluster_namespace, status = cluster_status_q.get()
+        operator_utils.set_status(cluster_name, cluster_namespace, status)
+
+
+status_handler = threading.Thread(target=status_handling_loop, daemon=True)
+
+
 def main() -> None:
+    status_handler.start()
     # Make directory for Ray cluster configs
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
