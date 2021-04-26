@@ -58,7 +58,7 @@ def wait_for_logs(operator_pod):
     """Check if logs indicate presence of nodes of types "head-node" and
     "worker-nodes" in the "example-cluster" cluster."""
     cmd = f"kubectl -n {NAMESPACE} logs {operator_pod}"\
-        "| grep ^example-cluster: | tail -n 100"
+        f"| grep ^example-cluster,{NAMESPACE}: | tail -n 100"
     log_tail = subprocess.check_output(cmd, shell=True).decode()
     return ("head-node" in log_tail) and ("worker-node" in log_tail)
 
