@@ -9,6 +9,8 @@ import signal
 import time
 import traceback
 import json
+from multiprocessing.synchronize import Event
+from typing import Optional
 
 import grpc
 
@@ -89,7 +91,8 @@ class Monitor:
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -118,6 +121,8 @@ class Monitor:
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
+        # Can be used to signal graceful exit from monitor loop.
+        self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 
@@ -174,6 +179,8 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                break
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
@@ -202,6 +209,10 @@ class Monitor:
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+
+    def _stop_message_recieved(self):
+        return (self.stop_receiver_connection
+                and self.stop_receiver_connection.poll())
 
     def update_event_summary(self):
         """Report the current size of the cluster.

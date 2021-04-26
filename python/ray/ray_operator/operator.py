@@ -43,6 +43,7 @@ class RayCluster():
         # Monitor logs for this cluster will be prefixed by the monitor
         # subprocess name:
         self.subprocess_name = ",".join([self.name, self.namespace])
+        self.monitor_stop_event = mp.Event()
 
         self.setup_logging()
 
@@ -56,21 +57,19 @@ class RayCluster():
         return self._generation
 
     def do_in_subprocess(self,
-                         f: Callable[[], None],
-                         wait_to_finish: bool = False) -> None:
+                         f: Callable[[], None]) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
             name=self.subprocess_name, target=f, daemon=True)
         self.subprocess.start()
-        if wait_to_finish:
-            self.subprocess.join()
 
     def clean_up_subprocess(self):
         if self.subprocess and self.subprocess.is_alive():
-            self.subprocess.terminate()
+            self.monitor_stop_event.set()
             self.subprocess.join()
+            self.monitor_stop_event.clear()
 
     def create_or_update(self) -> None:
         self.do_in_subprocess(self._create_or_update)
@@ -101,7 +100,8 @@ class RayCluster():
             redis_address=redis_address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-            prefix_cluster_info=True)
+            prefix_cluster_info=True,
+            stop_event=self.monitor_stop_event)
         self.mtr.run()
 
     def clean_up(self) -> None:
