@@ -162,7 +162,7 @@ py_test_module_list(
   files = [
     "test_placement_group.py",
     "test_runtime_env.py",
-    # "test_runtime_env_complicated.py"
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,
