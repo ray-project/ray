@@ -703,6 +703,9 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
 
             # Evaluation setup.
+            self.evaluation_workers = None
+            self.evaluation_metrics = {}
+            # Do automatic evaluation from time to time.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
@@ -721,14 +724,16 @@ class Trainer(Trainable):
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
-
+                # Create a separate evaluation worker set for evaluation.
+                # If evaluation_num_workers=0, use the evaluation set's local
+                # worker for evaluation, otherwise, use its remote workers
+                # (parallelized evaluation).
                 self.evaluation_workers = self._make_workers(
                     env_creator=self.env_creator,
                     validate_env=None,
                     policy_class=self._policy_class,
                     config=evaluation_config,
                     num_workers=self.config["evaluation_num_workers"])
-                self.evaluation_metrics = {}
 
     @override(Trainable)
     def cleanup(self):
@@ -799,9 +804,11 @@ class Trainer(Trainable):
         """
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
-        # Sync weights to the evaluation WorkerSet.
-        self._sync_weights_to_workers(worker_set=self.evaluation_workers)
-        self._sync_filters_if_needed(self.evaluation_workers)
+
+        if self.evaluation_workers is not None:
+            # Sync weights to the evaluation WorkerSet.
+            self._sync_weights_to_workers(worker_set=self.evaluation_workers)
+            self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
             logger.info("Running custom eval function {}".format(
@@ -814,9 +821,17 @@ class Trainer(Trainable):
         else:
             logger.info("Evaluating current policy for {} episodes.".format(
                 self.config["evaluation_num_episodes"]))
-            if self.config["evaluation_num_workers"] == 0:
+            metrics = None
+            # No evaluation worker set -> Do evaluation using the local worker.
+            if self.evaluation_workers is None:
+                for _ in range(self.config["evaluation_num_episodes"]):
+                    self.workers.local_worker().sample()
+                metrics = collect_metrics(self.workers.local_worker())
+            # Evaluation worker set only has local worker.
+            elif self.config["evaluation_num_workers"] == 0:
                 for _ in range(self.config["evaluation_num_episodes"]):
                     self.evaluation_workers.local_worker().sample()
+            # Evaluation worker set has n remote workers.
             else:
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
@@ -831,9 +846,10 @@ class Trainer(Trainable):
                         w.sample.remote()
                         for w in self.evaluation_workers.remote_workers()
                     ])
-
-            metrics = collect_metrics(self.evaluation_workers.local_worker(),
-                                      self.evaluation_workers.remote_workers())
+            if metrics is None:
+                metrics = collect_metrics(
+                    self.evaluation_workers.local_worker(),
+                    self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
     @DeveloperAPI
