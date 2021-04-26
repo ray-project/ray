@@ -44,9 +44,9 @@ def retry_until_true(f):
 
 
 @retry_until_true
-def wait_for_pods(n):
+def wait_for_pods(n, namespace=NAMESPACE):
     client = kubernetes.client.CoreV1Api()
-    pods = client.list_namespaced_pod(namespace=NAMESPACE).items
+    pods = client.list_namespaced_pod(namespace=namespace).items
     # Double-check that the correct image is use.
     for pod in pods:
         assert pod.spec.containers[0].image == IMAGE
