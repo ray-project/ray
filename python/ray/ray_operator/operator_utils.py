@@ -56,7 +56,7 @@ def namespace_dir(namespace: str) -> str:
     return os.path.join(RAY_CONFIG_DIR, namespace)
 
 
-def config_path(cluster_name: str, cluster_namespace: str) -> str:
+def config_path(cluster_namespace: str, cluster_name: str) -> str:
     """Where to store a cluster's config, given the cluster's name and
     namespace."""
     file_name = cluster_name + CONFIG_SUFFIX
