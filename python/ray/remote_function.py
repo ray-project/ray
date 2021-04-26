@@ -262,12 +262,9 @@ class RemoteFunction:
             accelerator_type)
 
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = (
-                parsed_runtime_env.to_worker_env_vars(
-                    override_environment_variables))
-        else:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+            parsed = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = parsed.to_worker_env_vars(
+                override_environment_variables)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -294,7 +291,6 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
-                parsed_runtime_env,
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command
