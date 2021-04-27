@@ -1330,7 +1330,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore",
+    name = "tests/test_checkpoint_restore_pg",
     tags = ["tests_dir", "tests_dir_C"],
     size = "large",
     srcs = ["tests/test_checkpoint_restore.py"],
@@ -1338,7 +1338,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore",
+    name = "tests/test_checkpoint_restore_off_policy",
     tags = ["tests_dir", "tests_dir_C"],
     size = "large",
     srcs = ["tests/test_checkpoint_restore.py"],
@@ -1346,7 +1346,7 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore",
+    name = "tests/test_checkpoint_restore_evolution_algos",
     tags = ["tests_dir", "tests_dir_C"],
     size = "large",
     srcs = ["tests/test_checkpoint_restore.py"],
