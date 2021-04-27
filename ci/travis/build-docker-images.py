@@ -64,6 +64,13 @@ def _get_root_dir():
     return os.path.join(_get_curr_dir(), "../../")
 
 
+def _configure_human_version():
+    global _get_branch
+    fake_branch_name = input("Provide a 'branch name'. For releases, it "
+                             "should be `releases/x.x.x`")
+    _get_branch = lambda: fake_branch_name  # noqa: E731
+
+
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
         matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
@@ -154,7 +161,10 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     return built_images
 
 
-def copy_wheels():
+def copy_wheels(human_build):
+    if human_build:
+        print("Please download images using:\n"
+              "`pip download --python-version <py_version> ray==<ray_version>")
     root_dir = _get_root_dir()
     wheels = _get_wheel_name(None)
     for wheel in wheels:
@@ -260,7 +270,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
-                                 os.environ.get("TRAVIS_BRANCH")).group(0)
+                                 _get_branch()).group(0)
         date_tag = release_name
         sha_tag = release_name
 
@@ -392,6 +402,8 @@ if __name__ == "__main__":
     print("Building base images: ", args.base)
 
     build_type = args.build_type
+    if build_type == HUMAN:
+        _configure_human_version()
     if build_type in {HUMAN, MERGE, BUILDKITE
                       } or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
