@@ -55,6 +55,7 @@ gym
 gym-minigrid
 kubernetes
 lxml
+modin
 moto
 mypy
 networkx
