@@ -31,7 +31,7 @@ class StoreToReplayBuffer:
     def __init__(self,
                  *,
                  local_buffer: LocalReplayBuffer = None,
-                 actors: List["ActorHandle"] = None):
+                 actors: List[ActorHandle] = None):
         if bool(local_buffer) == bool(actors):
             raise ValueError(
                 "Exactly one of local_buffer and replay_actors must be given.")
@@ -54,7 +54,7 @@ class StoreToReplayBuffer:
 
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
-           actors: List["ActorHandle"] = None,
+           actors: List[ActorHandle] = None,
            num_async: int = 4) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
 
