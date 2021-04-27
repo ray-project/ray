@@ -109,7 +109,7 @@ if __name__ == "__main__":
         }
         group = False
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
 
     stop = {
         "episode_reward_mean": args.stop_reward,

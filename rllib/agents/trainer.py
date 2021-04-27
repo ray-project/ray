@@ -547,7 +547,7 @@ class Trainer(Trainable):
             cls, config: PartialTrainerConfigDict) -> \
             Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
+        Trainer._validate_config(None, cf)
 
         eval_config = cf["evaluation_config"]
 
@@ -678,7 +678,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        Trainer._validate_config(self.config)
+        Trainer._validate_config(self, self.config)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -711,7 +711,7 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(evaluation_config)
+                self._validate_config(self, evaluation_config)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -1138,7 +1138,7 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: PartialTrainerConfigDict):
+    def _validate_config(trainer_obj_or_none, config: PartialTrainerConfigDict):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1178,9 +1178,10 @@ class Trainer(Trainable):
             # TF + Multi-agent case: Try using MultiGPU optimizer (only
             # if all policies used are TFPolicies).
             elif len(config["multiagent"]["policies"]) > 0:
-                from ray.rllib.policy.tf_policy import TFPolicy
-                if any(p[0] is not None and not issubclass(p[0], TFPolicy)
-                       for p in config["multiagent"]["policies"].values()):
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                default_policy_cls = None if trainer_obj_or_none is None else getattr(trainer_obj_or_none, "_policy_class", None)
+                if any((p[0] or default_policy_cls) is None or not issubclass(p[0] or default_policy_cls, DynamicTFPolicy)
+                       for p[0] in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:
                     config["simple_optimizer"] = False
