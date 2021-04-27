@@ -375,6 +375,11 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
 void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBatchData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
+  GetResourceUsageBatchForBroadcastUnsafe(buffer);
+}
+
+void GcsResourceManager::GetResourceUsageBatchForBroadcastUnsafe(
+    rpc::ResourceUsageBatchData &buffer) {
   for (auto &resources : resources_buffer_) {
     buffer.add_batch()->Swap(&resources.second);
   }
@@ -384,7 +389,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   absl::MutexLock guard(&resource_buffer_mutex_);
   if (!resources_buffer_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    GetResourceUsageBatchForBroadcast(*batch);
+    GetResourceUsageBatchForBroadcastUnsafe(*batch);
     stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
     // RAY_CHECK(false) << "remove this check...";
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
