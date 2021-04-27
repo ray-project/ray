@@ -5,6 +5,7 @@ import gym
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Trainer.
+
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with
@@ -69,14 +70,17 @@ FileType = Any
 
 # Represents a ViewRequirements dict mapping column names (str) to
 # ViewRequirement objects.
-ViewRequirementsDict = Dict[str, "ViewRequirement"]
+from ray.rllib.policy.view_requirement import ViewRequirement
+ViewRequirementsDict = Dict[str, ViewRequirement]
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer",
-                       "torch.optim.Optimizer"]
+import tensorflow as tf
+import torch
+LocalOptimizer = Union[tf.keras.optimizers.Optimizer,
+                       torch.optim.Optimizer]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
@@ -104,7 +108,8 @@ ModelWeights = dict
 ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
-SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+SampleBatchType = Union[SampleBatch, MultiAgentBatch]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
