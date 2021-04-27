@@ -1,4 +1,4 @@
-from inspect import getmembers, isfunction
+from inspect import getmembers, isfunction, ismodule
 
 import ray
 
@@ -39,6 +39,20 @@ def test_api_functions():
     functions = getmembers(ray, isfunction)
     function_names = [f[0] for f in functions]
     assert set(function_names) == set(PYTHON_API + OTHER_ALLOWED_FUNCTIONS)
+
+
+def test_non_ray_modules():
+    modules = getmembers(ray, ismodule)
+    for name, mod in modules:
+        assert "ray" in str(
+            mod), f"Module {mod} should not be reachable via ray.{name}"
+
+
+def test_for_strings():
+    strings = getmembers(ray, lambda obj: isinstance(obj, str))
+    for string, _ in strings:
+        assert string.startswith("__"), f"Invalid string: {string} found in "
+        "top level Ray. Please delete at the end of __init__.py."
 
 
 if __name__ == "__main__":
