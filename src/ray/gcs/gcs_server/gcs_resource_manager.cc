@@ -28,9 +28,6 @@ GcsResourceManager::GcsResourceManager(
       gcs_table_storage_(gcs_table_storage),
       broadcast_resource_usage_(broadcast_resource_usage) {
   if (broadcast_resource_usage_) {
-    RAY_LOG(ERROR) << "should broadcast: " << broadcast_resource_usage_;
-    RAY_LOG(ERROR) << "Broadcasting resource usage for no reason...";
-
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
         RayConfig::instance().raylet_report_resources_period_milliseconds(),
@@ -140,7 +137,7 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      RAY_CHECK(false) << "Unused codepath";
+      // RAY_CHECK(false) << "Unused codepath";
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));
@@ -390,7 +387,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     GetResourceUsageBatchForBroadcastUnsafe(*batch);
     stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
-    RAY_CHECK(false) << "remove this check...";
+    // RAY_CHECK(false) << "remove this check...";
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();
