@@ -429,9 +429,9 @@ def _inject_tracing_into_class(_cls):
     for name, method in methods:
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
-            wrapped_method = async_span_wrapper(method)
+            wrapped_method = wraps(method)(async_span_wrapper(method))
         else:
-            wrapped_method = span_wrapper(method)
+            wrapped_method = wraps(method)(span_wrapper(method))
 
         setattr(_cls, name, wrapped_method)
 

@@ -1,4 +1,5 @@
 import logging
+import inspect
 from functools import wraps
 
 from ray import cloudpickle as pickle
@@ -71,6 +72,11 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
+        if inspect.iscoroutinefunction(function):
+            raise ValueError("'async def' should not be used for remote "
+                             "tasks. You can wrap the async function with "
+                             "`asyncio.get_event_loop.run_until(f())`. "
+                             "See more at docs.ray.io/async_api.html")
         self._language = language
         self._function = _inject_tracing_into_function(function)
         self._function_name = (function.__module__ + "." + function.__name__)
