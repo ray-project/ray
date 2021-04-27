@@ -466,7 +466,7 @@ def qloguniform(lower: float, upper: float, q: float, base: float = 10):
     return Float(lower, upper).loguniform(base).quantized(q)
 
 
-def choice(categories: List):
+def choice(categories: Sequence):
     """Sample a categorical value.
 
     Sampling from ``tune.choice([1, 2])`` is equivalent to sampling from

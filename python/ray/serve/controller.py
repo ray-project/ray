@@ -296,7 +296,8 @@ class ServeController:
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
-                python_methods=python_methods)
+                python_methods=python_methods,
+                legacy=False)
             self.endpoint_state.update_endpoint(name, endpoint_info,
                                                 TrafficPolicy({
                                                     name: 1.0

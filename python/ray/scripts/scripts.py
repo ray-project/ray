@@ -436,6 +436,13 @@ def debug(address):
     default=False,
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
+@click.option(
+    "--worker-setup-hook",
+    hidden=True,
+    default=None,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "environment for the worker process.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -446,7 +453,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, log_style, log_color, verbose):
+          metrics_export_port, no_monitor, worker_setup_hook, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -507,7 +515,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        no_monitor=no_monitor,
+        worker_setup_hook=worker_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -1619,6 +1628,66 @@ def global_gc(address):
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
+
+
+@cli.command(name="health-check", hidden=True)
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+@click.option(
+    "--component",
+    required=False,
+    type=str,
+    help="Health check for a specific component. Currently supports: "
+    "[ray_client_server]")
+def healthcheck(address, redis_password, component):
+    """
+    This is NOT a public api.
+
+    Health check a Ray or a specific component. Exit code 0 is healthy.
+    """
+
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+
+    if not component:
+        # If no component is specified, we are health checking the core. If
+        # client creation or ping fails, we will still exit with a non-zero
+        # exit code.
+        redis_client.ping()
+        sys.exit(0)
+
+    report_str = redis_client.hget(f"healthcheck:{component}", "value")
+    if not report_str:
+        # Status was never updated
+        sys.exit(1)
+
+    report = json.loads(report_str)
+
+    # TODO (Alex): We probably shouldn't rely on time here, but cloud providers
+    # have very well synchronized NTP servers, so this should be fine in
+    # practice.
+    cur_time = time.time()
+    report_time = float(report["time"])
+
+    # If the status is too old, the service has probably already died.
+    delta = cur_time - report_time
+    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+
+    if time_ok:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 @cli.command()
