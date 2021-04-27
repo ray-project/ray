@@ -750,7 +750,7 @@ class Policy(metaclass=ABCMeta):
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
-        return SampleBatch(ret, _dont_check_lens=True)
+        return SampleBatch(ret)
 
     def _update_model_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.
@@ -762,12 +762,21 @@ class Policy(metaclass=ABCMeta):
         self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
         obj = model or self
+        if model and not hasattr(model, "view_requirements"):
+            model.view_requirements = {
+                SampleBatch.OBS: ViewRequirement(space=self.observation_space)
+            }
+        view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        for i, state in enumerate(obj.get_initial_state()):
+        init_state = []
+        if hasattr(obj, "get_initial_state") and callable(
+                obj.get_initial_state):
+            init_state = obj.get_initial_state()
+        else:
+            obj.get_initial_state = lambda: []
+        for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state
-            view_reqs = model.view_requirements if model else \
-                self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,

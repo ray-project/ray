@@ -1225,7 +1225,7 @@ class Trainer(Trainable):
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
         elif config["evaluation_num_workers"] == 0 and \
-                config["evaluation_parallel_to_training"]:
+                config.get("evaluation_parallel_to_training", False):
             logger.warning(
                 "`evaluation_parallel_to_training` can only be done if "
                 "`evaluation_num_workers` > 0! Setting "
