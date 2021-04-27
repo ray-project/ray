@@ -1,4 +1,3 @@
-import importlib
 from itertools import groupby
 import json
 import logging
@@ -207,24 +206,6 @@ def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
-
-
-def import_attr(full_path: str):
-    """Given a full import path to a module attr, return the imported attr.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-
-    last_period_idx = full_path.rfind(".")
-    attr_name = full_path[last_period_idx + 1:]
-    module_name = full_path[:last_period_idx]
-    module = importlib.import_module(module_name)
-    return getattr(module, attr_name)
 
 
 async def mock_imported_function(request):

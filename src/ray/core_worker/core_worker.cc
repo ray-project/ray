@@ -40,13 +40,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
+    const ray::RuntimeEnv &runtime_env,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, override_environment_variables);
+      debugger_breakpoint, runtime_env, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1519,13 +1520,20 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       task_options.override_environment_variables;
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
+  // Update runtime env with simple dict update.
+  ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
+  ray::RuntimeEnv new_runtime_env = task_options.runtime_env;
+  runtime_env.Update(new_runtime_env);
+  if (runtime_env.IsEmpty()) {
+    runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
+  }
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
                       placement_options, placement_group_capture_child_tasks,
-                      debugger_breakpoint, override_environment_variables);
+                      debugger_breakpoint, runtime_env, override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1563,6 +1571,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.override_environment_variables;
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
+  // Update runtime env with simple dict update.
+  ray::RuntimeEnv runtime_env = worker_context_.GetCurrentRuntimeEnv();
+  ray::RuntimeEnv new_runtime_env = actor_creation_options.runtime_env;
+  runtime_env.Update(new_runtime_env);
+  if (runtime_env.IsEmpty()) {
+    runtime_env = ray::RuntimeEnv::FromProto(job_config_->runtime_env());
+  }
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
@@ -1584,7 +1599,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
-                      override_environment_variables);
+                      runtime_env, override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.max_task_retries,
                                    actor_creation_options.dynamic_worker_options,
@@ -1720,6 +1735,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
   const std::unordered_map<std::string, std::string> override_environment_variables = {};
+  const ray::RuntimeEnv runtime_env = RuntimeEnv();
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
@@ -1727,8 +1743,8 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
-                      override_environment_variables);
-  // NOTE: placement_group_capture_child_tasks and override_environment_variables will
+                      runtime_env, override_environment_variables);
+  // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
   const ObjectID new_cursor = return_ids->back();

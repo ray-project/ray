@@ -695,9 +695,12 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed = runtime_support.RuntimeEnvDict(runtime_env)
-            override_environment_variables = parsed.to_worker_env_vars(
-                override_environment_variables)
+            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = (
+                parsed_runtime_env.to_worker_env_vars(
+                    override_environment_variables))
+        else:
+            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -716,6 +719,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
+            runtime_env=parsed_runtime_env,
             override_environment_variables=override_environment_variables
             or dict())
 
