@@ -64,11 +64,22 @@ def _get_root_dir():
     return os.path.join(_get_curr_dir(), "../../")
 
 
+def _get_commit_sha():
+    travis_sha = os.environ.get("TRAVIS_COMMIT")
+    if len(travis_sha) < 6:
+        print("INVALID SHA FOUND")
+        return "ERROR"
+    return travis_sha[:6]
+
+
 def _configure_human_version():
     global _get_branch
+    global _get_commit_sha
     fake_branch_name = input("Provide a 'branch name'. For releases, it "
                              "should be `releases/x.x.x`")
     _get_branch = lambda: fake_branch_name  # noqa: E731
+    fake_sha = input("Provide a SHA (used for tag value)")
+    _get_commit_sha = lambda: fake_sha  # noqa: E731
 
 
 def _get_wheel_name(minor_version_number):
@@ -267,7 +278,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         return old_tag.replace("nightly", new_tag)
 
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
-    sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
+    sha_tag = _get_commit_sha()
     if _release_build():
         release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
                                  _get_branch()).group(0)
