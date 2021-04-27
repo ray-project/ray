@@ -36,16 +36,19 @@ class A3CLoss:
                  advantages,
                  v_target,
                  vf,
+                 valid_mask,
                  vf_loss_coeff=0.5,
                  entropy_coeff=0.01):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
-        self.pi_loss = -tf.reduce_sum(log_prob * advantages)
+        self.pi_loss = -tf.reduce_sum(
+            tf.boolean_mask(log_prob * advantages, valid_mask))
 
-        delta = vf - v_target
+        delta = tf.boolean_mask(vf - v_target, valid_mask)
         self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
-        self.entropy = tf.reduce_sum(action_dist.entropy())
+        self.entropy = tf.reduce_sum(
+            tf.boolean_mask(action_dist.entropy(), valid_mask))
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
@@ -53,10 +56,16 @@ class A3CLoss:
 def actor_critic_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
+    if policy.is_recurrent():
+        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
+        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = tf.reshape(mask, [-1])
+    else:
+        mask = tf.ones_like(train_batch[SampleBatch.REWARDS])
     policy.loss = A3CLoss(action_dist, train_batch[SampleBatch.ACTIONS],
                           train_batch[Postprocessing.ADVANTAGES],
                           train_batch[Postprocessing.VALUE_TARGETS],
-                          model.value_function(),
+                          model.value_function(), mask,
                           policy.config["vf_loss_coeff"],
                           policy.config["entropy_coeff"])
     return policy.loss.total_loss
