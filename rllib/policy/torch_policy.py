@@ -710,7 +710,7 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
-        seq_lens = dummy_inputs["seq_lens"]
+        seq_lens = self._dummy_batch["seq_lens"]
 
         state_ins = []
         i = 0
