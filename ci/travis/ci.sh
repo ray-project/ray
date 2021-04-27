@@ -239,7 +239,7 @@ build_dashboard_front_end() {
         nvm use --silent node
       fi
       install_npm_project
-      npm run -s build
+      yarn build
     )
   fi
 }
