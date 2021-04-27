@@ -441,7 +441,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             for uri in uris:
                 working_dir = runtime_env.ensure_runtime_env_setup([uri])
                 if working_dir:
-                    os.chdir(str(working_dir))
+                    os.chdir(working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
