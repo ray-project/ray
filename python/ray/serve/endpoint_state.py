@@ -1,7 +1,8 @@
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional
 
 import ray.cloudpickle as pickle
-from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
+from ray.serve.common import (BackendTag, EndpointInfo, EndpointTag,
+                              TrafficPolicy)
 from ray.serve.long_poll import LongPollNamespace
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
@@ -20,14 +21,13 @@ class EndpointState:
                  long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._routes: Dict[str, Tuple[EndpointTag, Any]] = dict()
+        self._endpoints: Dict[EndpointTag, EndpointInfo] = dict()
         self._traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
-        self._python_methods: Dict[EndpointTag, List[str]] = dict()
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (self._routes, self._traffic_policies,
-             self._python_methods) = pickle.loads(checkpoint)
+            (self._endpoints,
+             self._traffic_policies) = pickle.loads(checkpoint)
 
         self._notify_route_table_changed()
         self._notify_traffic_policies_changed()
@@ -35,12 +35,11 @@ class EndpointState:
     def _checkpoint(self):
         self._kv_store.put(
             CHECKPOINT_KEY,
-            pickle.dumps((self._routes, self._traffic_policies,
-                          self._python_methods)))
+            pickle.dumps((self._endpoints, self._traffic_policies)))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,
-                                            self._routes)
+                                            self._endpoints)
 
     def _notify_traffic_policies_changed(
             self, filter_tag: Optional[EndpointTag] = None):
@@ -51,84 +50,65 @@ class EndpointState:
                     policy,
                 )
 
-    def _get_route_for_endpoint(self, endpoint: EndpointTag) -> str:
-        for route, (route_endpoint, _) in self._routes.items():
-            if route_endpoint == endpoint:
-                return route
+    def _get_endpoint_for_route(self, route: str) -> Optional[EndpointTag]:
+        for endpoint, info in self._endpoints.items():
+            if info.route == route:
+                return endpoint
+
         return None
 
-    def update_endpoint(self,
-                        endpoint: EndpointTag,
-                        route: Optional[str],
-                        methods: List[str],
-                        traffic_policy: TrafficPolicy,
-                        python_methods: Optional[List[str]] = None):
+    def update_endpoint(self, endpoint: EndpointTag,
+                        endpoint_info: EndpointInfo,
+                        traffic_policy: TrafficPolicy) -> None:
         """Create or update the given endpoint.
 
         This method is idempotent - if the endpoint already exists it will be
         updated to match the given parameters. Calling this twice with the same
         arguments is a no-op.
         """
-        if route is None:
-            route = endpoint
+        existing_route_endpoint = self._get_endpoint_for_route(
+            endpoint_info.route)
+        if (endpoint_info.route is not None
+                and existing_route_endpoint is not None
+                and existing_route_endpoint != endpoint):
+            raise ValueError(
+                f"route_prefix '{endpoint_info.route}' is already registered.")
 
-        if route in self._routes and self._routes[route][0] != endpoint:
-            raise ValueError(f"route_prefix {route} is already registered.")
-
-        if python_methods is None:
-            python_methods = []
-
-        existing_route = self._get_route_for_endpoint(endpoint)
-        if existing_route is not None:
-            if (self._routes[existing_route] == (endpoint, methods)
-                    and self._traffic_policies[endpoint] == traffic_policy
-                    and self._python_methods[endpoint] == python_methods):
+        if endpoint in self._endpoints:
+            if (self._endpoints[endpoint] == endpoint_info
+                    and self._traffic_policies == traffic_policy):
                 return
-            else:
-                del self._routes[existing_route]
-                del self._traffic_policies[endpoint]
-                del self._python_methods[endpoint]
 
-        self._routes[route] = (endpoint, methods)
+        self._endpoints[endpoint] = endpoint_info
         self._traffic_policies[endpoint] = traffic_policy
-        self._python_methods[endpoint] = python_methods
 
         self._checkpoint()
         self._notify_route_table_changed()
         self._notify_traffic_policies_changed(endpoint)
 
-    def create_endpoint(self,
-                        endpoint: EndpointTag,
-                        route: Optional[str],
-                        methods: List[str],
-                        traffic_policy: TrafficPolicy,
-                        python_methods: Optional[List[str]] = None):
-        # If this is a headless endpoint with no route, key the endpoint
-        # based on its name.
-        # TODO(edoakes): we should probably just store routes and endpoints
-        # separately.
-        if route is None:
-            route = endpoint
-
-        if python_methods is None:
-            python_methods = []
-
+    def create_endpoint(self, endpoint: EndpointTag,
+                        endpoint_info: EndpointInfo,
+                        traffic_policy: TrafficPolicy):
         err_prefix = "Cannot create endpoint."
-        if route in self._routes:
-            # Ensures this method is idempotent
-            if self._routes[route] == (endpoint, methods):
+        if endpoint_info.route is not None:
+            existing_route_endpoint = self._get_endpoint_for_route(
+                endpoint_info.route)
+            if (existing_route_endpoint is not None
+                    and existing_route_endpoint != endpoint):
+                raise ValueError("{} Route '{}' is already registered.".format(
+                    err_prefix, endpoint_info.route))
+
+        if endpoint in self._endpoints:
+            if (self._endpoints[endpoint] == endpoint_info
+                    and self._traffic_policies == traffic_policy):
                 return
             else:
-                raise ValueError("{} Route '{}' is already registered.".format(
-                    err_prefix, route))
+                raise ValueError(
+                    "{} Endpoint '{}' is already registered.".format(
+                        err_prefix, endpoint))
 
-        if endpoint in self._traffic_policies:
-            raise ValueError("{} Endpoint '{}' is already registered.".format(
-                err_prefix, endpoint))
-
-        self._routes[route] = (endpoint, methods)
+        self._endpoints[endpoint] = endpoint_info
         self._traffic_policies[endpoint] = traffic_policy
-        self._python_methods[endpoint] = python_methods
 
         self._checkpoint()
         self._notify_route_table_changed()
@@ -158,14 +138,13 @@ class EndpointState:
         self._notify_traffic_policies_changed(endpoint)
 
     def get_endpoint_route(self, endpoint: EndpointTag) -> Optional[str]:
-        for route, (route_endpoint, methods) in self._routes.items():
-            if route_endpoint == endpoint:
-                return route
+        if endpoint in self._endpoints:
+            return self._endpoints[endpoint].route
         return None
 
     def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         endpoints = {}
-        for route, (endpoint, methods) in self._routes.items():
+        for endpoint, info in self._endpoints.items():
             if endpoint in self._traffic_policies:
                 traffic_policy = self._traffic_policies[endpoint]
                 traffic_dict = traffic_policy.traffic_dict
@@ -175,24 +154,22 @@ class EndpointState:
                 shadow_dict = {}
 
             endpoints[endpoint] = {
-                "route": route if route.startswith("/") else None,
-                "methods": methods,
+                "route": info.route,
+                "methods": info.http_methods,
                 "traffic": traffic_dict,
                 "shadows": shadow_dict,
-                "python_methods": self._python_methods[endpoint],
+                "python_methods": info.python_methods,
             }
         return endpoints
 
     def delete_endpoint(self, endpoint: EndpointTag) -> None:
         # This method must be idempotent. We should validate that the
         # specified endpoint exists on the client.
-        route = self._get_route_for_endpoint(endpoint)
-        if route is None:
+        if endpoint not in self._endpoints:
             return
 
-        del self._routes[route]
+        del self._endpoints[endpoint]
         del self._traffic_policies[endpoint]
-        del self._python_methods[endpoint]
 
         self._checkpoint()
         self._notify_route_table_changed()

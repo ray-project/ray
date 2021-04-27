@@ -137,6 +137,12 @@ class CoreWorkerMemoryStore {
   /// \return Total size of objects in the store.
   uint64_t UsedMemory();
 
+  /// Raise any unhandled errors that have not been accessed within a timeout.
+  /// This is used to surface unhandled task errors in interactive consoles.
+  /// In those settings, errors may never be garbage collected and hence we
+  /// never trigger the deletion hook for task errors that prints them.
+  void NotifyUnhandledErrors();
+
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
 

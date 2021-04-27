@@ -137,6 +137,19 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        # Log device and worker index.
+        if tfv == 2:
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info("TFPolicy (worker={}) running on GPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info("TFPolicy (worker={}) running on CPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False

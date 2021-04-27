@@ -1291,7 +1291,8 @@ def connect(node,
         script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
         worker.run_function_on_all_workers(
             lambda worker_info: sys.path.insert(1, script_directory))
-        if not job_config.client_job and job_config.get_runtime_env_uris():
+        if not job_config.client_job and len(
+                job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory))
@@ -1854,14 +1855,14 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See``runtime_env.py`` for
-            detailed documentation.
+            detailed documentation.  Note: can only be set via `.options()`.
         override_environment_variables (Dict[str, str]): This specifies
             environment variables to override for the actor or task.  The
             overrides are propagated to all child actors and tasks.  This
             is a dictionary mapping variable names to their values.  Existing
             variables can be overridden, new ones can be created, and an
             existing variable can be unset by setting it to an empty string.
-
+            Note: can only be set via `.options()`.
     """
     worker = global_worker
 

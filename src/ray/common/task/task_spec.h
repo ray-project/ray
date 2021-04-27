@@ -27,6 +27,26 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Information about the environment for a task (actor and non-actor).
+class RuntimeEnv {
+ public:
+  RuntimeEnv() {}
+  RuntimeEnv(std::string conda_env_name) : conda_env_name(conda_env_name) {}
+  std::string conda_env_name;
+
+  /// Perform a simple dict update.
+  ///
+  /// \param runtime_env the runtime env to merge into the current runtime env.
+  void Update(RuntimeEnv runtime_env);
+
+  // Get the corresponding protobuf message.
+  rpc::RuntimeEnv GetMessage() const;
+
+  static RuntimeEnv FromProto(rpc::RuntimeEnv message);
+
+  bool IsEmpty() const;
+};
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -74,6 +94,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t ParentCounter() const;
 
   ray::FunctionDescriptor FunctionDescriptor() const;
+
+  ray::RuntimeEnv RuntimeEnv() const;
 
   size_t NumArgs() const;
 

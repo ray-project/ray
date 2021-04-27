@@ -64,6 +64,19 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
 
+        self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
+        if self.seq_lens is None and len(args) > 0 and isinstance(
+                args[0], dict):
+            self.seq_lens = args[0].pop("_seq_lens", args[0].pop(
+                "seq_lens", None))
+        if isinstance(self.seq_lens, list):
+            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
+
+        self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        if self.max_seq_len is None and self.seq_lens is not None and \
+                not (tf and tf.is_tensor(self.seq_lens)) and \
+                len(self.seq_lens) > 0:
+            self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
         self.is_training = kwargs.pop("_is_training", None)
 
@@ -350,15 +363,11 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
         else:
-            try:
-                sb = SampleBatch(
-                    {k: v[start:end]
-                     for k, v in self.items()},
-                    _is_training=self.is_training,
-                    _time_major=self.time_major)
-            except Exception as e:
-                raise e
-            return sb
+            return SampleBatch(
+                {k: v[start:end]
+                 for k, v in self.items()},
+                _is_training=self.is_training,
+                _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:
@@ -545,6 +554,9 @@ class SampleBatch(dict):
         i = 0
         slices = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
+            assert np.all(self["seq_lens"] < slice_size), \
+                "ERROR: `slice_size` must be larger than the max. seq-len " \
+                "in the batch!"
             start_pos = 0
             current_slize_size = 0
             idx = 0

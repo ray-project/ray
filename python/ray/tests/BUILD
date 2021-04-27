@@ -11,8 +11,8 @@ SRCS = [] + select({
 py_test_module_list(
   files = [
 #    "test_dynres.py",  # dyn res not implemented
+    "test_actor_pool.py",
     "test_async.py",
-    "test_actor.py",
     "test_actor_advanced.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
@@ -26,7 +26,6 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_cancel.py",
-    "test_cli.py",
     "test_client.py",
     "test_client_init.py",
     "test_client_library_integration.py",
@@ -38,6 +37,7 @@ py_test_module_list(
     "test_joblib.py",
     "test_global_state.py",
     "test_global_gc.py",
+    "test_healthcheck.py",
     "test_mldataset.py",
   ],
   size = "medium",
@@ -48,22 +48,28 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_memory_scheduling.py",
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
     "test_multi_node_3.py",
-    "test_multi_tenancy.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
-    "test_object_manager.py",
     "test_object_spilling.py",
-    "test_object_spilling_2.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
-    "test_reference_counting_2.py",
     "test_resource_demand_scheduler.py",
     "test_scheduling.py",
     "test_serialization.py",
@@ -79,7 +85,19 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_pool.py",
+    "test_object_spilling_2.py",
+    "test_object_manager.py",
+    "test_reference_counting_2.py",
+    "test_multi_tenancy.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -110,6 +128,7 @@ py_test_module_list(
     "test_ray_init.py",
     "test_shuffle.py",
     "test_tempfile.py",
+    "test_unhandled_error.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -119,8 +138,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_cli.py",
     "test_failure.py",
-    "test_failure_2.py",
     "test_stress_failure.py",
   ],
   size = "large",
@@ -131,8 +150,19 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_failure_2.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_placement_group.py",
     "test_runtime_env.py",
+    "test_runtime_env_complicated.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -173,6 +203,8 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# TODO(ekl) we can't currently support tagging these as flaky since there's
+# no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
     "test_actor.py",
