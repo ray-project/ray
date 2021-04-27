@@ -84,6 +84,25 @@ def test_ref_in_handle_input(serve_instance):
     ray.get(worker_result)
 
 
+def test_nested_actors(serve_instance):
+    signal = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    class CustomActor:
+        def __init__(self) -> None:
+            signal.send.remote()
+
+    @serve.deployment
+    class A:
+        def __init__(self) -> None:
+            self.a = CustomActor.remote()
+
+    A.deploy()
+
+    # The nested actor should start successfully.
+    ray.get(signal.wait.remote(), timeout=10)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
