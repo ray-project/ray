@@ -6,7 +6,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 import os
 import queue
-import sys
 
 import threading
 from typing import Any
