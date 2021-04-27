@@ -2,13 +2,16 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
-import uuid
+import asyncio
+import concurrent.futures
 import os
+import uuid
 import inspect
 from ray.util.inspect import is_cython
 import json
 import threading
 from typing import Any
+from typing import Callable
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -60,7 +63,50 @@ class ClientBaseRef:
 
 
 class ClientObjectRef(ClientBaseRef):
-    pass
+    def __await__(self):
+        return self.as_future().__await__()
+
+    def as_future(self) -> asyncio.Future:
+        return asyncio.wrap_future(self.future())
+
+    def future(self) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
+
+        def set_value(data: Any) -> None:
+            """Schedules a callback to set the exception or result
+            in the Future."""
+
+            if isinstance(data, Exception):
+                fut.set_exception(data)
+            else:
+                fut.set_result(data)
+
+        self._on_completed(set_value)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
+        return fut
+
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
+        """
+        from ray.util.client.client_pickler import loads_from_server
+
+        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
+            """Converts from a GetResponse proto to a python object."""
+            obj = resp.get
+            data = None
+            if not obj.valid:
+                data = loads_from_server(resp.get.error)
+            else:
+                data = loads_from_server(resp.get.data)
+
+            py_callback(data)
+
+        ray._register_callback(self, deserialize_obj)
 
 
 class ClientActorRef(ClientBaseRef):

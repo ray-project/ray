@@ -155,7 +155,10 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     with pytest.raises(ray.exceptions.RayTaskError):
         await actor.throw_error.remote().as_future()
 
-    kill_actor_and_wait_for_failure(actor)
+    # Wrap in Remote Function to work with Ray client.
+    kill_actor_ref = ray.remote(kill_actor_and_wait_for_failure).remote(actor)
+    ray.get(kill_actor_ref)
+
     with pytest.raises(ray.exceptions.RayActorError):
         await actor.echo.remote(1)
 
@@ -256,6 +259,7 @@ def test_async_function_errored(ray_start_regular_shared):
         ray.get(ref)
 
 
+@pytest.mark.asyncio
 async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     @ray.remote
     def f():

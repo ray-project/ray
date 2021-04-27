@@ -72,7 +72,6 @@ class SampleBatch(dict):
         if isinstance(self.seq_lens, list):
             self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
 
-        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.seq_lens is not None and \
                 not (tf and tf.is_tensor(self.seq_lens)) and \
@@ -106,20 +105,12 @@ class SampleBatch(dict):
             if isinstance(v, list):
                 self[k] = np.array(v)
 
-        if not lengths:
-            raise ValueError("Empty sample batch")
-
-        if not self.dont_check_lens:
-            assert len(set(lengths)) == 1, \
-                "Data columns must be same length, but lens are " \
-                "{}".format(lengths)
-
         if self.seq_lens is not None and \
                 not (tf and tf.is_tensor(self.seq_lens)) and \
                 len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = lengths[0]
+            self.count = lengths[0] if lengths else 0
 
     @PublicAPI
     def __len__(self):
@@ -163,7 +154,6 @@ class SampleBatch(dict):
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
             _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True,
             _zero_padded=zero_padded,
             _max_seq_len=max_seq_len,
         )
@@ -213,7 +203,7 @@ class SampleBatch(dict):
                 for (k, v) in self.items()
             },
             _seq_lens=self.seq_lens,
-            _dont_check_lens=self.dont_check_lens)
+        )
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
 
@@ -355,7 +345,7 @@ class SampleBatch(dict):
                 data,
                 _seq_lens=np.array(seq_lens, dtype=np.int32),
                 _time_major=self.time_major,
-                _dont_check_lens=True)
+            )
         else:
             return SampleBatch(
                 {k: v[start:end]
@@ -591,6 +581,71 @@ class SampleBatch(dict):
             deprecation_warning(
                 old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
         return self
+
+    # TODO: (sven) Experimental method.
+    def get_single_step_input_dict(self, view_requirements, index="last"):
+        """Creates single ts SampleBatch at given index from `self`.
+
+        For usage as input-dict for model calls.
+
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
+
+        input_dict = {}
+        for view_col, view_req in view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
+                if view_req.shift_from is not None:
+                    data = self[view_col][-1]
+                    traj_len = len(self[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate(
+                            [data,
+                             self[data_col][-missing_at_end:]])[from_:to_]
+                    ])
+                # Single index.
+                else:
+                    data = self[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = self[data_col][index[0]:index[1] +
+                                          1 if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = self[data_col][
+                        index:index + 1 if index != -1 else None]
+
+        return SampleBatch(input_dict, _seq_lens=np.array([1], dtype=np.int32))
 
 
 @PublicAPI
