@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -163,7 +164,7 @@ class RolloutWorker(ParallelIteratorWorker):
             record_env: Union[bool, str] = False,
             log_dir: str = None,
             log_level: str = None,
-            callbacks: Type["DefaultCallbacks"] = None,
+            callbacks: Type[DefaultCallbacks] = None,
             input_creator: Callable[[
                 IOContext
             ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),

@@ -4,6 +4,9 @@ import collections
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray import ObjectRef
+from ray.actor import ActorHandle
+from ray.rllib import RolloutWorker
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.offline.off_policy_estimator import OffPolicyEstimate
@@ -51,9 +54,9 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 
 @DeveloperAPI
-def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
-                    remote_workers: List["ActorHandle"] = [],
-                    to_be_collected: List["ObjectRef"] = [],
+def collect_metrics(local_worker: Optional[RolloutWorker] = None,
+                    remote_workers: List[ActorHandle] = [],
+                    to_be_collected: List[ObjectRef] = [],
                     timeout_seconds: int = 180) -> ResultDict:
     """Gathers episode metrics from RolloutWorker instances."""
 
@@ -68,11 +71,11 @@ def collect_metrics(local_worker: Optional["RolloutWorker"] = None,
 
 @DeveloperAPI
 def collect_episodes(
-        local_worker: Optional["RolloutWorker"] = None,
-        remote_workers: List["ActorHandle"] = [],
-        to_be_collected: List["ObjectRef"] = [],
+        local_worker: Optional[RolloutWorker] = None,
+        remote_workers: List[ActorHandle] = [],
+        to_be_collected: List[ObjectRef] = [],
         timeout_seconds: int = 180
-) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List["ObjectRef"]]:
+) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List[ObjectRef]]:
     """Gathers new episodes metrics tuples from the given evaluators."""
 
     if remote_workers:
