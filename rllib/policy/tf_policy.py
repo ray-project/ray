@@ -156,9 +156,9 @@ class TFPolicy(Policy):
             self.view_requirements[
                 SampleBatch.INFOS].used_for_compute_actions = False
 
-        assert model is None or isinstance(model, ModelV2), \
-            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
-            "You passed in {}.".format(model)
+        assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), \
+            "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` " \
+            "not allowed! You passed in {}.".format(model)
         self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
@@ -227,7 +227,10 @@ class TFPolicy(Policy):
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
-        return self.model.variables()
+        if isinstance(self.model, tf.keras.Model):
+            return self.model.variables
+        else:
+            return self.model.variables()
 
     def get_placeholder(self, name) -> "tf1.placeholder":
         """Returns the given action or loss input placeholder by name.
@@ -281,7 +284,7 @@ class TFPolicy(Policy):
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
-        if self.model:
+        if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
             self._stats_fetches.update({
                 "model": self.model.metrics() if isinstance(
@@ -919,7 +922,7 @@ class TFPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch["is_training"] = True
+        train_batch.is_training = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
