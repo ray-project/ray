@@ -60,8 +60,7 @@ class RayCluster():
     def get_generation(self) -> int:
         return self._generation
 
-    def do_in_subprocess(self,
-                         f: Callable[[], None]) -> None:
+    def do_in_subprocess(self, f: Callable[[], None]) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.

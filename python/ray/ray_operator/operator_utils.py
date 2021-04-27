@@ -199,20 +199,19 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
     _set_status(cluster_name, cluster_namespace, status)
 
 
-def _set_status(cluster_name: str,
-                cluster_namespace: str,
+def _set_status(cluster_name: str, cluster_namespace: str,
                 status: str) -> None:
     cluster_cr = custom_objects_api()\
         .get_namespaced_custom_object(namespace=cluster_namespace,
-                                      group="cluster.ray.io",
-                                      version="v1",
-                                      plural="rayclusters",
+                                      group=RAY_API_GROUP,
+                                      version=RAY_API_VERSION,
+                                      plural=RAYCLUSTER_PLURAL,
                                       name=cluster_name)
     cluster_cr["status"] = {"phase": status}
     custom_objects_api()\
         .patch_namespaced_custom_object_status(namespace=cluster_namespace,
-                                               group="cluster.ray.io",
-                                               version="v1",
-                                               plural="rayclusters",
+                                               group=RAY_API_GROUP,
+                                               version=RAY_API_VERSION,
+                                               plural=RAYCLUSTER_PLURAL,
                                                name=cluster_name,
                                                body=cluster_cr)
