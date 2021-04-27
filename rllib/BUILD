@@ -2221,6 +2221,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/restore_1_of_n_agents_from_checkpoint",
+    tags = ["examples", "examples_R"],
+    size = "small",
+    srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--pre-training-iters=1", "--stop-iters=1"]
+)
+
+py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["examples", "examples_R"],
     size = "small",
