@@ -4,12 +4,13 @@ import os
 import timeit
 
 import ray
-
-from data_generation import generate_data
-from shuffle import (
+from ray.experimental.data_loader.shuffle import (
     shuffle_from_disk, shuffle_from_memory_with_stats,
     shuffle_from_memory_no_stats)
-from stats import process_stats, human_readable_size
+from ray.experimental.data_loader.stats import (
+    process_stats, human_readable_size)
+
+from ray.experimental.data_loader.data_generation import generate_data
 
 
 # TODOs:

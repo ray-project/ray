@@ -14,6 +14,10 @@ import ray
 # TODO(Clark): Convert this stats data model to be based on a Pandas DataFrame
 # instead of nested data classes.
 
+#
+# Stats data classes.
+#
+
 
 @dataclass
 class StageStats:
@@ -95,7 +99,9 @@ class TrialStatsFromMemory:
     duration: float
 
 
-# TODO(Clark): Make these actor classes async.
+#
+# Shuffling data loader stats collectors.
+#
 
 
 class RoundStatsCollector_:
@@ -490,6 +496,11 @@ class TrialStatsCollectorFromMemory_(TrialStatsCollector_):
 
 TrialStatsCollector = ray.remote(TrialStatsCollector_)
 TrialStatsCollectorFromMemory = ray.remote(TrialStatsCollectorFromMemory_)
+
+
+#
+# Stats processing utilities.
+#
 
 
 def process_stats(

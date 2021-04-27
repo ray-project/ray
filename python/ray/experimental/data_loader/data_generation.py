@@ -5,6 +5,11 @@ import numpy as np
 import ray
 
 
+#
+# Data generation utilities for the shuffling data loader.
+#
+
+
 def generate_data(
         num_rows,
         num_files,
@@ -64,47 +69,41 @@ def generate_file(
     return filename, data_size
 
 
+DATA_SPEC = {
+    "embeddings_name0": (0, 2385, np.int64),
+    "embeddings_name1": (0, 201, np.int64),
+    "embeddings_name2": (0, 201, np.int64),
+    "embeddings_name3": (0, 6, np.int64),
+    "embeddings_name4": (0, 19, np.int64),
+    "embeddings_name5": (0, 1441, np.int64),
+    "embeddings_name6": (0, 201, np.int64),
+    "embeddings_name7": (0, 22, np.int64),
+    "embeddings_name8": (0, 156, np.int64),
+    "embeddings_name9": (0, 1216, np.int64),
+    "embeddings_name10": (0, 9216, np.int64),
+    "embeddings_name11": (0, 88999, np.int64),
+    "embeddings_name12": (0, 941792, np.int64),
+    "embeddings_name13": (0, 9405, np.int64),
+    "embeddings_name14": (0, 83332, np.int64),
+    "embeddings_name15": (0, 828767, np.int64),
+    "embeddings_name16": (0, 945195, np.int64),
+    "one_hot0": (0, 3, np.int64),
+    "one_hot1": (0, 50, np.int64),
+    "labels": (0, 1, np.float64),
+}
+
+
 def generate_row_group(group_index, global_row_index, num_rows_in_group):
     buffer = {
         "key": np.array(
             range(global_row_index, global_row_index + num_rows_in_group)),
-        "embeddings_name0": np.random.randint(
-            0, 2385, num_rows_in_group, dtype=np.long),
-        "embeddings_name1": np.random.randint(
-            0, 201, num_rows_in_group, dtype=np.long),
-        "embeddings_name2": np.random.randint(
-            0, 201, num_rows_in_group, dtype=np.long),
-        "embeddings_name3": np.random.randint(
-            0, 6, num_rows_in_group, dtype=np.long),
-        "embeddings_name4": np.random.randint(
-            0, 19, num_rows_in_group, dtype=np.long),
-        "embeddings_name5": np.random.randint(
-            0, 1441, num_rows_in_group, dtype=np.long),
-        "embeddings_name6": np.random.randint(
-            0, 201, num_rows_in_group, dtype=np.long),
-        "embeddings_name7": np.random.randint(
-            0, 22, num_rows_in_group, dtype=np.long),
-        "embeddings_name8": np.random.randint(
-            0, 156, num_rows_in_group, dtype=np.long),
-        "embeddings_name9": np.random.randint(
-            0, 1216, num_rows_in_group, dtype=np.long),
-        "embeddings_name10": np.random.randint(
-            0, 9216, num_rows_in_group, dtype=np.long),
-        "embeddings_name11": np.random.randint(
-            0, 88999, num_rows_in_group, dtype=np.long),
-        "embeddings_name12": np.random.randint(
-            0, 941792, num_rows_in_group, dtype=np.long),
-        "embeddings_name13": np.random.randint(
-            0, 9405, num_rows_in_group, dtype=np.long),
-        "embeddings_name14": np.random.randint(
-            0, 83332, num_rows_in_group, dtype=np.long),
-        "embeddings_name15": np.random.randint(
-            0, 828767, num_rows_in_group, dtype=np.long),
-        "embeddings_name16": np.random.randint(
-            0, 945195, num_rows_in_group, dtype=np.long),
-        "one_hot0": np.random.randint(0, 3, num_rows_in_group, dtype=np.long),
-        "one_hot1": np.random.randint(0, 50, num_rows_in_group, dtype=np.long),
-        "labels": np.random.rand(num_rows_in_group),
     }
+    for col, (low, high, dtype) in DATA_SPEC.items():
+        if dtype in (np.int16, np.int32, np.int64):
+            buffer[col] = np.random.randint(
+                low, high, num_rows_in_group, dtype=dtype)
+        elif dtype in (np.float32, np.float64):
+            buffer[col] = (
+                (high - low) * np.random.rand(num_rows_in_group) + low)
 
     return pd.DataFrame(buffer)

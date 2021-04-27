@@ -76,7 +76,7 @@ head_node:
               - Key: anyscale-user
                 Value: "clark@anyscale.com"
               - Key: anyscale-expiration
-                Value: "2021-04-21"
+                Value: "2021-05-01"
 
     # Additional options in the boto docs.
 

@@ -5,17 +5,10 @@ from typing import TypeVar, List, Tuple, Iterable, Iterator
 import pandas as pd
 import ray
 from ray._private.utils import get_num_cpus
-
-from shuffle import shuffle_from_memory
-from multiqueue import MultiQueue
+from ray.experimental.data_loader.shuffle import shuffle_from_memory
+from ray.experimental.data_loader.multiqueue import MultiQueue
 
 MULTIQUEUE_ACTOR_NAME = "MultiQueue"
-
-
-# TODOs:
-#  - Usage example of iterator: 2 trainers, print and sleep.
-#  - Architecture diagram illustrating the purpose of the queue.
-#  - Add top-level documentation.
 
 
 class ShufflingDataset:
@@ -81,8 +74,6 @@ class ShufflingDataset:
             # Kick off shuffle.
             # TODO(Clark): Move the shuffle kickoff to an init() method so the
             # user can better control when the shuffling starts?
-            # TODO(Clark): Make shuffle_from_memory non-blocking so we don't
-            # have to launch this is in a Ray task.
             self._shuffle_result = shuffle_from_memory.remote(
                 filenames,
                 functools.partial(
@@ -106,6 +97,9 @@ class ShufflingDataset:
         self._rank = rank
 
     def __iter__(self):
+        """
+        This iterator yields GPU batches from the shuffling queue.
+        """
         while True:
             # TODO(Clark): Add get_up_to queue method that can fetch up to
             # some number of batches in a single RPC.
@@ -156,8 +150,8 @@ def chunk(iterable: Iterable[T], n: int) -> Iterator[Tuple[T, ...]]:
 
 
 if __name__ == "__main__":
-    from data_generation import generate_data
-    from stats import human_readable_size
+    from ray.experimental.data_loader.data_generation import generate_data
+    from ray.experimental.data_loader.stats import human_readable_size
     print("Starting Ray...")
     ray.init()
     num_rows = 10 ** 6

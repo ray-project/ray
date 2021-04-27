@@ -8,8 +8,7 @@ import pandas as pd
 import numpy as np
 
 import ray
-
-from stats import (
+from ray.experimental.data_loader.stats import (
     TrialStatsCollector, TrialStatsCollectorFromMemory, collect_store_stats,
     TrialStatsFromMemory)
 
