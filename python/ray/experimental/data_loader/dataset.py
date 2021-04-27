@@ -57,6 +57,8 @@ class ShufflingDataset:
         if max_concurrent_rounds is None:
             max_concurrent_rounds = num_rounds
 
+        self._batch_size = batch_size
+
         # TODO(Clark): Find way to do this without batch consumer proxy queue.
         if rank == 0:
             # rank == 0 --> master process
@@ -103,10 +105,12 @@ class ShufflingDataset:
         while True:
             # TODO(Clark): Add get_up_to queue method that can fetch up to
             # some number of batches in a single RPC.
-            batch = self._batch_queue.get(self._rank, block=True)
-            if batch is None:
+            batches = self._batch_queue.get(self._rank, block=True)
+            if batches is None:
                 break
-            yield batch
+            batches = ray.get(batches)
+            for batch in chunk_df(batches, self._batch_size):
+                yield batch
         if self._shuffle_result is not None:
             ray.get(self._shuffle_result)
 
@@ -115,18 +119,14 @@ def batch_consumer(
         queue: MultiQueue,
         batch_size: int,
         rank: int,
-        batches: Iterable[pd.DataFrame]):
+        batches: Iterable[ray.ObjectRef]):
     """
     Batch consumer that will be provided to the shuffler.
     """
-    if batches is not None:
-        batches = pd.concat(batches)
-        batches = list(chunk_df(batches, batch_size))
-        queue.put_batch(rank, batches)
+    if batches is None:
+        queue.put(rank, None)
     else:
-        # batches is None, so the producer is done. Send this termination
-        # signal to the queue.
-        queue.put(rank, batches)
+        queue.put_batch(rank, batches)
 
 
 def debug_batch_consumer(
@@ -153,7 +153,10 @@ if __name__ == "__main__":
     from ray.experimental.data_loader.data_generation import generate_data
     from ray.experimental.data_loader.stats import human_readable_size
     print("Starting Ray...")
-    ray.init()
+    # FIXME(Clark): We're setting the idle worker killing time very high in
+    # order to work around an idle working killing bug that's causing objects
+    # to be lost. We should fix this.
+    ray.init(_system_config={"idle_worker_killing_time_threshold_ms": 10**6})
     num_rows = 10 ** 6
     num_files = 10
     num_row_groups_per_file = 1

@@ -334,7 +334,7 @@ def shuffle_from_memory_round(
     consumers = [
         consume.remote(
             trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
-            round_index, *itertools.chain.from_iterable(batches))
+            round_index, list(itertools.chain.from_iterable(batches)))
         for trainer_idx, batches in enumerate(
             zip(
                 *[
@@ -403,7 +403,7 @@ def consume(
         trainer_idx: int,
         batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
         trial_start: float, stats_collector: Union[TrialStatsCollector, None],
-        epoch: int, round_index: int, *batches: pd.DataFrame) -> None:
+        epoch: int, round_index: int, batches: List[ray.ObjectRef]) -> None:
     print(f"Sending to consumer {trainer_idx} in epoch {epoch}, round "
           f"{round_index}")
     if stats_collector is not None:
