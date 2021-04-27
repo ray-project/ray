@@ -943,6 +943,7 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
+        self._lr_schedule = None
         if lr_schedule is None:
             self.cur_lr = tf1.get_variable(
                 "lr", initializer=lr, trainable=False)
