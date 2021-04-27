@@ -1,5 +1,5 @@
-
 #include "ray/gcs/gcs_server/gcs_resource_report_broadcaster.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
@@ -81,6 +81,7 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
 
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();
+  stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
 
   absl::MutexLock guard(&mutex_);
   for (const auto &pair : nodes_) {
