@@ -1,6 +1,5 @@
 import os
 import logging
-from os.path import dirname
 import platform
 import sys
 
@@ -54,7 +53,8 @@ if (platform.system() == "Linux"
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
 python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
-so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
+so_path = os.path.join(
+    os.path.dirname(__file__), "_raylet" + python_shared_lib_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL
@@ -69,16 +69,13 @@ from ray._raylet import (  # noqa: E402
 
 _config = _Config()
 
-from ray.profiling import profile  # noqa: E402
 from ray.state import (  # noqa: E402
-    jobs, nodes, actors, objects, timeline, object_transfer_timeline,
-    cluster_resources, available_resources,
+    nodes, timeline, cluster_resources, available_resources,
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
     UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
-    get_resource_ids, get_dashboard_url, init, is_initialized, put, kill,
-    remote, shutdown, show_in_dashboard, wait,
+    init, is_initialized, put, kill, remote, shutdown, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -98,28 +95,21 @@ __all__ = [
     "_config",
     "get_runtime_context",
     "actor",
-    "actors",
     "available_resources",
     "cancel",
     "cluster_resources",
     "get",
     "get_actor",
     "get_gpu_ids",
-    "get_resource_ids",
-    "get_dashboard_url",
     "init",
     "internal",
     "is_initialized",
     "java_actor_class",
     "java_function",
-    "jobs",
     "kill",
     "Language",
     "method",
     "nodes",
-    "objects",
-    "object_transfer_timeline",
-    "profile",
     "put",
     "remote",
     "shutdown",
