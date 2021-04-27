@@ -5,7 +5,6 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 import os
-import sys
 
 import threading
 from typing import Any
@@ -442,10 +441,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         with disable_client_hook():
             for uri in uris:
                 try:
-                    working_dir = runtime_env.fetch_package(uri)
+                    working_dir = runtime_env.ensure_runtime_env_setup([uri])
                     if working_dir:
                         os.chdir(str(working_dir))
-                        sys.path.insert(0, str(working_dir))
                 except IOError:
                     missing_uris.append(uri)
         return missing_uris
