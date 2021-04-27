@@ -97,6 +97,7 @@ def test_apply_all_workers(ray_start_2_cpus, num_workers, use_local):
 
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("scheduler_freq", ["epoch", "batch", "manual", None])
 def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa:
     # F811

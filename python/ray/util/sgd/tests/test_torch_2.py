@@ -15,9 +15,10 @@ from ray.util.sgd.data.examples import mlp_identity
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
-from ray.util.sgd.torch.training_operator import (
-    get_test_operator, TrainingOperator)
+from ray.util.sgd.torch.training_operator import (get_test_operator,
+                                                  TrainingOperator)
 from ray.util.sgd.utils import BATCH_COUNT
+
 
 @pytest.fixture
 def ray_start_2_cpus():
@@ -44,6 +45,7 @@ def ray_start_4_cpus():
 Operator = TrainingOperator.from_creators(
     model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
     TestOperator = get_test_operator(Operator)
@@ -56,6 +58,7 @@ def test_dead_trainer(ray_start_2_cpus, use_local):  # noqa: F811
     trainer.shutdown()
     with pytest.raises(RuntimeError):
         trainer.train()
+
 
 @pytest.mark.parametrize("num_workers", [1, 2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
@@ -222,6 +225,7 @@ def test_multi_model_matrix(ray_start_2_cpus, num_workers, use_local):  #
                 trainer.train()
                 trainer.shutdown()
 
+
 @pytest.mark.parametrize("use_local", [True, False])
 def test_dataset(ray_start_4_cpus, use_local):
     """
@@ -331,6 +335,7 @@ def test_num_steps(ray_start_2_cpus, use_local):
 
     trainer.shutdown()
 
+
 @pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
 def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
@@ -403,6 +408,7 @@ def test_tune_custom_train(ray_start_4_cpus, num_workers,
 
         assert mean_train_loss2 <= mean_train_loss1
         assert mean_val_loss2 <= mean_val_loss1
+
 
 @pytest.mark.parametrize("use_local", [True, False])
 def test_multi_input_model(ray_start_2_cpus, use_local):
@@ -479,9 +485,9 @@ def test_torch_dataset(ray_start_4_cpus, use_local):
     assert 0.4 <= prediction <= 0.6
     trainer.shutdown()
 
+
 if __name__ == "__main__":
     import pytest
     import sys
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
-
