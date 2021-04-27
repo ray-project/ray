@@ -85,9 +85,8 @@ class RayAPIStub:
         regular worker's serialization_context mechanism.
         """
         import ray.serialization_addons
-        from ray.util.client.ray_client_helpers import (
-            RayClientSerializationContext)
-        ctx = RayClientSerializationContext()
+        from ray.util.serialization import StandaloneSerializationContext
+        ctx = StandaloneSerializationContext()
         ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],

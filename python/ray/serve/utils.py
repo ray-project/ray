@@ -15,6 +15,8 @@ import numpy as np
 import pydantic
 
 import ray
+import ray.serialization_addons
+from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
@@ -286,3 +288,10 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def ensure_serialization_context():
+    """Ensure the serialization addons on registered, even when Ray has not
+    been started."""
+    ctx = StandaloneSerializationContext()
+    ray.serialization_addons.apply(ctx)
