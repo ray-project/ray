@@ -336,7 +336,7 @@ class TFPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs):
@@ -369,7 +369,7 @@ class TFPolicy(Policy):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[MultiAgentEpisode]] = None,
+            episodes: Optional[List["MultiAgentEpisode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 

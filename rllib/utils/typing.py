@@ -77,13 +77,13 @@ FileType = Any
 
 # Represents a ViewRequirements dict mapping column names (str) to
 # ViewRequirement objects.
-ViewRequirementsDict = Dict[str, ViewRequirement]
+ViewRequirementsDict = Dict[str, "ViewRequirement"]
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union[tf.keras.optimizers.Optimizer, torch.optim.Optimizer]
+LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
@@ -111,7 +111,7 @@ ModelWeights = dict
 ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
-SampleBatchType = Union[SampleBatch, MultiAgentBatch]
+SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
