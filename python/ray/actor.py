@@ -223,6 +223,7 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
+            method = inspect.unwrap(method)
             is_bound = (is_class_method(method)
                         or is_static_method(modified_class, method_name))
 

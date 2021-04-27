@@ -30,7 +30,6 @@ def is_function_or_method(obj):
 
 def is_class_method(f):
     """Returns whether the given method is a class_method."""
-    f = inspect.unwrap(f)
     return hasattr(f, "__self__") and f.__self__ is not None
 
 
@@ -45,6 +44,5 @@ def is_static_method(cls, f_name):
     """
     for cls in inspect.getmro(cls):
         if f_name in cls.__dict__:
-            return isinstance(
-                inspect.unwrap(cls.__dict__[f_name]), staticmethod)
+            return isinstance(cls.__dict__[f_name], staticmethod)
     return False
