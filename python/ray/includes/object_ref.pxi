@@ -1,9 +1,35 @@
 from ray.includes.unique_ids cimport CObjectID
 
 import asyncio
-from typing import Callable, Any
+import concurrent.futures
+import functools
+import logging
+from typing import Callable, Any, Union
 
 import ray
+
+logger = logging.getLogger(__name__)
+
+
+def _set_future_helper(
+    result: Any,
+    *,
+    py_future: Union[asyncio.Future, concurrent.futures.Future],
+):
+    # Issue #11030, #8841
+    # If this future has result set already, we just need to
+    # skip the set result/exception procedure.
+    if py_future.done():
+        return
+
+    if isinstance(result, RayTaskError):
+        py_future.set_exception(result.as_instanceof_cause())
+    elif isinstance(result, RayError):
+        # Directly raise exception for RayActorError
+        py_future.set_exception(result)
+    else:
+        py_future.set_result(result)
+
 
 cdef class ObjectRef(BaseID):
 
@@ -67,39 +93,35 @@ cdef class ObjectRef(BaseID):
     def from_random(cls):
         return cls(CObjectID.FromRandom().Binary())
 
-    def __await__(self):
-        return self.as_future().__await__()
+    def future(self) -> concurrent.futures.Future:
+        """Wrap ObjectRef with a concurrent.futures.Future
 
-    def as_future(self):
-        loop = asyncio.get_event_loop()
-        py_future = loop.create_future()
+        Note that the future cancellation will not cancel the correspoding
+        task when the ObjectRef representing return object of a task.
+        Additionally, future.running() will always be ``False`` even if the
+        underlying task is running.
+        """
+        py_future = concurrent.futures.Future()
 
-        def callback(result):
-            loop = py_future._loop
-
-            def set_future():
-                # Issue #11030, #8841
-                # If this future has result set already, we just need to
-                # skip the set result/exception procedure.
-                if py_future.done():
-                    return
-
-                if isinstance(result, RayTaskError):
-                    ray.worker.last_task_error_raise_time = time.time()
-                    py_future.set_exception(result.as_instanceof_cause())
-                elif isinstance(result, RayError):
-                    # Directly raise exception for RayActorError
-                    py_future.set_exception(result)
-                else:
-                    py_future.set_result(result)
-
-            loop.call_soon_threadsafe(set_future)
-
-        self._on_completed(callback)
+        self._on_completed(
+            functools.partial(_set_future_helper, py_future=py_future))
 
         # A hack to keep a reference to the object ref for ref counting.
         py_future.object_ref = self
         return py_future
+
+    def __await__(self):
+        return self.as_future().__await__()
+
+    def as_future(self) -> asyncio.Future:
+        """Wrap ObjectRef with an asyncio.Future.
+
+        Note that the future cancellation will not cancel the correspoding
+        task when the ObjectRef representing return object of a task.
+        """
+        logger.warning("ref.as_future() is deprecated in favor of "
+                       "asyncio.wrap_future(ref.future()).")
+        return asyncio.wrap_future(self.future())
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
         """Register a callback that will be called after Object is ready.

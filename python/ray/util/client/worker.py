@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import grpc
 
+from ray.job_config import JobConfig
 import ray.cloudpickle as cloudpickle
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
@@ -145,6 +146,7 @@ class Worker:
 
         self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
+
         self.closed = False
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
@@ -155,7 +157,7 @@ class Worker:
         try:
             data = self.data_client.ConnectionInfo()
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
@@ -209,7 +211,7 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details())
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
@@ -246,6 +248,12 @@ class Worker:
         if client_ref_id is not None:
             req.client_ref_id = client_ref_id
         resp = self.data_client.PutObject(req)
+        if not resp.valid:
+            try:
+                raise cloudpickle.loads(resp.error)
+            except pickle.UnpicklingError:
+                logger.exception("Failed to deserialize {}".format(resp.error))
+                raise
         return ClientObjectRef(resp.id)
 
     # TODO(ekl) respect MAX_BLOCKING_OPERATION_TIME_S for wait too
@@ -266,7 +274,7 @@ class Worker:
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
-            "timeout": timeout if timeout else -1,
+            "timeout": timeout if (timeout is not None) else -1,
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
@@ -299,7 +307,8 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise decode_exception(e.details)
+            raise decode_exception(e.details())
+
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
@@ -355,7 +364,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -372,7 +381,7 @@ class Worker:
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
             term.client_id = self._client_id
-            self.server.Terminate(term)
+            self.server.Terminate(term, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 
@@ -389,6 +398,11 @@ class Worker:
         return json.loads(resp.json)
 
     def internal_kv_get(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
+    def internal_kv_exists(self, key: bytes) -> bytes:
         req = ray_client_pb2.KVGetRequest(key=key)
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
@@ -421,6 +435,7 @@ class Worker:
         an actual response.
         """
         if self.server is not None:
+            logger.debug("Pinging server.")
             result = self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
             return result is not None
@@ -428,6 +443,33 @@ class Worker:
 
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
+
+    def _server_init(self, job_config: JobConfig):
+        """Initialize the server"""
+        try:
+            if job_config is None:
+                init_req = ray_client_pb2.InitRequest()
+                self.data_client.Init(init_req)
+                return
+
+            import ray._private.runtime_env as runtime_env
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
+                # Generate the uri for runtime env
+                runtime_env.rewrite_working_dir_uri(job_config)
+                init_req = ray_client_pb2.InitRequest(
+                    job_config=pickle.dumps(job_config))
+                init_resp = self.data_client.Init(init_req)
+                if not init_resp.ok:
+                    logger.error("Init failed due to: ", init_resp.msg)
+                    raise IOError(init_resp.msg)
+                runtime_env.upload_runtime_env_package_if_needed(job_config)
+                runtime_env.PKG_DIR = old_dir
+                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
+                self.data_client.PrepRuntimeEnv(prep_req)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def _convert_actor(self, actor: "ActorClass") -> str:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
@@ -469,6 +511,10 @@ class Worker:
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""
         return self._converted[key]
+
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return key in self._converted
 
 
 def make_client_id() -> str:

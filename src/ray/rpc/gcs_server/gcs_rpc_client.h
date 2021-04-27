@@ -91,30 +91,30 @@ class GcsRpcClient {
 
   void Reset(const std::string &address, const int port,
              ClientCallManager &client_call_manager) {
-    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    job_info_grpc_client_ = std::make_unique<GrpcClient<JobInfoGcsService>>(
+        address, port, client_call_manager);
+    actor_info_grpc_client_ = std::make_unique<GrpcClient<ActorInfoGcsService>>(
+        address, port, client_call_manager);
+    node_info_grpc_client_ = std::make_unique<GrpcClient<NodeInfoGcsService>>(
+        address, port, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>>(
-            new GrpcClient<NodeResourceInfoGcsService>(address, port,
-                                                       client_call_manager));
-    heartbeat_info_grpc_client_ = std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>>(
-        new GrpcClient<HeartbeatInfoGcsService>(address, port, client_call_manager));
-    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
-    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
-        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
-    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
-        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
-    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
-        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
+        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(address, port,
+                                                                 client_call_manager);
+    heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
+        address, port, client_call_manager);
+    object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
+        address, port, client_call_manager);
+    task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
+        address, port, client_call_manager);
+    stats_grpc_client_ =
+        std::make_unique<GrpcClient<StatsGcsService>>(address, port, client_call_manager);
+    worker_info_grpc_client_ = std::make_unique<GrpcClient<WorkerInfoGcsService>>(
+        address, port, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>(
-            new GrpcClient<PlacementGroupInfoGcsService>(address, port,
-                                                         client_call_manager));
+        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
+                                                                   client_call_manager);
+    internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
+        address, port, client_call_manager);
   }
 
   /// Add job info to GCS Service.
@@ -269,6 +269,18 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
                              placement_group_info_grpc_client_, )
 
+  /// Operations for kv (Get, Put, Del, Exists)
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVDel,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVExists,
+                             internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
+                             internal_kv_grpc_client_, )
+
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -284,6 +296,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
+  std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
 };
 
 }  // namespace rpc

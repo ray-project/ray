@@ -176,25 +176,6 @@ class Exploration:
         return optimizers
 
     @DeveloperAPI
-    def get_exploration_loss(self, policy_loss: List[TensorType],
-                             train_batch: SampleBatch) -> List[TensorType]:
-        """May add loss term(s) to the Policy's own loss(es).
-
-        Args:
-            policy_loss (List[TensorType]): Loss(es) already calculated by the
-                Policy's own loss function and maybe the Model's custom loss.
-            train_batch (SampleBatch): The training data to calculate the
-                loss(es) for. This train data has already gone through
-                this Exploration's `postprocess_trajectory()` method.
-
-        Returns:
-            List[TensorType]: The updated list of loss terms.
-                This may be the original Policy loss(es), altered, and/or new
-                loss terms added to it.
-        """
-        return policy_loss
-
-    @DeveloperAPI
     def get_info(self, sess: Optional["tf.Session"] = None):
         """Returns a description of the current exploration state.
 

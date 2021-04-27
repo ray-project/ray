@@ -41,12 +41,20 @@ Make sure you are using the right hardware and resources.
 Are you using GPUs (``actor_init_options={“num_gpus”: 1}``) or 1+ cores (``actor_init_options={“num_cpus”: 2}``, and setting ``OMP_NUM_THREADS``)
 to increase the performance of your deep learning framework?
 
+Async functions
+^^^^^^^^^^^^^^^
+Are you using ``async def`` in your callable? If you are using asyncio and
+hitting the same queuing issue mentioned above, you might want to increase 
+``max_concurrent_queries``. Serve sets a low number by default so the client gets 
+proper backpressure. You can increase the value in the :mod:`backend config <ray.serve.config.BackendConfig>`
+to allow more coroutines running in the same replica.
+
 Batching
 ^^^^^^^^
 If your backend can process a batch at a time at a sublinear latency 
 (for example, if it takes 1ms to process 1 query and 5ms to process 10 of them) 
-then batching is your best approach. Check out the :ref:`batching guide <serve-ml-batching>` to 
-make your backend accept batches (especially for GPU-based ML inference). You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` to maximize the benefits:
+then batching is your best approach. Check out the :ref:`batching guide <serve-batching>` to 
+make your backend accept batches (especially for GPU-based ML inference). You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` in the ``@serve.batch`` decorator to maximize the benefits:
 
 - ``max_batch_size`` specifies how big the batch should be. Generally, 
   we recommend choosing the largest batch size your function can handle 
@@ -58,15 +66,7 @@ make your backend accept batches (especially for GPU-based ML inference). You mi
   a batch should be processed, even if it’s not full.  It should be set according 
   to `batch-wait-timeout + full batch processing time ~= expected latency`. The idea 
   here is to have the first query wait for the longest possible time to achieve high throughput.  
-  This means you should set batch-wait-timeout as large as possible without exceeding your desired expected latency in the equation above.
-
-Async functions
-^^^^^^^^^^^^^^^
-Are you using ``async def`` in your callable? If you are using asyncio and
-hitting the same queuing issue mentioned above, you might want to increase 
-``max_concurrent_queries``. Serve sets a low number by default so the client gets 
-proper backpressure. You can increase the value in the :mod:`backend config <ray.serve.config.BackendConfig>`
-to allow more coroutines running in the same replica.
+  This means you should set ``batch_wait_timeout`` as large as possible without exceeding your desired expected latency in the equation above.
 
 Scaling HTTP servers
 ^^^^^^^^^^^^^^^^^^^^

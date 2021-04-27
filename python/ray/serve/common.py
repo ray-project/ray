@@ -1,5 +1,6 @@
+from dataclasses import dataclass, field
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import numpy as np
@@ -14,10 +15,19 @@ GoalId = UUID
 Duration = float
 
 
+@dataclass
+class EndpointInfo:
+    http_methods: List[str]
+    python_methods: Optional[List[str]] = field(default_factory=list)
+    route: Optional[str] = None
+    legacy: Optional[bool] = True
+
+
 class BackendInfo(BaseModel):
     # TODO(architkulkarni): Add type hint for worker_class after upgrading
     # cloudpickle and adding types to RayServeWrappedReplica
     worker_class: Any
+    version: Optional[str]
     backend_config: BackendConfig
     replica_config: ReplicaConfig
 
@@ -32,6 +42,11 @@ class TrafficPolicy:
         self.traffic_dict: Dict[str, float] = dict()
         self.shadow_dict: Dict[str, float] = dict()
         self.set_traffic_dict(traffic_dict)
+
+    @property
+    def backend_tags(self):
+        return set(self.traffic_dict.keys()).union(
+            set(self.shadow_dict.keys()))
 
     def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
         prob = 0

@@ -3,6 +3,7 @@ from ray.util.client import ray
 from ray.util.client.options import validate_options
 
 import uuid
+import os
 import inspect
 from ray.util.inspect import is_cython
 import json
@@ -23,6 +24,9 @@ from typing import Union
 # Currently, this is 2GiB, the max for a signed int.
 GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 
+CLIENT_SERVER_MAX_THREADS = float(
+    os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
+
 
 class ClientBaseRef:
     def __init__(self, id: bytes):
@@ -35,8 +39,11 @@ class ClientBaseRef:
     def binary(self):
         return self.id
 
+    def hex(self):
+        return self.id.hex()
+
     def __eq__(self, other):
-        return self.id == other.id
+        return isinstance(other, ClientBaseRef) and self.id == other.id
 
     def __repr__(self):
         return "%s(%s)" % (
@@ -85,8 +92,8 @@ class ClientRemoteFunc(ClientStub):
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote function cannot be called directly. "
-                        "Use {self._name}.remote method instead")
+        raise TypeError("Remote function cannot be called directly. "
+                        f"Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
         return return_refs(ray.call_remote(self, *args, **kwargs))
@@ -149,8 +156,8 @@ class ClientActorClass(ClientStub):
         self._options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote actor cannot be instantiated directly. "
-                        "Use {self._name}.remote() instead")
+        raise TypeError("Remote actor cannot be instantiated directly. "
+                        f"Use {self._name}.remote() instead")
 
     def _ensure_ref(self):
         with self._lock:
@@ -300,6 +307,12 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
+
+    # If there's a non-null "placement_group" in `options`, convert the
+    # placement group to a dict so that `options` can be passed to json.dumps.
+    if options.get("placement_group", None):
+        options["placement_group"] = options["placement_group"].to_dict()
+
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str
 

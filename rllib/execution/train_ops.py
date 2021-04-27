@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import math
-import tree
+import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
@@ -9,11 +9,11 @@ from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
     LEARNER_STATS_KEY
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
-    STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER, LEARNER_INFO, \
-    APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, WORKER_UPDATE_TIMER, \
-    LEARN_ON_BATCH_TIMER, LOAD_BATCH_TIMER, LAST_TARGET_UPDATE_TS, \
-    NUM_TARGET_UPDATES, _get_global_vars, _check_sample_batch_type, \
-    _get_shared_metrics
+    AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
+    LAST_TARGET_UPDATE_TS, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
+    LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
+    STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
+    _get_global_vars, _get_shared_metrics
 from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -76,6 +76,9 @@ class TrainOneStep:
                     info, "custom_metrics")
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        if isinstance(batch, MultiAgentBatch):
+            metrics.counters[
+                AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
         # Update weights - after learning on the local worker - on all remote
         # workers.
         if self.workers.remote_workers():
@@ -222,7 +225,7 @@ class TrainTFMultiGPU:
 
                         batch_fetches_all_towers.append(
                             tree.map_structure_with_path(
-                                lambda p, *s: self._all_tower_reduce(p, *s),
+                                lambda p, *s: all_tower_reduce(p, *s),
                                 *(batch_fetches["tower_{}".format(tower_num)]
                                   for tower_num in range(len(self.devices)))))
 
@@ -236,6 +239,7 @@ class TrainTFMultiGPU:
         learn_timer.push_units_processed(samples.count)
 
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
+        metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += samples.agent_steps()
         metrics.info[LEARNER_INFO] = fetches
         if self.workers.remote_workers():
             with metrics.timers[WORKER_UPDATE_TIMER]:
@@ -247,15 +251,16 @@ class TrainTFMultiGPU:
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
 
-    def _all_tower_reduce(self, path, *tower_data):
-        """Reduces stats across towers based on their stats-dict paths."""
-        if len(path) == 1 and path[0] == "td_error":
-            return np.concatenate(tower_data, axis=0)
-        elif path[-1].startswith("min_"):
-            return np.nanmin(tower_data)
-        elif path[-1].startswith("max_"):
-            return np.nanmax(tower_data)
-        return np.nanmean(tower_data)
+
+def all_tower_reduce(path, *tower_data):
+    """Reduces stats across towers based on their stats-dict paths."""
+    if len(path) == 1 and path[0] == "td_error":
+        return np.concatenate(tower_data, axis=0)
+    elif path[-1].startswith("min_"):
+        return np.nanmin(tower_data)
+    elif path[-1].startswith("max_"):
+        return np.nanmax(tower_data)
+    return np.nanmean(tower_data)
 
 
 class ComputeGradients:

@@ -1,15 +1,18 @@
 import hashlib
 import logging
-import inspect
 
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
+from ray._private.thirdparty.pathspec import PathSpec
 from ray.job_config import JobConfig
 from enum import Enum
-from ray.experimental import internal_kv
-from typing import List, Tuple
-from types import ModuleType
+
+from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
+                                          _internal_kv_exists,
+                                          _internal_kv_initialized)
+
+from typing import List, Tuple, Optional, Callable
 from urllib.parse import urlparse
 import os
 import sys
@@ -21,7 +24,72 @@ PKG_DIR = None
 logger = logging.getLogger(__name__)
 
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
-FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50MB
+
+
+class RuntimeEnvDict:
+    """Parses and validates the runtime env dictionary from the user.
+
+    Attributes:
+        working_dir (Path): Specifies the working directory of the worker.
+            This can either be a local directory or zip file.
+            Examples:
+                "."  # cwd
+                "local_project.zip"  # archive is unpacked into directory
+        py_modules (List[Path]): Similar to working_dir, but specifies python
+            modules to add to the `sys.path`.
+            Examples:
+                ["/path/to/other_module", "/other_path/local_project.zip"]
+        conda (dict | str): Either the conda YAML config or the name of a
+            local conda env (e.g., "pytorch_p36"). The Ray dependency will be
+            automatically injected into the conda env to ensure compatibility
+            with the cluster Ray. The conda name may be mangled automatically
+            to avoid conflicts between runtime envs.
+            Examples:
+                {"channels": ["defaults"], "dependencies": ["codecov"]}
+                "pytorch_p36"   # Found on DLAMIs
+        docker (dict): Require a given (Docker) container image. The Ray
+            dependency will be automatically installed into the docker image
+            to ensure compatibility with the cluster Ray. The `run_options`
+            dict spec is here: https://docs.docker.com/engine/reference/run/
+            Examples:
+                {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
+        env_vars (dict): Environment variables to set.
+            Examples:
+                {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
+    """
+
+    def __init__(self, runtime_env_json: dict):
+        self.conda_env_name = None
+        if "conda" in runtime_env_json:
+            conda = runtime_env_json["conda"]
+            if isinstance(conda, str):
+                self.conda_env_name = conda
+            elif isinstance(conda, dict):
+                # TODO(architkulkarni): add dynamic conda env installs
+                raise NotImplementedError
+            else:
+                raise TypeError("runtime_env['conda'] must be of type str or "
+                                "dict")
+        if "working_dir" in runtime_env_json:
+            self.working_dir = runtime_env_json["working_dir"]
+        else:
+            self.working_dir = None
+        # TODO(ekl) we should have better schema validation here.
+        # TODO(ekl) support py_modules
+        # TODO(architkulkarni) support env_vars, docker
+
+    def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
+        """Given existing worker env vars, return an updated dict.
+
+        This sets any necessary env vars to setup the runtime env.
+        TODO(ekl): env vars is probably not the right long term impl.
+        """
+        if override_environment_variables is None:
+            override_environment_variables = {}
+        if self.working_dir:
+            override_environment_variables.update(
+                RAY_RUNTIME_ENV_FILES=self.working_dir)
+        return override_environment_variables
 
 
 class Protocol(Enum):
@@ -45,22 +113,49 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
     return left or right
 
 
-def _zip_module(path: Path, relative_path: Path, zip_handler: ZipFile) -> None:
+def _dir_travel(
+        path: Path,
+        excludes: List[Callable],
+        handler: Callable,
+):
+    e = _get_gitignore(path)
+    if e is not None:
+        excludes.append(e)
+    skip = any([e(path) for e in excludes])
+    if not skip:
+        handler(path)
+        if path.is_dir():
+            for sub_path in path.iterdir():
+                _dir_travel(sub_path, excludes, handler)
+    if e is not None:
+        excludes.pop()
+
+
+def _zip_module(root: Path, relative_path: Path, excludes: Optional[Callable],
+                zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
-    for from_file_name in path.glob("**/*"):
-        file_size = from_file_name.stat().st_size
-        if file_size >= FILE_SIZE_LIMIT:
-            raise RuntimeError(f"File {from_file_name} is too big, "
-                               "which currently is not allowd ")
-        if file_size >= FILE_SIZE_WARNING:
-            logger.warning(
-                f"File {from_file_name} is too big ({file_size} bytes). "
-                "Consider exclude this file in working directory.")
-        to_file_name = from_file_name.relative_to(relative_path)
-        zip_handler.write(from_file_name, to_file_name)
+
+    def handler(path: Path):
+        # Pack this path if it's an empty directory or it's a file.
+        if path.is_dir() and next(path.iterdir(),
+                                  None) is None or path.is_file():
+            file_size = path.stat().st_size
+            if file_size >= FILE_SIZE_WARNING:
+                logger.warning(
+                    f"File {path} is very large ({file_size} bytes). "
+                    "Consider excluding this file from the working directory.")
+            to_path = path.relative_to(relative_path)
+            zip_handler.write(path, to_path)
+
+    excludes = [] if excludes is None else [excludes]
+    _dir_travel(root, excludes, handler)
 
 
-def _hash_modules(path: Path) -> bytes:
+def _hash_modules(
+        root: Path,
+        relative_path: Path,
+        excludes: Optional[Callable],
+) -> bytes:
     """Helper function to create hash of a directory.
 
     It'll go through all the files in the directory and xor
@@ -68,16 +163,21 @@ def _hash_modules(path: Path) -> bytes:
     """
     hash_val = None
     BUF_SIZE = 4096 * 1024
-    for from_file_name in path.glob("**/*"):
+
+    def handler(path: Path):
         md5 = hashlib.md5()
-        md5.update(str(from_file_name).encode())
-        if not Path(from_file_name).is_dir():
-            with open(from_file_name, mode="rb") as f:
+        md5.update(str(path.relative_to(relative_path)).encode())
+        if not path.is_dir():
+            with path.open("rb") as f:
                 data = f.read(BUF_SIZE)
-                if not data:
-                    break
-                md5.update(data)
+                while len(data) != 0:
+                    md5.update(data)
+                    data = f.read(BUF_SIZE)
+        nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
+
+    excludes = [] if excludes is None else [excludes]
+    _dir_travel(root, excludes, handler)
     return hash_val
 
 
@@ -93,8 +193,39 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     return (protocol, uri.netloc)
 
 
+def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+    path = path.absolute()
+    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
+
+    def match(p: Path):
+        path_str = str(p.absolute().relative_to(path))
+        path_str += "/"
+        return pathspec.match_file(path_str)
+
+    return match
+
+
+def _get_gitignore(path: Path) -> Optional[Callable]:
+    path = path.absolute()
+    ignore_file = path / ".gitignore"
+    if ignore_file.is_file():
+        with ignore_file.open("r") as f:
+            pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
+
+        def match(p: Path):
+            path_str = str(p.absolute().relative_to(path))
+            if p.is_dir():
+                path_str += "/"
+            return pathspec.match_file(path_str)
+
+        return match
+    else:
+        return None
+
+
 # TODO(yic): Fix this later to handle big directories in better way
-def get_project_package_name(working_dir: str, modules: List[str]) -> str:
+def get_project_package_name(working_dir: str, py_modules: List[str],
+                             excludes: List[str]) -> str:
     """Get the name of the package by working dir and modules.
 
     This function will generate the name of the package by the working
@@ -114,7 +245,8 @@ def get_project_package_name(working_dir: str, modules: List[str]) -> str:
  e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
     Args:
         working_dir (str): The working directory.
-        modules (list[module]): The python module.
+        py_modules (list[str]): The python module.
+        excludes (list[str]): The dir or files that should be excluded
 
     Returns:
         Package name as a string.
@@ -122,18 +254,30 @@ def get_project_package_name(working_dir: str, modules: List[str]) -> str:
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
     if working_dir:
-        assert isinstance(working_dir, str)
-        assert Path(working_dir).exists()
-        hash_val = _xor_bytes(hash_val, _hash_modules(Path(working_dir)))
-    for module in modules or []:
-        assert inspect.ismodule(module)
-        hash_val = _xor_bytes(hash_val,
-                              _hash_modules(Path(module.__file__).parent))
+        if not isinstance(working_dir, str):
+            raise TypeError("`working_dir` must be a string.")
+        working_dir = Path(working_dir).absolute()
+        if not working_dir.exists() or not working_dir.is_dir():
+            raise ValueError(f"working_dir {working_dir} must be an existing"
+                             " directory")
+        hash_val = _xor_bytes(
+            hash_val,
+            _hash_modules(working_dir, working_dir,
+                          _get_excludes(working_dir, excludes)))
+    for py_module in py_modules or []:
+        if not isinstance(py_module, str):
+            raise TypeError("`py_module` must be a string.")
+        module_dir = Path(py_module).absolute()
+        if not module_dir.exists() or not module_dir.is_dir():
+            raise ValueError(f"py_module {py_module} must be an existing"
+                             " directory")
+        hash_val = _xor_bytes(
+            hash_val, _hash_modules(module_dir, module_dir.parent, None))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
-def create_project_package(working_dir: str, modules: List[ModuleType],
-                           output_path: str) -> None:
+def create_project_package(working_dir: str, py_modules: List[str],
+                           excludes: List[str], output_path: str) -> None:
     """Create a pckage that will be used by workers.
 
     This function is used to create a package file based on working directory
@@ -141,54 +285,64 @@ def create_project_package(working_dir: str, modules: List[ModuleType],
 
     Args:
         working_dir (str): The working directory.
-        modules (list[module]): The python modules to be included.
+        py_modules (list[str]): The list of path of python modules to be
+            included.
+        excludes (List(str)): The directories or file to be excluded.
         output_path (str): The path of file to be created.
     """
-    pkg_file = Path(output_path)
+    pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
-            working_path = Path(working_dir)
-            _zip_module(working_path, working_path, zip_handler)
-        for module in modules or []:
-            logger.info(module.__file__)
-            # we only take care of modules with path like this for now:
-            #    /path/module_name/__init__.py
-            # module_path should be: /path/module_name
-            module_path = Path(module.__file__).parent
-            _zip_module(module_path, module_path.parent, zip_handler)
+            working_path = Path(working_dir).absolute()
+            _zip_module(working_path, working_path,
+                        _get_excludes(working_path, excludes), zip_handler)
+        for py_module in py_modules or []:
+            module_path = Path(py_module).absolute()
+            _zip_module(module_path, module_path.parent, None, zip_handler)
 
 
-def fetch_package(pkg_uri: str, pkg_file: Path) -> int:
-    """Fetch a package from a given uri.
+def fetch_package(pkg_uri: str) -> int:
+    """Fetch a package from a given uri if not exists locally.
 
-    This function is used to fetch a pacakge from the given uri to local
-    filesystem.
+    This function is used to fetch a pacakge from the given uri and unpack it.
 
     Args:
         pkg_uri (str): The uri of the package to download.
-        pkg_file (pathlib.Path): The path in local filesystem to download the
-            package.
 
     Returns:
-        The number of bytes downloaded.
+        The directory containing this package
     """
+    pkg_file = Path(_get_local_path(pkg_uri))
+    local_dir = pkg_file.with_suffix("")
+    assert local_dir != pkg_file, "Invalid pkg_file!"
+    if local_dir.exists():
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+        return local_dir
+    logger.debug("Fetch packge")
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        code = internal_kv._internal_kv_get(pkg_uri)
+        code = _internal_kv_get(pkg_uri)
+        if code is None:
+            raise IOError("Fetch uri failed")
         code = code or b""
         pkg_file.write_bytes(code)
-        return len(code)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
+    logger.debug(f"Unpack {pkg_file} to {local_dir}")
+    with ZipFile(str(pkg_file), "r") as zip_ref:
+        zip_ref.extractall(local_dir)
+    pkg_file.unlink()
+    return local_dir
+
 
 def _store_package_in_gcs(gcs_key: str, data: bytes) -> int:
-    internal_kv._internal_kv_put(gcs_key, data)
+    _internal_kv_put(gcs_key, data)
     return len(data)
 
 
-def push_package(pkg_uri: str, pkg_path: str) -> None:
+def push_package(pkg_uri: str, pkg_path: str) -> int:
     """Push a package to uri.
 
     This function is to push a local file to remote uri. Right now, only GCS
@@ -204,7 +358,7 @@ def push_package(pkg_uri: str, pkg_path: str) -> None:
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     data = Path(pkg_path).read_bytes()
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        _store_package_in_gcs(pkg_uri, data)
+        return _store_package_in_gcs(pkg_uri, data)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -218,9 +372,10 @@ def package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
+    assert _internal_kv_initialized()
     (protocol, pkg_name) = _parse_uri(pkg_uri)
     if protocol in (Protocol.GCS, Protocol.PIN_GCS):
-        return internal_kv._internal_kv_exists(pkg_uri)
+        return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -237,11 +392,14 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     """
     # For now, we only support local directory and packages
     working_dir = job_config.runtime_env.get("working_dir")
-    required_modules = job_config.runtime_env.get("local_modules")
+    py_modules = job_config.runtime_env.get("py_modules")
+    excludes = job_config.runtime_env.get("excludes")
 
-    if (not job_config.runtime_env.get("working_dir_uri")) and (
-            working_dir or required_modules):
-        pkg_name = get_project_package_name(working_dir, required_modules)
+    if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
+                                                                or py_modules):
+        if excludes is None:
+            excludes = []
+        pkg_name = get_project_package_name(working_dir, py_modules, excludes)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
 
@@ -257,43 +415,47 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config of driver.
     """
-    pkg_uri = job_config.get_package_uri()
-    if not pkg_uri:
-        return
-    if not package_exists(pkg_uri):
-        file_path = _get_local_path(pkg_uri)
-        pkg_file = Path(file_path)
-        working_dir = job_config.runtime_env.get("working_dir")
-        required_modules = job_config.runtime_env.get("local_modules")
-        logger.info(f"{pkg_uri} doesn't exist. Create new package with"
-                    f" {working_dir} and {required_modules}")
-        if not pkg_file.exists():
-            create_project_package(working_dir, required_modules, file_path)
-        # Push the data to remote storage
-        pkg_size = push_package(pkg_uri, pkg_file)
-        logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
+    assert _internal_kv_initialized()
+    pkg_uris = job_config.get_runtime_env_uris()
+    for pkg_uri in pkg_uris:
+        if not package_exists(pkg_uri):
+            file_path = _get_local_path(pkg_uri)
+            pkg_file = Path(file_path)
+            working_dir = job_config.runtime_env.get("working_dir")
+            py_modules = job_config.runtime_env.get("py_modules")
+            excludes = job_config.runtime_env.get("excludes") or []
+            logger.info(f"{pkg_uri} doesn't exist. Create new package with"
+                        f" {working_dir} and {py_modules}")
+            if not pkg_file.exists():
+                create_project_package(working_dir, py_modules, excludes,
+                                       file_path)
+            # Push the data to remote storage
+            pkg_size = push_package(pkg_uri, pkg_file)
+            logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
 
 
-def ensure_runtime_env_setup(pkg_uri: str) -> None:
+def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
     """Make sure all required packages are downloaded it local.
 
     Necessary packages required to run the job will be downloaded
     into local file system if it doesn't exist.
 
     Args:
-        pkg_uri (str): Package of the working dir for the runtime env.
+        pkg_uri list(str): Package of the working dir for the runtime env.
+
+    Return:
+        Working directory is returned if the pkg_uris is not empty,
+        otherwise, None is returned.
     """
-    if not pkg_uri:
-        return
-    pkg_file = Path(_get_local_path(pkg_uri))
-    # For each node, the package will only be downloaded one time
-    # Locking to avoid multiple process download concurrently
-    lock = FileLock(str(pkg_file) + ".lock")
-    with lock:
-        # TODO(yic): checksum calculation is required
-        if pkg_file.exists():
-            logger.debug(f"{pkg_uri} has existed locally, skip downloading")
-        else:
-            pkg_size = fetch_package(pkg_uri, pkg_file)
-            logger.debug(f"Downloaded {pkg_size} bytes into {pkg_file}")
-    sys.path.insert(0, str(pkg_file))
+    pkg_dir = None
+    assert _internal_kv_initialized()
+    for pkg_uri in pkg_uris:
+        # For each node, the package will only be downloaded one time
+        # Locking to avoid multiple process download concurrently
+        pkg_file = Path(_get_local_path(pkg_uri))
+        with FileLock(str(pkg_file) + ".lock"):
+            pkg_dir = fetch_package(pkg_uri)
+        sys.path.insert(0, str(pkg_dir))
+    # Right now, multiple pkg_uris are not supported correctly.
+    # We return the last one as working directory
+    return str(pkg_dir) if pkg_dir else None

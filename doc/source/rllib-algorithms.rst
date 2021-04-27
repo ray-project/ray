@@ -8,31 +8,31 @@ RLlib Algorithms
 Available Algorithms - Overview
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=================== ========== ======================= ================== =========== ============================================================= =========
+=================== ========== ======================= ================== =========== ============================================================= ===============
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
-=================== ========== ======================= ================== =========== ============================================================= =========
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf (A2C)
+=================== ========== ======================= ================== =========== ============================================================= ===============
+`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `ARS`_              tf + torch **Yes**                 **Yes**            No                                                                        No
-`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       No
-`CQL`_              torch      No                      **Yes**            No          `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  No
+`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
+`CQL`_              torch      No                      **Yes**            No          `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
 `ES`_               tf + torch **Yes**                 **Yes**            No                                                                        No
-`DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**                                                                   No
-`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**                                                                   No
-`Dreamer`_          torch      No                      **Yes**            No          `+RNN`_                                                       No
-`DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   tf
-`APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   No
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf
-`MAML`_             tf + torch No                      **Yes**            No                                                                        No
-`MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       No
-`MBMPO`_            torch      No                      **Yes**            No                                                                        No
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf
-`R2D2`_             tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  No
-`SAC`_              tf + torch **Yes**                 **Yes**            **Yes**                                                                   No
-`SlateQ`_           torch      **Yes**                 No                 No                                                                        No
+`DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**                                                                   torch
+`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**                                                                   torch
+`Dreamer`_          torch      No                      **Yes**            No          `+RNN`_                                                       torch
+`DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   tf + torch
+`APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**                                                                   torch
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`MAML`_             tf + torch No                      **Yes**            No                                                                        torch
+`MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
+`MBMPO`_            torch      No                      **Yes**            No                                                                        torch
+`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
+`R2D2`_             tf + torch **Yes** `+parametric`_  No                 **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
+`SAC`_              tf + torch **Yes**                 **Yes**            **Yes**                                                                   torch
+`SlateQ`_           torch      **Yes**                 No                 No                                                                        torch
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**                                                                   No
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No                                                                        No
-=================== ========== ======================= ================== =========== ============================================================= =========
+=================== ========== ======================= ================== =========== ============================================================= ===============
 
 Multi-Agent only Methods
 
@@ -861,7 +861,7 @@ as the module uses the values from the paper by default. For example:
     }
 
 **Functionality**
-RLlib's Curiosity is based on `"ICM" (intrinsic curiosity module) described in this paper here <https://https://arxiv.org/pdf/1705.05363.pdf>`__.
+RLlib's Curiosity is based on `"ICM" (intrinsic curiosity module) described in this paper here <https://arxiv.org/pdf/1705.05363.pdf>`__.
 It allows agents to learn in sparse-reward- or even no-reward environments by
 calculating so-called "intrinsic rewards", purely based on the information content that is incoming via the observation channel.
 Sparse-reward environments are envs where almost all reward signals are 0.0, such as these `[MiniGrid env examples here] <https://github.com/maximecb/gym-minigrid>`__.

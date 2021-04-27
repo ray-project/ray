@@ -68,6 +68,10 @@ class RayParams:
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
+        setup_worker_path (str): The path of the Python file that will run
+            worker_setup_hook to set up the environment for the worker process.
+        worker_setup_hook (str): The module path to a Python function that will
+            be imported and run to set up the environment for the worker.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -135,6 +139,8 @@ class RayParams:
                  redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                  plasma_directory=None,
                  worker_path=None,
+                 setup_worker_path=None,
+                 worker_setup_hook=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
                  huge_pages=False,
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
@@ -180,6 +186,8 @@ class RayParams:
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
+        self.setup_worker_path = setup_worker_path
+        self.worker_setup_hook = worker_setup_hook
         self.huge_pages = huge_pages
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
@@ -320,7 +328,7 @@ class RayParams:
 
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
-            if self.min_worker_port is None and self.min_worker_port is None:
+            if self.min_worker_port is None and self.max_worker_port is None:
                 self.min_worker_port = 0
                 self.max_worker_port = 0
 
@@ -342,6 +350,12 @@ class RayParams:
                 elif self.max_worker_port <= self.min_worker_port:
                     raise ValueError("max_worker_port must be higher than "
                                      "min_worker_port.")
+
+        if self.ray_client_server_port is not None:
+            if (self.ray_client_server_port < 1024
+                    or self.ray_client_server_port > 65535):
+                raise ValueError("ray_client_server_port must be an integer "
+                                 "between 1024 and 65535.")
 
         if self.resources is not None:
             assert "CPU" not in self.resources, (

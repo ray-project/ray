@@ -152,7 +152,7 @@ class CreateRequestQueue {
   /// A callback to trigger object spilling. It tries to spill objects upto max
   /// throughput. It returns true if space is made by object spilling, and false if
   /// there's no more space to be made.
-  ray::SpillObjectsCallback spill_objects_callback_;
+  const ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.

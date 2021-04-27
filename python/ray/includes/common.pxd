@@ -91,6 +91,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus UnexpectedSystemExit()
 
         @staticmethod
+        CRayStatus CreationTaskError()
+
+        @staticmethod
         CRayStatus NotFound()
 
         c_bool ok()
@@ -105,7 +108,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRedisError()
         c_bool IsTimedOut()
         c_bool IsInterrupted()
-        c_bool IsSystemExit()
+        c_bool ShouldExitWorker()
         c_bool IsNotFound()
 
         c_string ToString()
@@ -164,6 +167,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::WorkerType::SPILL_WORKER"
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::WorkerType::RESTORE_WORKER"  # noqa: E501
+    cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::WorkerType::UTIL_WORKER"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -240,12 +244,17 @@ cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CTaskArgByValue "ray::TaskArgByValue":
         CTaskArgByValue(const shared_ptr[CRayObject] &data)
 
+    cdef cppclass CRuntimeEnv "ray::RuntimeEnv":
+        CRuntimeEnv()
+        CRuntimeEnv(c_string conda_env_name)
+
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
+                     CRuntimeEnv runtime_env,
                      const unordered_map[c_string, c_string]
                      &override_environment_variables)
 
@@ -261,6 +270,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached, c_string &name, c_bool is_asyncio,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
+            CRuntimeEnv runtime_env,
             const unordered_map[c_string, c_string]
             &override_environment_variables)
 
@@ -277,8 +287,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
-                          const c_string &password,
-                          c_bool is_test_client)
+                          const c_string &password)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":

@@ -2,6 +2,8 @@
 # yapf: disable
 
 # __import_lightning_begin__
+import math
+
 import torch
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
@@ -131,7 +133,8 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     model = LightningMNISTClassifier(config, data_dir)
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -155,7 +158,8 @@ def train_mnist_tune_checkpoint(config,
                                 num_gpus=0):
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        # If fractional GPUs passed in, convert to int.
+        gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
@@ -188,7 +192,7 @@ def train_mnist_tune_checkpoint(config,
 
 # __tune_asha_begin__
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
+    data_dir = os.path.expanduser("~/data")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -227,13 +231,12 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_asha_end__
 
 
 # __tune_pbt_begin__
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
+    data_dir = os.path.expanduser("~/data")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -274,7 +277,6 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
     print("Best hyperparameters found were: ", analysis.best_config)
 
-    shutil.rmtree(data_dir)
 # __tune_pbt_end__
 
 

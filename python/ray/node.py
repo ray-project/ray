@@ -99,10 +99,10 @@ class Node:
         if ray_params.node_ip_address:
             node_ip_address = ray_params.node_ip_address
         elif ray_params.redis_address:
-            node_ip_address = ray._private.services.get_node_ip_address(
+            node_ip_address = ray.util.get_node_ip_address(
                 ray_params.redis_address)
         else:
-            node_ip_address = ray._private.services.get_node_ip_address()
+            node_ip_address = ray.util.get_node_ip_address()
         self._node_ip_address = node_ip_address
 
         if ray_params.raylet_ip_address:
@@ -129,17 +129,16 @@ class Node:
             temp_dir=ray._private.utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
-                "workers/default_worker.py"))
+                "workers/default_worker.py"),
+            setup_worker_path=os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         self._config = ray_params._system_config or {}
-
-        # Enable Plasma Store as a thread by default.
-        if "plasma_store_as_thread" not in self._config:
-            self._config["plasma_store_as_thread"] = True
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -212,6 +211,10 @@ class Node:
 
         if head:
             ray_params.update_if_absent(num_redis_shards=1)
+            gcs_server_port = os.getenv(
+                ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
+            if gcs_server_port:
+                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             self._webui_url = None
         else:
             self._webui_url = (
@@ -288,11 +291,11 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._session_dir,
-                                             "runtime_resources")
-        try_to_create_directory(self._runtime_env_dir)
+        self._resource_dir = os.path.join(self._session_dir,
+                                          "runtime_resources")
+        try_to_create_directory(self._resource_dir)
         import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._runtime_env_dir
+        runtime_env.PKG_DIR = self._resource_dir
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -675,7 +678,7 @@ class Node:
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
              fate_share=self.kernel_fate_share,
-             port_blacklist=self._ray_params.reserved_ports)
+             port_denylist=self._ray_params.reserved_ports)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -726,26 +729,6 @@ class Node:
             redis_client = self.create_redis_client()
             redis_client.hset("webui", mapping={"url": self._webui_url})
 
-    def start_plasma_store(self, plasma_directory, object_store_memory):
-        """Start the plasma store."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "plasma_store", unique=True)
-        process_info = ray._private.services.start_plasma_store(
-            self.get_resource_spec(),
-            plasma_directory,
-            object_store_memory,
-            self._plasma_store_socket_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            huge_pages=self._ray_params.huge_pages,
-            keep_idle=bool(self._config.get("plasma_store_as_thread")),
-            fate_share=self.kernel_fate_share)
-        assert (
-            ray_constants.PROCESS_TYPE_PLASMA_STORE not in self.all_processes)
-        self.all_processes[ray_constants.PROCESS_TYPE_PLASMA_STORE] = [
-            process_info,
-        ]
-
     def start_gcs_server(self):
         """Start the gcs server.
         """
@@ -789,8 +772,11 @@ class Node:
             self._raylet_socket_name,
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
+            self._ray_params.setup_worker_path,
+            self._ray_params.worker_setup_hook,
             self._temp_dir,
             self._session_dir,
+            self._resource_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -810,7 +796,6 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
-            head_node=self.head,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
@@ -896,7 +881,6 @@ class Node:
                 plasma_directory=self._ray_params.plasma_directory,
                 huge_pages=self._ray_params.huge_pages
             )
-        self.start_plasma_store(plasma_directory, object_store_memory)
         self.start_raylet(plasma_directory, object_store_memory)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
@@ -1012,16 +996,6 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_REDIS_SERVER, check_alive=check_alive)
-
-    def kill_plasma_store(self, check_alive=True):
-        """Kill the plasma store.
-
-        Args:
-            check_alive (bool): Raise an exception if the process was already
-                dead.
-        """
-        self._kill_process_type(
-            ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.

@@ -122,6 +122,8 @@ def summarize_episodes(
     custom_metrics = collections.defaultdict(list)
     perf_stats = collections.defaultdict(list)
     hist_stats = collections.defaultdict(list)
+    episode_media = collections.defaultdict(list)
+
     for episode in episodes:
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
@@ -134,6 +136,8 @@ def summarize_episodes(
                 policy_rewards[policy_id].append(reward)
         for k, v in episode.hist_data.items():
             hist_stats[k] += v
+        for k, v in episode.media.items():
+            episode_media[k].append(v)
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
@@ -191,6 +195,7 @@ def summarize_episodes(
         episode_reward_min=min_reward,
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
+        episode_media=dict(episode_media),
         episodes_this_iter=len(new_episodes),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,

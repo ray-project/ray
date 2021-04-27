@@ -191,18 +191,6 @@ message RequestObjectSpillageReply {
   bytes spilled_node_id = 3;
 }
 
-message RestoreSpilledObjectRequest {
-  // ObjectID to restore.
-  bytes object_id = 1;
-  // Object URL where the object is spilled.
-  string object_url = 2;
-  // The node id of a node where the object is spilled.
-  bytes spilled_node_id = 3;
-}
-
-message RestoreSpilledObjectReply {
-}
-
 message ReleaseUnusedBundlesRequest {
   repeated Bundle bundles_in_use = 1;
 }
@@ -265,9 +253,6 @@ service NodeManagerService {
   // Ask the raylet to spill an object to external storage.
   rpc RequestObjectSpillage(RequestObjectSpillageRequest)
       returns (RequestObjectSpillageReply);
-  // Ask the raylet to restore the object from the external storage.
-  rpc RestoreSpilledObject(RestoreSpilledObjectRequest)
-      returns (RestoreSpilledObjectReply);
   // This method is only used by GCS, and the purpose is to release bundles
   // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
   // in the previous lifecycle. In this case, GCS will send a list of bundles that

@@ -42,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cluster_searcher",
+    size = "large",
+    srcs = ["tests/test_cluster_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["flaky", "jenkins_only", "exclusive"],
+)
+
+py_test(
     name = "test_commands",
     size = "small",
     srcs = ["tests/test_commands.py"],
@@ -50,9 +58,9 @@ py_test(
 )
 
 py_test(
-    name = "test_convergence_gaussian_process",
-    size = "small",
-    srcs = ["tests/test_convergence_gaussian_process.py"],
+    name = "test_convergence",
+    size = "medium",
+    srcs = ["tests/test_convergence.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -312,7 +320,7 @@ py_test(
 
 py_test(
     name = "ext_pytorch",
-    size = "medium",
+    size = "large",
     srcs = ["tests/ext_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"],
@@ -674,7 +682,7 @@ py_test(
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "exclusive", "example"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 

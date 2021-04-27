@@ -20,6 +20,7 @@ from ray.autoscaler._private.log_timer import LogTimer
 
 from ray.autoscaler._private.aws.utils import boto_exception_handler
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -507,13 +508,26 @@ class AWSNodeProvider(NodeProvider):
             for instance in instances_list
         }
         available_node_types = cluster_config["available_node_types"]
+        head_node_type = cluster_config["head_node_type"]
         for node_type in available_node_types:
             instance_type = available_node_types[node_type]["node_config"][
                 "InstanceType"]
             if instance_type in instances_dict:
                 cpus = instances_dict[instance_type]["VCpuInfo"][
                     "DefaultVCpus"]
+
                 autodetected_resources = {"CPU": cpus}
+                if node_type != head_node_type:
+                    # we only autodetect worker node type memory resource
+                    memory_total = instances_dict[instance_type]["MemoryInfo"][
+                        "SizeInMiB"]
+                    memory_total = int(memory_total) * 1024 * 1024
+                    prop = (
+                        1 -
+                        ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+                    memory_resources = int(memory_total * prop)
+                    autodetected_resources["memory"] = memory_resources
+
                 gpus = instances_dict[instance_type].get("GpuInfo",
                                                          {}).get("Gpus")
                 if gpus is not None:
