@@ -16,7 +16,6 @@ from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 if TYPE_CHECKING:
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
-
 logger = logging.getLogger(__name__)
 
 

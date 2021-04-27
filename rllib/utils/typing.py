@@ -83,7 +83,8 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+LocalOptimizer = Union["tf.keras.optimizers.Optimizer",
+                       "torch.optim.Optimizer"]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
