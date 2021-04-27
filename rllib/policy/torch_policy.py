@@ -7,10 +7,10 @@ import os
 import time
 import threading
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 import ray
-from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -26,6 +26,9 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 torch, nn = try_import_torch()
 

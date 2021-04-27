@@ -1,10 +1,12 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
 import gym
 
-import tensorflow as tf
-import torch
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
+if TYPE_CHECKING:
+    from ray.rllib.utils import try_import_tf, try_import_torch
+    _, tf, _ = try_import_tf()
+    torch, _ = try_import_torch()
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.view_requirement import ViewRequirement
 
 # Represents a fully filled out config of a Trainer class.
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
