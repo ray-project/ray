@@ -1,6 +1,7 @@
 from typing import List, Any, Optional
 import random
 
+from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \

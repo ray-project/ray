@@ -58,8 +58,8 @@ class Counter:
 # object store peak memory: O(partition size / num partitions)
 # heap memory: O(partition size / num partitions)
 @ray.remote(num_returns=num_partitions)
-def shuffle_map_streaming(
-        i, counter_handle=None) -> List[ObjectRef[np.ndarray]]:
+def shuffle_map_streaming(i,
+                          counter_handle=None) -> List[ObjectRef[np.ndarray]]:
     outputs = [
         ray.put(
             np.ones((rows_per_partition // num_partitions, 2), dtype=np.int64))
