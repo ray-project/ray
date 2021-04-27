@@ -1,6 +1,7 @@
 import gym
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -28,7 +29,7 @@ def build_torch_policy(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+                MultiAgentEpisode]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,

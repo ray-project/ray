@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import ray
 import ray.experimental.tf_utils
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -333,7 +334,7 @@ class TFPolicy(Policy):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs):
@@ -366,7 +367,7 @@ class TFPolicy(Policy):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 

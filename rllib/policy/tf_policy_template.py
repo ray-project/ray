@@ -1,6 +1,7 @@
 import gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
@@ -29,7 +30,7 @@ def build_tf_policy(
                                               TrainerConfigDict]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[AgentID, SampleBatch]],
-            Optional["MultiAgentEpisode"]
+            Optional[MultiAgentEpisode]
         ], SampleBatch]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,

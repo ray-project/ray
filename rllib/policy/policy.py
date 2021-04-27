@@ -6,6 +6,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -104,7 +105,7 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch: Union[List[TensorType], TensorType] = None,
             prev_reward_batch: Union[List[TensorType], TensorType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -153,7 +154,7 @@ class Policy(metaclass=ABCMeta):
             prev_action: Optional[TensorType] = None,
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
-            episode: Optional["MultiAgentEpisode"] = None,
+            episode: Optional[MultiAgentEpisode] = None,
             clip_actions: bool = False,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
@@ -244,7 +245,7 @@ class Policy(metaclass=ABCMeta):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List[MultiAgentEpisode]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -326,7 +327,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch: SampleBatch,
             other_agent_batches: Optional[Dict[AgentID, Tuple[
                 "Policy", SampleBatch]]] = None,
-            episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
+            episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy

@@ -1,6 +1,7 @@
 import gym
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2
@@ -33,7 +34,7 @@ def build_policy_class(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+                MultiAgentEpisode]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
