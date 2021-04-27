@@ -4,7 +4,7 @@ from typing import Callable, List, Iterable, Iterator
 import pandas as pd
 
 from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
-                           T, U)
+                           T, U, _ActorSet)
 
 
 class MLDataset(ParallelIterator[pd.DataFrame]):
@@ -17,7 +17,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
             larger than zero, and 0 means unknown.
     """
 
-    def __init__(self, actor_sets: List["_ActorSet"], name: str,
+    def __init__(self, actor_sets: List[_ActorSet], name: str,
                  parent_iterators: List[ParallelIterator[pd.DataFrame]],
                  batch_size: int, repeated: bool):
         super(MLDataset, self).__init__(actor_sets, name, parent_iterators)

@@ -27,7 +27,7 @@ def conda_envs():
     def create_tf_env(tf_version: str):
 
         subprocess.run([
-            "conda", "create", "-n", f"tf-{tf_version}", f"--clone",
+            "conda", "create", "-n", f"tf-{tf_version}", "--clone",
             current_conda_env, "-y"
         ])
         commands = [
