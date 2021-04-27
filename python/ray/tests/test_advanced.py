@@ -165,7 +165,6 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
