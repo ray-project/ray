@@ -162,7 +162,8 @@ def _test_ray_ml_libraries(image_tag: str) -> None:
         "pip freeze | grep ^tensorflow",
         detach=True)
     tf_logs = tf_container.logs().decode()
-    assert "tensorflow-gpu" in tf_logs, str(tf_logs)
+    print(str(tf_logs))
+    assert "tensorflow-gpu" in tf_logs
     tf_container.stop()
 
     torch_container = DOCKER_CLIENT.containers.run(
@@ -170,6 +171,7 @@ def _test_ray_ml_libraries(image_tag: str) -> None:
         "pip freeze | grep ^torch",
         detach=True)
     torch_logs = torch_container.logs().decode()
+    print(str(torch_logs))
     assert "cu" in torch_logs and "cpu" not in torch_logs, str(torch_logs)
     torch_container.stop()
 
