@@ -1124,8 +1124,7 @@ class ParallelIteratorWorker(object):
                         raise ValueError(
                             "Cannot iterate over {0} multiple times." +
                             "Please pass in the base iterable or" +
-                            "lambda: {0} instead.".format(
-                                item_generator))
+                            "lambda: {0} instead.".format(item_generator))
                     for item in it:
                         yield item
 
