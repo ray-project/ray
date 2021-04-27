@@ -65,11 +65,12 @@ def _get_root_dir():
 
 
 def _get_commit_sha():
-    travis_sha = os.environ.get("TRAVIS_COMMIT")
-    if len(travis_sha) < 6:
+    sha = (os.environ.get("TRAVIS_COMMIT")
+           or os.environ.get("BUILDKITE_COMMIT") or "")
+    if len(sha) < 6:
         print("INVALID SHA FOUND")
         return "ERROR"
-    return travis_sha[:6]
+    return sha[:6]
 
 
 def _configure_human_version():
