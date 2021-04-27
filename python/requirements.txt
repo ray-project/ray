@@ -81,3 +81,5 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
+# pyarrow v4.0.0 doesn't work in macOS
+pyarrow==3.0.0
