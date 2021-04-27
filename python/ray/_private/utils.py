@@ -2,6 +2,7 @@ import binascii
 import errno
 import functools
 import hashlib
+import importlib
 import logging
 import math
 import multiprocessing
@@ -984,3 +985,21 @@ def deprecated(instructions=None,
         return new_func
 
     return deprecated_wrapper
+
+
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
+
+    For example, the following are equivalent:
+        MyClass = import_attr("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported attr
+    """
+
+    last_period_idx = full_path.rfind(".")
+    attr_name = full_path[last_period_idx + 1:]
+    module_name = full_path[:last_period_idx]
+    module = importlib.import_module(module_name)
+    return getattr(module, attr_name)

@@ -70,7 +70,7 @@ class TestPG(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
 
         # Fake CartPole episode of n time steps.
-        train_batch = {
+        train_batch = SampleBatch({
             SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
                                         0.4], [0.5, 0.6, 0.7, 0.8],
                                        [0.9, 1.0, 1.1, 1.2]]),
@@ -79,7 +79,7 @@ class TestPG(unittest.TestCase):
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
             SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
-        }
+        })
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = (Categorical if fw != "torch" else TorchCategorical)

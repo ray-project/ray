@@ -117,6 +117,8 @@ message GetRequest {
   bytes id = 1;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
+  // Whether to schedule this as a callback on the server side.
+  bool asynchronous = 3;
 }
 
 message GetResponse {
@@ -154,6 +156,7 @@ message ClusterInfoType {
     CLUSTER_RESOURCES = 2;
     AVAILABLE_RESOURCES = 3;
     RUNTIME_CONTEXT = 4;
+    TIMELINE = 5;
   }
 }
 

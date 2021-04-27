@@ -1329,6 +1329,8 @@ def start_raylet(redis_address,
                  raylet_name,
                  plasma_store_name,
                  worker_path,
+                 setup_worker_path,
+                 worker_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1366,6 +1368,10 @@ def start_raylet(redis_address,
              to.
         worker_path (str): The path of the Python file that new worker
             processes will execute.
+        setup_worker_path (str): The path of the Python file that will run
+            worker_setup_hook to set up the environment for the worker process.
+        worker_setup_hook (str): The module path to a Python function that will
+            be imported and run to set up the environment for the worker.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1455,8 +1461,13 @@ def start_raylet(redis_address,
         cpp_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
+    # TODO(architkulkarni): Pipe in setup worker args separately instead of
+    # inserting them into start_worker_command and later erasing them if
+    # needed.
     start_worker_command = [
         sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",

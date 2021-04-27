@@ -16,11 +16,12 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
-
+#include <boost/filesystem.hpp>
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
@@ -146,7 +147,7 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const std::vector<std::string> &dynamic_options,
+    const std::vector<std::string> &dynamic_options, const ray::RuntimeEnv &runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -280,6 +281,22 @@ Process WorkerPool::StartWorkerProcess(
     env[pair.first] = pair.second;
   }
 
+  if (language == Language::PYTHON) {
+    if (runtime_env.conda_env_name != "") {
+      const std::string conda_env_name = runtime_env.conda_env_name;
+      worker_command_args.push_back("--conda-env-name=" + conda_env_name);
+    } else {
+      // The "shim process" setup worker is not needed, so do not run it.
+      // Check that the arg really is the path to the setup worker before erasing it, to
+      // prevent breaking tests that mock out the worker command args.
+      if (worker_command_args.size() >= 3 &&
+          worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+        worker_command_args.erase(worker_command_args.begin() + 1,
+                                  worker_command_args.begin() + 3);
+      }
+    }
+  }
+
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -355,6 +372,7 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
+
   Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
@@ -742,45 +760,49 @@ void WorkerPool::TryKillingIdleWorkers() {
                      << " has been idle for a a while. Kill it.";
       // To avoid object lost issue caused by forcibly killing, send an RPC request to the
       // worker to allow it to do cleanup before exiting.
-      auto rpc_client = worker->rpc_client();
-      RAY_CHECK(rpc_client);
-      rpc::ExitRequest request;
-      rpc_client->Exit(request, [this, worker](const ray::Status &status,
-                                               const rpc::ExitReply &r) {
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-        }
-
-        if (status.ok() && r.success()) {
-          auto &worker_state = GetStateForLanguage(worker->GetLanguage());
-          // If we could kill the worker properly, we remove them from the idle pool.
-          if (RemoveWorker(worker_state.idle, worker)) {
-            // If the worker is not idle at this moment, we don't mark them dead.
-            // In this case, the core worker will exit the process after
-            // finishing the assigned task, and DisconnectWorker will handle this
-            // part.
-            if (!worker->IsDead()) {
-              worker->MarkDead();
-            }
-          }
-        } else {
-          // We re-insert the idle worker to the back of the queue if it fails to kill the
-          // worker (e.g., when the worker owns the object). Without this, if the first N
-          // workers own objects, it can't kill idle workers that are >= N+1.
-          const auto &idle_pair = idle_of_all_languages_.front();
-          idle_of_all_languages_.push_back(idle_pair);
-          idle_of_all_languages_.pop_front();
-          RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
-        }
-        RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
-        RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
-      });
       if (!worker->IsDead()) {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
+        auto rpc_client = worker->rpc_client();
+        RAY_CHECK(rpc_client);
         RAY_CHECK(running_size > 0);
         running_size--;
+        rpc::ExitRequest request;
+        rpc_client->Exit(request, [this, worker](const ray::Status &status,
+                                                 const rpc::ExitReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
+          }
+
+          // In case of failed to send request, we remove it from pool as well
+          // TODO (iycheng): We should handle the grpc failure in better way.
+          if (!status.ok() || r.success()) {
+            auto &worker_state = GetStateForLanguage(worker->GetLanguage());
+            // If we could kill the worker properly, we remove them from the idle pool.
+            RemoveWorker(worker_state.idle, worker);
+            // We always mark the worker as dead.
+            // If the worker is not idle at this moment, we'd want to mark it as dead
+            // so it won't be reused later.
+            if (!worker->IsDead()) {
+              worker->MarkDead();
+            }
+          } else {
+            // We re-insert the idle worker to the back of the queue if it fails to kill
+            // the worker (e.g., when the worker owns the object). Without this, if the
+            // first N workers own objects, it can't kill idle workers that are >= N+1.
+            const auto &idle_pair = idle_of_all_languages_.front();
+            idle_of_all_languages_.push_back(idle_pair);
+            idle_of_all_languages_.pop_front();
+            RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+          }
+
+          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
+          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
+        });
+      } else {
+        // Even it's a dead worker, we still need to remove them from the pool.
+        RemoveWorker(worker_state.idle, worker);
       }
     }
   }
@@ -806,9 +828,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
-      task_spec.OverrideEnvironmentVariables().size() > 0) {
+      task_spec.OverrideEnvironmentVariables().size() > 0 ||
+      task_spec.RuntimeEnv().conda_env_name != "") {
     // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options, or any task with environment variable overrides.
+    // dynamic worker options, or any task with environment variable overrides, or
+    // any task with a specified RuntimeEnv.
     // Try to pop it from idle dedicated pool.
     auto it = state.idle_dedicated_workers.find(task_spec.TaskId());
     if (it != state.idle_dedicated_workers.end()) {
@@ -826,9 +850,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
-                                task_spec.OverrideEnvironmentVariables());
+      proc =
+          StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                             task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
+                             task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
@@ -845,7 +870,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
           it->first->GetAssignedJobId() != task_spec.JobId() ||
-          state.pending_disconnection_workers.count(it->first) > 0) {
+          state.pending_disconnection_workers.count(it->first) > 0 ||
+          it->first->IsDead()) {
+        continue;
+      }
+      // These workers are exiting. So skip them.
+      if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
         continue;
       }
       state.idle.erase(it->first);

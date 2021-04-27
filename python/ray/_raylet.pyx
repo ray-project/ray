@@ -51,6 +51,7 @@ from ray.includes.common cimport (
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
+    CRuntimeEnv,
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
@@ -688,10 +689,10 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
-        except Exception:
+        except Exception as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
-                "was spilling objects.")
+                "was spilling objects: {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
@@ -893,6 +894,8 @@ cdef class CoreWorker:
         options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = True
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode
+        options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
@@ -1206,7 +1209,9 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    override_environment_variables):
+                    runtime_env,
+                    override_environment_variables
+                    ):
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
@@ -1214,12 +1219,15 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
+            conda_env_name = runtime_env.conda_env_name or ""
+            c_runtime_env = CRuntimeEnv(conda_env_name)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1230,7 +1238,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
-                    c_override_environment_variables),
+                    c_runtime_env, c_override_environment_variables),
                 &return_ids, max_retries,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1255,6 +1263,7 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
+                     runtime_env,
                      override_environment_variables
                      ):
         cdef:
@@ -1266,6 +1275,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
@@ -1273,6 +1283,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            c_runtime_env = CRuntimeEnv(runtime_env.conda_env_name or "")
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1288,6 +1299,7 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
+                        c_runtime_env,
                         c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
