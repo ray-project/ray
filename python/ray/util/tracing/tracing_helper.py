@@ -18,7 +18,7 @@ from typing import (
 )
 
 from ray.runtime_context import get_runtime_context
-from ray.util.inspect import is_function_or_method
+from ray.util.inspect import is_class_method, is_function_or_method, is_static_method
 import ray.worker
 
 logger = logging.getLogger(__name__)
@@ -427,6 +427,11 @@ def _inject_tracing_into_class(_cls):
 
     methods = inspect.getmembers(_cls, is_function_or_method)
     for name, method in methods:
+        # Skip tracing for staticmethod or classmethod, because these method
+        # might not be called directly by remote calls. Additionally, they are
+        # tricky to get wrapped and unwrapped.
+        if is_static_method(_cls, name) or is_class_method(method):
+            continue
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
