@@ -159,19 +159,18 @@ def _test_ray_ml_libraries(image_tag: str) -> None:
         return
     tf_container = DOCKER_CLIENT.containers.run(
         f"rayproject/ray-ml:{image_tag}",
-        "python -c 'import tensorflow as tf'",
+        "pip freeze | grep ^tensorflow",
         detach=True)
     tf_logs = tf_container.logs().decode()
-    assert "Successfully opened dynamic library libcudart" in tf_logs
+    assert "tensorflow-gpu" in tf_logs, tf_logs
     tf_container.stop()
 
     torch_container = DOCKER_CLIENT.containers.run(
         f"rayproject/ray-ml:{image_tag}",
-        "python -c 'import torch; torch.cuda.cudart()'",
+        "pip freeze | grep ^torch",
         detach=True)
     torch_logs = torch_container.logs().decode()
-    assert "Torch not compiled with CUDA enabled" not in torch_logs
-    assert "Found no NVIDIA driver" in torch_logs
+    assert "cu" in torch_logs and "cpu" not in torch_logs, torch_logs
     torch_container.stop()
 
 
