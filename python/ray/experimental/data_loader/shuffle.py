@@ -1,4 +1,5 @@
 import itertools
+import random
 import time
 import timeit
 import threading
@@ -269,13 +270,17 @@ def cache_round_partitions(
     rows = pd.read_parquet(filename)
     end_read = timeit.default_timer()
 
-    # Shuffle rows.
-    rows = rows.sample(frac=1)
+    # Create random round assignment.
+    round_assignment = np.random.randint(num_rounds, size=len(rows))
     # Partition the rows into a partition per mapper per round.
     round_parts = []
-    for round_part in np.array_split(rows, num_rounds):
+    for round_idx in range(num_rounds):
+        round_part = rows[round_assignment == round_idx]
+        mapper_assignment = np.random.randint(
+            num_mappers, size=len(round_part))
         mapper_parts = []
-        for mapper_part in np.array_split(round_part, num_mappers):
+        for mapper_idx in range(num_mappers):
+            mapper_part = round_part[mapper_assignment == mapper_idx]
             mapper_parts.append(ray.put(mapper_part))
         round_parts.append(mapper_parts)
     if len(round_parts) == 1:
@@ -307,7 +312,7 @@ def shuffle_from_memory_round(
     # a mapper.
     for mapper_partitions in zip(
             *[
-                chunk_it(file_part, num_mappers)
+                random.sample(chunk_it(file_part, num_mappers), num_mappers)
                 for file_part in mappers_partitions]):
         chunk = shuffle_select_from_memory.options(
             num_returns=num_reducers).remote(
@@ -316,6 +321,18 @@ def shuffle_from_memory_round(
         if not isinstance(chunk, list):
             chunk = [chunk]
         chunks.append(chunk)
+    # TODO(Clark): Do we need to shuffle the reducer chunks here?
+    # Given that we:
+    #  1. Randomly sample rows in the cache map stage to decorrelate within a
+    #     file partition;
+    #  2. Shuffle mapper chunk assignments to decorrelate cross-file mapper
+    #     partition groupings;
+    #  3. Randomly sample rows within the mapper to decorrelate mapper chunks;
+    #  4. Randomly sample rows within the reducer to decorrelate reducer
+    #     chunks;
+    #  5. Don't tie trainers to reducers.
+    # I think that we don't?
+    # random.shuffle(chunks)
     shuffled = []
     for j in range(num_reducers):
         consumer_batches = shuffle_reduce.options(
@@ -361,10 +378,14 @@ def shuffle_select_from_memory(
     if stats_collector is not None:
         stats_collector.map_start.remote(epoch, round_idx)
     start = timeit.default_timer()
-    # Concat chunks from all input partitions.
+    # Concatenate chunks from all input partitions.
     rows = pd.concat(rows)
+    # Create reducer assignment.
+    reducer_assignment = np.random.randint(num_reducers, size=len(rows))
     # Return a list of chunks, one for each reducer.
-    split = np.array_split(rows, num_reducers)
+    split = [
+        rows[reducer_assignment == reducer_idx]
+        for reducer_idx in range(num_reducers)]
     if len(split) == 1:
         split = split[0]
     duration = timeit.default_timer() - start
@@ -386,10 +407,14 @@ def shuffle_reduce(
     if stats_collector is not None:
         stats_collector.reduce_start.remote(epoch, round_index)
     start = timeit.default_timer()
-    # Concatenate and shuffle all rows in the chunks.
+    # Concatenate chunks from all mapper partitions.
     batch = pd.concat(chunks)
-    batch = batch.sample(frac=1)
-    batch = np.array_split(batch, num_trainers)
+    # Create trainer assignment.
+    trainer_assignment = np.random.randint(num_trainers, size=len(batch))
+    # Return a list of batches, one for each trainer.
+    batch = [
+        batch[trainer_assignment == trainer_idx]
+        for trainer_idx in range(num_trainers)]
     if len(batch) == 1:
         batch = batch[0]
     duration = timeit.default_timer() - start

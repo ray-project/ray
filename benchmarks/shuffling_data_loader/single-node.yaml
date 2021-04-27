@@ -100,7 +100,8 @@ worker_nodes:
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-    "/home/ubuntu/uber-shuffle": "/home/ubuntu/workspace/ray/benchmarks/uber-shuffle",
+    "/home/ubuntu/uber-shuffle": "/home/ubuntu/workspace/ray/benchmarks/shuffling_data_loader",
+    "/home/ubuntu/.local/lib/python3.7/site-packages/ray/experimental/data_loader": "/home/ubuntu/workspace/ray/python/ray/experimental/data_loader",
 }
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
