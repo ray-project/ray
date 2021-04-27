@@ -8,7 +8,6 @@ import os
 
 import threading
 from typing import Any
-from typing import List
 from typing import Dict
 from typing import Set
 from typing import Optional
@@ -436,7 +435,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def _prepare_runtime_env(self, job_runtime_env):
         """Download runtime environment to local node"""
-        missing_uris = []
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
