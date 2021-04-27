@@ -881,7 +881,7 @@ def test_override_environment_variables_reuse(shutdown_only):
     assert ray.get(
         f.options(override_environment_variables={
             env_var_name: val2
-        }).remote()) is val2
+        }).remote()) == val2
     assert ray.get(g.remote()) is None
     assert ray.get(f.remote()) is None
 

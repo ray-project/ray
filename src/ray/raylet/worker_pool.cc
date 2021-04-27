@@ -664,15 +664,20 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.pending_dedicated_workers_to_tasks.find(worker->GetProcess());
-  if (it == state.pending_dedicated_workers_to_tasks.end()) {
-    it = state.registered_dedicated_workers_to_tasks.find(worker->GetProcess());
-  }
-  if (it != state.registered_dedicated_workers_to_tasks.end()) {
+  auto it_p = state.pending_dedicated_workers_to_tasks.find(worker->GetProcess());
+  auto it_r = state.registered_dedicated_workers_to_tasks.find(worker->GetProcess());
+  if (it_p != state.pending_dedicated_workers_to_tasks.end()) {
     // The worker is used for a task which needs a dedicated worker process.
     // Put it into the idle dedicated worker pool.
-    const auto task_id = it->second;
+    const auto task_id = it_p->second;
     state.idle_dedicated_workers[task_id] = worker;
+  } else if (it_r != state.registered_dedicated_workers_to_tasks.end()) {
+    // The dedicated worker has been used before and should be added again
+    // to the idle dedicated worker pool.
+    const auto task_id = it_r->second;
+    state.idle_dedicated_workers[task_id] = worker;
+    // The worker has been assigned to the pool, so we can remove it from this map.
+    state.registered_dedicated_workers_to_tasks.erase(it_r);
   } else {
     // The worker is not used for a task which needs a dedicated worker process.
     // Put the worker to the general idle pool.
