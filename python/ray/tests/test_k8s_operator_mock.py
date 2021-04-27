@@ -134,7 +134,8 @@ class OperatorTest(unittest.TestCase):
                 patch.object(KubernetesNodeProvider, CREATE_NODE,
                              mock_create_node),\
                 patch.object(KubernetesNodeProvider, BOOTSTRAP_CONFIG,
-                             mock_bootstrap_config):
+                             mock_bootstrap_config),\
+                patch.object(os, "mkdir"):
 
             cluster_cr1, cluster_cr2 = custom_resources()
 
