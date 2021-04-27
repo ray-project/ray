@@ -171,7 +171,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
   /// the functionality as part of a larger transaction.
-  void GetResourceUsageBatchForBroadcastUnsafe(rpc::ResourceUsageBatchData &buffer);
+  void GetResourceUsageBatchForBroadcastUnsafe(rpc::ResourceUsageBatchData &buffer) EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
 
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
