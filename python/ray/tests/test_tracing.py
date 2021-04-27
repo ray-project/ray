@@ -28,6 +28,7 @@ def cleanup_dirs():
 @pytest.fixture()
 def ray_start_cli_tracing(scope="function"):
     """Start ray with tracing-startup-hook, and clean up at end of test."""
+    check_call_ray(["stop"], )
     check_call_ray([
         "start", "--head", "--tracing-startup-hook",
         "ray.tests.enable_tracing:setup_tracing"
