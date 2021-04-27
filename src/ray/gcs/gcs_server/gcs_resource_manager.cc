@@ -85,7 +85,8 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
-      // TODO (Alex): We need to move this into ResourceBatchData. It's currently a message-reodering nightmare.
+      // TODO (Alex): We need to move this into ResourceBatchData. It's currently a
+      // message-reodering nightmare.
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
