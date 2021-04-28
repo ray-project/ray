@@ -1,6 +1,6 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
-# The GPU option is nvidia/cuda:11.3-cudnn8-devel-ubuntu18.04
+# The GPU option is nvidia/cuda:11.3.0-cudnn8-devel-ubuntu18.04
 ARG BASE_IMAGE="ubuntu:focal"
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
