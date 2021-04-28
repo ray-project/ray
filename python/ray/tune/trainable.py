@@ -857,4 +857,4 @@ class Trainable:
         return {}
 
     def _is_overridden(self, key):
-        return getattr(self, key).__code__ != getattr(Trainable, key).__code__
+        return getattr(self, key).__func__ is not getattr(Trainable, key)
