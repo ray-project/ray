@@ -647,6 +647,10 @@ class Trainable:
             A dict that describes training progress.
 
         """
+        if self._is_overridden("_train") and log_once("_train"):
+            logger.warning(
+                "Trainable._train is deprecated and is now removed. Override "
+                "Trainable.step instead.")
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -685,6 +689,10 @@ class Trainable:
             >>> trainable.save_checkpoint("/tmp/bad_example")
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
+        if self._is_overridden("_save") and log_once("_save"):
+            logger.warning(
+                "Trainable._save is deprecated and is now removed. Override "
+                "Trainable.save_checkpoint instead.")
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint):
@@ -730,6 +738,10 @@ class Trainable:
                 returned by `save_checkpoint`. The directory structure
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
+        if self._is_overridden("_restore") and log_once("_restore"):
+            logger.warning(
+                "Trainable._restore is deprecated and is now removed. "
+                "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
 
     def setup(self, config):
@@ -742,6 +754,10 @@ class Trainable:
                 Copy of `self.config`.
 
         """
+        if self._is_overridden("_setup") and log_once("_setup"):
+            logger.warning(
+                "Trainable._setup is deprecated and is now removed. Override "
+                "Trainable.setup instead.")
         pass
 
     def log_result(self, result):
@@ -756,6 +772,10 @@ class Trainable:
         Args:
             result (dict): Training result returned by step().
         """
+        if self._is_overridden("_log_result") and log_once("_log_result"):
+            logger.warning(
+                "Trainable._log_result is deprecated and is now removed. "
+                "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -769,6 +789,10 @@ class Trainable:
 
         .. versionadded:: 0.8.7
         """
+        if self._is_overridden("_stop") and log_once("_stop"):
+            logger.warning(
+                "Trainable._stop is deprecated and is now removed. Override "
+                "Trainable.cleanup instead.")
         pass
 
     def _export_model(self, export_formats, export_dir):
