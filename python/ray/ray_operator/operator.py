@@ -99,9 +99,8 @@ class RayCluster():
 
     def start_monitor(self) -> None:
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
-        # TODO: Add support for user-specified redis port and password
-        redis_address = services.address(ray_head_pod_ip,
-                                         ray_constants.DEFAULT_PORT)
+        port = operator_utils.infer_head_port(self.config)
+        redis_address = services.address(ray_head_pod_ip, port)
         self.mtr = monitor.Monitor(
             redis_address=redis_address,
             autoscaling_config=self.config_path,
@@ -180,6 +179,8 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
     cluster_identifier = (cluster_name, cluster_namespace)
 
     if event_type == "ADDED":
+        operator_utils.check_redis_password_not_specified(
+            cluster_config, cluster_identifier)
 
         cluster_status_q.put((cluster_name, cluster_namespace, "Running"))
 

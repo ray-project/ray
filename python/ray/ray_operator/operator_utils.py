@@ -1,12 +1,16 @@
 import copy
 import logging
 import os
+import re
 import time
-from typing import Any, Dict, Iterator
+from typing import Any
+from typing import Dict
+from typing import Iterator
 
 from kubernetes.watch import Watch
 from kubernetes.client.rest import ApiException
 
+from ray import ray_constants
 from ray.autoscaler._private._kubernetes import custom_objects_api
 from ray.autoscaler._private._kubernetes.node_provider import\
     head_service_selector
@@ -215,3 +219,40 @@ def _set_status(cluster_name: str, cluster_namespace: str,
                                                plural=RAYCLUSTER_PLURAL,
                                                name=cluster_name,
                                                body=cluster_cr)
+
+
+def infer_head_port(cluster_config: Dict[str, Any]) -> str:
+    """Infer Ray head port from the head Ray start command. If no port argument
+    is provided, return the default port.
+
+    The port is used by the Operator to initialize the monitor.
+
+    Args:
+        cluster_config: Ray autoscaler cluster config dict
+
+    Returns:
+        Ray head port.
+
+    """
+    head_start_commands = cluster_config.get("head_start_ray_commands", [])
+    for cmd in head_start_commands:
+        # Split on space and equals sign.
+        components = re.split("=| ", cmd)
+        for i, component in enumerate(components):
+            if component == "--port":
+                # Port value is the next component.
+                port = components[i + 1]
+                return port
+    return str(ray_constants.DEFAULT_PORT)
+
+
+def check_redis_password_not_specified(cluster_config, cluster_identifier):
+    """Detect if Redis password is specified in the head Ray start commands.
+    The operator does not currently support setting a custom Redis password.
+    """
+    head_start_commands = cluster_config.get("head_start_ray_commands", [])
+    if any("redis-password" in cmd for cmd in head_start_commands):
+        prefix = ",".join(cluster_identifier) + ":"
+        raise ValueError(f"{prefix}The Ray Kubernetes Operator does not"
+                         " support setting a custom Redis password in Ray"
+                         " start commands.")
