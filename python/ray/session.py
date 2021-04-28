@@ -41,7 +41,11 @@ class SessionBuilder:
         )
 
     def env(self, env: Dict[str, Any]) -> "real_ray.SessionBuilder":
-        self.job_config = JobConfig(runtime_env=env)
+        self.job_config.set_runtime_env(env)
+        return self
+
+    def namespace(self, namespace: str) -> "real_ray.SessionBuilder":
+        self.job_config.set_namespace(namespace)
         return self
 
 
