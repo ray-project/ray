@@ -481,10 +481,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
-            for uri in uris:
-                working_dir = runtime_env.ensure_runtime_env_setup([uri])
-                if working_dir:
-                    os.chdir(working_dir)
+            working_dir = runtime_env.ensure_runtime_env_setup(uris)
+            if working_dir:
+                os.chdir(working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
