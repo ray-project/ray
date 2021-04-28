@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import importlib
 import json
 import logging
+import sys
 import os
 from typing import Any, Dict, Optional
 
@@ -53,17 +54,17 @@ class LocalSessionBuilder(SessionBuilder):
     def __init__(self, address: Optional[str] = None):
         super().__init__(address)
         self.kwargs = {"job_config": self.job_config}
+        if address == "auto":
+            self.kwargs["address"] = "auto"
 
     def connect(self) -> "real_ray.SessionInfo":
-        ray._private.client_mode_hook._explicitly_enable_client_mode()
         real_ray.init(**self.kwargs)
-        connection_info = real_ray.util.client.real_ray._conn_info
         session_info = SessionInfo(
             dashboard_url=real_ray.worker.get_dashboard_url(),
-            python_version=connection_info["python_version"],
-            ray_version=connection_info["ray_version"],
-            ray_commit=connection_info["ray_commit"],
-            protocol_version=connection_info["protocol_version"],
+            python_version='.'.join(str(x) for x in sys.version_info[:3]),
+            ray_version=real_ray.__version__,
+            ray_commit=real_ray.__commit__,
+            protocol_version=real_ray.util.client.CURRENT_PROTOCOL_VERSION,
         )
         atexit.register(real_ray.shutdown, True)
         return session_info
@@ -115,9 +116,9 @@ def session(address: Optional[str] = None) -> Any:
             logger.info(f"Overwriting address with: {overwrite_address}")
         address = overwrite_address
 
-    if address is None or address == "auto":
+    if address is None:
         return ConnectOrCreateSessionBuilder(address)
-    elif address == "local":
+    elif address == "local" or address == "auto":
         return LocalSessionBuilder(address)
     else:
         protocol = parse_protocol_from_string(address)

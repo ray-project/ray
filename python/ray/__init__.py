@@ -93,6 +93,7 @@ import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
+from ray.session import session
 from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
@@ -121,6 +122,7 @@ __all__ = [
     "nodes",
     "put",
     "remote",
+    "session",
     "shutdown",
     "show_in_dashboard",
     "timeline",
