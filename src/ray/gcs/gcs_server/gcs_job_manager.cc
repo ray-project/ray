@@ -35,6 +35,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                          request.data().SerializeAsString(), nullptr));
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << request.data().driver_pid();
+      namespaces_[job_id] = request.data().config().ray_namespace();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -112,6 +113,13 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
                                      request.job_error().SerializeAsString(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+
+std::string GcsJobManager::GetNamespace(const JobID &job_id) const {
+  auto it = namespaces_.find(job_id);
+  RAY_CHECK(it != namespaces_.end());
+  return it->second;
 }
 
 }  // namespace gcs
