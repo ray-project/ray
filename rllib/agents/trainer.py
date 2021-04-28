@@ -251,7 +251,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The SampleCollector class to be used to collect and retrieve
     # environment-, model-, and sampler data. Override the SampleCollector base
     # class to implement your own collection/buffering/retrieval logic.
-    "sample_collector": SimpleListCollector,
+    "sample_collector_class": SimpleListCollector,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
