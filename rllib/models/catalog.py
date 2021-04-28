@@ -41,7 +41,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # If False (default), use "classic" ModelV2 default models.
     # Note that this currently only works for:
     # 1) framework != torch AND
-    # 2) fully connected or CNN default networks.
+    # 2) fully connected and CNN default networks as well as
+    # auto-wrapped LSTM- and attention nets.
     "_use_default_native_models": False,
 
     # === Built-in options ===
