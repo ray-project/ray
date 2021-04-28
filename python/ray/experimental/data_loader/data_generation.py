@@ -2,6 +2,8 @@ import os
 
 import pandas as pd
 import numpy as np
+from smart_open import open
+
 import ray
 
 
@@ -60,11 +62,11 @@ def generate_file(
     df = pd.concat(buffs)
     data_size = df.memory_usage(deep=True).sum()
     filename = os.path.join(
-        data_dir, f"input_data_{file_index}.parquet.gzip")
+        data_dir, f"input_data_{file_index}.parquet.snappy")
     df.to_parquet(
-        filename,
+        open(filename, "wb"),
         engine="pyarrow",
-        compression="gzip",
+        compression="snappy",
         row_group_size=num_rows_in_file // num_row_groups_per_file)
     return filename, data_size
 

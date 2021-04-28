@@ -187,7 +187,7 @@ if __name__ == "__main__":
     data_dir = args.data_dir
     if args.clear_old_data:
         print(f"Clearing old data from {data_dir}.")
-        files = glob.glob(os.path.join(data_dir, "*.parquet.gzip"))
+        files = glob.glob(os.path.join(data_dir, "*.parquet.snappy"))
         for f in files:
             os.remove(f)
 
@@ -221,7 +221,7 @@ if __name__ == "__main__":
         filenames = [
             os.path.join(
                 data_dir,
-                f"input_data_{file_index}.parquet.gzip")
+                f"input_data_{file_index}.parquet.snappy")
             for file_index in range(num_files)]
         print("Not generating input data, using existing data instead.")
 

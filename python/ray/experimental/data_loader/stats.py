@@ -7,6 +7,7 @@ from typing import List
 import timeit
 
 import numpy as np
+from smart_open import open
 
 import ray
 

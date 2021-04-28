@@ -254,7 +254,7 @@ if __name__ == "__main__":
         generate_data, DATA_SPEC)
     from ray.experimental.data_loader.stats import human_readable_size
     print("Starting Ray...")
-    ray.init()
+    ray.init(_system_config={"idle_worker_killing_time_threshold_ms": 10**6})
     num_rows = 10 ** 6
     num_files = 10
     num_row_groups_per_file = 1

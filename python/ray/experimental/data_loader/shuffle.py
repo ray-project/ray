@@ -6,6 +6,7 @@ from typing import Callable, List, Iterable, Union
 
 import pandas as pd
 import numpy as np
+from smart_open import open
 
 import ray
 from ray.experimental.data_loader.stats import (
@@ -257,7 +258,7 @@ def shuffle_map_file(
         stats_collector.cache_map_start.remote(epoch)
     start = timeit.default_timer()
     # Load file.
-    rows = pd.read_parquet(filename)
+    rows = pd.read_parquet(open(filename, "rb"))
     end_read = timeit.default_timer()
 
     # Create random round assignment.
