@@ -115,7 +115,6 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
-
 std::string GcsJobManager::GetNamespace(const JobID &job_id) const {
   auto it = namespaces_.find(job_id);
   RAY_CHECK(it != namespaces_.end());
