@@ -60,6 +60,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// A cached mapping from job id to namespace.
   std::unordered_map<JobID, std::string> namespaces_;
 
+  /// A cached maping of end time.
+  std::unordered_map<JobID, int64_t> start_times_;
+
   void ClearJobInfos(const JobID &job_id);
 };
 

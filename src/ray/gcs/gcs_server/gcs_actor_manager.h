@@ -67,6 +67,8 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+
+    actor_table_data_.set_start_time(std::time(nullptr));
   }
 
   /// Get the node id on which this actor is created.

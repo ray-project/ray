@@ -151,6 +151,8 @@ message ActorTableData {
   RayException creation_task_exception = 18;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
+  // The unix time stamp that the actor started at. This is a low precision timestamp for display purposes.
+  int64 start_time = 20;
 }
 
 message ErrorTableData {
@@ -293,6 +295,10 @@ message JobTableData {
   int64 driver_pid = 5;
   // The config of this job.
   JobConfig config = 6;
+  // UNIX timestamp of the start time.
+  int64 start_time = 7;
+  // UNIX timestamp of the end time.
+  int64 end_time = 8;
 }
 
 message WorkerTableData {
