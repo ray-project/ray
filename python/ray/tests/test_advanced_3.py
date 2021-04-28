@@ -41,9 +41,9 @@ def test_global_state_api(shutdown_only):
     # the object ref in GCS because Raylet removes the object ref from GCS
     # asynchronously.
     # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.objects()` returns an empty dict. Here we just
-    # make sure `ray.objects()` succeeds.
-    assert len(ray.objects()) >= 0
+    # We can't assert that `ray.state.objects()` returns an empty dict. Here
+    # we just make sure `ray.state.objects()` succeeds.
+    assert len(ray.state.objects()) >= 0
 
     job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
@@ -63,7 +63,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.actors()
+    actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
     actor_info, = actor_table.values()
@@ -73,7 +73,7 @@ def test_global_state_api(shutdown_only):
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
