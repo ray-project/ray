@@ -6,13 +6,14 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
-
 import ray as real_ray
 from ray.job_config import JobConfig
 import ray.ray_constants as ray_constants
 from ray._private.services import create_redis_client, find_redis_address
 from ray.util.client import ray
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class SessionInfo:
@@ -24,21 +25,20 @@ class SessionInfo:
 
 
 class SessionBuilder:
-    def __init__(self, address: Optional[str]=None):
+    def __init__(self, address: Optional[str] = None):
         self.address = address
         self.job_config = JobConfig()
 
     def connect(self) -> "real_ray.SessionInfo":
-        connection_info = real_ray.util.connect(self.address,
-        job_config=self.job_config
+        connection_info = real_ray.util.connect(
+            self.address, job_config=self.job_config)
+        return SessionInfo(
+            dashboard_url=None,
+            python_version=connection_info["python_version"],
+            ray_version=connection_info["ray_version"],
+            ray_commit=connection_info["ray_commit"],
+            protocol_version=connection_info["protocol_version"],
         )
-        return SessionInfo(dashboard_url=None,
-        python_version = connection_info["python_version"],
-        ray_version = connection_info["ray_version"],
-        ray_commit = connection_info["ray_commit"],
-        protocol_version = connection_info["protocol_version"] 
-        )
-        
 
     def env(self, env: Dict[str, Any]) -> "real_ray.SessionBuilder":
         self.job_config = JobConfig(runtime_env=env)
@@ -46,24 +46,30 @@ class SessionBuilder:
 
 
 class LocalSessionBuilder(SessionBuilder):
-    def __init__(self, address: Optional[str]=None):
+    def __init__(self, address: Optional[str] = None):
         super().__init__(address)
-        self.kwargs = { "job_config" : self.job_config}
+        self.kwargs = {"job_config": self.job_config}
 
     def connect(self) -> "real_ray.SessionInfo":
         ray._private.client_mode_hook._explicitly_enable_client_mode()
-        address = real_ray.init(**self.kwargs)
+        real_ray.init(**self.kwargs)
         connection_info = real_ray.util.client.real_ray._conn_info
-        session_info = SessionInfo(dashboard_url=real_ray.worker.get_dashboard_url(),
-        python_version = connection_info["python_version"],
-        ray_version = connection_info["ray_version"],
-        ray_commit = connection_info["ray_commit"],
-        protocol_version = connection_info["protocol_version"] 
+        session_info = SessionInfo(
+            dashboard_url=real_ray.worker.get_dashboard_url(),
+            python_version=connection_info["python_version"],
+            ray_version=connection_info["ray_version"],
+            ray_commit=connection_info["ray_commit"],
+            protocol_version=connection_info["protocol_version"],
         )
         atexit.register(real_ray.shutdown, True)
         return session_info
 
-    def resources(self, num_cpus: Optional[int]=None, num_gpus: Optional[int]=None, resources: Optional[Dict[str, float]]=None):
+    def resources(
+            self,
+            num_cpus: Optional[int] = None,
+            num_gpus: Optional[int] = None,
+            resources: Optional[Dict[str, float]] = None,
+    ):
         if num_cpus:
             self.kwargs["num_cpus"] = num_cpus
         if num_gpus:
@@ -78,15 +84,17 @@ class ConnectOrCreateSessionBuilder(LocalSessionBuilder):
         redis_addresses = find_redis_address()
         if len(redis_addresses) == 1:
             redis_client = create_redis_client(
-        redis_addresses.pop(), ray_constants.REDIS_DEFAULT_PASSWORD)
-            self.address = json.loads(redis_client.hget("healthcheck:ray_client_server", "value"))["location"]
+                redis_addresses.pop(), ray_constants.REDIS_DEFAULT_PASSWORD)
+            self.address = json.loads(
+                redis_client.hget("healthcheck:ray_client_server",
+                                  "value"))["location"]
             super(LocalSessionBuilder, self).connect()
         elif len(redis_addresses) == 0:
             # Start up a Ray Client Server & Connect
             return super().connect()
         else:
-            raise ConnectionError(f"Found multiple active Ray instances: {redis_addresses}.")
-
+            raise ConnectionError(
+                f"Found multiple active Ray instances: {redis_addresses}.")
 
 
 def parse_protocol_from_string(address: str) -> str:
@@ -96,9 +104,8 @@ def parse_protocol_from_string(address: str) -> str:
     return package
 
 
-
-def session(address: Optional[str]=None) -> Any:
-    overwrite_address =  os.environ.get("RAY_OVERWRITE_ADDRESS")
+def session(address: Optional[str] = None) -> Any:
+    overwrite_address = os.environ.get("RAY_OVERWRITE_ADDRESS")
     if overwrite_address:
         if address:
             logger.info(f"Overwriting address with: {overwrite_address}")

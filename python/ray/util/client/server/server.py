@@ -702,10 +702,7 @@ def main():
     server = serve(hostport, ray_connect_handler)
     try:
         while True:
-            health_report = {
-                "time": time.time(),
-                "location": hostport
-            }
+            health_report = {"time": time.time(), "location": hostport}
 
             try:
                 if not redis_client:

@@ -26,7 +26,7 @@ class RayAPIStub:
         self._server = None
         self._connected_with_init = False
         self._inside_client_test = False
-        self._conn_info:  Dict[str, Any] = {}
+        self._conn_info: Dict[str, Any] = {}
 
     def connect(self,
                 conn_str: str,
