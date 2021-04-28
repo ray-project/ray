@@ -96,6 +96,8 @@ class GcsActor {
   bool IsDetached() const;
   /// Get the name of this actor.
   std::string GetName() const;
+  /// Get the namespace of this actor.
+  std::string GetNamespace() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
@@ -223,7 +225,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the actor ID for the named actor. Returns nil if the actor was not found.
   /// \param name The name of the detached actor to look up.
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
-  ActorID GetActorIDByName(const std::string &name);
+  ActorID GetActorIDByName(const std::string &name,
+                           const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -413,8 +416,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// The actors are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
   std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_list_;
-  /// Maps actor names to their actor ID for lookups by name.
-  absl::flat_hash_map<std::string, ActorID> named_actors_;
+  /// Maps actor names to their actor ID for lookups by name, first keyed by their
+  /// namespace.
+  absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, ActorID>>
+      named_actors_;
   /// The actors which dependencies have not been resolved.
   /// Maps from worker ID to a client and the IDs of the actors owned by that worker.
   /// The actor whose dependencies are not resolved should be destroyed once it creator
@@ -444,7 +449,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the namespace an actor belongs to based on its job id. This is necessary for actor creation.
+  /// A callback to get the namespace an actor belongs to based on its job id. This is
+  /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_namespace_;
 
   // Debug info.
