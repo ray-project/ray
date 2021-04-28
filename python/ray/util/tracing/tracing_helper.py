@@ -277,6 +277,8 @@ def _tracing_actor_creation(method):
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ):
+        if kwargs is None:
+            kwargs = {}
         # If tracing feature flag is not on, perform a no-op
         if not is_tracing_enabled():
             return method(self, args, kwargs, *_args, **_kwargs)
@@ -430,7 +432,7 @@ def _inject_tracing_into_class(_cls):
         # Skip tracing for staticmethod or classmethod, because these method
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
-        if is_static_method(_cls, name) or is_class_method(method):
+        if is_static_method(_cls, name) or is_class_method(method) or not is_tracing_enabled():
             continue
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
