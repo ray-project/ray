@@ -559,7 +559,8 @@ sleep(600)
     script = driver_script.format(**locals())
     proc = run_string_as_driver_nonblocking(script, env)
     sleep(5)
-    runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
+    runtime_env = f"""
+{{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
     # Execute the following cmd in the second one which should
     # fail
     execute_statement = "print('OK')"
