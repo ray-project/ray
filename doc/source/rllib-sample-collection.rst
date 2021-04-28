@@ -104,7 +104,7 @@ RLlib's default ``SampleCollector`` class is the ``SimpleListCollector``, which 
 to lists, then builds SampleBatches from these and sends them to the downstream processing functions.
 It thereby tries to avoid collecting duplicate data separately (OBS and NEXT_OBS use the same underlying list).
 If you want to implement your own collection logic and data structures, you can sub-class ``SampleCollector``
-and specify that new class under the Trainer's "sample_collector" config key.
+and specify that new class under the Trainer's "sample_collector_class" config key.
 
 Let's now look at how the Policy's Model lets the RolloutWorker and its SampleCollector
 know, what data in the ongoing episode/trajectory to use for the different required method calls
