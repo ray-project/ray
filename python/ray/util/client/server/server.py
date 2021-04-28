@@ -704,6 +704,7 @@ def main():
         while True:
             health_report = {
                 "time": time.time(),
+                "location": hostport
             }
 
             try:
