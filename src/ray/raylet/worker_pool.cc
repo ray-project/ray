@@ -282,7 +282,7 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON) {
-    if (runtime_env.conda_env_name != "") {
+    if (!runtime_env.IsEmpty()) {
       const std::string conda_env_name = runtime_env.conda_env_name;
       worker_command_args.push_back("--conda-env-name=" + conda_env_name);
     } else {
@@ -837,7 +837,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      task_spec.RuntimeEnv().conda_env_name != "") {
+      !task_spec.RuntimeEnv().IsEmpty()) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options, or any task with environment variable overrides, or
     // any task with a specified RuntimeEnv.
