@@ -105,7 +105,7 @@ def use_context(parent_context: "Context") -> Generator[None, None, None]:
         context.detach(token)
 
 
-def _function_hydrate_span_args(func: Callable[..., Any]) -> "Attributes":
+def _function_hydrate_span_args(func: Callable[..., Any]):
     """Get the Attributes of the function that will be reported as attributes
     in the trace."""
     runtime_context = get_runtime_context().get()
@@ -148,8 +148,7 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{name} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable,
-                             method: _nameable) -> "Attributes":
+def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
