@@ -26,13 +26,13 @@ def shuffle_from_memory_with_stats(
         num_rounds: int,
         num_reducers: int,
         num_trainers: int,
-        max_concurrent_rounds: int,
         max_concurrent_epochs: int,
         utilization_sample_period: float) -> (TrialStatsFromMemory, List):
     """
     Shuffle the provided dataset every epoch, using round-based shuffling that
     caches the input dataset in cluster memory at the beginning of each epoch.
     """
+    stats = None
     store_stats = []
     done_event = threading.Event()
     store_stats_collector_thread = threading.Thread(
@@ -45,17 +45,15 @@ def shuffle_from_memory_with_stats(
             f"Doing {num_epochs} epochs each with {num_rounds} shuffle "
             "rounds.")
 
-        stats = ray.get(
-            shuffle_from_memory.remote(
-                filenames,
-                batch_consumer,
-                num_epochs,
-                num_rounds,
-                num_reducers,
-                num_trainers,
-                max_concurrent_rounds,
-                max_concurrent_epochs,
-                collect_stats=True))
+        stats = shuffle_from_memory(
+            filenames,
+            batch_consumer,
+            num_epochs,
+            num_rounds,
+            num_reducers,
+            num_trainers,
+            max_concurrent_epochs,
+            collect_stats=True)
     finally:
         # Signal store stats collector thread that we're done, join the
         # thread.
@@ -72,7 +70,6 @@ def shuffle_from_memory_no_stats(
         num_rounds: int,
         num_reducers: int,
         num_trainers: int,
-        max_concurrent_rounds: int,
         max_concurrent_epochs: int,
         utilization_sample_period: float) -> (float, None):
     """
@@ -80,21 +77,18 @@ def shuffle_from_memory_no_stats(
     caches the input dataset in cluster memory at the beginning of each epoch.
     """
     print(f"Doing {num_epochs} epochs each with {num_rounds} shuffle rounds.")
-    duration = ray.get(
-        shuffle_from_memory.remote(
-            filenames,
-            batch_consumer,
-            num_epochs,
-            num_rounds,
-            num_reducers,
-            num_trainers,
-            max_concurrent_rounds,
-            max_concurrent_epochs,
-            collect_stats=False))
+    duration = shuffle_from_memory(
+        filenames,
+        batch_consumer,
+        num_epochs,
+        num_rounds,
+        num_reducers,
+        num_trainers,
+        max_concurrent_epochs,
+        collect_stats=False)
     return duration, None
 
 
-@ray.remote
 def shuffle_from_memory(
         filenames: List[str],
         batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
@@ -102,7 +96,6 @@ def shuffle_from_memory(
         num_rounds: int,
         num_reducers: int,
         num_trainers: int,
-        max_concurrent_rounds: int,
         max_concurrent_epochs: int,
         collect_stats: bool = True) -> Union[TrialStatsFromMemory, float]:
     if collect_stats:
@@ -114,40 +107,55 @@ def shuffle_from_memory(
     start = timeit.default_timer()
 
     in_progress = []
-    done = []
-    # TODO(Clark): Launch all tasks contained within all epochs and rounds
-    # from the driver to reduce epoch/round overhead. This could be done by
-    # pipeline throttling being expressed in # of tasks, rolling that
-    # number up from each launch epoch and round, and modifying this
-    # throttling wait loop.
+    num_done = 0
+    reducer_wait_batch = 1
     for epoch_idx in range(num_epochs):
         # Throttle epoch pipelining.
-        epochs_to_wait_for = len(in_progress) - max_concurrent_epochs + 1
-        if epochs_to_wait_for > 0:
+        # TODO(Clark): Find a way to more aggressively delete object
+        # references without slow wait loops.
+        reducers_to_wait_for = (
+            len(in_progress) - (
+                (max_concurrent_epochs - 1) * num_rounds * num_reducers *
+                num_trainers))
+        if reducers_to_wait_for > 0:
             print(f"Throttling on epoch {epoch_idx}, waiting for "
-                  f"{epochs_to_wait_for} epochs.")
+                  f"{reducers_to_wait_for} reducer-trainer chunks, "
+                  f"{len(in_progress)} in progress.")
             start_throttle = timeit.default_timer()
-            new_done, in_progress = ray.wait(
-                in_progress, num_returns=epochs_to_wait_for)
+            while reducers_to_wait_for > 0:
+                new_done, in_progress = ray.wait(
+                    in_progress, num_returns=reducer_wait_batch)
+                num_done += len(new_done)
+                del new_done
+                reducers_to_wait_for -= reducer_wait_batch
+            time = timeit.default_timer() - start
+            throughput = num_done / time
+            print(f"Throughput after throttle: {throughput:.2f} reducer "
+                  "trainer chunks/sec")
             if stats_collector is not None:
                 stats_collector.epoch_throttle_done.remote(
                     epoch_idx, timeit.default_timer() - start_throttle)
-            done.extend(new_done)
 
-        epoch = shuffle_from_memory_epoch.remote(
+        epoch_reducers = shuffle_from_memory_epoch(
             epoch_idx,
             filenames,
             batch_consumer,
             num_rounds,
             num_reducers,
             num_trainers,
-            max_concurrent_rounds,
             start,
             stats_collector)
-        in_progress.append(epoch)
+        in_progress.extend(epoch_reducers)
 
+    print(f"Waiting until last {len(in_progress)} reducer-trainer chunks are "
+          "done.")
     # Block until all epochs are done.
-    ray.get(in_progress + done)
+    wait_batch = max(len(in_progress) // 10, 1)
+    while in_progress:
+        done, in_progress = ray.wait(in_progress, num_returns=wait_batch)
+        del done
+
+    print("All epochs done.")
 
     end = timeit.default_timer()
 
@@ -163,7 +171,6 @@ def shuffle_from_memory(
         return end - start
 
 
-@ray.remote
 def shuffle_from_memory_epoch(
         epoch: int,
         filenames: List[str],
@@ -171,34 +178,19 @@ def shuffle_from_memory_epoch(
         num_rounds: int,
         num_reducers: int,
         num_trainers: int,
-        max_concurrent_rounds: int,
         trial_start: float,
         stats_collector: Union[TrialStatsCollectorFromMemory, None]) -> None:
-    start = timeit.default_timer()
     rounds_of_partitions = shuffle_map(
         filenames, num_rounds, num_reducers, stats_collector, epoch)
+    if stats_collector is not None:
+        stats_collector.epoch_start.remote(epoch)
 
-    in_progress = []
-    done = []
+    epoch_reducers = []
     # TODO(Clark): Move to streaming implementation.
     # TODO(Clark): Make mapper, reducer, and trainer IDs stable in the stats
     # across rounds, epochs, and trials?
     for round_index, round_partitions in enumerate(rounds_of_partitions):
-        # Throttle round pipelining.
-        rounds_to_wait_for = len(in_progress) - max_concurrent_rounds + 1
-        if rounds_to_wait_for > 0:
-            print(f"Throttling on round {round_index}, waiting for "
-                  f"{rounds_to_wait_for} rounds.")
-            start_throttle = timeit.default_timer()
-            new_done, in_progress = ray.wait(
-                in_progress, num_returns=rounds_to_wait_for)
-            if stats_collector is not None:
-                stats_collector.round_throttle_done.remote(
-                    epoch, round_index,
-                    timeit.default_timer() - start_throttle)
-            done.extend(new_done)
-
-        round_ = shuffle_from_memory_round.remote(
+        round_reducers = shuffle_from_memory_round(
             batch_consumer,
             num_reducers,
             num_trainers,
@@ -208,16 +200,9 @@ def shuffle_from_memory_epoch(
             stats_collector,
             *round_partitions)
 
-        in_progress.append(round_)
+        epoch_reducers.extend(round_reducers)
 
-    # Block until all rounds are done.
-    ray.get(in_progress + done)
-
-    end = timeit.default_timer()
-    duration = end - start
-    if stats_collector is not None:
-        stats_collector.epoch_done.remote(epoch, duration)
-    print(f"Epoch {epoch} done after {duration} seconds.")
+    return epoch_reducers
 
 
 def shuffle_map(
@@ -235,16 +220,19 @@ def shuffle_map(
     # the desired round partition in each round, shuffle within each round
     # partition, and split to reducers. At the beginning of each epoch, the
     # round partitions could be globally shuffled.
-    round_partitions = []
+    reducer_partitions = []
     for filename in filenames:
-        rounds = shuffle_map_file.options(
-            num_returns=num_rounds).remote(
+        file_reducer_parts = shuffle_map_file.options(
+            num_returns=num_rounds * num_reducers).remote(
                 filename, num_rounds, num_reducers,
                 stats_collector, epoch)
-        if not isinstance(rounds, list):
-            rounds = [rounds]
-        round_partitions.append(rounds)
-    return list(zip(*round_partitions))
+        if not isinstance(file_reducer_parts, list):
+            file_reducer_parts = [file_reducer_parts]
+        file_reducer_parts = chunk_it_contiguous(
+            file_reducer_parts, num_reducers)
+        assert len(file_reducer_parts) == num_rounds
+        reducer_partitions.append(file_reducer_parts)
+    return list(zip(*reducer_partitions))
 
 
 @ray.remote
@@ -264,28 +252,23 @@ def shuffle_map_file(
     # Create random round assignment.
     round_assignment = np.random.randint(num_rounds, size=len(rows))
     # Partition the rows into a partition per reducer per round.
-    round_parts = []
+    reducer_parts = []
     for round_idx in range(num_rounds):
         round_part = rows[round_assignment == round_idx]
-        # print("round_part:", len(round_part))
         reducer_assignment = np.random.randint(
             num_reducers, size=len(round_part))
-        reducer_parts = []
         for reducer_idx in range(num_reducers):
             reducer_part = round_part[reducer_assignment == reducer_idx]
-            # print("reducer_part:", len(reducer_part))
-            reducer_parts.append(ray.put(reducer_part))
-        round_parts.append(reducer_parts)
-    if len(round_parts) == 1:
-        round_parts = round_parts[0]
+            reducer_parts.append(reducer_part)
+    if len(reducer_parts) == 1:
+        reducer_parts = reducer_parts[0]
     duration = timeit.default_timer() - start
     read_duration = end_read - start
     if stats_collector is not None:
         stats_collector.cache_map_done.remote(epoch, duration, read_duration)
-    return round_parts
+    return reducer_parts
 
 
-@ray.remote
 def shuffle_from_memory_round(
         batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
         num_reducers: int,
@@ -295,7 +278,8 @@ def shuffle_from_memory_round(
         trial_start: float,
         stats_collector: Union[TrialStatsCollectorFromMemory, None],
         *reducers_partitions: List[List[pd.DataFrame]]) -> None:
-    start = timeit.default_timer()
+    if stats_collector is not None:
+        stats_collector.round_start.remote(epoch, round_index)
     shuffled = []
     # reducers_partitions is a 2D (num_files, max(num_reducers, num_files))
     # array of reducer partitions; we chunk it into a (num_files, num_reducers)
@@ -325,14 +309,8 @@ def shuffle_from_memory_round(
         consume(
             trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
             round_index, list(itertools.chain.from_iterable(batches)))
-    # Block until all reducers in this round are done.
     shuffled = list(itertools.chain.from_iterable(shuffled))
-    ray.wait(shuffled, num_returns=len(shuffled))
-    end = timeit.default_timer()
-    duration = end - start
-    if stats_collector is not None:
-        stats_collector.round_done.remote(epoch, round_index, duration)
-    print(f"Round {round_index} done after {duration} seconds.")
+    return shuffled
 
 
 #
@@ -536,6 +514,18 @@ def chunk_it(iterable, n):
     chunked = [[] for _ in range(n)]
     for idx, item in enumerate(iterable):
         chunked[idx % n].append(item)
+    return chunked
+
+
+def chunk_it_contiguous(iterable, n):
+    chunked = []
+    for idx, item in enumerate(iterable):
+        try:
+            sub_chunked = chunked[idx // n]
+        except IndexError:
+            sub_chunked = []
+            chunked.append(sub_chunked)
+        sub_chunked.append(item)
     return chunked
 
 

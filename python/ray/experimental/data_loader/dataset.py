@@ -29,9 +29,6 @@ class ShufflingDataset:
         num_reducers (optional, int): The number of shuffler reducers. Default
             is the number of trainers x the number of cores on the master
             (rank 0) worker.
-        max_concurrent_rounds (optional, int): The maximum number of shuffle
-            rounds that should be executed concurrently. Default is the number
-            of rounds (no round throttling).
         max_concurrent_epochs (optional, int): The maximum number of epochs
             whose shuffling stages should execute concurrently. Default is 2.
     """
@@ -44,13 +41,10 @@ class ShufflingDataset:
             rank: int,
             num_rounds: int = 2,
             num_reducers: int = None,
-            max_concurrent_rounds: int = None,
             max_concurrent_epochs: int = 2,
             max_batch_queue_size: int = 100):
         if num_reducers is None:
             num_reducers = num_trainers * get_num_cpus()
-        if max_concurrent_rounds is None:
-            max_concurrent_rounds = num_rounds
 
         self._batch_size = batch_size
 
@@ -62,7 +56,7 @@ class ShufflingDataset:
             # TODO(Clark): If the shuffle API was changed to take num_trainers
             # batch consumers instead of a single batch consumer, instead of
             # having a single batch multi-queue, we could create num_trainers
-            # batch queues, have each batch consumer close over heir
+            # batch queues, have each batch consumer close over their
             # corresponding batch queue, and have each trainer reference their
             # single batch queue.
             self._batch_queue = MultiQueue(
@@ -71,7 +65,7 @@ class ShufflingDataset:
             # Kick off shuffle.
             # TODO(Clark): Move the shuffle kickoff to an init() method so the
             # user can better control when the shuffling starts?
-            self._shuffle_result = shuffle_from_memory.remote(
+            self._shuffle_result = ray.remote(shuffle_from_memory).remote(
                 filenames,
                 functools.partial(
                     batch_consumer, self._batch_queue, batch_size),
@@ -79,7 +73,6 @@ class ShufflingDataset:
                 num_rounds,
                 num_reducers,
                 num_trainers,
-                max_concurrent_rounds,
                 max_concurrent_epochs,
                 collect_stats=False)
         else:

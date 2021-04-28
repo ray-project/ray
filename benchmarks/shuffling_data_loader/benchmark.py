@@ -70,7 +70,6 @@ def run_trials(
         filenames,
         num_reducers,
         num_trainers,
-        max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
         collect_stats=True,
@@ -100,7 +99,6 @@ def run_trials(
                 num_rounds,
                 num_reducers,
                 num_trainers,
-                max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
             duration = stats.duration if collect_stats else stats
@@ -118,7 +116,6 @@ def run_trials(
                 num_rounds,
                 num_reducers,
                 num_trainers,
-                max_concurrent_rounds,
                 max_concurrent_epochs,
                 utilization_sample_period)
             duration = stats.duration if collect_stats else stats
@@ -238,11 +235,6 @@ if __name__ == "__main__":
     # assert num_rounds % 1 == 0
     # num_rounds = int(num_rounds)
 
-    max_concurrent_rounds = args.max_concurrent_rounds
-    if max_concurrent_rounds is None or max_concurrent_rounds > num_rounds:
-        max_concurrent_rounds = num_rounds
-    assert max_concurrent_rounds > 0
-
     num_epochs = args.num_epochs
     max_concurrent_epochs = args.max_concurrent_epochs
     if max_concurrent_epochs is None or max_concurrent_epochs > num_epochs:
@@ -276,8 +268,7 @@ if __name__ == "__main__":
               f"reducers, {num_trainers} trainers, and a batch size of "
               f"{batch_size} over {num_rows} rows.")
     print(f"Shuffling will be pipelined with at most "
-          f"{max_concurrent_rounds} concurrent rounds per epoch and at "
-          f"most {max_concurrent_epochs} concurrent epochs.")
+          f"{max_concurrent_epochs} concurrent epochs.")
     collect_stats = not args.no_stats
     all_stats = run_trials(
         num_epochs,
@@ -285,7 +276,6 @@ if __name__ == "__main__":
         filenames,
         num_reducers,
         num_trainers,
-        max_concurrent_rounds,
         max_concurrent_epochs,
         utilization_sample_period,
         collect_stats,
@@ -309,8 +299,7 @@ if __name__ == "__main__":
             num_trainers,
             num_epochs,
             num_rounds,
-            max_concurrent_epochs,
-            max_concurrent_rounds)
+            max_concurrent_epochs)
     else:
         print("Shuffle trials done, no detailed stats collected.")
         times, _ = zip(*all_stats)

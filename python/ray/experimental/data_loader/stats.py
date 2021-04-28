@@ -59,7 +59,6 @@ class RoundStatsFromMemory:
     duration: float
     reduce_stats: ReduceStats
     consume_stats: ConsumeStats
-    throttle_stats: ThrottleStats
 
 
 @dataclass
@@ -105,6 +104,7 @@ class RoundStatsCollector_:
         self._num_reduces = num_reduces
         self._num_consumes = num_consumes
         self._duration = None
+        self._round_start_time = None
         self._maps_started = 0
         self._maps_done = 0
         self._map_durations = []
@@ -116,7 +116,6 @@ class RoundStatsCollector_:
         self._consumes_done = 0
         self._consume_times = []
         self._consume_durations = []
-        self._throttle_duration = None
         self._map_stage_start_time = None
         self._reduce_stage_start_time = None
         self._consume_stage_start_time = None
@@ -126,8 +125,12 @@ class RoundStatsCollector_:
 
         self._round_done_ev = asyncio.Event()
 
-    def round_done(self, duration):
-        self._duration = duration
+    def round_start(self):
+        self._round_start_time = timeit.default_timer()
+
+    def _round_done(self, end_time):
+        assert self._round_start_time is not None
+        self._duration = end_time - self._round_start_time
         self._round_done_ev.set()
 
     def map_start(self):
@@ -165,9 +168,6 @@ class RoundStatsCollector_:
         if self._consumes_done == self._num_consumes:
             self._consume_stage_done(timeit.default_timer())
 
-    def throttle_done(self, duration):
-        self._throttle_duration = duration
-
     def _map_stage_start(self, start_time):
         self._map_stage_start_time = start_time
 
@@ -181,6 +181,7 @@ class RoundStatsCollector_:
     def _reduce_stage_done(self, end_time):
         assert self._reduce_stage_start_time is not None
         self._reduce_stage_duration = end_time - self._reduce_stage_start_time
+        self._round_done(end_time)
 
     def _consume_stage_start(self, start_time):
         self._consume_stage_start_time = start_time
@@ -213,11 +214,6 @@ class RoundStatsCollector_:
             self._consume_times,
         )
 
-    def get_throttle_stats(self):
-        if self._throttle_duration is None:
-            self._throttle_duration = 0
-        return ThrottleStats(self._throttle_duration)
-
     async def get_stats(self):
         await self._round_done_ev.wait()
         assert self._duration is not None
@@ -228,8 +224,7 @@ class RoundStatsCollector_:
             self._duration,
             self.get_map_stats(),
             self.get_reduce_stats(),
-            self.get_consume_stats(),
-            self.get_throttle_stats())
+            self.get_consume_stats())
 
 
 class RoundStatsCollectorFromMemory_(RoundStatsCollector_):
@@ -237,6 +232,7 @@ class RoundStatsCollectorFromMemory_(RoundStatsCollector_):
         self._num_reduces = num_reduces
         self._num_consumes = num_consumes
         self._duration = None
+        self._round_start_time = None
         self._read_durations = []
         self._reduces_started = 0
         self._reduces_done = 0
@@ -245,7 +241,6 @@ class RoundStatsCollectorFromMemory_(RoundStatsCollector_):
         self._consumes_done = 0
         self._consume_times = []
         self._consume_durations = []
-        self._throttle_duration = None
         self._reduce_stage_start_time = None
         self._consume_stage_start_time = None
         self._reduce_stage_duration = None
@@ -262,8 +257,7 @@ class RoundStatsCollectorFromMemory_(RoundStatsCollector_):
         return RoundStatsFromMemory(
             self._duration,
             self.get_reduce_stats(),
-            self.get_consume_stats(),
-            self.get_throttle_stats())
+            self.get_consume_stats())
 
 
 class EpochStatsCollector_:
@@ -272,22 +266,29 @@ class EpochStatsCollector_:
             RoundStatsCollector_(num_maps, num_reduces, num_consumes)
             for _ in range(num_rounds)]
         self._duration = None
+        self._epoch_start_time = None
         self._throttle_duration = None
 
         self._epoch_done_ev = asyncio.Event()
 
-    def epoch_done(self, duration):
-        self._duration = duration
+    async def epoch_start(self):
+        self._epoch_start_time = timeit.default_timer()
+        await asyncio.wait(
+            [
+                collector._round_done_ev.wait()
+                for collector in self._collectors])
+        self._epoch_done(timeit.default_timer())
+
+    def _epoch_done(self, end_time):
+        assert self._epoch_start_time is not None
+        self._duration = end_time - self._epoch_start_time
         self._epoch_done_ev.set()
 
     def throttle_done(self, duration):
         self._throttle_duration = duration
 
-    def round_throttle_done(self, round_idx, duration):
-        self._collectors[round_idx].throttle_done(duration)
-
-    def round_done(self, round_idx, duration):
-        self._collectors[round_idx].round_done(duration)
+    def round_start(self, round_idx):
+        self._collectors[round_idx].round_start()
 
     def map_start(self, round_idx):
         self._collectors[round_idx].map_start()
@@ -332,6 +333,7 @@ class EpochStatsCollectorFromMemory_(EpochStatsCollector_):
             RoundStatsCollectorFromMemory_(num_reduces, num_consumes)
             for _ in range(num_rounds)]
         self._duration = None
+        self._epoch_start_time = None
         self._throttle_duration = None
         self._num_cache_maps = num_cache_maps
         self._cache_maps_started = 0
@@ -416,14 +418,11 @@ class TrialStatsCollector_:
     def epoch_throttle_done(self, epoch, duration):
         self._collectors[epoch].throttle_done(duration)
 
-    def round_throttle_done(self, epoch, round_idx, duration):
-        self._collectors[epoch].round_throttle_done(round_idx, duration)
+    async def epoch_start(self, epoch):
+        await self._collectors[epoch].epoch_start()
 
-    def epoch_done(self, epoch, duration):
-        self._collectors[epoch].epoch_done(duration)
-
-    def round_done(self, epoch, round_idx, duration):
-        self._collectors[epoch].round_done(round_idx, duration)
+    def round_start(self, epoch, round_idx):
+        self._collectors[epoch].round_start(round_idx)
 
     def map_start(self, epoch, round_idx):
         self._collectors[epoch].map_start(round_idx)
@@ -511,8 +510,7 @@ def process_stats(
         num_trainers,
         num_epochs,
         num_rounds,
-        max_concurrent_epochs,
-        max_concurrent_rounds):
+        max_concurrent_epochs):
     stats_list, store_stats_list = zip(*all_stats)
     times = [stats.duration for stats in stats_list]
     mean = np.mean(times)
@@ -539,7 +537,10 @@ def process_stats(
     shuffle_type = (
         "from_disk" if use_from_disk_shuffler else "from_memory")
     overwrite_stats = overwrite_stats
-    write_mode = "w+" if overwrite_stats else "a+"
+    if stats_dir.startswith("s3"):
+        write_mode = "w"
+    else:
+        write_mode = "w+" if overwrite_stats else "a+"
     stats_dir = stats_dir
     hr_num_rows = human_readable_big_num(num_rows)
     hr_batch_size = human_readable_big_num(batch_size)
@@ -563,7 +564,6 @@ def process_stats(
             "num_epochs",
             "max_concurrent_epochs",
             "num_rounds",
-            "max_concurrent_rounds",
             "trial",
             "duration",
             "row_throughput",
@@ -634,7 +634,6 @@ def process_stats(
             "num_epochs": num_epochs,
             "max_concurrent_epochs": max_concurrent_epochs,
             "num_rounds": num_rounds,
-            "max_concurrent_rounds": max_concurrent_rounds,
         }
         for trial, (stats, store_stats) in enumerate(all_stats):
             row["trial"] = trial
@@ -768,7 +767,6 @@ def process_stats(
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
-                "max_concurrent_rounds",
                 "trial",
                 "epoch",
                 "duration",
@@ -830,7 +828,6 @@ def process_stats(
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
-                "max_concurrent_rounds": max_concurrent_rounds,
             }
             for trial, (trial_stats, trial_store_stats) in enumerate(
                     all_stats):
@@ -951,7 +948,6 @@ def process_stats(
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
-                "max_concurrent_rounds",
                 "trial",
                 "epoch",
                 "round",
@@ -992,7 +988,6 @@ def process_stats(
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
-                "max_concurrent_rounds": max_concurrent_rounds,
             }
             for trial, (trial_stats, trial_store_stats) in enumerate(
                     all_stats):
@@ -1069,7 +1064,6 @@ def process_stats(
                 "num_epochs",
                 "max_concurrent_epochs",
                 "num_rounds",
-                "max_concurrent_rounds",
                 "trial",
                 "epoch",
                 "round",
@@ -1087,7 +1081,6 @@ def process_stats(
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
                 "num_rounds": num_rounds,
-                "max_concurrent_rounds": max_concurrent_rounds,
             }
             for trial, (trial_stats, trial_store_stats) in enumerate(
                     all_stats):
