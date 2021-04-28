@@ -18,7 +18,8 @@ from typing import (
 )
 
 from ray.runtime_context import get_runtime_context
-from ray.util.inspect import is_class_method, is_function_or_method, is_static_method
+from ray.util.inspect import (is_class_method, is_function_or_method,
+                              is_static_method)
 import ray.worker
 
 logger = logging.getLogger(__name__)
