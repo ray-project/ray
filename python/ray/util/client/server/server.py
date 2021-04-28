@@ -699,6 +699,7 @@ def main():
 
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
+
     server = serve(hostport, ray_connect_handler)
     try:
         while True:

@@ -31,12 +31,39 @@ class LogstreamHandler(logging.Handler):
         self.queue.put(logdata)
 
 
+def write_log_to_file(data):
+    job = data["job"]
+
+    is_global = True
+    try:
+        int(job)
+        is_global = False
+    except ValueError:
+        pass
+
+    if is_global:
+        # TODO Somehow put this in all job logs
+        pass
+    else:
+        to_print = ""
+        with io.StringIO() as file:
+            print_worker_logs(data, file)
+            to_print = file.getvalue()
+
+        suffix = "err" if data["is_err"] else "out"
+
+        job_file = f"/tmp/ray_job_log_{job}.{suffix}"
+        with open(job_file, "a") as f:
+            f.write(to_print)
+
+
 class StdStreamHandler:
     def __init__(self, queue):
         self.queue = queue
         self.id = str(uuid.uuid4())
 
     def handle(self, data):
+        write_log_to_file(data)
         logdata = ray_client_pb2.LogData()
         logdata.level = -2 if data["is_err"] else -1
         logdata.name = "stderr" if data["is_err"] else "stdout"
