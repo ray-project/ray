@@ -3,6 +3,8 @@ import glob
 import os
 import timeit
 
+import numpy as np
+
 import ray
 from ray.experimental.data_loader.shuffle import (
     shuffle_from_disk, shuffle_from_memory_with_stats,
@@ -66,7 +68,6 @@ def run_trials(
         num_epochs,
         num_rounds,
         filenames,
-        num_mappers,
         num_reducers,
         num_trainers,
         max_concurrent_rounds,
@@ -97,7 +98,6 @@ def run_trials(
                 dummy_batch_consumer,
                 num_epochs,
                 num_rounds,
-                num_mappers,
                 num_reducers,
                 num_trainers,
                 max_concurrent_rounds,
@@ -116,7 +116,6 @@ def run_trials(
                 dummy_batch_consumer,
                 num_epochs,
                 num_rounds,
-                num_mappers,
                 num_reducers,
                 num_trainers,
                 max_concurrent_rounds,
@@ -139,7 +138,6 @@ if __name__ == "__main__":
     parser.add_argument("--num-files", type=int, default=100)
     parser.add_argument("--max-row-group-skew", type=float, default=0.0)
     parser.add_argument("--num-row-groups-per-file", type=int, default=1)
-    parser.add_argument("--num-mappers", type=int, default=100)
     parser.add_argument("--num-reducers", type=int, default=5)
     parser.add_argument("--num-trainers", type=int, default=5)
     parser.add_argument("--num-epochs", type=int, default=10)
@@ -227,7 +225,6 @@ if __name__ == "__main__":
             for file_index in range(num_files)]
         print("Not generating input data, using existing data instead.")
 
-    num_mappers = args.num_mappers
     num_reducers = args.num_reducers
     num_trainers = args.num_trainers
     batch_size = args.batch_size
@@ -270,14 +267,14 @@ if __name__ == "__main__":
             "From disk shuffler not yet updated for new config.")
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_epochs} epochs, "
-              f"{num_rounds} rounds, {num_mappers} mappers, {num_reducers} "
-              f"reducers, {num_trainers} trainers, and a batch size of "
-              f"{batch_size} over {num_rows} rows.")
+              f"{num_rounds} rounds, {num_reducers} reducers, {num_trainers} "
+              f"trainers, and a batch size of {batch_size} over {num_rows} "
+              "rows.")
     else:
         print(f"Running {trials_timeout} seconds of shuffle trials with "
-              f"{num_epochs} epochs, {num_rounds} rounds, {num_mappers} "
-              f"mappers, {num_reducers} reducers, {num_trainers} trainers, "
-              f"and a batch size of {batch_size} over {num_rows} rows.")
+              f"{num_epochs} epochs, {num_rounds} rounds, {num_reducers} "
+              f"reducers, {num_trainers} trainers, and a batch size of "
+              f"{batch_size} over {num_rows} rows.")
     print(f"Shuffling will be pipelined with at most "
           f"{max_concurrent_rounds} concurrent rounds per epoch and at "
           f"most {max_concurrent_epochs} concurrent epochs.")
@@ -286,7 +283,6 @@ if __name__ == "__main__":
         num_epochs,
         num_rounds,
         filenames,
-        num_mappers,
         num_reducers,
         num_trainers,
         max_concurrent_rounds,
@@ -309,7 +305,6 @@ if __name__ == "__main__":
             num_rows,
             num_row_groups_per_file,
             batch_size,
-            num_mappers,
             num_reducers,
             num_trainers,
             num_epochs,
@@ -317,4 +312,18 @@ if __name__ == "__main__":
             max_concurrent_epochs,
             max_concurrent_rounds)
     else:
-        print("Shuffle trials done, no stats collected.")
+        print("Shuffle trials done, no detailed stats collected.")
+        times, _ = zip(*all_stats)
+        mean = np.mean(times)
+        std = np.std(times)
+        throughput_std = np.std(
+            [num_epochs * num_rows / time for time in times])
+        batch_throughput_std = np.std([
+            (num_epochs * num_rows / batch_size) / time for time in times])
+        print(f"\nMean over {len(times)} trials: {mean:.3f}s +- {std}")
+        print(f"Mean throughput over {len(times)} trials: "
+              f"{num_epochs * num_rows / mean:.2f} rows/s +- "
+              f"{throughput_std:.2f}")
+        print(f"Mean batch throughput over {len(times)} trials: "
+              f"{(num_epochs * num_rows / batch_size) / mean:.2f} batches/s "
+              f"+- {batch_throughput_std:.2f}")

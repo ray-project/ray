@@ -26,8 +26,6 @@ class ShufflingDataset:
         rank (int): The worker rank of the current process.
         num_rounds (optional, int): The number of shuffle rounds that the
             shuffler should perform. Default is 2.
-        num_mappers (optional, int): The number of shuffler mappers. Default is
-            the number of input files.
         num_reducers (optional, int): The number of shuffler reducers. Default
             is the number of trainers x the number of cores on the master
             (rank 0) worker.
@@ -45,13 +43,10 @@ class ShufflingDataset:
             batch_size: int,
             rank: int,
             num_rounds: int = 2,
-            num_mappers: int = None,
             num_reducers: int = None,
             max_concurrent_rounds: int = None,
             max_concurrent_epochs: int = 2,
             max_batch_queue_size: int = 100):
-        if num_mappers is None:
-            num_mappers = len(filenames)
         if num_reducers is None:
             num_reducers = num_trainers * get_num_cpus()
         if max_concurrent_rounds is None:
@@ -82,7 +77,6 @@ class ShufflingDataset:
                     batch_consumer, self._batch_queue, batch_size),
                 num_epochs,
                 num_rounds,
-                num_mappers,
                 num_reducers,
                 num_trainers,
                 max_concurrent_rounds,
@@ -102,6 +96,7 @@ class ShufflingDataset:
         """
         This iterator yields GPU batches from the shuffling queue.
         """
+        leftover_batches = None
         while True:
             # TODO(Clark): Add get_up_to queue method that can fetch up to
             # some number of batches in a single RPC.
@@ -109,8 +104,27 @@ class ShufflingDataset:
             if batches is None:
                 break
             batches = ray.get(batches)
+            # Handle leftover batches.
+            leftover = len(batches) % self._batch_size
+            if leftover != 0:
+                leftover_batch = batches.tail(leftover)
+                # Slice off the leftover.
+                batches = batches.head(-leftover)
+                leftover_batches = pd.concat([
+                    leftover_batches, leftover_batch])
+                # If leftover_batches contains a full batch, yield it.
+                if len(leftover_batches) > self._batch_size:
+                    batch = leftover_batches.head(self._batch_size)
+                    # Slice off the to-be-yielded batch.
+                    leftover_batches = leftover_batches.tail(-self._batch_size)
+                    yield batch
+            # At this point, we're guaranteed to have that
+            # len(batches) % self._batch_size == 0
             for batch in chunk_df(batches, self._batch_size):
                 yield batch
+        # Consume leftover batch.
+        if leftover_batches is not None:
+            yield leftover_batches
         if self._shuffle_result is not None:
             ray.get(self._shuffle_result)
 
@@ -177,11 +191,10 @@ if __name__ == "__main__":
     num_trainers = 1
     batch_size = 20000
     rank = 0
-    num_mappers = 4
     num_reducers = 4
     print(f"Creating shuffling dataset with {batch_size} batch size, "
-          f"{num_epochs} epochs, {num_mappers} mappers, {num_reducers} "
-          f"reducers, and {num_trainers} trainers.")
+          f"{num_epochs} epochs, {num_reducers} reducers, and {num_trainers} "
+          "trainers.")
     print(f"Should consume {num_rows // batch_size} batches.")
     ds = ShufflingDataset(
         filenames,
@@ -189,7 +202,6 @@ if __name__ == "__main__":
         num_trainers,
         batch_size,
         rank,
-        num_mappers=num_mappers,
         num_reducers=num_reducers)
 
     for batch_idx, batch in enumerate(ds):
