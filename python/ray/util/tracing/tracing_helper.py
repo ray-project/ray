@@ -272,8 +272,8 @@ def _tracing_actor_creation(method):
     @wraps(method)
     def _invocation_actor_class_remote_span(
             self,
-            args: Any,  # from tracing
-            kwargs: MutableMapping[Any, Any],  # from tracing
+            args: Any = tuple(),  # from tracing
+            kwargs: MutableMapping[Any, Any] = {},  # from tracing
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ):
