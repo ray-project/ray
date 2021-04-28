@@ -4,6 +4,7 @@ import logging
 from filelock import FileLock
 from pathlib import Path
 from zipfile import ZipFile
+from ray._private.thirdparty.pathspec import PathSpec
 from ray.job_config import JobConfig
 from enum import Enum
 
@@ -11,7 +12,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 
-from typing import List, Tuple, Optional, Set, Callable
+from typing import List, Tuple, Optional, Callable
 from urllib.parse import urlparse
 import os
 import sys
@@ -114,18 +115,23 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _dir_travel(
         path: Path,
-        excludes: Set[Path],
+        excludes: List[Callable],
         handler: Callable,
 ):
-    if path in excludes:
-        return
-    handler(path)
-    if path.is_dir():
-        for sub_path in path.iterdir():
-            _dir_travel(sub_path, excludes, handler)
+    e = _get_gitignore(path)
+    if e is not None:
+        excludes.append(e)
+    skip = any([e(path) for e in excludes])
+    if not skip:
+        handler(path)
+        if path.is_dir():
+            for sub_path in path.iterdir():
+                _dir_travel(sub_path, excludes, handler)
+    if e is not None:
+        excludes.pop()
 
 
-def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
+def _zip_module(root: Path, relative_path: Path, excludes: Optional[Callable],
                 zip_handler: ZipFile) -> None:
     """Go through all files and zip them into a zip file"""
 
@@ -141,13 +147,14 @@ def _zip_module(root: Path, relative_path: Path, excludes: Set[Path],
             to_path = path.relative_to(relative_path)
             zip_handler.write(path, to_path)
 
+    excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler)
 
 
 def _hash_modules(
         root: Path,
         relative_path: Path,
-        excludes: Set[Path],
+        excludes: Optional[Callable],
 ) -> bytes:
     """Helper function to create hash of a directory.
 
@@ -169,6 +176,7 @@ def _hash_modules(
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, md5.digest())
 
+    excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler)
     return hash_val
 
@@ -183,6 +191,36 @@ def _parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     return (protocol, uri.netloc)
+
+
+def _get_excludes(path: Path, excludes: List[str]) -> Callable:
+    path = path.absolute()
+    pathspec = PathSpec.from_lines("gitwildmatch", excludes)
+
+    def match(p: Path):
+        path_str = str(p.absolute().relative_to(path))
+        path_str += "/"
+        return pathspec.match_file(path_str)
+
+    return match
+
+
+def _get_gitignore(path: Path) -> Optional[Callable]:
+    path = path.absolute()
+    ignore_file = path / ".gitignore"
+    if ignore_file.is_file():
+        with ignore_file.open("r") as f:
+            pathspec = PathSpec.from_lines("gitwildmatch", f.readlines())
+
+        def match(p: Path):
+            path_str = str(p.absolute().relative_to(path))
+            if p.is_dir():
+                path_str += "/"
+            return pathspec.match_file(path_str)
+
+        return match
+    else:
+        return None
 
 
 # TODO(yic): Fix this later to handle big directories in better way
@@ -208,14 +246,13 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
     Args:
         working_dir (str): The working directory.
         py_modules (list[str]): The python module.
-        excludes (set[str]): The dir or files that should be excluded
+        excludes (list[str]): The dir or files that should be excluded
 
     Returns:
         Package name as a string.
     """
     RAY_PKG_PREFIX = "_ray_pkg_"
     hash_val = None
-    excludes = {Path(p).absolute() for p in excludes}
     if working_dir:
         if not isinstance(working_dir, str):
             raise TypeError("`working_dir` must be a string.")
@@ -224,7 +261,9 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
             raise ValueError(f"working_dir {working_dir} must be an existing"
                              " directory")
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(working_dir, working_dir, excludes))
+            hash_val,
+            _hash_modules(working_dir, working_dir,
+                          _get_excludes(working_dir, excludes)))
     for py_module in py_modules or []:
         if not isinstance(py_module, str):
             raise TypeError("`py_module` must be a string.")
@@ -233,7 +272,7 @@ def get_project_package_name(working_dir: str, py_modules: List[str],
             raise ValueError(f"py_module {py_module} must be an existing"
                              " directory")
         hash_val = _xor_bytes(
-            hash_val, _hash_modules(module_dir, module_dir.parent, excludes))
+            hash_val, _hash_modules(module_dir, module_dir.parent, None))
     return RAY_PKG_PREFIX + hash_val.hex() + ".zip" if hash_val else None
 
 
@@ -252,15 +291,15 @@ def create_project_package(working_dir: str, py_modules: List[str],
         output_path (str): The path of file to be created.
     """
     pkg_file = Path(output_path).absolute()
-    excludes = [Path(e).absolute() for e in excludes]
     with ZipFile(pkg_file, "w") as zip_handler:
         if working_dir:
             # put all files in /path/working_dir into zip
             working_path = Path(working_dir).absolute()
-            _zip_module(working_path, working_path, excludes, zip_handler)
+            _zip_module(working_path, working_path,
+                        _get_excludes(working_path, excludes), zip_handler)
         for py_module in py_modules or []:
             module_path = Path(py_module).absolute()
-            _zip_module(module_path, module_path.parent, excludes, zip_handler)
+            _zip_module(module_path, module_path.parent, None, zip_handler)
 
 
 def fetch_package(pkg_uri: str) -> int:
@@ -359,7 +398,7 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
     if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
                                                                 or py_modules):
         if excludes is None:
-            excludes = set()
+            excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
         job_config.runtime_env[
             "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name

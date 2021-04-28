@@ -129,6 +129,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_tempfile.py",
     "test_unhandled_error.py",
+    "test_top_level_api.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -212,6 +213,7 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
+    "test_asyncio.py"
   ],
   size = "medium",
   extra_srcs = SRCS,

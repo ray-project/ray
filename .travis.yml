@@ -151,10 +151,10 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
-    # Build Py36 & Py38 Docker Images
+    # Build Py36 Docker Image
     - os: linux
       env:
-        - LINUX_WHEELS=1 DOCKER_BUILD_PY36_38=1
+        - LINUX_WHEELS=1 DOCKER_BUILD_PY36=1
         - PYTHONWARNINGS=ignore
       language: java
       jdk: openjdk8
@@ -168,7 +168,27 @@ matrix:
         - export PATH="$HOME/miniconda3/bin:$PATH"
         - conda install -y python=3.7.6
         - python -m pip install docker
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type PR --build-base; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 --build-type PR --build-base; fi
+      cache: false
+
+    # Build Py38 Docker Image
+    - os: linux
+      env:
+        - LINUX_WHEELS=1 DOCKER_BUILD_PY38=1
+        - PYTHONWARNINGS=ignore
+      language: java
+      jdk: openjdk8
+      install:
+        - . ./ci/travis/ci.sh init RAY_CI_LINUX_WHEELS_AFFECTED
+      before_script:
+        - . ./ci/travis/ci.sh build
+      script:
+        - wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
+        - bash miniconda3.sh -b -p "$HOME/miniconda3"
+        - export PATH="$HOME/miniconda3/bin:$PATH"
+        - conda install -y python=3.7.6
+        - python -m pip install docker
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY38 --build-type PR --build-base; fi
       cache: false
 
     # Build and deploy multi-platform jars.
@@ -278,9 +298,18 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 PY38 --build-type MERGE --build-base
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY36 --build-type MERGE --build-base
     skip_cleanup: true
     on:
       repo: ray-project/ray
       all_branches: true
-      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY36_38 = 1
+      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY36 = 1
+
+  - provider: script
+    edge: true # This supposedly opts in to deploy v2.
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py --py-versions PY38 --build-type MERGE --build-base
+    skip_cleanup: true
+    on:
+      repo: ray-project/ray
+      all_branches: true
+      condition: $LINUX_WHEELS = 1 && $DOCKER_BUILD_PY38 = 1

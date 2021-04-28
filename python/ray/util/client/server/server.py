@@ -5,6 +5,7 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 import os
+import queue
 import sys
 
 import threading
@@ -161,11 +162,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
+        """Handle ClusterInfo requests that only return a json blob."""
         data = None
         if request.type == ray_client_pb2.ClusterInfoType.NODES:
             data = ray.nodes()
         elif request.type == ray_client_pb2.ClusterInfoType.IS_INITIALIZED:
             data = ray.is_initialized()
+        elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
+            data = ray.timeline()
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
@@ -249,6 +253,48 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 "Client requested termination without providing a valid "
                 "terminate_type")
         return ray_client_pb2.TerminateResponse(ok=True)
+
+    def _async_get_object(
+            self,
+            request,
+            client_id: str,
+            req_id: int,
+            result_queue: queue.Queue,
+            context=None) -> Optional[ray_client_pb2.GetResponse]:
+        """Attempts to schedule a callback to push the GetResponse to the
+        main loop when the desired object is ready. If there is some failure
+        in scheduling, a GetResponse will be immediately returned.
+        """
+        if request.id not in self.object_refs[client_id]:
+            return ray_client_pb2.GetResponse(valid=False)
+        try:
+            object_ref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % object_ref)
+            with disable_client_hook():
+
+                def send_get_response(result: Any) -> None:
+                    """Pushes a GetResponse to the main DataPath loop to send
+                    to the client. This is called when the object is ready
+                    on the server side."""
+                    try:
+                        serialized = dumps_from_server(result, client_id, self)
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=True, data=serialized)
+                    except Exception as e:
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=False, error=cloudpickle.dumps(e))
+
+                    resp = ray_client_pb2.DataResponse(
+                        get=get_resp, req_id=req_id)
+                    resp.req_id = req_id
+
+                    result_queue.put(resp)
+
+                object_ref._on_completed(send_get_response)
+                return None
+        except Exception as e:
+            return ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
 
     def GetObject(self, request, context=None):
         return self._get_object(request, "", context)

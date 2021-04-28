@@ -143,7 +143,7 @@ def test_kill_actor(ray_start_with_dashboard):
             pass
 
         def f(self):
-            ray.show_in_dashboard("test")
+            ray.worker.show_in_dashboard("test")
             return os.getpid()
 
     a = Actor.remote()

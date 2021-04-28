@@ -416,8 +416,7 @@ def timeslice_along_seq_lens_with_overlap(
                 i += 1
                 key = "state_in_{}".format(i)
 
-        timeslices.append(
-            SampleBatch(data, _seq_lens=[end - begin], _dont_check_lens=True))
+        timeslices.append(SampleBatch(data, _seq_lens=[end - begin]))
 
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
