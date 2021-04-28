@@ -61,7 +61,7 @@ class LocalSessionBuilder(SessionBuilder):
         real_ray.init(**self.kwargs)
         session_info = SessionInfo(
             dashboard_url=real_ray.worker.get_dashboard_url(),
-            python_version='.'.join(str(x) for x in sys.version_info[:3]),
+            python_version=".".join(str(x) for x in sys.version_info[:3]),
             ray_version=real_ray.__version__,
             ray_commit=real_ray.__commit__,
             protocol_version=real_ray.util.client.CURRENT_PROTOCOL_VERSION,
