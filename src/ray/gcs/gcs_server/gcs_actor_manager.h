@@ -45,7 +45,7 @@ class GcsActor {
   /// Create a GcsActor by TaskSpec.
   ///
   /// \param task_spec Contains the actor creation task specification.
-  explicit GcsActor(const ray::rpc::TaskSpec &task_spec) {
+  explicit GcsActor(const ray::rpc::TaskSpec &task_spec, std::string ray_namespace) {
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
@@ -65,6 +65,8 @@ class GcsActor {
 
     actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+
+    actor_table_data_.set_ray_namespace(ray_namespace);
   }
 
   /// Get the node id on which this actor is created.
@@ -166,6 +168,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      std::function<std::string(const JobID &)> get_namespace,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -441,6 +444,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
+  /// A callback to get the namespace an actor belongs to based on its job id. This is necessary for actor creation.
+  std::function<std::string(const JobID &)> get_namespace_;
 
   // Debug info.
   enum CountType {

@@ -89,12 +89,15 @@ GcsActorManager::GcsActorManager(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    std::function<std::string(const JobID &)> get_namespace,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       worker_client_factory_(worker_client_factory),
-      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed) {
+      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      get_namespace_(get_namespace)
+{
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
@@ -260,7 +263,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     return Status::OK();
   }
 
-  auto actor = std::make_shared<GcsActor>(request.task_spec());
+  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), get_namespace_(job_id));
   if (!actor->GetName().empty()) {
     auto it = named_actors_.find(actor->GetName());
     if (it == named_actors_.end()) {
@@ -367,7 +371,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   }
 
   // Remove the actor from the unresolved actor map.
-  auto actor = std::make_shared<GcsActor>(request.task_spec());
+  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), get_namespace_(job_id));
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   RemoveUnresolvedActor(actor);
 
