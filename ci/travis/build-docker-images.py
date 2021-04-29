@@ -419,7 +419,7 @@ if __name__ == "__main__":
     if build_type in {HUMAN, MERGE, BUILDKITE
                       } or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
-        copy_wheels()
+        copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
         build_ray()
         build_ray_ml()
