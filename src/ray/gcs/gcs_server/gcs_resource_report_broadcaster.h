@@ -14,15 +14,18 @@ class GcsResourceReportBroadcaster {
           get_resource_usage_batch_for_broadcast,
       /* Default values should only be changed for testing. */
       std::function<void(const rpc::Address &,
-                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &)>
+                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                         const rpc::ClientCallback<rpc::RequestResourceReportReply> &
+                         )>
           send_batch = [](const rpc::Address &address,
                           std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
-                          std::string &serialized_resource_usage_batch) {
+                          std::string &serialized_resource_usage_batch,
+                          const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback
+                          ) {
             auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
             raylet_client->UpdateResourceUsage(
                 serialized_resource_usage_batch,
-                [](const ray::Status &status,
-                   const ray::rpc::UpdateResourceUsageReply &reply) {});
+                callback;
           });
   ~GcsResourceReportBroadcaster();
 
@@ -54,8 +57,12 @@ class GcsResourceReportBroadcaster {
   /// argument for unit testing purposes only.
   std::function<void(rpc::ResourceUsageBatchData &)>
       get_resource_usage_batch_for_broadcast_;
-  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
-                     std::string &)>
+
+
+      std::function<void(const rpc::Address &,
+                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                         const rpc::ClientCallback<rpc::RequestResourceReportReply> &
+                         )>
       send_batch_;
 
   // A lock to protect nodes_

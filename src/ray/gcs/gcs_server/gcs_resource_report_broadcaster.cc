@@ -9,8 +9,11 @@ GcsResourceReportBroadcaster::GcsResourceReportBroadcaster(
     std::function<void(rpc::ResourceUsageBatchData &)>
         get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
-                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &)>
-        send_batch)
+                       std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
+                       const rpc::ClientCallback<rpc::RequestResourceReportReply> &
+                       )> send_batch
+
+                                                           )
     : ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
@@ -86,9 +89,8 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
   absl::MutexLock guard(&mutex_);
   for (const auto &pair : nodes_) {
     const auto &address = pair.second;
-    send_batch_(address, raylet_client_pool_, serialized_batch);
+    send_batch_(address, raylet_client_pool_, serialized_batch, [](){});
   }
-}
 
 }  // namespace gcs
 }  // namespace ray
