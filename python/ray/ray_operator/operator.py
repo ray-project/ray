@@ -159,6 +159,14 @@ def run_event_loop():
         event_type = event["type"]
         handle_event(event_type, cluster_cr, cluster_name, cluster_namespace)
 
+    # Run control loop.
+    for event in raycluster_cr_stream:
+        cluster_cr = event["object"]
+        cluster_name = cluster_cr["metadata"]["name"]
+        cluster_namespace = cluster_cr["metadata"]["namespace"]
+        event_type = event["type"]
+        handle_event(event_type, cluster_cr, cluster_name, cluster_namespace)
+
 
 def handle_event(event_type, cluster_cr, cluster_name, cluster_namespace):
     # TODO: This only detects errors in the parent process and thus doesn't
