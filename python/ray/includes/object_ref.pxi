@@ -111,16 +111,17 @@ cdef class ObjectRef(BaseID):
         return py_future
 
     def __await__(self):
-        return self.as_future().__await__()
+        return self.as_future(_internal=True).__await__()
 
-    def as_future(self) -> asyncio.Future:
+    def as_future(self, _internal=False) -> asyncio.Future:
         """Wrap ObjectRef with an asyncio.Future.
 
         Note that the future cancellation will not cancel the correspoding
         task when the ObjectRef representing return object of a task.
         """
-        logger.warning("ref.as_future() is deprecated in favor of "
-                       "asyncio.wrap_future(ref.future()).")
+        if not _internal:
+            logger.warning("ref.as_future() is deprecated in favor of "
+                           "asyncio.wrap_future(ref.future()).")
         return asyncio.wrap_future(self.future())
 
     def _on_completed(self, py_callback: Callable[[Any], None]):
