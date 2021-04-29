@@ -11,11 +11,13 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     MutableMapping,
     Optional,
     Sequence,
     Union,
 )
+from inspect import Parameter
 
 from ray.runtime_context import get_runtime_context
 from ray.util.inspect import (is_class_method, is_function_or_method,
@@ -39,6 +41,15 @@ except ImportError:
 
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
+
+
+def sort_params_list(params_list: List[Parameter]):
+    """Given a list of Parameters, if a kwargs Parameter exists,
+    move it to the end of the list."""
+    for i, param in enumerate(params_list):
+        if param.name == "kwargs":
+            params_list.append(params_list.pop(i))
+    return params_list
 
 
 def is_tracing_enabled() -> bool:
@@ -236,12 +247,14 @@ def _inject_tracing_into_function(function):
     future execution of that function will include tracing.
     Use the provided trace context from kwargs.
     """
+    # Add _ray_trace_ctx to function signature
     old_sig = inspect.signature(function)
-    new_sig = old_sig.replace(
-        parameters=list(old_sig.parameters.values()) + [
+    new_params = sort_params_list(
+        list(old_sig.parameters.values()) + [
             inspect.Parameter(
                 "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None)
         ])
+    new_sig = old_sig.replace(parameters=new_params)
     setattr(function, "__signature__", new_sig)
 
     @wraps(function)
@@ -443,6 +456,19 @@ def _inject_tracing_into_class(_cls):
         if (is_static_method(_cls, name) or is_class_method(method)
                 or not is_tracing_enabled()):
             continue
+
+        # Add _ray_trace_ctx to method signature
+        old_sig = inspect.signature(method)
+        new_params = sort_params_list(
+            list(old_sig.parameters.values()) + [
+                inspect.Parameter(
+                    "_ray_trace_ctx",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=None)
+            ])
+        new_sig = old_sig.replace(parameters=new_params)
+        setattr(method, "__signature__", new_sig)
+
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
