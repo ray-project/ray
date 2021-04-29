@@ -346,64 +346,6 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
-@pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
-def test_doc_generation(serve_instance, route_prefix):
-    app = FastAPI()
-
-    @serve.deployment(route_prefix=route_prefix)
-    @serve.ingress(app)
-    class App:
-        @app.get("/")
-        def func1(self, arg: str):
-            return "hello"
-
-    App.deploy()
-
-    if route_prefix is None:
-        prefix = "/App"
-    else:
-        prefix = route_prefix
-
-    if not prefix.endswith("/"):
-        prefix += "/"
-
-    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
-    assert r.status_code == 200
-    assert len(r.json()["paths"]) == 1
-    assert "/" in r.json()["paths"]
-    assert len(r.json()["paths"]["/"]) == 1
-    assert "get" in r.json()["paths"]["/"]
-
-    r = requests.get(f"http://localhost:8000{prefix}docs")
-    assert r.status_code == 200
-
-    @serve.deployment(route_prefix=route_prefix)
-    @serve.ingress(app)
-    class App:
-        @app.get("/")
-        def func1(self, arg: str):
-            return "hello"
-
-        @app.post("/hello")
-        def func2(self, arg: int):
-            return "hello"
-
-    App.deploy()
-
-    r = requests.get(f"http://localhost:8000{prefix}openapi.json")
-    assert r.status_code == 200
-    assert len(r.json()["paths"]) == 2
-    assert "/" in r.json()["paths"]
-    assert len(r.json()["paths"]["/"]) == 1
-    assert "get" in r.json()["paths"]["/"]
-    assert "/hello" in r.json()["paths"]
-    assert len(r.json()["paths"]["/hello"]) == 1
-    assert "post" in r.json()["paths"]["/hello"]
-
-    r = requests.get(f"http://localhost:8000{prefix}docs")
-    assert r.status_code == 200
-
-
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
