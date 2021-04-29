@@ -168,8 +168,8 @@ print("success")
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.objects(), which only works with the GCS-based
-        # object directory
+        # This test uses ray.state.objects(), which only works with the
+        # GCS-based object directory
         "{\"ownership_based_object_directory_enabled\":false}",
     ],
     indirect=True)
@@ -190,7 +190,7 @@ object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
-    if len(ray.objects()) == 1000:
+    if len(ray.state.objects()) == 1000:
         break
 else:
     raise Exception("Objects did not appear in object table.")
@@ -202,7 +202,7 @@ print("success")
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if len(ray.objects()) == 0:
+        if len(ray.state.objects()) == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")

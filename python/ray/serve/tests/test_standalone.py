@@ -299,7 +299,7 @@ def test_no_http(ray_shutdown):
 
         # Only controller actor should exist
         live_actors = [
-            actor for actor in ray.actors().values()
+            actor for actor in ray.state.actors().values()
             if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
         ]
         assert len(live_actors) == 1
@@ -330,7 +330,7 @@ def test_http_head_only(ray_cluster):
     serve.start(http_options={"port": new_port(), "location": "HeadOnly"})
 
     # Only the controller and head node actor should be started
-    assert len(ray.actors()) == 2
+    assert len(ray.state.actors()) == 2
 
     # They should all be placed on the head node
     cpu_per_nodes = {

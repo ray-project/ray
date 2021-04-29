@@ -32,7 +32,8 @@ def conda_envs():
         ])
         commands = [
             init_cmd, f"conda activate tf-{tf_version}",
-            f"pip install tensorflow=={tf_version}", "conda deactivate"
+            f"python -m pip install tensorflow=={tf_version}",
+            "conda deactivate"
         ]
         command_separator = " && "
         command_str = command_separator.join(commands)

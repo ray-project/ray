@@ -103,7 +103,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
+                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
@@ -152,27 +152,6 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
             print("BUILT: ", tagged_name)
             built_images.append(tagged_name)
     return built_images
-
-
-def _test_ray_ml_libraries(image_tag: str) -> None:
-    if "gpu" not in image_tag:
-        return
-    tf_container = DOCKER_CLIENT.containers.run(
-        f"rayproject/ray-ml:{image_tag}",
-        "python -c 'import tensorflow as tf'",
-        detach=True)
-    tf_logs = tf_container.logs().decode()
-    assert "Successfully opened dynamic library libcudart" in tf_logs
-    tf_container.stop()
-
-    torch_container = DOCKER_CLIENT.containers.run(
-        f"rayproject/ray-ml:{image_tag}",
-        "python -c 'import torch; torch.cuda.cudart()'",
-        detach=True)
-    torch_logs = torch_container.logs().decode()
-    assert "Torch not compiled with CUDA enabled" not in torch_logs
-    assert "Found no NVIDIA driver" in torch_logs
-    torch_container.stop()
 
 
 def copy_wheels():
@@ -235,7 +214,6 @@ def build_ray_ml():
         tag = img.split(":")[-1]
         DOCKER_CLIENT.api.tag(
             image=img, repository="rayproject/autoscaler", tag=tag)
-        _test_ray_ml_libraries(tag)
 
 
 def _get_docker_creds() -> Tuple[str, str]:

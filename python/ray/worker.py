@@ -448,8 +448,9 @@ def get_resource_ids():
     worker.check_connected()
 
     if _mode() == LOCAL_MODE:
-        raise RuntimeError("ray.get_resource_ids() currently does not work in "
-                           "local_mode.")
+        raise RuntimeError(
+            "ray.worker.get_resource_ids() currently does not work in "
+            "local_mode.")
 
     return global_worker.core_worker.resource_ids()
 
