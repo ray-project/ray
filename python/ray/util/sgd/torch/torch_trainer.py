@@ -724,7 +724,7 @@ class BaseTorchTrainable(Trainable):
 
     def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
-        if self._is_overridden("_train"):
+        if self._implements_method("_train"):
             raise DeprecationWarning(
                 "Trainable._train is deprecated and is now removed."
                 "Override Trainable.step instead.")
