@@ -303,6 +303,12 @@ Replace ``<shm-size>`` with a limit appropriate for your system, for example
 what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
 
+If you use GPU version Docker image, remember add ``--gpus all`` option. Replace ``<ray-version>`` for your target ray version in the following command.
+
+.. code-block:: bash
+
+  docker run --shm-size=<shm-size> -t -i --gpus all rayproject/ray:<ray-version>-gpu
+
 **Note:** Ray requires a **large** amount of shared memory because each object
 store keeps all of its objects in shared memory, so the amount of shared memory
 will limit the size of the object store.
