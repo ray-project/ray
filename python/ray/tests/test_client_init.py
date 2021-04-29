@@ -97,6 +97,7 @@ def test_basic_preregister(init_and_serve):
         assert val == 12
         ray.disconnect()
 
+
 def test_idempotent_disconnect(init_and_serve):
     from ray.util.client import ray
     ray.disconnect()
