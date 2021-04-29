@@ -35,5 +35,5 @@ def connect(conn_str: str,
 
 
 def disconnect():
-    """This command is idempotent."""
+    """Disconnects from server; is idempotent."""
     return ray.disconnect()
