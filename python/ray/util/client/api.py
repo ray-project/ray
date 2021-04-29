@@ -1,14 +1,20 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
+import json
+
+import logging
+
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
-from typing import TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.actor import ActorClass
     from ray.remote_function import RemoteFunction
     from ray.util.client.common import ClientStub
     from ray.util.client.common import ClientActorHandle
     from ray.util.client.common import ClientObjectRef
+
+logger = logging.getLogger(__name__)
 
 
 def as_bytes(value):
@@ -247,6 +253,19 @@ class ClientAPI:
     def get_gpu_ids(self) -> list:
         return []
 
+    def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:
+        logger.warning("Timeline will include events from other clients using "
+                       "this server.")
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
+        all_events = self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.TIMELINE)
+        if filename is not None:
+            with open(filename, "w") as outfile:
+                json.dump(all_events, outfile)
+        else:
+            return all_events
+
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
         return self.is_initialized()
@@ -298,3 +317,7 @@ class ClientAPI:
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
+
+    def _register_callback(self, ref: "ClientObjectRef",
+                           callback: Callable[["DataResponse"], None]) -> None:
+        self.worker.register_callback(ref, callback)

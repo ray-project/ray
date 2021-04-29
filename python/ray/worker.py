@@ -448,8 +448,9 @@ def get_resource_ids():
     worker.check_connected()
 
     if _mode() == LOCAL_MODE:
-        raise RuntimeError("ray.get_resource_ids() currently does not work in "
-                           "local_mode.")
+        raise RuntimeError(
+            "ray.worker.get_resource_ids() currently does not work in "
+            "local_mode.")
 
     return global_worker.core_worker.resource_ids()
 
@@ -757,7 +758,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env.rewrite_working_dir_uri(job_config)
+        runtime_env.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
