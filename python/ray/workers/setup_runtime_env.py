@@ -2,6 +2,9 @@ import os
 import argparse
 
 from ray._private.conda import get_conda_activate_commands
+import logging
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 
@@ -12,6 +15,11 @@ parser.add_argument(
 
 
 def setup(input_args):
+    try:
+        from anyscale.utils.runtime_env import runtime_env_setup
+        runtime_env_setup()
+    except:
+        logger.error("Failed to setup runtime env")
     # remaining_args contains the arguments to the original worker command,
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
