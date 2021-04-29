@@ -26,6 +26,7 @@ class RayAPIStub:
         self._server = None
         self._connected_with_init = False
         self._inside_client_test = False
+        self._conn_info: Dict[str, Any] = {}
 
     def connect(self,
                 conn_str: str,
@@ -70,10 +71,10 @@ class RayAPIStub:
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config)
-            conn_info = self.client_worker.connection_info()
-            self._check_versions(conn_info, ignore_version)
+            self._conn_info = self.client_worker.connection_info()
+            self._check_versions(self._conn_info, ignore_version)
             self._register_serializers()
-            return conn_info
+            return self._conn_info
         except Exception:
             self.disconnect()
             raise
@@ -85,9 +86,8 @@ class RayAPIStub:
         regular worker's serialization_context mechanism.
         """
         import ray.serialization_addons
-        from ray.util.client.ray_client_helpers import (
-            RayClientSerializationContext)
-        ctx = RayClientSerializationContext()
+        from ray.util.serialization import StandaloneSerializationContext
+        ctx = StandaloneSerializationContext()
         ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],

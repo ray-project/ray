@@ -70,7 +70,7 @@ def test_placement_group_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -125,7 +125,7 @@ def test_placement_group_strict_pack(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are collocated in one node.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -173,7 +173,7 @@ def test_placement_group_spread(ray_start_cluster, connect_to_client):
         ray.get(actor_2.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -229,7 +229,7 @@ def test_placement_group_strict_spread(ray_start_cluster, connect_to_client):
         ray.get(actor_3.value.remote())
 
         # Get all actors.
-        actor_infos = ray.actors()
+        actor_infos = ray.state.actors()
 
         # Make sure all actors in counter_list are located in separate nodes.
         actor_info_1 = actor_infos.get(actor_1._actor_id.hex())
@@ -252,7 +252,7 @@ def test_placement_group_actor_resource_ids(ray_start_cluster,
     @ray.remote(num_cpus=1)
     class F:
         def f(self):
-            return ray.get_resource_ids()
+            return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -273,7 +273,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
                                            connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -305,7 +305,7 @@ def test_placement_group_task_resource_ids(ray_start_cluster,
 def test_placement_group_hang(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=1)
     def f():
-        return ray.get_resource_ids()
+        return ray.worker.get_resource_ids()
 
     cluster = ray_start_cluster
     num_nodes = 1
@@ -957,7 +957,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # Make sure all the actors are scheduled on the same node.
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
-        for actor_info in ray.actors().values():
+        for actor_info in ray.state.actors().values():
             node_id = actor_info["Address"]["NodeID"]
             node_id_set.add(node_id)
 
@@ -981,7 +981,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.actors().values():
+        for actor_info in ray.state.actors().values():
             node_id = actor_info["Address"]["NodeID"]
             node_id_set.add(node_id)
 
@@ -1003,7 +1003,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # It is because the child tasks are not scheduled on the same
         # placement group.
         node_id_set = set()
-        for actor_info in ray.actors().values():
+        for actor_info in ray.state.actors().values():
             node_id = actor_info["Address"]["NodeID"]
             node_id_set.add(node_id)
 
@@ -1129,7 +1129,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1205,7 +1205,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1428,7 +1428,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True
@@ -1444,7 +1444,7 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray.actors().values():
+        for actor_info in ray.state.actors().values():
             if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
@@ -1532,7 +1532,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.jobs()
+        jobs = ray.state.jobs()
         for job in jobs:
             if "StopTime" in job:
                 return True

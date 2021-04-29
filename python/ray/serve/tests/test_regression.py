@@ -3,11 +3,45 @@ import gc
 import numpy as np
 import requests
 import pytest
+from fastapi import FastAPI
 
 import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray.test_utils import SignalActor
+
+
+@pytest.fixture
+def shutdown_ray():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
+# NOTE(simon): Make sure this test is the first in this file because it should
+# be tested without ray.init/serve.start being ran.
+def test_fastapi_serialization(shutdown_ray):
+    # https://github.com/ray-project/ray/issues/15511
+    app = FastAPI()
+
+    @serve.deployment(name="custom_service")
+    @serve.ingress(app)
+    class CustomService:
+        def deduplicate(self, data):
+            data.drop_duplicates(inplace=True)
+            return data
+
+        @app.post("/deduplicate")
+        def _deduplicate(self, request):
+            data = request["data"]
+            columns = request["columns"]
+            import pandas as pd
+            data = pd.DataFrame(data, columns=columns)
+            data.drop_duplicates(inplace=True)
+            return data.values.tolist()
+
+    serve.start()
+    CustomService.deploy()
 
 
 def test_np_in_composed_model(serve_instance):
@@ -82,6 +116,25 @@ def test_ref_in_handle_input(serve_instance):
     # Now unblock the worker
     unblock_worker_signal.send.remote()
     ray.get(worker_result)
+
+
+def test_nested_actors(serve_instance):
+    signal = SignalActor.remote()
+
+    @ray.remote(num_cpus=1)
+    class CustomActor:
+        def __init__(self) -> None:
+            signal.send.remote()
+
+    @serve.deployment
+    class A:
+        def __init__(self) -> None:
+            self.a = CustomActor.remote()
+
+    A.deploy()
+
+    # The nested actor should start successfully.
+    ray.get(signal.wait.remote(), timeout=10)
 
 
 if __name__ == "__main__":

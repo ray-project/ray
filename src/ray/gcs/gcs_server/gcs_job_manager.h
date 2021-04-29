@@ -48,12 +48,20 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
+  std::string GetNamespace(const JobID &job_id) const;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
+
+  /// A cached mapping from job id to namespace.
+  std::unordered_map<JobID, std::string> namespaces_;
+
+  /// A cached maping of end time.
+  std::unordered_map<JobID, int64_t> start_times_;
 
   void ClearJobInfos(const JobID &job_id);
 };

@@ -23,23 +23,32 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
   JobID job_id = JobID::FromBinary(request.data().job_id());
+
+  rpc::JobTableData table_data;
+  table_data.CopyFrom(request.data());
+  int64_t start_time = std::time(nullptr);
+  table_data.set_start_time(start_time);
+  table_data.set_end_time(-1);
+  start_times_[job_id] = start_time;
+
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
-                << ", driver pid = " << request.data().driver_pid();
-  auto on_done = [this, job_id, request, reply,
+                << ", driver pid = " << table_data.driver_pid();
+  auto on_done = [this, job_id, table_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << request.data().driver_pid();
+                     << ", driver pid = " << table_data.driver_pid();
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
-                                         request.data().SerializeAsString(), nullptr));
+                                         table_data.SerializeAsString(), nullptr));
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << request.data().driver_pid();
+                    << ", driver pid = " << table_data.driver_pid();
+      namespaces_[job_id] = table_data.config().ray_namespace();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Put(job_id, request.data(), on_done);
+  Status status = gcs_table_storage_->JobTable().Put(job_id, table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -52,6 +61,10 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   RAY_LOG(INFO) << "Marking job state, job id = " << job_id;
   auto job_table_data =
       gcs::CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr), "", -1);
+  auto start_time = start_times_[job_id];
+  auto end_time = std::time(nullptr);
+  job_table_data->set_start_time(start_time);
+  job_table_data->set_end_time(end_time);
   auto on_done = [this, job_id, job_table_data, reply,
                   send_reply_callback](const Status &status) {
     if (!status.ok()) {
@@ -112,6 +125,12 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
   RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
                                      request.job_error().SerializeAsString(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+std::string GcsJobManager::GetNamespace(const JobID &job_id) const {
+  auto it = namespaces_.find(job_id);
+  RAY_CHECK(it != namespaces_.end());
+  return it->second;
 }
 
 }  // namespace gcs
