@@ -336,7 +336,7 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Writing the new ssh key to the filesystem fails if the ~/.ssh
-    # directory doesn"t already exist.
+    # directory doesn't already exist.
     os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
     # Try a few times to get or create a good key pair.
@@ -385,8 +385,8 @@ def _configure_key_pair(config):
         "Private key file {} not found for {}".format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path
-    for node_type in node_types:
-        node_config = node_types[node_type]["node_config"]
+    for node_type in node_types.values():
+        node_config = node_type["node_config"]
         node_config["KeyName"] = key_name
 
     return config
