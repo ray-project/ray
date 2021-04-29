@@ -73,6 +73,7 @@ struct CoreWorkerOptions {
         enable_logging(false),
         log_dir(""),
         install_failure_signal_handler(false),
+        interactive(false),
         node_ip_address(""),
         node_manager_port(0),
         raylet_ip_address(""),
@@ -115,6 +116,8 @@ struct CoreWorkerOptions {
   std::string log_dir;
   /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
   bool install_failure_signal_handler;
+  /// Whether this worker is running in a tty.
+  bool interactive;
   /// IP address of the node.
   std::string node_ip_address;
   /// Port of the local raylet.

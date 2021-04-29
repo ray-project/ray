@@ -1,4 +1,3 @@
-import importlib
 from itertools import groupby
 import json
 import logging
@@ -16,6 +15,8 @@ import numpy as np
 import pydantic
 
 import ray
+import ray.serialization_addons
+from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
@@ -206,25 +207,8 @@ def get_all_node_ids():
 def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
-    return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
-
-
-def import_attr(full_path: str):
-    """Given a full import path to a module attr, return the imported attr.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-
-    last_period_idx = full_path.rfind(".")
-    attr_name = full_path[last_period_idx + 1:]
-    module_name = full_path[:last_period_idx]
-    module = importlib.import_module(module_name)
-    return getattr(module, attr_name)
+    return ray.state.actors()[actor_handle._actor_id.hex()]["Address"][
+        "NodeID"]
 
 
 async def mock_imported_function(request):
@@ -305,3 +289,10 @@ def get_current_node_resource_key() -> str:
                     return key
     else:
         raise ValueError("Cannot found the node dictionary for current node.")
+
+
+def ensure_serialization_context():
+    """Ensure the serialization addons on registered, even when Ray has not
+    been started."""
+    ctx = StandaloneSerializationContext()
+    ray.serialization_addons.apply(ctx)

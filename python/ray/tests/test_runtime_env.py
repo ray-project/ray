@@ -2,7 +2,7 @@ import os
 import pytest
 import sys
 import unittest
-
+import random
 import tempfile
 from pathlib import Path
 import ray
@@ -79,6 +79,13 @@ sleep(10)
 """
 
 
+def create_file(p):
+    if not p.parent.exists():
+        p.parent.mkdir()
+    with p.open("w") as f:
+        f.write("Test")
+
+
 @pytest.fixture(scope="function")
 def working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -109,6 +116,69 @@ def start_client_server(cluster, client_mode):
     ray.worker._global_node._ray_params.ray_client_server_port = "10003"
     ray.worker._global_node.start_ray_client_server()
     return ("localhost:10003", {"USE_RAY_CLIENT": "1"}, PKG_DIR)
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_travel():
+    import uuid
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_paths = set()
+        file_paths = set()
+        item_num = 0
+        excludes = []
+        root = Path(tmp_dir) / "test"
+
+        def construct(path, excluded=False, depth=0):
+            nonlocal item_num
+            path.mkdir(parents=True)
+            if not excluded:
+                dir_paths.add(str(path))
+            if depth > 8:
+                return
+            if item_num > 500:
+                return
+            dir_num = random.randint(0, 10)
+            file_num = random.randint(0, 10)
+            for _ in range(dir_num):
+                uid = str(uuid.uuid4()).split("-")[0]
+                dir_path = path / uid
+                exclud_sub = random.randint(0, 5) == 0
+                if not excluded and exclud_sub:
+                    excludes.append(str(dir_path.relative_to(root)))
+                if not excluded:
+                    construct(dir_path, exclud_sub or excluded, depth + 1)
+                item_num += 1
+            if item_num > 1000:
+                return
+
+            for _ in range(file_num):
+                uid = str(uuid.uuid4()).split("-")[0]
+                with (path / uid).open("w") as f:
+                    v = random.randint(0, 1000)
+                    f.write(str(v))
+                    if not excluded:
+                        if random.randint(0, 5) == 0:
+                            excludes.append(
+                                str((path / uid).relative_to(root)))
+                        else:
+                            file_paths.add((str(path / uid), str(v)))
+                item_num += 1
+
+        construct(root)
+        exclude_spec = ray._private.runtime_env._get_excludes(root, excludes)
+        visited_dir_paths = set()
+        visited_file_paths = set()
+
+        def handler(path):
+            if path.is_dir():
+                visited_dir_paths.add(str(path))
+            else:
+                with open(path) as f:
+                    visited_file_paths.add((str(path), f.read()))
+
+        ray._private.runtime_env._dir_travel(root, [exclude_spec], handler)
+        assert file_paths == visited_file_paths
+        assert dir_paths == visited_dir_paths
 
 
 """
@@ -246,12 +316,6 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
     working_path = Path(working_dir)
 
-    def create_file(p):
-        if not p.parent.exists():
-            p.parent.mkdir()
-        with p.open("w") as f:
-            f.write("Test")
-
     create_file(working_path / "tmp_dir" / "test_1")
     create_file(working_path / "tmp_dir" / "test_2")
     create_file(working_path / "tmp_dir" / "test_3")
@@ -285,23 +349,84 @@ def test_exclusion(ray_start_cluster_head, working_dir, client_mode):
     runtime_env = f"""{{
         "working_dir": r"{working_dir}",
         "excludes": [
-            # exclude by absolute path
-            r"{tmp_dir_test_3}",
             # exclude by relative path
-            r"{str(working_path / "test2")}",
+            r"test2",
             # exclude by dir
-            r"{str(working_path / "tmp_dir" / "sub_dir")}",
+            r"{str(Path("tmp_dir") / "sub_dir")}",
             # exclude part of the dir
-            r"{str(working_path / "tmp_dir" / "test_1")}",
+            r"{str(Path("tmp_dir") / "test_1")}",
             # exclude part of the dir
-            r"{str(working_path / "tmp_dir" / "test_2")}",
+            r"{str(Path("tmp_dir") / "test_2")}",
         ]
     }}"""
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
+    assert out.strip().split("\n")[-1] == \
+        "Test,FAILED,Test,FAILED,FAILED,Test,FAILED,FAILED"
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+@pytest.mark.parametrize("client_mode", [True, False])
+def test_exclusion_2(ray_start_cluster_head, working_dir, client_mode):
+    cluster = ray_start_cluster_head
+    (address, env, PKG_DIR) = start_client_server(cluster, client_mode)
+    working_path = Path(working_dir)
+
+    def create_file(p):
+        if not p.parent.exists():
+            p.parent.mkdir(parents=True)
+        with p.open("w") as f:
+            f.write("Test")
+
+    create_file(working_path / "tmp_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "test_2")
+    create_file(working_path / "tmp_dir" / "test_3")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_1")
+    create_file(working_path / "tmp_dir" / "sub_dir" / "test_2")
+    create_file(working_path / "test1")
+    create_file(working_path / "test2")
+    create_file(working_path / "test3")
+    create_file(working_path / "cache" / "test_1")
+    create_file(working_path / "tmp_dir" / "cache" / "test_1")
+    create_file(working_path / "another_dir" / "cache" / "test_1")
+    tmp_dir_test_3 = str((working_path / "tmp_dir" / "test_3").absolute())
+    runtime_env = f"""{{
+        "working_dir": r"{working_dir}",
+    }}"""
+    execute_statement = """
+    vals = ray.get([
+        check_file.remote('test1'),
+        check_file.remote('test2'),
+        check_file.remote('test3'),
+        check_file.remote(os.path.join('tmp_dir', 'test_1')),
+        check_file.remote(os.path.join('tmp_dir', 'test_2')),
+        check_file.remote(os.path.join('tmp_dir', 'test_3')),
+        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_1')),
+        check_file.remote(os.path.join('tmp_dir', 'sub_dir', 'test_2')),
+        check_file.remote(os.path.join("cache", "test_1")),
+        check_file.remote(os.path.join("tmp_dir", "cache", "test_1")),
+        check_file.remote(os.path.join("another_dir", "cache", "test_1")),
+    ])
+    print(','.join(vals))
+"""
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
     # Test it works before
     assert out.strip().split("\n")[-1] == \
-        "Test,FAILED,Test,FAILED,FAILED,FAILED,FAILED,FAILED"
+        "Test,Test,Test,Test,Test,Test,Test,Test,Test,Test,Test"
+    with open(f"{working_dir}/.gitignore", "w") as f:
+        f.write("""
+# Comment
+test_[12]
+/test1
+!/tmp_dir/sub_dir/test_1
+cache/
+""")
+    script = driver_script.format(**locals())
+    out = run_string_as_driver(script, env)
+    t = out.strip().split("\n")[-1]
+    assert out.strip().split("\n")[-1] == \
+        "FAILED,Test,Test,FAILED,FAILED,Test,Test,FAILED,FAILED,FAILED,FAILED"
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

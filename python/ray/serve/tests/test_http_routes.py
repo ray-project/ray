@@ -2,6 +2,8 @@ from fastapi import FastAPI
 import pytest
 import requests
 
+from starlette.responses import RedirectResponse
+
 from ray import serve
 from ray.serve.constants import ALL_HTTP_METHODS
 
@@ -168,6 +170,45 @@ def test_path_prefixing(serve_instance):
     check_req("/hello/world/") == "3"
     check_req("/hello/world/again/") == "4"
     check_req("/hello/world/again/hi") == '"hi"'
+
+
+# NOTE(edoakes): this does not currently work with a non-root route_prefix.
+# @pytest.mark.parametrize("base_path", ["", "subpath"])
+@pytest.mark.parametrize("base_path", [""])
+def test_redirect(serve_instance, base_path):
+    app = FastAPI()
+
+    route_prefix = f"/{base_path}"
+
+    @serve.deployment(route_prefix=route_prefix)
+    @serve.ingress(app)
+    class D:
+        @app.get("/")
+        def root(self):
+            return "hello from /"
+
+        @app.get("/redirect")
+        def redirect_root(self):
+            return RedirectResponse(url=app.url_path_for("root"))
+
+        @app.get("/redirect2")
+        def redirect_twice(self):
+            return RedirectResponse(url=app.url_path_for("redirect_root"))
+
+    D.deploy()
+
+    if route_prefix != "/":
+        route_prefix += "/"
+
+    r = requests.get(f"http://localhost:8000{route_prefix}redirect")
+    assert len(r.history) == 1
+    assert r.status_code == 200
+    assert r.json() == "hello from /"
+
+    r = requests.get(f"http://localhost:8000{route_prefix}redirect2")
+    assert len(r.history) == 2
+    assert r.status_code == 200
+    assert r.json() == "hello from /"
 
 
 if __name__ == "__main__":

@@ -32,7 +32,8 @@ def conda_envs():
         ])
         commands = [
             init_cmd, f"conda activate tf-{tf_version}",
-            f"pip install tensorflow=={tf_version}", "conda deactivate"
+            f"python -m pip install tensorflow=={tf_version}",
+            "conda deactivate"
         ]
         command_separator = " && "
         command_str = command_separator.join(commands)
@@ -124,7 +125,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
-def test_job_config_conda_env(conda_envs):
+def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
 
     tf_version = "2.2.0"
