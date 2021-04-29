@@ -52,6 +52,18 @@ def sort_params_list(params_list: List[Parameter]):
     return params_list
 
 
+def add_param_to_signature(function: Callable, new_param: Parameter):
+    """Add additional Parameter to function signature."""
+    old_sig = inspect.signature(function)
+    old_sig_list_repr = list(old_sig.parameters.values())
+    # If new_param is already in signature, do not add it again.
+    if any(param.name == new_param.name for param in old_sig_list_repr):
+        return old_sig
+    new_params = sort_params_list(old_sig_list_repr + [new_param])
+    new_sig = old_sig.replace(parameters=new_params)
+    return new_sig
+
+
 def is_tracing_enabled() -> bool:
     """Checks environment variable feature flag to see if tracing is turned on.
     Tracing is off by default."""
@@ -248,14 +260,13 @@ def _inject_tracing_into_function(function):
     Use the provided trace context from kwargs.
     """
     # Add _ray_trace_ctx to function signature
-    old_sig = inspect.signature(function)
-    new_params = sort_params_list(
-        list(old_sig.parameters.values()) + [
+    setattr(
+        function, "__signature__",
+        add_param_to_signature(
+            function,
             inspect.Parameter(
-                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None)
-        ])
-    new_sig = old_sig.replace(parameters=new_params)
-    setattr(function, "__signature__", new_sig)
+                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY,
+                default=None)))
 
     @wraps(function)
     def _function_with_tracing(
@@ -458,16 +469,14 @@ def _inject_tracing_into_class(_cls):
             continue
 
         # Add _ray_trace_ctx to method signature
-        old_sig = inspect.signature(method)
-        new_params = sort_params_list(
-            list(old_sig.parameters.values()) + [
+        setattr(
+            method, "__signature__",
+            add_param_to_signature(
+                method,
                 inspect.Parameter(
                     "_ray_trace_ctx",
                     inspect.Parameter.KEYWORD_ONLY,
-                    default=None)
-            ])
-        new_sig = old_sig.replace(parameters=new_params)
-        setattr(method, "__signature__", new_sig)
+                    default=None)))
 
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
