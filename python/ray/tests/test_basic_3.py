@@ -29,7 +29,7 @@ def test_many_fractional_resources(shutdown_only):
     def f(block, accepted_resources):
         true_resources = {
             resource: value[0][1]
-            for resource, value in ray.get_resource_ids().items()
+            for resource, value in ray.worker.get_resource_ids().items()
         }
         if block:
             ray.get(g.remote())

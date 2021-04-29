@@ -241,7 +241,7 @@ class _AgentCollector:
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
-        batch = SampleBatch(batch_data, _dont_check_lens=True)
+        batch = SampleBatch(batch_data)
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
@@ -366,8 +366,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(
-            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
+        batch = SampleBatch(self.buffers, _seq_lens=self.seq_lens)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset agent steps to 0 and seq-lens to empty list.

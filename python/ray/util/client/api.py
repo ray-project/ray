@@ -6,13 +6,14 @@ import json
 import logging
 
 from ray.util.client.runtime_context import ClientWorkerPropertyAPI
-from typing import Any, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.actor import ActorClass
     from ray.remote_function import RemoteFunction
     from ray.util.client.common import ClientStub
     from ray.util.client.common import ClientActorHandle
     from ray.util.client.common import ClientObjectRef
+    from ray.core.generated.ray_client_pb2 import DataResponse
 
 logger = logging.getLogger(__name__)
 
@@ -317,3 +318,7 @@ class ClientAPI:
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
+
+    def _register_callback(self, ref: "ClientObjectRef",
+                           callback: Callable[["DataResponse"], None]) -> None:
+        self.worker.register_callback(ref, callback)
