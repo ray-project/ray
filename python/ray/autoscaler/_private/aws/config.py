@@ -7,7 +7,6 @@ import os
 import time
 from typing import Any, Dict, List
 import logging
-from aiohttp.web_routedef import head
 
 import boto3
 from botocore.config import Config
@@ -94,20 +93,22 @@ def _set_config_info(**kwargs):
 def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
+
 def log_to_cli(config):
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
                         "Could not find a pretty name for the AWS provider.")
 
-    head_node_type = config['head_node_type']
-    head_node_config = config['available_node_types'][head_node_type]['node_config']
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
 
     with cli_logger.group("{} config", provider_name):
 
         def same_everywhere(key):
             prev_node_config = None
-            for node_type in config['available_node_types'].values():
+            for node_type in config["available_node_types"].values():
                 node_config = node_type["node_config"]
                 if prev_node_config is not None:
                     curr_value = node_config.get(key)
@@ -126,7 +127,7 @@ def log_to_cli(config):
                 allowed_tags = ["default"]
 
             node_tags = {}
-            for node_type_key in config['available_node_types']:
+            for node_type_key in config["available_node_types"]:
                 node_tags[node_type_key] = {}
                 tag = _log_info[src_key][node_type_key]
                 if tag in allowed_tags:
@@ -141,9 +142,10 @@ def log_to_cli(config):
                     resource_string + " (all available node types)",
                     "{}",
                     head_value_str,
-                    _tags=node_tags[config['head_node_type']])
+                    _tags=node_tags[config["head_node_type"]])
             else:
-                for node_type_key, node_type in config["available_node_types"].items():
+                for node_type_key, node_type in config[
+                        "available_node_types"].items():
                     if node_type_key == head_node_type:
                         continue
                     node_config = node_type["node_config"]
@@ -160,7 +162,8 @@ def log_to_cli(config):
                     _tags=node_tags[head_node_type])
 
                 # go through remaining types
-                for node_type_key, node_type in config["available_node_types"].items():
+                for node_type_key, node_type in config[
+                        "available_node_types"].items():
                     if node_type_key == head_node_type:
                         continue
                     cli_logger.labeled_value(
@@ -176,25 +179,17 @@ def log_to_cli(config):
             else head_node_config["IamInstanceProfile"]["Name"]
         cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
-        if all("KeyName" in node_type['node_config']
-                for node_type in config['available_node_types'].values()):
+        if all("KeyName" in node_type["node_config"]
+               for node_type in config["available_node_types"].values()):
             print_info("EC2 Key pair", "KeyName", "keypair_src")
 
-        print_info(
-            "VPC Subnets",
-            "SubnetIds",
-            "subnet_src",
-            list_value=True)
+        print_info("VPC Subnets", "SubnetIds", "subnet_src", list_value=True)
         print_info(
             "EC2 Security groups",
             "SecurityGroupIds",
             "security_group_src",
             list_value=True)
-        print_info(
-            "EC2 AMI",
-            "ImageId",
-            "ami_src",
-            allowed_tags=["dlami"])
+        print_info("EC2 AMI", "ImageId", "ami_src", allowed_tags=["dlami"])
 
     cli_logger.newline()
 
@@ -226,25 +221,30 @@ def bootstrap_aws(config):
 
     return config
 
+
 def _check_legacy_fields(config):
     # Remove head_node field, and log warning if non-empty
-    if 'head_node' in config and config.pop('head_node'):
-        cli_logger.warning("The `head_node` field is deprecated and will be ignored. "
-                        "Use `head_node_type` and `available_node_types` instead.")
+    if "head_node" in config and config.pop("head_node"):
+        cli_logger.warning(
+            "The `head_node` field is deprecated and will be ignored. "
+            "Use `head_node_type` and `available_node_types` instead.")
     # Remove worker_nodes, and log warning if non-empty
-    if 'worker_nodes' in config and config.pop('worker_nodes'):
-        cli_logger.warning("The `worker_nodes` field is deprecated and will be ignored."
-                        "Use `available_node_types` instead.")
-    if 'available_node_types' not in config:
+    if "worker_nodes" in config and config.pop("worker_nodes"):
+        cli_logger.warning(
+            "The `worker_nodes` field is deprecated and will be ignored."
+            "Use `available_node_types` instead.")
+    if "available_node_types" not in config:
         cli_logger.error("`available_node_types` not specified in config")
         raise ValueError("`available_node_types` not specified in config")
-    if 'head_node_type' not in config:
+    if "head_node_type" not in config:
         cli_logger.error("`head_node_type` not specified in config")
         raise ValueError("`head_node_type` not specified in config")
 
+
 def _configure_iam_role(config):
-    head_node_type = config['head_node_type']
-    head_node_config = config['available_node_types'][head_node_type]['node_config']
+    head_node_type = config["head_node_type"]
+    head_node_config = config["available_node_types"][head_node_type][
+        "node_config"]
     if "IamInstanceProfile" in head_node_config:
         _set_config_info(head_instance_profile_src="config")
         return config
@@ -319,9 +319,8 @@ def _configure_key_pair(config):
         for node_type in node_types:
             node_config = node_types[node_type]["node_config"]
             if "UserData" not in node_config:
-                cli_logger.doassert( 
-                    "KeyName" in node_config,
-                    _key_assert_msg(node_type)) 
+                cli_logger.doassert("KeyName" in node_config,
+                                    _key_assert_msg(node_type))
                 assert "KeyName" in node_config
 
         return config
@@ -332,7 +331,7 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Writing the new ssh key to the filesystem fails if the ~/.ssh
-    # directory doesn't already exist.
+    # directory doesn"t already exist.
     os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
     # Try a few times to get or create a good key pair.
@@ -405,8 +404,8 @@ def _configure_subnet(config):
     # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
     sg_ids = []
-    for node_type in config['available_node_types']:
-        node_config = config['available_node_types'][node_type]['node_config']
+    for node_type in config["available_node_types"]:
+        node_config = config["available_node_types"][node_type]["node_config"]
         sg_ids.extend(node_config.get("SecurityGroupIds", []))
     if sg_ids:
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
@@ -468,16 +467,17 @@ def _configure_subnet(config):
         s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
     ]
     _set_config_info(subnet_src={})
-    for key, node_type in config['available_node_types'].items():
-        node_config = node_type['node_config']
-        subnet_src_info = _log_info['subnet_src']
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
+        subnet_src_info = _log_info["subnet_src"]
         if "SubnetIds" not in node_config:
-            subnet_src_info[key] = 'default'
-            node_config['SubnetIds'] = subnet_ids
+            subnet_src_info[key] = "default"
+            node_config["SubnetIds"] = subnet_ids
         else:
-            subnet_src_info[key] = 'config'
+            subnet_src_info[key] = "config"
 
     return config
+
 
 def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
     """Returns the VPC id of the security groups with the provided security
@@ -509,27 +509,29 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
 
 def _configure_security_group(config):
     _set_config_info(security_group_src={})
-    for node_type_key in config['available_node_types']:
-        _log_info['security_group_src'][node_type_key] = 'config'
+    for node_type_key in config["available_node_types"]:
+        _log_info["security_group_src"][node_type_key] = "config"
 
     node_types_to_configure = [
-        node_type_key for node_type_key, node_type in config['available_node_types'].items()
-        if "SecurityGroupIds" not in node_type['node_config']
+        node_type_key
+        for node_type_key, node_type in config["available_node_types"].items()
+        if "SecurityGroupIds" not in node_type["node_config"]
     ]
     if not node_types_to_configure:
         return config  # have user-defined groups
-    head_node_type = config['head_node_type']
-    if config['head_node_type'] in node_types_to_configure:
+    head_node_type = config["head_node_type"]
+    if config["head_node_type"] in node_types_to_configure:
         # configure head node security group last
         node_types_to_configure.remove(head_node_type)
         node_types_to_configure.append(head_node_type)
     security_groups = _upsert_security_groups(config, node_types_to_configure)
 
     for node_type_key in node_types_to_configure:
-        node_config = config['available_node_types'][node_type_key]['node_config']
+        node_config = config["available_node_types"][node_type_key][
+            "node_config"]
         sg = security_groups[node_type_key]
-        node_config['SecurityGroupIds'] = [sg.id]
-        _log_info['security_group_src'][node_type_key] = 'default'
+        node_config["SecurityGroupIds"] = [sg.id]
+        _log_info["security_group_src"][node_type_key] = "default"
 
     return config
 
@@ -544,12 +546,12 @@ def _check_ami(config):
 
     _set_config_info(ami_src={})
 
-    for key, node_type in config['available_node_types'].items():
-        node_config = node_type['node_config']
+    for key, node_type in config["available_node_types"].items():
+        node_config = node_type["node_config"]
         node_ami = node_config.get("ImageId", "").lower()
-        ami_src_info = _log_info['ami_src']
+        ami_src_info = _log_info["ami_src"]
         if node_ami in ["", "latest_dlami"]:
-            node_config['ImageId'] = default_ami
+            node_config["ImageId"] = default_ami
             ami_src_info[key] = "dlami"
         else:
             ami_src_info[key] = "config"
@@ -568,7 +570,8 @@ def _get_or_create_vpc_security_groups(conf, node_types):
     node_type_to_vpc = {
         node_type: _get_vpc_id_or_die(
             ec2,
-            conf['available_node_types'][node_type]['node_config']["SubnetIds"][0],
+            conf["available_node_types"][node_type]["node_config"]["SubnetIds"]
+            [0],
         )
         for node_type in node_types
     }
@@ -663,8 +666,9 @@ def _upsert_security_group_rules(conf, security_groups):
     # Update sgids to include user-specified security groups.
     # This is necessary if the user specifies the head node type's security
     # groups but not the worker's, or vice-versa.
-    for node_type in conf['available_node_types']:
-        sgids.update(conf['available_node_types'][node_type].get("SecurityGroupIds", []))
+    for node_type in conf["available_node_types"]:
+        sgids.update(conf["available_node_types"][node_type].get(
+            "SecurityGroupIds", []))
 
     # sort security group items for deterministic inbound rule config order
     # (mainly supports more precise stub-based boto3 unit testing)
