@@ -163,7 +163,7 @@ def _test_ray_ml_libraries(image_tag: str) -> None:
         detach=True)
     tf_logs = tf_container.logs().decode()
     print(str(tf_logs))
-    assert "tensorflow-gpu" in tf_logs
+    assert "tensorflow-gpu" in tf_logs, str(tf_logs)
     tf_container.stop()
 
     torch_container = DOCKER_CLIENT.containers.run(
