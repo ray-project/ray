@@ -101,7 +101,9 @@ class RemoteFunction:
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
-            function)
+            # function
+            self._function
+            )
 
         self._last_export_session_and_job = None
 

@@ -209,8 +209,8 @@ def _tracing_task_invocation(method):
     @wraps(method)
     def _invocation_remote_span(
             self,
-            args: Any,  # from tracing
-            kwargs: MutableMapping[Any, Any],  # from tracing
+            args: Any = None,  # from tracing
+            kwargs: MutableMapping[Any, Any] = None,  # from tracing
             *_args: Any,  # from Ray
             **_kwargs: Any,  # from Ray
     ) -> Any:
@@ -237,6 +237,7 @@ def _inject_tracing_into_function(function):
     Use the provided trace context from kwargs.
     """
 
+    @wraps(function)
     def _function_with_tracing(
             *args: Any,
             _ray_trace_ctx: Optional[Dict[str, Any]] = None,
@@ -310,8 +311,8 @@ def _tracing_actor_method_invocation(method):
     @wraps(method)
     def _start_span(
             self,
-            args: Sequence[Any],
-            kwargs: MutableMapping[Any, Any],
+            args: Sequence[Any] = None,
+            kwargs: MutableMapping[Any, Any] = None,
             *_args: Any,
             **_kwargs: Any,
     ) -> Any:
