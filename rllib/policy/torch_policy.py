@@ -129,6 +129,7 @@ class TorchPolicy(Policy):
             self.devices = [
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
+            self.model = model.to(self.device)
             self.model_gpu_towers = [
                 model if config["num_gpus"] == 0 else copy.deepcopy(model)
                 for i in range(config["num_gpus"] or 1)
@@ -142,12 +143,11 @@ class TorchPolicy(Policy):
                 for i, id_ in enumerate(ray.get_gpu_ids())
                 if i < config["num_gpus"]
             ]
-            self.model_gpu_towers = nn.parallel.replicate.replicate(
-                model, [
-                    id_ for i, id_ in enumerate(ray.get_gpu_ids())
-                    if i < config["num_gpus"]
-                ])
-        self.model = model.to(self.device)
+            print(self.devices, self.device)
+            self.model = model.to(self.device)
+            #self.model_gpu_towers = nn.parallel.replicate(
+                #model, self.devices)
+        #self.model = model.to(self.device)
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -756,7 +756,7 @@ class TorchPolicy(Policy):
             List[Tuple[List[TensorType], StatsDict]]: A list (one item per
                 device) of 2-tuples with 1) gradient list and 2) stats dict.
         """
-        assert len(self.model_gpu_towers) == len(sample_batches)
+        #assert len(self.model_gpu_towers) == len(sample_batches)
         lock = threading.Lock()
         results = {}
         grad_enabled = torch.is_grad_enabled()
@@ -783,11 +783,14 @@ class TorchPolicy(Policy):
                     for opt_idx, opt in enumerate(self._optimizers):
                         # Erase gradients in all vars of the tower that this
                         # optimizer would affect.
+                        self._optimizers[opt_idx].zero_grad()
                         param_indices = self.multi_gpu_param_groups[opt_idx]
+                        '''
                         for param_idx, param in enumerate(parameters):
                             if param_idx in param_indices and \
                                     param.grad is not None:
                                 param.grad.data.zero_()
+                        '''
                         # Recompute gradients of loss over all variables.
                         loss_out[opt_idx].backward(
                             retain_graph=(opt_idx < len(self._optimizers) - 1))

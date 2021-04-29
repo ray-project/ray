@@ -256,7 +256,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
-        # Unsquash values (from [low,high] to ]-inf,inf[)
+        # Unsquash values (from [low,high] to [-inf,inf])
         unsquashed_values = self._unsquash(x)
         # Get log prob of unsquashed values from our Normal.
         log_prob_gaussian = self.dist.log_prob(unsquashed_values)
@@ -268,6 +268,12 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         log_prob = log_prob_gaussian - torch.sum(
             torch.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER), dim=-1)
         return log_prob
+
+    def sample_logp(self):
+        z = self.dist.rsample()
+        actions = self._squash(z)
+        return actions, torch.sum(self.dist.log_prob(z) - torch.log(
+            1 - actions * actions + SMALL_NUMBER), dim=-1)
 
     @override(TorchDistributionWrapper)
     def entropy(self) -> TensorType:

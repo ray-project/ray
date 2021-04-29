@@ -1,6 +1,8 @@
 """CQL (derived from SAC).
 """
+import numpy as np
 from typing import Optional, Type, List
+from ray.rllib.offline.shuffled_input import ShuffledInput
 
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
@@ -17,6 +19,10 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.typing import TrainerConfigDict
+
+
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -39,7 +45,7 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # Min Q Weight multiplier
         "min_q_weight": 5.0,
         # Replay Buffer should be size of offline dataset
-        "buffer_size": 1000000,
+        "buffer_size": int(1e6),
     })
 # __sphinx_doc_end__
 # yapf: enable
@@ -50,12 +56,6 @@ def validate_config(config: TrainerConfigDict):
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
     if config["framework"] == "tf":
         raise ValueError("Tensorflow CQL not implemented yet!")
-
-
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    if config["framework"] == "torch":
-        return CQLTorchPolicy
-
 
 replay_buffer = None
 
@@ -88,6 +88,8 @@ def execution_plan(workers, config):
         replay_batch_size=config["train_batch_size"],
         replay_mode=config["multiagent"]["replay_mode"],
         replay_sequence_length=config.get("replay_sequence_length", 1),
+        replay_burn_in=config.get("burn_in", 0),
+        replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
     global replay_buffer
@@ -95,6 +97,9 @@ def execution_plan(workers, config):
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
+    # NoReplayBuffer ensures that no online data is added
+    # The Dataset is added to the Replay Buffer in  after_init()
+    # method below the execution plan
     store_op = rollouts.for_each(
         NoOpReplayBuffer(local_buffer=local_replay_buffer))
 
@@ -103,21 +108,44 @@ def execution_plan(workers, config):
         if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
+                # TODO(sven): This is currently structured differently for
+                #  torch/tf. Clean up these results/info dicts across
+                #  policies (note: fixing this in torch_policy.py will
+                #  break e.g. DDPPO!).
                 td_error = info.get("td_error",
                                     info[LEARNER_STATS_KEY].get("td_error"))
+                samples.policy_batches[policy_id].set_get_interceptor(None)
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
                                         .get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)
         return info_dict
 
+    # (2) Read and train on experiences from the replay buffer. Every batch
+    # returned from the LocalReplay() iterator is passed to TrainOneStep to
+    # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_step_op = TrainOneStep(workers)
+    else:
+        train_step_op = TrainTFMultiGPU(
+            workers=workers,
+            sgd_minibatch_size=config["train_batch_size"],
+            num_sgd_iter=1,
+            num_gpus=config["num_gpus"],
+            shuffle_sequences=True,
+            _fake_gpus=config["_fake_gpus"],
+            framework=config.get("framework"))
+
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
+    # Alternate deterministically between (1) and (2). Only return the output
+    # of (2) since training metrics are not available until (2) runs.
     train_op = Concurrently(
         [store_op, replay_op],
         mode="round_robin",
@@ -126,14 +154,44 @@ def execution_plan(workers, config):
 
     return StandardMetricsReporting(train_op, workers, config)
 
+def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
+    """Calculate the round robin weights for the rollout and train steps"""
+    if not config["training_intensity"]:
+        return [1, 1]
+    # e.g., 32 / 4 -> native ratio of 8.0
+    native_ratio = (
+        config["train_batch_size"] / config["rollout_fragment_length"])
+    # Training intensity is specified in terms of
+    # (steps_replayed / steps_sampled), so adjust for the native ratio.
+    weights = [1, config["training_intensity"] / native_ratio]
+    return weights
+
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    if config["framework"] == "torch":
+        return CQLTorchPolicy
+
 
 def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
     global replay_buffer
-    local_worker = trainer.workers.local_worker
+    reader = trainer.workers.local_worker().input_reader
     if "d4rl" in trainer.config["input"]:
-        dataset = local_worker().input_reader.dataset
+        dataset = reader.dataset
         replay_buffer.add_batch(dataset)
+    # For a list of files, add each file's entire content to the buffer.
+    elif isinstance(reader, ShuffledInput):
+        for batch in reader.child.read_all_files():
+            # Add NEXT_OBS if not available. This is slightly hacked
+            # as for the very last time step, we will use next-obs=zeros
+            # and therefore force-set DONE=True to avoid this missing
+            # next-obs to cause learning problems.
+            if SampleBatch.NEXT_OBS not in batch:
+                batch[SampleBatch.NEXT_OBS] = \
+                    np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
+                batch[SampleBatch.DONES][-1] = True
+            replay_buffer.add_batch(batch)
+    else:
+        print("Error here?, otherwise buffer would be empty!")#TODO
 
 
 CQLTrainer = SACTrainer.with_updates(
