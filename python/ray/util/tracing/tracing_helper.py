@@ -236,6 +236,13 @@ def _inject_tracing_into_function(function):
     future execution of that function will include tracing.
     Use the provided trace context from kwargs.
     """
+    old_sig = inspect.signature(function)
+    new_sig = old_sig.replace(
+        parameters=list(old_sig.parameters.values()) + [
+            inspect.Parameter(
+                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None)
+        ])
+    setattr(function, "__signature__", new_sig)
 
     @wraps(function)
     def _function_with_tracing(
