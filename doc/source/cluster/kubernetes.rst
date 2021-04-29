@@ -429,7 +429,9 @@ The head node pod's ``metadata`` should have a ``label`` matching the service's 
 
 - The Ray Kubernetes Operator automatically configures a default service exposing ports 10001 and 8265 \
   on the head node pod. The Operator also adds the relevant label to the head node pod's configuration. \
-  If this default service does not suit your use case, you can modify the service or create a new one, \
+  If this default service does not suit your use case, you can override the default port settings by configuring \
+  the field ``headServicePorts`` in your `RayCluster custom resource <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__. \
+  Alternatively, you can modify the service or create a new one, \
   for example by using the tools ``kubectl edit``, ``kubectl create``, or ``kubectl apply``.
 
 - The Ray Cluster launcher does not automatically configure a service targeting the head node. A \

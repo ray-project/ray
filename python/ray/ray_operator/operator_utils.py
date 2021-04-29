@@ -6,6 +6,7 @@ import time
 from typing import Any
 from typing import Dict
 from typing import Iterator
+from typing import List
 
 from kubernetes.watch import Watch
 from kubernetes.client.rest import ApiException
@@ -104,8 +105,9 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     config["available_node_types"] = get_node_types(
         cluster_resource, cluster_name, cluster_owner_reference)
     config["cluster_name"] = cluster_name
-    config["provider"] = get_provider_config(cluster_name, namespace,
-                                             cluster_owner_reference)
+    head_service_ports = cluster_resource["spec"].get("headServicePorts", None)
+    config["provider"] = get_provider_config(
+        cluster_name, namespace, cluster_owner_reference, head_service_ports)
     return config
 
 
@@ -128,30 +130,77 @@ def get_node_types(cluster_resource: Dict[str, Any], cluster_name: str,
     return node_types
 
 
-def get_provider_config(cluster_name, namespace, cluster_owner_reference):
-    default_kubernetes_config = _get_default_config({"type": "kubernetes"})
-    default_provider_conf = default_kubernetes_config["provider"]
-
-    # Configure head service for dashboard and client
-    head_service = copy.deepcopy(default_provider_conf["services"][0])
-    service_name = f"{cluster_name}-ray-head"
-    head_service["metadata"]["name"] = service_name
-    # Garbage-collect service upon cluster deletion.
-    head_service["metadata"]["ownerReferences"] = [cluster_owner_reference]
-    # Allows service to access the head pod.
-    # The corresponding label is set on the head pod in
-    # KubernetesNodeProvider.create_node().
-    head_service["spec"]["selector"] = head_service_selector(cluster_name)
+def get_provider_config(cluster_name, namespace, cluster_owner_reference,
+                        head_service_ports):
 
     provider_conf = {}
     provider_conf["type"] = "kubernetes"
     provider_conf["use_internal_ips"] = True
     provider_conf["namespace"] = namespace
-    provider_conf["services"] = [head_service]
-
+    provider_conf["services"] = [
+        get_head_service(cluster_name, cluster_owner_reference,
+                         head_service_ports)
+    ]
     # Signal to autoscaler that the Operator is in use:
     provider_conf["_operator"] = True
+
     return provider_conf
+
+
+def get_head_service(cluster_name, cluster_owner_reference,
+                     head_service_ports):
+    # Configure head service for dashboard, client, and Ray Serve.
+
+    # Pull the default head service from
+    # autoscaler/_private/_kubernetes/defaults.yaml
+    default_kubernetes_config = _get_default_config({"type": "kubernetes"})
+    default_provider_conf = default_kubernetes_config["provider"]
+    head_service = copy.deepcopy(default_provider_conf["services"][0])
+
+    # Configure the service's name
+    service_name = f"{cluster_name}-ray-head"
+    head_service["metadata"]["name"] = service_name
+
+    # Garbage-collect service upon cluster deletion.
+    head_service["metadata"]["ownerReferences"] = [cluster_owner_reference]
+
+    # Allows service to access the head pod.
+    # The corresponding label is set on the head pod in
+    # KubernetesNodeProvider.create_node().
+    head_service["spec"]["selector"] = head_service_selector(cluster_name)
+
+    # Configure custom ports if provided by the user.
+    if head_service_ports:
+        user_port_dict = port_list_to_dict(head_service_ports)
+        default_port_dict = port_list_to_dict(head_service["spec"]["ports"])
+        # Update default ports with user specified ones.
+        default_port_dict.update(user_port_dict)
+        updated_port_list = port_dict_to_list(default_port_dict)
+        head_service["spec"]["ports"] = updated_port_list
+
+    return head_service
+
+
+def port_list_to_dict(port_list: List[Dict]) -> Dict:
+    """Converts a list of ports with 'name' entries to a dict with name keys.
+
+    Convenience method used when updating default head service ports with user
+    specified ports.
+    """
+    out_dict = {}
+    for item in port_list:
+        value = copy.deepcopy(item)
+        key = value.pop("name")
+        out_dict[key] = value
+    return out_dict
+
+
+def port_dict_to_list(port_dict: Dict) -> List[Dict]:
+    """Inverse of port_list_to_dict."""
+    out_list = []
+    for key, value in port_dict.items():
+        out_list.append({"name": key, **value})
+    return out_list
 
 
 def get_cluster_owner_reference(cluster_resource: Dict[str, Any],
