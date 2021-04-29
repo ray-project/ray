@@ -9,6 +9,7 @@ import time
 import uuid
 from collections import defaultdict
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -165,6 +166,12 @@ class Worker:
             "ray_commit": data.ray_commit,
             "protocol_version": data.protocol_version,
         }
+
+    def register_callback(
+            self, ref: ClientObjectRef,
+            callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
+        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
+        self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
