@@ -380,8 +380,8 @@ def package_exists(pkg_uri: str) -> bool:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def rewrite_working_dir_uri(job_config: JobConfig) -> None:
-    """Rewrite the working dir uri field in job_config.
+def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
+    """Rewrite the uris field in job_config.
 
     This function is used to update the runtime field in job_config. The
     runtime field will be generated based on the hash of required files and
@@ -391,17 +391,20 @@ def rewrite_working_dir_uri(job_config: JobConfig) -> None:
         job_config (JobConfig): The job config.
     """
     # For now, we only support local directory and packages
+    working_dir_uri = job_config.runtime_env.get("working_dir_uri")
+    if working_dir_uri is not None:
+        job_config.runtime_env["uris"] = [working_dir_uri]
+        return
     working_dir = job_config.runtime_env.get("working_dir")
     py_modules = job_config.runtime_env.get("py_modules")
     excludes = job_config.runtime_env.get("excludes")
-
-    if (not job_config.runtime_env.get("working_dir_uri")) and (working_dir
-                                                                or py_modules):
+    if working_dir or py_modules:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env[
-            "working_dir_uri"] = Protocol.GCS.value + "://" + pkg_name
+        job_config.runtime_env["uris"] = [
+            Protocol.GCS.value + "://" + pkg_name
+        ]
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

@@ -112,6 +112,8 @@ class Monitor:
         worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
@@ -263,7 +265,7 @@ class Monitor:
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+            self.redis_address, password=self.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
         push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
