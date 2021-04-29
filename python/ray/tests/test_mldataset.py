@@ -129,8 +129,8 @@ def test_from_modin(ray_start_regular_shared):
         pytest.mark.skip(reason="Modin is not installed")
         return
 
-    df = pd.DataFrame(np.random.randint(0, 100,
-                                        size=(2**8, 2**4))).add_prefix("col")
+    df = pd.DataFrame(np.random.randint(0, 100, size=(2**8,
+                                                      16))).add_prefix("col")
     ds = ml_data.MLDataset.from_modin(df, 2)
     # Not guaranteed to maintain order, so sort to ensure equality
     assert df._to_pandas().sort_index().equals(ds.gather_sync().sort_index())

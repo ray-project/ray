@@ -16,6 +16,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         batch_size (int): The batch size of the current dataset. It should be
             larger than zero, and 0 means unknown.
     """
+
     def __init__(self, actor_sets: List["_ActorSet"], name: str,
                  parent_iterators: List[ParallelIterator[pd.DataFrame]],
                  batch_size: int, repeated: bool):
@@ -83,7 +84,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                                           self._repeated)
 
     def transform(
-        self, fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
+            self,
+            fn: Callable[[Iterable[pd.DataFrame]], Iterable[pd.DataFrame]]
     ) -> "MLDataset":
         """Apply the fn function to the MLDataset
 
@@ -116,8 +118,8 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
                     cur_df = next(it)
                     cur_index = 0
                     cur_size = cur_df.shape[0]
-                    while cur_df is not None or (cur_index +
-                                                 batch_size) < cur_size:
+                    while cur_df is not None or (
+                            cur_index + batch_size) < cur_size:
                         if cur_df is None or cur_index == cur_size:
                             cur_df = next(it)
                             cur_index = 0
@@ -163,8 +165,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
     def batch_size(self) -> int:
         return self._batch_size
 
-    def local_shuffle(self,
-                      shuffle_buffer_size: int,
+    def local_shuffle(self, shuffle_buffer_size: int,
                       seed: int = None) -> "MLDataset":
         """Applying local shuffle
 
@@ -185,8 +186,7 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
 
         return ds
 
-    def repartition(self,
-                    num_partitions: int,
+    def repartition(self, num_partitions: int,
                     batch_ms: int = 0) -> "MLDataset":
         """see ParallelIterator.repartition"""
         if num_partitions == self.num_shards():
@@ -215,12 +215,12 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         actor_sets.extend(other.actor_sets)
         # if one of these iterators is a result of a repartition, we need to
         # keep an explicit reference to its parent iterator
-        return MLDataset(actor_sets,
-                         f"ParallelUnion[{self}, {other}]",
-                         parent_iterators=self.parent_iterators +
-                         other.parent_iterators,
-                         batch_size=batch_size,
-                         repeated=self._repeated)
+        return MLDataset(
+            actor_sets,
+            f"ParallelUnion[{self}, {other}]",
+            parent_iterators=self.parent_iterators + other.parent_iterators,
+            batch_size=batch_size,
+            repeated=self._repeated)
 
     def select_shards(self, shards_to_keep: List[int]) -> "MLDataset":
         para_it = super().select_shards(shards_to_keep)
@@ -335,6 +335,7 @@ class _RepeatableIterator(Iterator[T]):
         shuffle_buffer_size (int): same as ParallelIterator.local_shuffle
         seed (int): the random seed
     """
+
     def __init__(self,
                  ds: MLDataset,
                  shard_index: int,
@@ -365,8 +366,8 @@ class _RepeatableIterator(Iterator[T]):
                                     self._num_async)
         else:
             if self._num_async > 0:
-                it = self._ds.gather_async(batch_ms=self._batch_ms,
-                                           num_async=self._num_async)
+                it = self._ds.gather_async(
+                    batch_ms=self._batch_ms, num_async=self._num_async)
             else:
                 it = self._ds.gather_sync()
         if self._shuffle:
