@@ -334,7 +334,7 @@ def test_create_sg_multinode(iam_client_stub, ec2_client_stub):
         assert node_config["KeyName"] == DEFAULT_KEY_PAIR["KeyName"]
 
     # Confirm security group is in the right VPC.
-    # (Doesn"t really confirm anything except for the structure of this test
+    # (Doesn't really confirm anything except for the structure of this test
     # data.)
     bootstrapped_head_type = bootstrapped_config["head_node_type"]
     bootstrapped_types = bootstrapped_config["available_node_types"]
@@ -370,12 +370,6 @@ def test_missing_keyname(iam_client_stub, ec2_client_stub):
         # node configs
         bootstrap_aws(missing_user_data_config)
 
-    # Stubs to mock out boto3. Should no longer fail on assertion
-    # and go on to describe security groups + configure subnet
-    stubs.configure_iam_role_default(iam_client_stub)
-    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
-    stubs.configure_subnet_default(ec2_client_stub)
-
     # Pass in SG for stub to work
     head_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
     worker_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
@@ -383,6 +377,12 @@ def test_missing_keyname(iam_client_stub, ec2_client_stub):
     # Set UserData for both node configs
     head_node_config["UserData"] = {"someKey": "someValue"}
     worker_node_config["UserData"] = {"someKey": "someValue"}
+
+    # Stubs to mock out boto3. Should no longer fail on assertion
+    # and go on to describe security groups + configure subnet
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.configure_subnet_default(ec2_client_stub)
 
     # Should work without error now that UserData is set
     bootstrap_aws(config)
@@ -410,8 +410,8 @@ def test_log_to_cli(iam_client_stub, ec2_client_stub):
 
     config = helpers.bootstrap_aws_config(config)
 
-    # Only side-effect is to generate logs, just checking that works without
-    # error
+    # Only side-effect is to print logs to cli, called just to
+    # check that it runs without error
     log_to_cli(config)
 
 
