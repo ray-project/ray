@@ -306,11 +306,16 @@ def _configure_iam_role(config):
 
 def _configure_key_pair(config):
     node_types = config["available_node_types"]
-    _set_config_info(keypair_src={})
+
+    # map from node type key -> source of KeyName field
+    key_pair_src_info = {}
+    _set_config_info(keypair_src=key_pair_src_info)
 
     if "ssh_private_key" in config["auth"]:
         for node_type_key in node_types:
-            _log_info["keypair_src"][node_type_key] = "config"
+            # keypairs should be provided in the config
+            key_pair_src_info[node_type_key] = "config"
+
         # If the key is not configured via the cloudinit
         # UserData, it should be configured via KeyName or
         # else we will risk starting a node that we cannot
@@ -326,7 +331,7 @@ def _configure_key_pair(config):
         return config
 
     for node_type_key in node_types:
-        _log_info["keypair_src"][node_type_key] = "default"
+        key_pair_src_info[node_type_key] = "default"
 
     ec2 = _resource("ec2", config)
 
@@ -404,8 +409,8 @@ def _configure_subnet(config):
     # If head or worker security group is specified, filter down to subnets
     # belonging to the same VPC as the security group.
     sg_ids = []
-    for node_type in config["available_node_types"]:
-        node_config = config["available_node_types"][node_type]["node_config"]
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
         sg_ids.extend(node_config.get("SecurityGroupIds", []))
     if sg_ids:
         vpc_id_of_sg = _get_vpc_id_of_sg(sg_ids, config)
@@ -466,10 +471,11 @@ def _configure_subnet(config):
     subnet_ids = [
         s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
     ]
-    _set_config_info(subnet_src={})
+    # map from node type key -> source of SubnetIds field
+    subnet_src_info = {}
+    _set_config_info(subnet_src=subnet_src_info)
     for key, node_type in config["available_node_types"].items():
         node_config = node_type["node_config"]
-        subnet_src_info = _log_info["subnet_src"]
         if "SubnetIds" not in node_config:
             subnet_src_info[key] = "default"
             node_config["SubnetIds"] = subnet_ids
@@ -508,9 +514,12 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
 
 
 def _configure_security_group(config):
-    _set_config_info(security_group_src={})
+    # map from node type key -> source of SecurityGroupIds field
+    security_group_info_src = {}
+    _set_config_info(security_group_src=security_group_info_src)
+
     for node_type_key in config["available_node_types"]:
-        _log_info["security_group_src"][node_type_key] = "config"
+        security_group_info_src[node_type_key] = "config"
 
     node_types_to_configure = [
         node_type_key
@@ -531,25 +540,27 @@ def _configure_security_group(config):
             "node_config"]
         sg = security_groups[node_type_key]
         node_config["SecurityGroupIds"] = [sg.id]
-        _log_info["security_group_src"][node_type_key] = "default"
+        security_group_info_src[node_type_key] = "default"
 
     return config
 
 
 def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
+
+    # map from node type key -> source of ImageId field
+    ami_src_info = {}
+    _set_config_info(ami_src=ami_src_info)
+
     region = config["provider"]["region"]
     default_ami = DEFAULT_AMI.get(region)
     if not default_ami:
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    _set_config_info(ami_src={})
-
     for key, node_type in config["available_node_types"].items():
         node_config = node_type["node_config"]
         node_ami = node_config.get("ImageId", "").lower()
-        ami_src_info = _log_info["ami_src"]
         if node_ami in ["", "latest_dlami"]:
             node_config["ImageId"] = default_ami
             ami_src_info[key] = "dlami"
