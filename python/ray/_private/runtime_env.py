@@ -394,6 +394,7 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     uris = job_config.runtime_env.get("uris")
     if uris is not None:
         return
+    working_dir_uri = job_config.runtime_env.get("working_dir_uri")
     if working_dir_uri is not None:
         job_config.runtime_env["uris"] = [working_dir_uri]
         return
