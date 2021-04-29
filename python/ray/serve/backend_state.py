@@ -103,6 +103,7 @@ class ActorReplicaWrapper:
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
                 placement_group=self._placement_group,
+                placement_group_capture_child_tasks=False,
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
