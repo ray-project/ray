@@ -432,7 +432,8 @@ def _inject_tracing_into_class(_cls):
         # Skip tracing for staticmethod or classmethod, because these method
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
-        if is_static_method(_cls, name) or is_class_method(method) or not is_tracing_enabled():
+        if (is_static_method(_cls, name) or is_class_method(method)
+                or not is_tracing_enabled()):
             continue
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
