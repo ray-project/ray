@@ -549,7 +549,7 @@ def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
     # map from node type key -> source of ImageId field
-    ami_src_info = {}
+    ami_src_info = {key: "config" for key in config["available_node_types"]}
     _set_config_info(ami_src=ami_src_info)
 
     region = config["provider"]["region"]
@@ -564,8 +564,6 @@ def _check_ami(config):
         if node_ami in ["", "latest_dlami"]:
             node_config["ImageId"] = default_ami
             ami_src_info[key] = "dlami"
-        else:
-            ami_src_info[key] = "config"
 
 
 def _upsert_security_groups(config, node_types):
