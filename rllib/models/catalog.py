@@ -39,8 +39,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # If True, try to use a native (tf.keras.Model or torch.Module) default
     # model instead of our built-in ModelV2 defaults.
     # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for framework != torch AND fully
-    # connected default networks.
+    # Note that this currently only works for:
+    # 1) framework != torch AND
+    # 2) fully connected and CNN default networks as well as
+    # auto-wrapped LSTM- and attention nets.
     "_use_default_native_models": False,
 
     # === Built-in options ===
@@ -418,15 +420,26 @@ class ModelCatalog:
                 if model_config.get("use_lstm") or \
                         model_config.get("use_attention"):
                     from ray.rllib.models.tf.attention_net import \
-                        AttentionWrapper
-                    from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+                        AttentionWrapper, Keras_AttentionWrapper
+                    from ray.rllib.models.tf.recurrent_net import \
+                        LSTMWrapper, Keras_LSTMWrapper
 
                     wrapped_cls = model_cls
-                    forward = wrapped_cls.forward
-                    model_cls = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper
-                        if model_config.get("use_lstm") else AttentionWrapper)
-                    model_cls._wrapped_forward = forward
+                    # Wrapped (custom) model is itself a keras Model ->
+                    # wrap with keras LSTM/GTrXL (attention) wrappers.
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        model_cls = Keras_LSTMWrapper if \
+                            model_config.get("use_lstm") else \
+                            Keras_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    # Wrapped (custom) model is ModelV2 ->
+                    # wrap with ModelV2 LSTM/GTrXL (attention) wrappers.
+                    else:
+                        forward = wrapped_cls.forward
+                        model_cls = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, LSTMWrapper if
+                            model_config.get("use_lstm") else AttentionWrapper)
+                        model_cls._wrapped_forward = forward
 
                 # Obsolete: Track and warn if vars were created but not
                 # registered. Only still do this, if users do register their
@@ -561,31 +574,41 @@ class ModelCatalog:
                     model_config.get("use_attention"):
 
                 from ray.rllib.models.tf.attention_net import \
-                    AttentionWrapper
-                from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+                    AttentionWrapper, Keras_AttentionWrapper
+                from ray.rllib.models.tf.recurrent_net import LSTMWrapper, \
+                    Keras_LSTMWrapper
 
                 wrapped_cls = v2_class
-                forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper)
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        v2_class = Keras_LSTMWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, LSTMWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, AttentionWrapper)
-
-                v2_class._wrapped_forward = forward
+                    if issubclass(wrapped_cls, tf.keras.Model):
+                        v2_class = Keras_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, AttentionWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
 
             if issubclass(wrapper, tf.keras.Model):
-                return wrapper(
+                model = wrapper(
                     input_space=obs_space,
                     action_space=action_space,
                     num_outputs=num_outputs,
                     name=name,
                     **dict(model_kwargs, **model_config),
                 )
+                return model
+
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
 
@@ -759,13 +782,15 @@ class ModelCatalog:
         VisionNet = None
         ComplexNet = None
         Keras_FCNet = None
+        Keras_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet, \
                 Keras_FullyConnectedNetwork as Keras_FCNet
             from ray.rllib.models.tf.visionnet import \
-                VisionNetwork as VisionNet
+                VisionNetwork as VisionNet, \
+                Keras_VisionNetwork as Keras_VisionNet
             from ray.rllib.models.tf.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "torch":
@@ -802,10 +827,8 @@ class ModelCatalog:
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
-            # Keras native requested AND no auto-rnn-wrapping AND .
-            if model_config.get("_use_default_native_models") and \
-                    Keras_FCNet and not model_config.get("use_lstm") and \
-                    not model_config.get("use_attention"):
+            # Keras native requested AND no auto-rnn-wrapping.
+            if model_config.get("_use_default_native_models") and Keras_FCNet:
                 return Keras_FCNet
             # Classic ModelV2 FCNet.
             else:
@@ -815,6 +838,8 @@ class ModelCatalog:
             raise NotImplementedError("No non-FC default net for JAX yet!")
 
         # Last resort: Conv2D stack for single image spaces.
+        if model_config.get("_use_default_native_models") and Keras_VisionNet:
+            return Keras_VisionNet
         return VisionNet
 
     @staticmethod

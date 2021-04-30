@@ -63,7 +63,7 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    # Replace with `if samples.seq_lens` check.
+    # Replace with `if samples["seq_lens"]` check.
     if "state_in_0" in samples or "state_out_0" in samples:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
             logger.warning("Not time-shuffling RNN data for SGD.")
