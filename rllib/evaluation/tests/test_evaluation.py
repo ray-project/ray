@@ -56,21 +56,24 @@ class TestTrainerEvaluation(unittest.TestCase):
         })
         for _ in framework_iterator(frameworks=("tf", "torch")):
             # Setup trainer w/o evaluation worker set and still call
-            # evaluate().
-            # Expect error.
-            # Try again using `create_env_on_driver=True`.
-            agent = a3c.A3CTrainer(config=config)
+            # evaluate() -> Expect error.
+            agent_wo_env_on_driver = a3c.A3CTrainer(config=config)
             self.assertRaisesRegexp(
                 ValueError, "Cannot evaluate w/o an evaluation worker set",
-                agent.evaluate)
-            agent.stop()
+                agent_wo_env_on_driver.evaluate)
+            agent_wo_env_on_driver.stop()
 
+            # Try again using `create_env_on_driver=True`.
+            # This force-adds the env on the local-worker, so this Trainer
+            # can `evaluate` even though, it doesn't have an evaluation-worker
+            # set.
             config["create_env_on_driver"] = True
-            agent2 = a3c.A3CTrainer(config=config)
-            results = agent2.evaluate()
-            assert "episode_reward_mean" in results
-            assert "evaluation" not in results
-            agent2.stop()
+            agent_w_env_on_driver = a3c.A3CTrainer(config=config)
+            results = agent_w_env_on_driver.evaluate()
+            assert "evaluation" in results
+            assert "episode_reward_mean" in results["evaluation"]
+            agent_w_env_on_driver.stop()
+            config["create_env_on_driver"] = False
 
 
 if __name__ == "__main__":
