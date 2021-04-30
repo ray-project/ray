@@ -4,6 +4,7 @@ import unittest
 from ray import tune
 from ray.tune import Experiment
 from ray.tune.suggest.variant_generator import generate_variants
+from ray.tune.utils import flatten_dict
 
 
 def _mock_objective(config):
@@ -714,7 +715,11 @@ class SearchSpaceTest(unittest.TestCase):
         np.random.seed(1234)
         config2 = searcher2.suggest("0")
 
-        self.assertEqual(config1, config2)
+        flattened1 = flatten_dict(config1)
+        flattened2 = flatten_dict(config2)
+        self.assertEqual(flattened1.keys(), flattened2.keys())
+        for k, v in flattened1.items():
+            self.assertAlmostEqual(v, flattened2[k])
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])
