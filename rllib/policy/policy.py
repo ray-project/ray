@@ -649,7 +649,7 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-            postprocessed_batch.seq_lens = seq_lens
+            postprocessed_batch["seq_lens"] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
@@ -784,6 +784,8 @@ class Policy(metaclass=ABCMeta):
                     if k.startswith("state_in_")]
             else:
                 obj.get_initial_state = lambda: []
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state

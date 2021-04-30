@@ -64,19 +64,7 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
 
-        self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
-        if self.seq_lens is None and len(args) > 0 and isinstance(
-                args[0], dict):
-            self.seq_lens = args[0].pop("_seq_lens", args[0].pop(
-                "seq_lens", None))
-        if isinstance(self.seq_lens, list):
-            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
-
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
-        if self.max_seq_len is None and self.seq_lens is not None and \
-                not (tf and tf.is_tensor(self.seq_lens)) and \
-                len(self.seq_lens) > 0:
-            self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
         self.is_training = kwargs.pop("_is_training", None)
 
@@ -88,7 +76,6 @@ class SampleBatch(dict):
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
-
         self.get_interceptor = None
 
         # Clear out None seq-lens.
@@ -98,7 +85,9 @@ class SampleBatch(dict):
         elif isinstance(self.get("seq_lens"), list):
             self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
 
-        self.max_seq_len = self.pop("_max_seq_len", None)
+        if isinstance(self.get("seq_lens"), list):
+            self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
+
         if self.max_seq_len is None and self.get("seq_lens") is not None and \
                 not (tf and tf.is_tensor(self["seq_lens"])) and \
                 len(self["seq_lens"]) > 0:
