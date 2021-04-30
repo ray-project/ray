@@ -390,6 +390,12 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config.
     """
+    try:
+        from anyscale.utils.runtime_env import rewrite_runtime_env_uris
+        return rewrite_runtime_env_uris(job_config)
+    except:
+        logger.error("Failed to setup runtime env")
+
     # For now, we only support local directory and packages
     uris = job_config.runtime_env.get("uris")
     if uris is not None:
@@ -422,6 +428,12 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
     Args:
         job_config (JobConfig): The job config of driver.
     """
+    try:
+        from anyscale.utils.runtime_env import upload_runtime_env_package_if_needed
+        return upload_runtime_env_package_if_needed(job_config)
+    except:
+        logger.error("Failed to setup runtime env")
+
     assert _internal_kv_initialized()
     pkg_uris = job_config.get_runtime_env_uris()
     for pkg_uri in pkg_uris:
@@ -454,6 +466,12 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
         Working directory is returned if the pkg_uris is not empty,
         otherwise, None is returned.
     """
+    try:
+        from anyscale.utils.runtime_env import ensure_runtime_env_setup
+        return ensure_runtime_env_setup(pkg_uris)
+    except:
+        logger.error("Failed to setup runtime env")
+
     pkg_dir = None
     assert _internal_kv_initialized()
     for pkg_uri in pkg_uris:
