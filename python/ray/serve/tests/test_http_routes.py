@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+
 import pytest
+
 import requests
 
 from starlette.responses import RedirectResponse
@@ -172,9 +174,7 @@ def test_path_prefixing(serve_instance):
     check_req("/hello/world/again/hi") == '"hi"'
 
 
-# NOTE(edoakes): this does not currently work with a non-root route_prefix.
-# @pytest.mark.parametrize("base_path", ["", "subpath"])
-@pytest.mark.parametrize("base_path", [""])
+@pytest.mark.parametrize("base_path", ["", "subpath"])
 def test_redirect(serve_instance, base_path):
     app = FastAPI()
 
@@ -188,12 +188,19 @@ def test_redirect(serve_instance, base_path):
             return "hello from /"
 
         @app.get("/redirect")
-        def redirect_root(self):
-            return RedirectResponse(url=app.url_path_for("root"))
+        def redirect_root(self, request: Request):
+            root_path = request.scope.get("root_path")
+            if not root_path.endswith("/"):
+                root_path += "/"
+            return RedirectResponse(url=root_path)
 
         @app.get("/redirect2")
-        def redirect_twice(self):
-            return RedirectResponse(url=app.url_path_for("redirect_root"))
+        def redirect_twice(self, request: Request):
+            root_path = request.scope.get("root_path")
+            if root_path.endswith("/"):
+                root_path = root_path[:-1]
+            return RedirectResponse(url=root_path +
+                                    app.url_path_for("redirect_root"))
 
     D.deploy()
 
@@ -201,13 +208,13 @@ def test_redirect(serve_instance, base_path):
         route_prefix += "/"
 
     r = requests.get(f"http://localhost:8000{route_prefix}redirect")
-    assert len(r.history) == 1
     assert r.status_code == 200
+    assert len(r.history) == 1
     assert r.json() == "hello from /"
 
     r = requests.get(f"http://localhost:8000{route_prefix}redirect2")
-    assert len(r.history) == 2
     assert r.status_code == 200
+    assert len(r.history) == 2
     assert r.json() == "hello from /"
 
 
