@@ -63,11 +63,11 @@ CONFIGS = {
 }
 
 
-def ckpt_restore_test(alg_name, tfe=False):
+def ckpt_restore_test(alg_name, tfe=False, object_store=False):
     config = CONFIGS[alg_name]
     frameworks = (["tfe"] if tfe else []) + ["torch", "tf"]
     for fw in framework_iterator(config, frameworks=frameworks):
-        for use_object_store in [False, True]:
+        for use_object_store in ([False, True] if object_store else [False]):
             print("use_object_store={}".format(use_object_store))
             cls = get_trainer_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
@@ -142,7 +142,7 @@ class TestCheckpointRestorePG(unittest.TestCase):
         ckpt_restore_test("A3C")
 
     def test_ppo_checkpoint_restore(self):
-        ckpt_restore_test("PPO")
+        ckpt_restore_test("PPO", object_store=True)
 
 
 class TestCheckpointRestoreOffPolicy(unittest.TestCase):
@@ -161,7 +161,7 @@ class TestCheckpointRestoreOffPolicy(unittest.TestCase):
         ckpt_restore_test("DDPG")
 
     def test_dqn_checkpoint_restore(self):
-        ckpt_restore_test("DQN")
+        ckpt_restore_test("DQN", object_store=True)
 
     def test_sac_checkpoint_restore(self):
         ckpt_restore_test("SAC")
