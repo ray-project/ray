@@ -441,7 +441,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
         runtime_env.create_project_package(working_dir, [], [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
-        runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
+        runtime_env = f"""{{ "uris": ["{pkg_uri}"] }}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
