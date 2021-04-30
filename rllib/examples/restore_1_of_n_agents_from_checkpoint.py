@@ -101,6 +101,7 @@ if __name__ == "__main__":
     # Create the checkpoint from which tune can pick up the
     # experiment.
     new_checkpoint = new_trainer.save()
+    new_trainer.stop()
     print(".. checkpoint to restore from (all policies reset, "
           f"except policy_0): {new_checkpoint}")
 
