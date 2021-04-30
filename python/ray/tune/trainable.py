@@ -647,19 +647,10 @@ class Trainable:
             A dict that describes training progress.
 
         """
-        result = self._train()
-
-        if self._is_overridden("_train") and log_once("_train"):
+        if self._implements_method("_train") and log_once("_train"):
             logger.warning(
-                "Trainable._train is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.step instead.")
-        return result
-
-    def _train(self):
-        """This method is deprecated. Override 'Trainable.step' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._train is deprecated and is now removed. Override "
+                "Trainable.step instead.")
         raise NotImplementedError
 
     def save_checkpoint(self, tmp_checkpoint_dir):
@@ -698,20 +689,10 @@ class Trainable:
             >>> trainable.save_checkpoint("/tmp/bad_example")
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
-        checkpoint = self._save(tmp_checkpoint_dir)
-
-        if self._is_overridden("_save") and log_once("_save"):
+        if self._implements_method("_save") and log_once("_save"):
             logger.warning(
-                "Trainable._save is deprecated and will be removed in a "
-                "future version of Ray. Override "
+                "Trainable._save is deprecated and is now removed. Override "
                 "Trainable.save_checkpoint instead.")
-        return checkpoint
-
-    def _save(self, tmp_checkpoint_dir):
-        """This method is deprecated. Override 'save_checkpoint' instead.
-
-        .. versionchanged:: 0.8.7
-        """
         raise NotImplementedError
 
     def load_checkpoint(self, checkpoint):
@@ -757,18 +738,10 @@ class Trainable:
                 returned by `save_checkpoint`. The directory structure
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
-        self._restore(checkpoint)
-        if self._is_overridden("_restore") and log_once("_restore"):
+        if self._implements_method("_restore") and log_once("_restore"):
             logger.warning(
-                "Trainable._restore is deprecated and will be removed in a "
-                "future version of Ray. Override Trainable.load_checkpoint "
-                "instead.")
-
-    def _restore(self, checkpoint):
-        """This method is deprecated. Override 'load_checkpoint' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._restore is deprecated and is now removed. "
+                "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
 
     def setup(self, config):
@@ -781,17 +754,10 @@ class Trainable:
                 Copy of `self.config`.
 
         """
-        self._setup(config)
-        if self._is_overridden("_setup") and log_once("_setup"):
+        if self._implements_method("_setup") and log_once("_setup"):
             logger.warning(
-                "Trainable._setup is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.setup instead.")
-
-    def _setup(self, config):
-        """This method is deprecated. Override 'setup' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._setup is deprecated and is now removed. Override "
+                "Trainable.setup instead.")
         pass
 
     def log_result(self, result):
@@ -806,18 +772,10 @@ class Trainable:
         Args:
             result (dict): Training result returned by step().
         """
-        self._log_result(result)
-        if self._is_overridden("_log_result") and log_once("_log_result"):
+        if self._implements_method("_log_result") and log_once("_log_result"):
             logger.warning(
-                "Trainable._log_result is deprecated and will be removed in "
-                "a future version of Ray. Override "
-                "Trainable.log_result instead.")
-
-    def _log_result(self, result):
-        """This method is deprecated. Override 'log_result' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._log_result is deprecated and is now removed. "
+                "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
 
     def cleanup(self):
@@ -831,17 +789,10 @@ class Trainable:
 
         .. versionadded:: 0.8.7
         """
-        self._stop()
-        if self._is_overridden("_stop") and log_once("trainable.cleanup"):
+        if self._implements_method("_stop") and log_once("_stop"):
             logger.warning(
-                "Trainable._stop is deprecated and will be removed in "
-                "a future version of Ray. Override Trainable.cleanup instead.")
-
-    def _stop(self):
-        """This method is deprecated. Override 'cleanup' instead.
-
-        .. versionchanged:: 0.8.7
-        """
+                "Trainable._stop is deprecated and is now removed. Override "
+                "Trainable.cleanup instead.")
         pass
 
     def _export_model(self, export_formats, export_dir):
@@ -856,5 +807,5 @@ class Trainable:
         """
         return {}
 
-    def _is_overridden(self, key):
-        return getattr(self, key).__code__ != getattr(Trainable, key).__code__
+    def _implements_method(self, key):
+        return hasattr(self, key) and callable(getattr(self, key))

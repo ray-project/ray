@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
 # Fake CartPole episode of n time steps.
-FAKE_BATCH = {
+FAKE_BATCH = SampleBatch({
     SampleBatch.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32),
@@ -35,7 +35,7 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
-}
+})
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -82,6 +82,9 @@ class TestPPO(unittest.TestCase):
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
+        # Use default-native keras model whenever possible.
+        config["model"]["_use_default_native_models"] = True
+
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
@@ -95,6 +98,7 @@ class TestPPO(unittest.TestCase):
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
                     config["model"]["lstm_use_prev_reward"] = lstm
+
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
                         trainer.train()
