@@ -67,7 +67,8 @@ def postprocess_advantages(policy,
         # input_dict.
         # Create an input dict according to the Model's requirements.
         index = "last" if SampleBatch.NEXT_OBS in sample_batch else -1
-        input_dict = policy.model.get_input_dict(sample_batch, index=index)
+        input_dict = sample_batch.get_single_step_input_dict(
+            policy.model.view_requirements, index=index)
         last_r = policy._value(**input_dict)
 
     # Adds the "advantages" (which in the case of MARWIL are simply the

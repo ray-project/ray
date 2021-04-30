@@ -406,11 +406,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task with dynamic options by the pid of the pending
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
+    /// A map for looking up tasks with existing dedicated worker processes (processes
+    /// with a specially installed environment) so the processes can be reused.
+    std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

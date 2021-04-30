@@ -213,7 +213,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade --quiet pip
+    "${python}" -m pip install --quiet pip==21.0.1
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
