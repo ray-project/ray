@@ -464,7 +464,7 @@ class Worker:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
-                runtime_env.rewrite_working_dir_uri(job_config)
+                runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
                 init_resp = self.data_client.Init(init_req)

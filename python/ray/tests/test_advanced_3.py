@@ -854,6 +854,38 @@ def test_override_environment_variables_complex(shutdown_only):
         }).remote("z")) == "job_z")
 
 
+def test_override_environment_variables_reuse(shutdown_only):
+    """Test that previously set env vars don't pollute newer calls."""
+    ray.init()
+
+    env_var_name = "TEST123"
+    val1 = "VAL1"
+    val2 = "VAL2"
+    assert os.environ.get(env_var_name) is None
+
+    @ray.remote
+    def f():
+        return os.environ.get(env_var_name)
+
+    @ray.remote
+    def g():
+        return os.environ.get(env_var_name)
+
+    assert ray.get(f.remote()) is None
+    assert ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val1
+        }).remote()) == val1
+    assert ray.get(f.remote()) is None
+    assert ray.get(g.remote()) is None
+    assert ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val2
+        }).remote()) == val2
+    assert ray.get(g.remote()) is None
+    assert ray.get(f.remote()) is None
+
+
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
     worker_env = {
