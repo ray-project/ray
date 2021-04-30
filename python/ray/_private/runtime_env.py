@@ -394,7 +394,7 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         from anyscale.utils.runtime_env import rewrite_runtime_env_uris
         return rewrite_runtime_env_uris(job_config)
     except:
-        logger.error("Failed to setup runtime env")
+        pass
 
     # For now, we only support local directory and packages
     uris = job_config.runtime_env.get("uris")
@@ -432,7 +432,7 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
         from anyscale.utils.runtime_env import upload_runtime_env_package_if_needed
         return upload_runtime_env_package_if_needed(job_config)
     except:
-        logger.error("Failed to setup runtime env")
+        pass
 
     assert _internal_kv_initialized()
     pkg_uris = job_config.get_runtime_env_uris()
@@ -470,7 +470,7 @@ def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:
         from anyscale.utils.runtime_env import ensure_runtime_env_setup
         return ensure_runtime_env_setup(pkg_uris)
     except:
-        logger.error("Failed to setup runtime env")
+        pass
 
     pkg_dir = None
     assert _internal_kv_initialized()

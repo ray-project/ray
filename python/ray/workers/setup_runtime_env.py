@@ -19,7 +19,7 @@ def setup(input_args):
         from anyscale.utils.runtime_env import runtime_env_setup
         runtime_env_setup()
     except:
-        logger.error("Failed to setup runtime env")
+        pass
     # remaining_args contains the arguments to the original worker command,
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
