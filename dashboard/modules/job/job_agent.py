@@ -45,6 +45,12 @@ class JobInfo(JobDescription):
 
 
 class JobProcessor:
+    """Wraps the job info and provides common utils to download packages,
+    start drivers, etc.
+
+    Args:
+        job_info (JobInfo): The job info.
+    """
     _cmd_index_gen = itertools.count(1)
 
     def __init__(self, job_info):
@@ -132,6 +138,13 @@ class JobProcessor:
 
 
 class DownloadPackage(JobProcessor):
+    """ Download the job package.
+
+    Args:
+        job_info (JobInfo): The job info.
+        http_session (aiohttp.ClientSession): The client session.
+    """
+
     def __init__(self, job_info, http_session):
         super().__init__(job_info)
         self._http_session = http_session
@@ -149,6 +162,14 @@ class DownloadPackage(JobProcessor):
 
 
 class StartPythonDriver(JobProcessor):
+    """ Start the driver for Python job.
+
+    Args:
+        job_info (JobInfo): The job info.
+        redis_address (tuple): The (ip, port) of redis.
+        redis_password (str): The password of redis.
+    """
+
     _template = """import sys
 sys.path.append({import_path})
 import ray
@@ -212,6 +233,10 @@ ray.shutdown()
 
 class JobAgent(dashboard_utils.DashboardAgentModule,
                job_agent_pb2_grpc.JobAgentServiceServicer):
+    """ The JobAgentService defined in job_agent.proto for initializing /
+    cleaning job environments.
+    """
+
     async def InitializeJobEnv(self, request, context):
         # TODO(fyrestone): Handle duplicated InitializeJobEnv requests
         # when initializing job environment.
