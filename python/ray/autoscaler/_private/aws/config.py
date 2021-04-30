@@ -223,13 +223,13 @@ def bootstrap_aws(config):
 
 
 def _check_legacy_fields(config):
-    # Remove head_node field, and log warning if non-empty
-    if "head_node" in config and config.pop("head_node"):
+    # log warning if non-empty head_node field
+    if "head_node" in config and config["head_node"]:
         cli_logger.warning(
             "The `head_node` field is deprecated and will be ignored. "
             "Use `head_node_type` and `available_node_types` instead.")
-    # Remove worker_nodes, and log warning if non-empty
-    if "worker_nodes" in config and config.pop("worker_nodes"):
+    # log warning if non-empty worker_nodes field
+    if "worker_nodes" in config and config["worker_nodes"]:
         cli_logger.warning(
             "The `worker_nodes` field is deprecated and will be ignored."
             "Use `available_node_types` instead.")
