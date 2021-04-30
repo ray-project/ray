@@ -85,9 +85,6 @@ class SampleBatch(dict):
         elif isinstance(self.get("seq_lens"), list):
             self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
 
-        if isinstance(self.get("seq_lens"), list):
-            self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
-
         if self.max_seq_len is None and self.get("seq_lens") is not None and \
                 not (tf and tf.is_tensor(self["seq_lens"])) and \
                 len(self["seq_lens"]) > 0:
@@ -97,7 +94,7 @@ class SampleBatch(dict):
             self.is_training = self.pop("is_training", False)
 
         lengths = []
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = {k: v for k, v in self.items() if k != "seq_lens"}
         for k, v in copy_.items():
             assert isinstance(k, str), self
             len_ = len(v) if isinstance(
@@ -387,8 +384,9 @@ class SampleBatch(dict):
                 data. If False, leave `state_in_x` keys as-is.
         """
         for col in self.keys():
-            # Skip state in columns.
-            if exclude_states is True and col.startswith("state_in_"):
+            # Skip "state_in_..." columns and "seq_lens".
+            if (exclude_states is True and col.startswith("state_in_")) or \
+                    col == "seq_lens":
                 continue
 
             f = self[col]
@@ -445,7 +443,7 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        if not hasattr(self, key):
+        if not hasattr(self, key) and key in self:
             self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
