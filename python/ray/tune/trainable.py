@@ -807,10 +807,5 @@ class Trainable:
         """
         return {}
 
-<<<<<<< HEAD
-    def _is_overridden(self, key):
-        return getattr(self, key).__func__ is not getattr(Trainable, key)
-=======
     def _implements_method(self, key):
         return hasattr(self, key) and callable(getattr(self, key))
->>>>>>> b84b3ad0bd9a5a7679ecbbdfd95ca23471cd8af5
