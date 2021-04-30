@@ -1,6 +1,7 @@
 import time
 from typing import Any, List, Optional
 import tempfile
+import sys
 
 import pytest
 import inspect
@@ -346,6 +347,7 @@ def test_fastapi_duplicate_routes(serve_instance):
         assert resp.status_code == 404
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("route_prefix", [None, "/", "/subpath"])
 def test_doc_generation(serve_instance, route_prefix):
     app = FastAPI()
