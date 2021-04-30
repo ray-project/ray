@@ -256,7 +256,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       local_gc_min_interval_ns_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        return DeleteLocalURI(uri, cb);
+        // skip gc
+        return cb(true);
+        // return DeleteLocalURI(uri, cb);
       }) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
