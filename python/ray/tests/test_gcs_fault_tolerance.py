@@ -23,7 +23,7 @@ def increase(x):
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_gcs_server_restart(ray_start_regular):
@@ -74,7 +74,7 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
@@ -149,7 +149,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
     del actor
 
     def condition():
-        actor_status = ray.actors(actor_id=actor_id)
+        actor_status = ray.state.actors(actor_id=actor_id)
         if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
             return True
         else:

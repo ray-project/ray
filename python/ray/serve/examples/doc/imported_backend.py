@@ -4,8 +4,7 @@ from ray import serve
 
 client = serve.start()
 
-# Include your class as input to the ImportedBackend constructor.
-import_path = "ray.serve.utils.MockImportedBackend"
+import_path = "my_module.MyFuncOrClass"
 serve.create_backend("imported", import_path, "input_arg")
 serve.create_endpoint("imported", backend="imported", route="/imported")
 

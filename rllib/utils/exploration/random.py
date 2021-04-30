@@ -1,6 +1,6 @@
 from gym.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import Union, Optional
 
 from ray.rllib.models.action_dist import ActionDistribution
@@ -63,7 +63,8 @@ class Random(Exploration):
             batch_size = 1
             req = force_tuple(
                 action_dist.required_model_output_shape(
-                    self.action_space, self.model.model_config))
+                    self.action_space, getattr(self.model, "model_config",
+                                               None)))
             # Add a batch dimension?
             if len(action_dist.inputs.shape) == len(req) + 1:
                 batch_size = tf.shape(action_dist.inputs)[0]
@@ -138,7 +139,8 @@ class Random(Exploration):
         if explore:
             req = force_tuple(
                 action_dist.required_model_output_shape(
-                    self.action_space, self.model.model_config))
+                    self.action_space, getattr(self.model, "model_config",
+                                               None)))
             # Add a batch dimension?
             if len(action_dist.inputs.shape) == len(req) + 1:
                 batch_size = action_dist.inputs.shape[0]

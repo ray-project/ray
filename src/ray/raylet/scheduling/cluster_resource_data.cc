@@ -417,6 +417,13 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   return true;
 }
 
+void TaskResourceInstances::ClearCPUInstances() {
+  if (predefined_resources.size() >= CPU) {
+    predefined_resources[CPU].clear();
+    predefined_resources[CPU].clear();
+  }
+}
+
 std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) const {
   std::stringstream buffer;
   buffer << "{\n";

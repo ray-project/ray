@@ -1,33 +1,35 @@
-from datetime import datetime
-import numpy as np
 import copy
+from datetime import datetime
+import functools
 import logging
 import math
+import numpy as np
 import os
 import pickle
-import time
 import tempfile
+import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
+from ray.rllib.env.utils import gym_env_creator
 from ray.rllib.evaluation.collectors.simple_list_collector import \
     SimpleListCollector
+from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.spaces import space_utils
-from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
 from ray.tune.logger import Logger, UnifiedLogger
@@ -208,6 +210,13 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
+    # Whether to run evaluation in parallel to a Trainer.train() call
+    # using threading. Default=False.
+    # E.g. evaluation_interval=2 -> For every other training iteration,
+    # the Trainer.train() and Trainer._evaluate() calls run in parallel.
+    # Note: This is experimental. Possible pitfalls could be race conditions
+    # for weight synching at the beginning of the evaluation loop.
+    "evaluation_parallel_to_training": False,
     # Internal flag that is set to True for evaluation workers.
     "in_evaluation": False,
     # Typical usage is to pass extra args to evaluation env creator
@@ -497,19 +506,36 @@ class Trainer(Trainable):
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
+            # Default logdir prefix containing the agent's name and the
+            # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
                                               timestr)
+            if not os.path.exists(DEFAULT_RESULTS_DIR):
+                os.makedirs(DEFAULT_RESULTS_DIR)
+            logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
 
-            def default_logger_creator(config):
-                """Creates a Unified logger with a default logdir prefix
-                containing the agent name and the env id
-                """
-                if not os.path.exists(DEFAULT_RESULTS_DIR):
-                    os.makedirs(DEFAULT_RESULTS_DIR)
-                logdir = tempfile.mkdtemp(
-                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, loggers=None)
+            # Allow users to more precisely configure the created logger
+            # via "logger_config.type".
+            if config.get(
+                    "logger_config") and "type" in config["logger_config"]:
+
+                def default_logger_creator(config):
+                    """Creates a custom logger with the default prefix."""
+                    cfg = config["logger_config"].copy()
+                    cls = cfg.pop("type")
+                    # Provide default for logdir, in case the user does
+                    # not specify this in the "logger_config" dict.
+                    logdir_ = cfg.pop("logdir", logdir)
+                    return from_config(cls=cls, _args=[cfg], logdir=logdir_)
+
+            # If no `type` given, use tune's UnifiedLogger as last resort.
+            else:
+
+                def default_logger_creator(config):
+                    """Creates a Unified logger with the default prefix."""
+                    return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
@@ -541,13 +567,13 @@ class Trainer(Trainable):
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
-                    # Evaluation workers (+1 b/c of the additional local
-                    # worker).
+                    # Evaluation workers.
+                    # Note: The local eval worker is located on the driver CPU.
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"] + 1)
+                } for _ in range(cf["evaluation_num_workers"])
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 
@@ -614,38 +640,8 @@ class Trainer(Trainable):
                     lambda env_context: from_config(env, env_context)
             # Try gym/PyBullet/Vizdoom.
             else:
-
-                def _creator(env_context):
-                    import gym
-                    # Allow for PyBullet or VizdoomGym envs to be used as well
-                    # (via string). This allows for doing things like
-                    # `env=CartPoleContinuousBulletEnv-v0` or
-                    # `env=VizdoomBasic-v0`.
-                    try:
-                        import pybullet_envs
-                        pybullet_envs.getList()
-                    except (ModuleNotFoundError, ImportError):
-                        pass
-                    try:
-                        import vizdoomgym
-                        vizdoomgym.__name__  # trick LINTer.
-                    except (ModuleNotFoundError, ImportError):
-                        pass
-                    # Try creating a gym env. If this fails we can output a
-                    # decent error message.
-                    try:
-                        return gym.make(env, **env_context)
-                    except gym.error.Error:
-                        raise ValueError(
-                            "The env string you provided ({}) is a) not a "
-                            "known gym/PyBullet/VizdoomEnv environment "
-                            "specifier or b) not registered! To register your "
-                            "custom envs, do `from ray import tune; "
-                            "tune.register('[name]', lambda cfg: [return "
-                            "actual env from here using cfg])`. Then you can "
-                            "use [name] as your config['env'].".format(env))
-
-                self.env_creator = _creator
+                self.env_creator = functools.partial(
+                    gym_env_creator, env_descriptor=env)
         else:
             self.env_creator = lambda env_config: None
 
@@ -1160,18 +1156,19 @@ class Trainer(Trainable):
         # Multi-GPU settings.
         simple_optim_setting = config.get("simple_optimizer", DEPRECATED_VALUE)
         if simple_optim_setting != DEPRECATED_VALUE:
-            deprecation_warning("simple_optimizer", error=False)
+            deprecation_warning(old="simple_optimizer", error=False)
 
         framework = config.get("framework")
+        # Multi-GPU setting: Must use TFMultiGPU if tf.
         if config.get("num_gpus", 0) > 1:
-            if framework in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
                                  "framework={}!".format(framework))
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
                     "Consider `simple_optimizer=False`.")
-            config["simple_optimizer"] = False
+            config["simple_optimizer"] = framework == "torch"
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
         # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
@@ -1227,6 +1224,13 @@ class Trainer(Trainable):
                 "If this is too frequent, set `evaluation_interval` to some "
                 "larger value.".format(config["evaluation_num_workers"]))
             config["evaluation_interval"] = 1
+        elif config["evaluation_num_workers"] == 0 and \
+                config.get("evaluation_parallel_to_training", False):
+            logger.warning(
+                "`evaluation_parallel_to_training` can only be done if "
+                "`evaluation_num_workers` > 0! Setting "
+                "`evaluation_parallel_to_training` to False.")
+            config["evaluation_parallel_to_training"] = False
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

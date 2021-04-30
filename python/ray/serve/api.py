@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import collections
 import inspect
 import os
 import time
@@ -10,18 +11,22 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
 from warnings import warn
 from weakref import WeakValueDictionary
 
+from starlette.requests import Request
+
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
-                              ReplicaConfig)
+from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (
-    format_actor_name, get_current_node_resource_key, get_random_letters,
-    logger, make_fastapi_class_based_view, register_custom_serializers)
+from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view,
+                                 make_startup_shutdown_hooks)
+from ray.serve.utils import (ensure_serialization_context, format_actor_name,
+                             get_current_node_resource_key, get_random_letters,
+                             logger)
 
 import ray
 
@@ -332,15 +337,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata()
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -380,15 +381,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(is_asgi_app=replica_config.is_asgi_app)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -482,11 +479,12 @@ class Client:
                                                    proportion))
 
     @_ensure_connected
-    def get_handle(
-            self,
-            endpoint_name: str,
-            missing_ok: Optional[bool] = False,
-            sync: bool = True) -> Union[RayServeHandle, RayServeSyncHandle]:
+    def get_handle(self,
+                   endpoint_name: str,
+                   missing_ok: Optional[bool] = False,
+                   sync: bool = True,
+                   _internal_use_serve_request: Optional[bool] = True
+                   ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
@@ -536,12 +534,14 @@ class Client:
             handle = RayServeSyncHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods)
+                known_python_methods=python_methods,
+                _internal_use_serve_request=_internal_use_serve_request)
         else:
             handle = RayServeHandle(
                 self._controller,
                 endpoint_name,
-                known_python_methods=python_methods)
+                known_python_methods=python_methods,
+                _internal_use_serve_request=_internal_use_serve_request)
 
         self.handle_cache[cache_key] = handle
         return handle
@@ -611,8 +611,6 @@ def start(
     if not ray.is_initialized():
         ray.init()
 
-    register_custom_serializers()
-
     try:
         _get_global_client()
         logger.info("Connecting to existing Serve instance.")
@@ -678,8 +676,6 @@ def connect() -> Client:
     # Initialize ray if needed.
     if not ray.is_initialized():
         ray.init()
-
-    register_custom_serializers()
 
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
@@ -896,7 +892,9 @@ def shadow_traffic(endpoint_name: str, backend_tag: str,
 
 def get_handle(endpoint_name: str,
                missing_ok: Optional[bool] = False,
-               sync: bool = True) -> Union[RayServeHandle, RayServeSyncHandle]:
+               sync: Optional[bool] = True,
+               _internal_use_serve_request: Optional[bool] = True
+               ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -911,7 +909,11 @@ def get_handle(endpoint_name: str,
         RayServeHandle
     """
     return _get_global_client().get_handle(
-        endpoint_name, missing_ok=missing_ok, sync=sync, _internal=True)
+        endpoint_name,
+        missing_ok=missing_ok,
+        sync=sync,
+        _internal_use_serve_request=_internal_use_serve_request,
+        _internal=True)
 
 
 def get_replica_context() -> ReplicaContext:
@@ -936,7 +938,7 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def ingress(app: Union["FastAPI", "APIRouter"], ):
+def ingress(app: Union["FastAPI", "APIRouter"]):
     """Mark a FastAPI application ingress for Serve.
 
     Args:
@@ -956,12 +958,43 @@ def ingress(app: Union["FastAPI", "APIRouter"], ):
         if not inspect.isclass(cls):
             raise ValueError("@serve.ingress must be used with a class.")
 
-        cls._serve_asgi_app = app
+        if issubclass(cls, collections.abc.Callable):
+            raise ValueError(
+                "Class passed to @serve.ingress may not have __call__ method.")
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         make_fastapi_class_based_view(app, cls)
 
-        return cls
+        # Free the state of the app so subsequent modification won't affect
+        # this ingress deployment. We don't use copy.copy here to avoid
+        # recursion issue.
+        ensure_serialization_context()
+        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+
+        startup_hook, shutdown_hook = make_startup_shutdown_hooks(frozen_app)
+
+        class FastAPIWrapper(cls):
+            async def __init__(self, *args, **kwargs):
+                # TODO(edoakes): should the startup_hook run before or after
+                # the constructor?
+                await startup_hook()
+                super().__init__(*args, **kwargs)
+
+            async def __call__(self, request: Request):
+                sender = ASGIHTTPSender()
+                await frozen_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                return sender.build_starlette_response()
+
+            def __del__(self):
+                asyncio.get_event_loop().run_until_complete(shutdown_hook())
+
+        FastAPIWrapper.__name__ = cls.__name__
+        return FastAPIWrapper
 
     return decorator
 
@@ -993,21 +1026,22 @@ class ServeDeployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
-            raise TypeError("version must be a string if provided.")
+            raise TypeError("version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
-            raise TypeError("init_args must be a tuple if provided.")
-        if route_prefix is None:
-            route_prefix = f"/{name}"
-        else:
+            raise TypeError("init_args must be a tuple.")
+        if route_prefix is not None:
             if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string if provided.")
+                raise TypeError("route_prefix must be a string.")
             if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'")
+                raise ValueError("route_prefix must start with '/'.")
+            if route_prefix != "/" and route_prefix.endswith("/"):
+                raise ValueError(
+                    "route_prefix must not end with '/' unless it's the root.")
             if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards")
+                raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None
                 or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict if provided.")
+            raise TypeError("ray_actor_options must be a dict.")
 
         if init_args is None:
             init_args = ()
@@ -1047,13 +1081,18 @@ class ServeDeployment:
 
     def delete(self):
         """Delete this deployment."""
-        return _get_global_client().delete_deployment(self.name)
+        return _get_global_client().delete_deployment(
+            self.name, _internal=True)
 
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment."""
         return _get_global_client().get_handle(
-            self.name, missing_ok=True, sync=sync, _internal=True)
+            self.name,
+            missing_ok=True,
+            sync=sync,
+            _internal_use_serve_request=False,
+            _internal=True)
 
     def options(
             self,
@@ -1123,9 +1162,13 @@ class ServeDeployment:
         ])
 
     def __str__(self):
+        if self.route_prefix is None:
+            route_prefix = f"/{self.name}"
+        else:
+            route_prefix = self.route_prefix
         return (f"ServeDeployment(name={self.name},"
                 f"version={self.version},"
-                f"route_prefix={self.route_prefix})")
+                f"route_prefix={route_prefix})")
 
 
 @overload
@@ -1171,12 +1214,14 @@ def deployment(
         init_args (Optional[Tuple]): Arguments to be passed to the class
             constructor when starting up deployment replicas. These can also be
             passed when you call `.deploy()` on the returned Deployment.
-        route_prefix (Optional[str]): Defaults to '/{name}'. Requests to paths
-            under the HTTP path prefix will be routed to this deployment.
+        route_prefix (Optional[str]): Requests to paths under this HTTP path
+            prefix will be routed to this deployment. Defaults to '/{name}'.
             Routing is done based on longest-prefix match, so if you have
             deployment A with a prefix of '/a' and deployment B with a prefix
-            of '/a/b', requests to '/a' go to A, requests to '/a/b' go to B,
-            requests to '/a/c' go to A, and requests to '/a/b/c' go to B.
+            of '/a/b', requests to '/a', '/a/', and '/a/c' go to A and requests
+            to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
+            a '/' unless they're the root (just '/'), which acts as a
+            catch-all.
         ray_actor_options (dict): Options to be passed to the Ray actor
             constructor such as resource requirements.
         user_config (Optional[Any]): [experimental] Arguments to pass to the

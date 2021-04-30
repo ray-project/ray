@@ -23,7 +23,7 @@ def profile(event_type, extra_data=None):
 
     .. code-block:: python
 
-        with ray.profile("custom event", extra_data={'key': 'value'}):
+        with ray.profiling.profile("custom event", extra_data={'key': 'val'}):
             # Do some computation here.
 
     Optionally, a dictionary can be passed as the "extra_data" argument, and

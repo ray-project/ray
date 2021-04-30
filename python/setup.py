@@ -94,16 +94,15 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "cluster": ["colorful"],
+    "default": ["colorful"],
     "serve": ["uvicorn", "requests", "pydantic>=1.8", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "atari_py",
     "dm_tree",
-    "gym[atari]",
+    "gym",
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",

@@ -13,7 +13,7 @@ import xarray
 from ray.util.dask import ray_dask_get
 import math
 
-SAMPLING_RATE_PER_SECOND = 200000
+SAMPLING_RATE_PER_SECOND = 100000
 NUM_CHANNELS = 3
 # Number of minutes we process per data producer.
 NUM_MINS_TO_PROCESS_PER_DATA_PRODUCER = 200000
@@ -269,7 +269,7 @@ def main():
     # change to save files to a different place
     file_save_dirpath = "."
     # Adjust this to change how many _output_ files are saved at a time.
-    BATCH_SIZE = 1500
+    BATCH_SIZE = 1000
 
     ray.init(address="auto")
     logging.info("Ray available resources = {}".format(

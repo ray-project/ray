@@ -624,7 +624,7 @@ py_test(
 # PPO: DDPPO
 py_test(
     name = "test_ddppo",
-    tags = ["agents_dir"],
+    tags = ["agents_dir", "flaky"],
     size = "small",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
@@ -1170,7 +1170,7 @@ py_test(
 
 py_test(
     name = "test_distributions",
-    tags = ["models"],
+    tags = ["models", "flaky"],
     size = "medium",
     srcs = ["models/tests/test_distributions.py"]
 )
@@ -1178,7 +1178,7 @@ py_test(
 py_test(
     name = "test_models",
     tags = ["models"],
-    size = "small",
+    size = "medium",
     srcs = ["models/tests/test_models.py"]
 )
 
@@ -1262,7 +1262,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils"],
+    tags = ["utils", "flaky"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1330,10 +1330,30 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore",
+    name = "tests/test_checkpoint_restore_pg",
+    main = "tests/test_checkpoint_restore.py",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "enormous",
-    srcs = ["tests/test_checkpoint_restore.py"]
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["tests_dir", "tests_dir_C"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["tests_dir", "tests_dir_C"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
 )
 
 py_test(
@@ -1434,8 +1454,8 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I"],
-    size = "medium",
+    tags = ["tests_dir", "tests_dir_I", "flaky"],
+    size = "large",
     srcs = ["tests/test_io.py"]
 )
 
@@ -1852,7 +1872,7 @@ py_test(
 py_test(
     name = "examples/custom_env_torch",
     main = "examples/custom_env.py",
-    tags = ["examples", "examples_C"],
+    tags = ["examples", "examples_C", "flaky"],
     size = "medium",
     srcs = ["examples/custom_env.py"],
     args = ["--as-test", "--torch"]
@@ -1889,18 +1909,18 @@ py_test(
     name = "examples/custom_fast_model_tf",
     main = "examples/custom_fast_model.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--stop-iters=1", "--num-cpus=4"]
+    args = ["--stop-iters=1"]
 )
 
 py_test(
     name = "examples/custom_fast_model_torch",
     main = "examples/custom_fast_model.py",
     tags = ["examples", "examples_C"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/custom_fast_model.py"],
-    args = ["--torch", "--stop-iters=1", "--num-cpus=4"]
+    args = ["--stop-iters=1", "--torch"]
 )
 
 py_test(
@@ -2167,6 +2187,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/parallel_evaluation_and_training_tf",
+    main = "examples/parallel_evaluation_and_training.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parallel_evaluation_and_training.py"],
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6"]
+)
+
+py_test(
     name = "examples/parametric_actions_cartpole_pg_tf",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
@@ -2200,6 +2229,15 @@ py_test(
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=DQN"]
+)
+
+py_test(
+    name = "examples/partial_gpus",
+    main = "examples/partial_gpus.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/partial_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
 )
 
 py_test(

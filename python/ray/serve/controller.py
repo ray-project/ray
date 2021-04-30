@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 import inspect
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -11,6 +11,7 @@ from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
+    EndpointInfo,
     EndpointTag,
     GoalId,
     NodeId,
@@ -21,7 +22,6 @@ from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
     RESERVED_VERSION_TAG,
-    WILDCARD_PATH_SUFFIX,
 )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
@@ -177,7 +177,7 @@ class ServeController:
             endpoint: str,
             traffic_dict: Dict[str, float],
             route: Optional[str],
-            methods: List[str],
+            methods: Set[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -191,8 +191,9 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.endpoint_state.create_endpoint(endpoint, route, methods,
-                                                TrafficPolicy(traffic_dict))
+            self.endpoint_state.create_endpoint(
+                endpoint, EndpointInfo(methods, route=route),
+                TrafficPolicy(traffic_dict))
 
         # TODO(simon): Use GoalID mechanism for this so client can check for
         # goal id and http_state complete the goal id.
@@ -274,22 +275,8 @@ class ServeController:
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, version: Optional[str],
                      route_prefix: Optional[str]) -> Optional[GoalId]:
-        if route_prefix is None:
-            route_prefix = f"/{name}"
-
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            # {wildcard:path} is used so HTTPProxy's Starlette router can match
-            # arbitrary path.
-            if route_prefix.endswith("/"):
-                route_prefix = route_prefix[:-1]
-            http_route = route_prefix + WILDCARD_PATH_SUFFIX
-            http_methods = ALL_HTTP_METHODS
-        else:
-            http_route = route_prefix
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
+        if route_prefix is not None:
+            assert route_prefix.startswith("/")
 
         python_methods = []
         if inspect.isclass(replica_config.backend_def):
@@ -306,14 +293,15 @@ class ServeController:
                 replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.update_endpoint(
-                name,
-                http_route,
-                http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
-                python_methods=python_methods)
+            endpoint_info = EndpointInfo(
+                ALL_HTTP_METHODS,
+                route=route_prefix,
+                python_methods=python_methods,
+                legacy=False)
+            self.endpoint_state.update_endpoint(name, endpoint_info,
+                                                TrafficPolicy({
+                                                    name: 1.0
+                                                }))
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

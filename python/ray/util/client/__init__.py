@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2020-04-07"
+CURRENT_PROTOCOL_VERSION = "2021-04-19"
 
 
 class RayAPIStub:
@@ -72,10 +72,22 @@ class RayAPIStub:
             self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
+            self._register_serializers()
             return conn_info
         except Exception:
             self.disconnect()
             raise
+
+    def _register_serializers(self):
+        """Register the custom serializer addons at the client side.
+
+        The server side should have already registered the serializers via
+        regular worker's serialization_context mechanism.
+        """
+        import ray.serialization_addons
+        from ray.util.serialization import StandaloneSerializationContext
+        ctx = StandaloneSerializationContext()
+        ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],
                         ignore_version: bool) -> None:

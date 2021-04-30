@@ -29,13 +29,15 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-        policy: Policy, model: ModelV2, dist_class: Type[TFActionDistribution],
+        policy: Policy, model: Union[ModelV2, "tf.keras.Model"],
+        dist_class: Type[TFActionDistribution],
         train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:
         policy (Policy): The Policy to calculate the loss for.
-        model (ModelV2): The Model to calculate the loss for.
+        model (Union[ModelV2, tf.keras.Model]): The Model to calculate
+            the loss for.
         dist_class (Type[ActionDistribution]: The action distr. class.
         train_batch (SampleBatch): The training data.
 
@@ -43,7 +45,13 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    logits, state = model.from_batch(train_batch)
+    if isinstance(model, tf.keras.Model):
+        logits, state, extra_outs = model(train_batch)
+        value_fn_out = extra_outs[SampleBatch.VF_PREDS]
+    else:
+        logits, state = model.from_batch(train_batch)
+        value_fn_out = model.value_function()
+
     curr_action_dist = dist_class(logits, model)
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
@@ -86,7 +94,6 @@ def ppo_surrogate_loss(
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-        value_fn_out = model.value_function()
         vf_loss1 = tf.math.square(value_fn_out -
                                   train_batch[Postprocessing.VALUE_TARGETS])
         vf_clipped = prev_value_fn_out + tf.clip_by_value(
@@ -112,6 +119,7 @@ def ppo_surrogate_loss(
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
+    policy._value_fn_out = value_fn_out
 
     return total_loss
 
@@ -134,14 +142,14 @@ def kl_and_loss_stats(policy: Policy,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function()),
+            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
 
+# TODO: (sven) Deprecate once we only allow native keras models.
 def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
     """Defines extra fetches per action computation.
 
@@ -152,6 +160,10 @@ def vf_preds_fetches(policy: Policy) -> Dict[str, TensorType]:
         Dict[str, TensorType]: Dict with extra tf fetches to perform per
             action computation.
     """
+    # Keras models return values for each call in third return argument
+    # (dict).
+    if isinstance(policy.model, tf.keras.Model):
+        return {}
     # Return value function outputs. VF estimates will hence be added to the
     # SampleBatches produced by the sampler(s) to generate the train batches
     # going into the loss function.
@@ -177,7 +189,9 @@ def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,
             tuples.
     """
     # Compute the gradients.
-    variables = policy.model.trainable_variables()
+    variables = policy.model.trainable_variables
+    if isinstance(policy.model, ModelV2):
+        variables = variables()
     grads_and_vars = optimizer.compute_gradients(loss, variables)
 
     # Clip by global norm, if necessary.
@@ -216,16 +230,31 @@ class KLCoeffMixin:
             framework=config["framework"])
         # Constant target value.
         self.kl_target = config["kl_target"]
+        if self.framework == "tf":
+            self._kl_coeff_placeholder = \
+                tf1.placeholder(dtype=tf.float32, name="kl_coeff")
+            self._kl_coeff_update = self.kl_coeff.assign(
+                self._kl_coeff_placeholder, read_value=False)
 
     def update_kl(self, sampled_kl):
         # Update the current KL value based on the recently measured value.
+        # Increase.
         if sampled_kl > 2.0 * self.kl_target:
             self.kl_coeff_val *= 1.5
+        # Decrease.
         elif sampled_kl < 0.5 * self.kl_target:
             self.kl_coeff_val *= 0.5
+        # No change.
+        else:
+            return self.kl_coeff_val
 
-        # Update the tf Variable (via session call).
-        self.kl_coeff.load(self.kl_coeff_val, session=self.get_session())
+        # Update the tf Variable (via session call for tf).
+        if self.framework == "tf":
+            self.get_session().run(
+                self._kl_coeff_update,
+                feed_dict={self._kl_coeff_placeholder: self.kl_coeff_val})
+        else:
+            self.kl_coeff.assign(self.kl_coeff_val, read_value=False)
         # Return the current KL value.
         return self.kl_coeff_val
 
@@ -252,9 +281,13 @@ class ValueNetworkMixin:
             @make_tf_callable(self.get_session())
             def value(**input_dict):
                 input_dict = SampleBatch(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                if isinstance(self.model, tf.keras.Model):
+                    _, _, extra_outs = self.model(input_dict)
+                    return extra_outs[SampleBatch.VF_PREDS][0]
+                else:
+                    model_out, _ = self.model(input_dict)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
