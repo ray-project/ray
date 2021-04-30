@@ -243,77 +243,6 @@ class TransformRoutines:
         return data_ds
 
     @staticmethod
-    def decimate_xarray_after_fft_transform(
-            xr_input: xarray.Dataset,
-            overlap_time: int,
-            decimate_factors_time: List[int],
-            decimate_factors_freq: List[int],
-    ):
-
-        # Increase chunk size
-        time_chunks_median = np.median(np.array(list(xr_input.chunks["time"])))
-        final_chunk = (-1, -1, 10 * int(time_chunks_median))
-        xr_input.data_var.data = xr_input.data_var.data.rechunk(final_chunk)
-
-        t_chunks = list(xr_input.chunks["time"])
-
-        # Purge chunks that are too small
-        if t_chunks[-1] < (overlap_time + 2) * np.prod(decimate_factors_time):
-            current_len = len(xr_input.time)
-            xr_input = xr_input.isel(time=slice(0, current_len - t_chunks[-1]))
-
-        if t_chunks[0] < (overlap_time + 2) * np.prod(decimate_factors_time):
-            current_len = len(xr_input.time)
-            xr_input = xr_input.isel(time=slice(t_chunks[0], current_len))
-
-        decimated_xr_input = xr_input.isel(
-            channel=slice(0, 3),
-            freq=slice(0, len(xr_input.freq), np.prod(decimate_factors_freq)),
-            time=slice(0, len(xr_input.time), np.prod(decimate_factors_time)),
-        )
-
-        decimated_xr_input.data_var.data = xr_input.data_var.data.map_overlap(
-            TransformRoutines.decimate_freq_time,
-            decimate_frequencies=decimate_factors_freq,
-            decimate_times=decimate_factors_time,
-            overlap_time=overlap_time,
-            depth=(0, 0, np.prod(decimate_factors_time) * overlap_time),
-            trim=False,
-            dtype=xr_input.data_var.data.dtype,
-            chunks=[
-                decimated_xr_input.chunks["channel"],
-                decimated_xr_input.chunks["freq"],
-                decimated_xr_input.chunks["time"],
-            ],
-        )
-
-        return decimated_xr_input
-
-    @staticmethod
-    def decimate_freq_time(
-            data: np.ndarray,
-            decimate_frequencies: list,
-            decimate_times: list,
-            overlap_time=0,
-    ):
-        from scipy.signal import decimate
-
-        data = np.nan_to_num(data)
-
-        for df_factor in decimate_frequencies:
-            if df_factor > 1:
-                data = decimate(data, q=df_factor, axis=1)
-
-        for df_factor in decimate_times:
-            if df_factor > 1:
-                data = decimate(data, q=df_factor, axis=2)
-
-        if overlap_time > 0:
-            data = data[:, :, overlap_time:-overlap_time]
-
-        return data
-
-    @staticmethod
     def decimate_raw_data(data: np.ndarray, decimate_time: int,
                           overlap_time=0):
         from scipy.signal import decimate
@@ -421,7 +350,7 @@ class SaveRoutines:
                     ))
 
             logging.info(
-                "[Batch Index {}] Batch size {} Sending work to Ray Cluster."
+                "[Batch Index {}] Batch size {}: Sending work to Ray Cluster."
                 .format(batch_idx, batch_size))
 
             res = []
@@ -438,9 +367,9 @@ class SaveRoutines:
 
 def lazy_create_xarray_filename_pairs(test_spec: TestSpec,
                                       ) -> List[Tuple[xarray.Dataset, str]]:
-    n_fft = 65536
+    n_fft = 4096
     hop_length = int(SAMPLING_RATE / 100)
-    decimate_factor = 10
+    decimate_factor = 100
 
     logging.info("Creating 1 month lazy Xarray with decimation and FFT")
     xr1 = LoadRoutines.lazy_load_xarray_one_month(test_spec)
@@ -450,12 +379,6 @@ def lazy_create_xarray_filename_pairs(test_spec: TestSpec,
         xr2, n_overlap=n_fft - hop_length)
     xr4 = TransformRoutines.fft_xarray(
         xr_input=xr3, n_fft=n_fft, hop_length=hop_length)
-    xr5 = TransformRoutines.decimate_xarray_after_fft_transform(
-        xr_input=xr4,
-        overlap_time=10,
-        decimate_factors_time=[10],
-        decimate_factors_freq=[10, 10],
-    )
 
     num_segments = int(MINUTES_IN_A_MONTH / NUM_MINS_PER_OUTPUT_FILE)
     start_time = 0
@@ -472,7 +395,7 @@ def lazy_create_xarray_filename_pairs(test_spec: TestSpec,
         segment_end_index = int(segment_start_index +
                                 segment_len_sec * SAMPLING_RATE / hop_length)
         xr_segment = deepcopy(
-            xr5.isel(time=slice(segment_start_index, segment_end_index)))
+            xr4.isel(time=slice(segment_start_index, segment_end_index)))
         xarray_filename_pairs.append(
             (xr_segment, "xarray_step_{}_{}.zarr".format(step, timestamp)))
 
