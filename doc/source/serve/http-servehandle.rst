@@ -212,11 +212,11 @@ Now we can invoke the same logic from both HTTP or Python:
 .. code-block:: python
 
     print(requests.get("http://localhost:8000/api?name=Alice"))
-    > Hello Alice!
+    # Hello Alice!
 
     handle = Deployment.get_handle()
     print(ray.get(handle.say_hello.remote("Alice")))
-    > Hello Alice!
+    # Hello Alice!
 
 .. _serve-sync-async-handles:
 
