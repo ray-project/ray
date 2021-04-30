@@ -26,7 +26,7 @@ Core APIs
 Deployment API
 --------------
 
-.. autoclass:: ray.serve.Deployment
+.. autoclass:: ray.serve.api.Deployment
     :members: deploy, delete, options, get_handle
 
 .. _`servehandle-api`:
