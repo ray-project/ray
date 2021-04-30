@@ -1253,15 +1253,19 @@ def deployment(
             called if user_config is not None.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this backend without receiving a
-            response. Defaults to None (no maximum).
+            response. Defaults to 100.
 
     Example:
+
     >>> @serve.deployment(name="deployment1", version="v1")
         class MyDeployment:
             pass
 
     >>> MyDeployment.deploy(*init_args)
     >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
+
+    Returns:
+        Deployment
     """
 
     config = BackendConfig()
