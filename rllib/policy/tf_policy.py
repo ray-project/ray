@@ -137,6 +137,19 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        # Log device and worker index.
+        if tfv == 2:
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info("TFPolicy (worker={}) running on GPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info("TFPolicy (worker={}) running on CPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
@@ -930,11 +943,15 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
-        self._lr_schedule = lr_schedule
-        if self._lr_schedule is not None:
+        self._lr_schedule = None
+        if lr_schedule is None:
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=lr, trainable=False)
+        else:
             self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=self._lr_schedule.value(0), trainable=False)
             if self.framework == "tf":
                 self._lr_placeholder = tf1.placeholder(
                     dtype=tf.float32, name="lr")

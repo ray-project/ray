@@ -838,6 +838,7 @@ def objects(object_ref=None):
     return state.object_table(object_ref=object_ref)
 
 
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 

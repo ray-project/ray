@@ -191,7 +191,7 @@ class ModelV2:
                 input tensors.
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths
+            seq_lens (Tensor): 1D tensor holding input sequence lengths.
 
         Returns:
             (outputs, state): The model output tensor of size

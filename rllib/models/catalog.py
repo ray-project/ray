@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
@@ -39,9 +39,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # If True, try to use a native (tf.keras.Model or torch.Module) default
     # model instead of our built-in ModelV2 defaults.
     # If False (default), use "classic" ModelV2 default models.
-    # Note that this currently only works for:
-    # 1) framework != torch AND
-    # 2) fully connected or CNN default networks.
+    # Note that this currently only works for fully connected and
+    # CNN default networks, as well as auto-wrapped LSTM- and attention nets.
     "_use_default_native_models": False,
 
     # === Built-in options ===

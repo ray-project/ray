@@ -357,7 +357,7 @@ def timeslice_along_seq_lens_with_overlap(
         seq_lens = sample_batch.get("seq_lens")
     assert seq_lens is not None and len(seq_lens) > 0, \
         "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
-    # Generate n slices based on self.seq_lens.
+    # Generate n slices based on seq_lens.
     start = 0
     slices = []
     for seq_len in seq_lens:
@@ -391,10 +391,13 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.items()
+                for k, v in sample_batch.items() if k != "seq_lens"
             }
         else:
-            data = {k: v[begin:end] for k, v in sample_batch.items()}
+            data = {
+                k: v[begin:end]
+                for k, v in sample_batch.items() if k != "seq_lens"
+            }
 
         if zero_init_states_:
             i = 0

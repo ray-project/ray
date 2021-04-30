@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -650,8 +650,11 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+            postprocessed_batch["seq_lens"] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.is_training = True
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
@@ -769,9 +772,10 @@ class Policy(metaclass=ABCMeta):
         view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
         #init_state = []
-        #self._is_recurrent = False
         if not hasattr(obj, "get_initial_state") or \
                 not callable(obj.get_initial_state):
+            #init_state = obj.get_initial_state()
+        #else:
             # Add this functionality automatically for new native model API.
             if "state_in_0" not in view_reqs and not isinstance(model, ModelV2):
                 obj.get_initial_state = lambda: [
@@ -780,6 +784,8 @@ class Policy(metaclass=ABCMeta):
                     if k.startswith("state_in_")]
             else:
                 obj.get_initial_state = lambda: []
+                #if "state_in_0" in view_reqs:
+                #    self.is_recurrent = lambda: True
 
         init_state = obj.get_initial_state()
         self._is_recurrent = len(init_state) > 0

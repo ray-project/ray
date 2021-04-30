@@ -64,6 +64,7 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
 
+        self.max_seq_len = kwargs.pop("_max_seq_len", None)
         self.zero_padded = kwargs.pop("_zero_padded", False)
         self.is_training = kwargs.pop("_is_training", None)
 
@@ -75,7 +76,6 @@ class SampleBatch(dict):
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
-
         self.get_interceptor = None
 
         # Clear out None seq-lens.
@@ -85,7 +85,6 @@ class SampleBatch(dict):
         elif isinstance(self.get("seq_lens"), list):
             self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
 
-        self.max_seq_len = self.pop("_max_seq_len", None)
         if self.max_seq_len is None and self.get("seq_lens") is not None and \
                 not (tf and tf.is_tensor(self["seq_lens"])) and \
                 len(self["seq_lens"]) > 0:
@@ -95,7 +94,7 @@ class SampleBatch(dict):
             self.is_training = self.pop("is_training", False)
 
         lengths = []
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = {k: v for k, v in self.items() if k != "seq_lens"}
         for k, v in copy_.items():
             assert isinstance(k, str), self
             len_ = len(v) if isinstance(
@@ -350,15 +349,11 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
         else:
-            try:
-                sb = SampleBatch(
-                    {k: v[start:end]
-                     for k, v in self.items()},
-                    _is_training=self.is_training,
-                    _time_major=self.time_major)
-            except Exception as e:
-                raise e
-            return sb
+            return SampleBatch(
+                {k: v[start:end]
+                 for k, v in self.items()},
+                _is_training=self.is_training,
+                _time_major=self.time_major)
 
     @PublicAPI
     def timeslices(self, k: int) -> List["SampleBatch"]:
@@ -389,8 +384,9 @@ class SampleBatch(dict):
                 data. If False, leave `state_in_x` keys as-is.
         """
         for col in self.keys():
-            # Skip state in columns.
-            if exclude_states is True and col.startswith("state_in_"):
+            # Skip "state_in_..." columns and "seq_lens".
+            if (exclude_states is True and col.startswith("state_in_")) or \
+                    col == "seq_lens":
                 continue
 
             f = self[col]
@@ -447,7 +443,7 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        if not hasattr(self, key):
+        if not hasattr(self, key) and key in self:
             self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
@@ -545,6 +541,9 @@ class SampleBatch(dict):
         i = 0
         slices = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
+            assert np.all(self["seq_lens"] < slice_size), \
+                "ERROR: `slice_size` must be larger than the max. seq-len " \
+                "in the batch!"
             start_pos = 0
             current_slize_size = 0
             idx = 0

@@ -93,7 +93,7 @@ class TestPPO(unittest.TestCase):
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
@@ -114,7 +114,6 @@ class TestPPO(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        config["framework"] = "tf"
         # Mimic tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003
@@ -125,17 +124,19 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-            if results["episode_reward_mean"] > 75.0:
-                learnt = True
-                break
-        assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""

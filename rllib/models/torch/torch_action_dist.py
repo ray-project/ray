@@ -1,7 +1,7 @@
 import functools
 from math import log
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 import gym
 
 from ray.rllib.models.action_dist import ActionDistribution
