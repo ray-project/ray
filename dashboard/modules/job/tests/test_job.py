@@ -44,15 +44,11 @@ class Actor:
         self._index = index
 
     def foo(self, x):
-        print("worker job dir {}".format(os.environ["RAY_JOB_DIR"]))
-        assert os.environ["RAY_JOB_DIR"] in sys.path
         return f"Actor {self._index}: {x}"
 
 
 def main():
     actors = []
-    print("driver job dir {}".format(os.environ["RAY_JOB_DIR"]))
-    assert os.environ["RAY_JOB_DIR"] in sys.path
     for x in range(2):
         actors.append(Actor.remote(x))
 
@@ -105,15 +101,17 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     shutil.rmtree(job_root_dir, ignore_errors=True)
 
     job_id = None
+    job_submitted = False
 
     def _check_running():
         nonlocal job_id
-        if job_id is None:
+        nonlocal job_submitted
+        if not job_submitted:
             resp = requests.post(f"{webui_url}/jobs", json=job)
             resp.raise_for_status()
             result = resp.json()
             assert result["result"] is True, resp.text
-            job_id = result["data"]["jobId"]
+            job_submitted = True
 
         resp = requests.get(f"{webui_url}/jobs?view=summary")
         resp.raise_for_status()
@@ -121,6 +119,11 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
         assert result["result"] is True, resp.text
         summary = result["data"]["summary"]
         assert len(summary) == 2
+
+        # TODO(fyrestone): Return a job id when POST /jobs
+        # The larger job id is the one we submitted.
+        job_ids = sorted(s["jobId"] for s in summary)
+        job_id = job_ids[1]
 
         resp = requests.get(f"{webui_url}/jobs/{job_id}")
         resp.raise_for_status()

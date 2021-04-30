@@ -5,6 +5,7 @@ import os.path
 import itertools
 import subprocess
 import sys
+import secrets
 import uuid
 import traceback
 from abc import abstractmethod
@@ -19,15 +20,14 @@ from ray.new_dashboard.modules.job.job_description import JobDescription
 from ray.core.generated import job_agent_pb2
 from ray.core.generated import job_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
-from ray._private.utils import hex_to_binary, binary_to_hex
 
 logger = logging.getLogger(__name__)
 
 
 @attr.s(kw_only=True, slots=True)
 class JobInfo(JobDescription):
-    # The job id hex string.
-    job_id = attr.ib(type=str, validator=instance_of(str))
+    # TODO(fyrestone): We should use job id instead of unique id.
+    unique_id = attr.ib(type=str, validator=instance_of(str))
     # The temp directory.
     temp_dir = attr.ib(type=str, validator=instance_of(str))
     # The log directory.
@@ -37,14 +37,11 @@ class JobInfo(JobDescription):
         type=Union[None, asyncio.subprocess.Process], default=None)
 
     def __attrs_post_init__(self):
-        job_package_dir = job_consts.JOB_UNPACK_DIR.format(
-            temp_dir=self.temp_dir, job_id=self.job_id)
         # Support json values for env.
         self.env = {
             k: v if isinstance(v, str) else json.dumps(v)
             for k, v in self.env.items()
         }
-        self.env["RAY_JOB_DIR"] = job_package_dir
 
 
 class JobProcessor:
@@ -55,10 +52,10 @@ class JobProcessor:
         self._job_info = job_info
 
     async def _download_package(self, http_session, url, filename):
-        job_id = self._job_info.job_id
+        unique_id = self._job_info.unique_id
         cmd_index = next(self._cmd_index_gen)
-        logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index, url,
-                    filename)
+        logger.info("[%s] Start download[%s] %s to %s", unique_id, cmd_index,
+                    url, filename)
         async with http_session.get(url, ssl=False) as response:
             with open(filename, "wb") as f:
                 while True:
@@ -67,7 +64,7 @@ class JobProcessor:
                     if not chunk:
                         break
                     f.write(chunk)
-            logger.info("[%s] Finished download[%s] %s to %s", job_id,
+            logger.info("[%s] Finished download[%s] %s to %s", unique_id,
                         cmd_index, url, filename)
 
     async def _unpack_package(self, filename, path):
@@ -81,25 +78,25 @@ class JobProcessor:
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)
-        job_id = self._job_info.job_id
+        unique_id = self._job_info.unique_id
         cmd_index = next(self._cmd_index_gen)
         proc.cmd_index = cmd_index
-        logger.info("[%s] Run cmd[%s] %s", job_id, cmd_index, repr(cmd))
+        logger.info("[%s] Run cmd[%s] %s", unique_id, cmd_index, repr(cmd))
         stdout, stderr = await proc.communicate()
         stdout = stdout.decode("utf-8")
-        logger.info("[%s] Output of cmd[%s]: %s", job_id, cmd_index, stdout)
+        logger.info("[%s] Output of cmd[%s]: %s", unique_id, cmd_index, stdout)
         if proc.returncode != 0:
             stderr = stderr.decode("utf-8")
-            logger.error("[%s] Output of cmd[%s]: %s", job_id, cmd_index,
+            logger.error("[%s] Error of cmd[%s]: %s", unique_id, cmd_index,
                          stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, cmd, output=stdout, stderr=stderr)
         return stdout
 
     async def _start_driver(self, cmd, stdout, stderr, env):
-        job_id = self._job_info.job_id
+        unique_id = self._job_info.unique_id
         job_package_dir = job_consts.JOB_UNPACK_DIR.format(
-            temp_dir=self._job_info.temp_dir, job_id=job_id)
+            temp_dir=self._job_info.temp_dir, unique_id=unique_id)
         cmd_str = subprocess.list2cmdline(cmd)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -111,7 +108,7 @@ class JobProcessor:
             },
             cwd=job_package_dir,
         )
-        logger.info("[%s] Start driver cmd %s with pid %s", job_id,
+        logger.info("[%s] Start driver cmd %s with pid %s", unique_id,
                     repr(cmd_str), proc.pid)
         return proc
 
@@ -141,11 +138,11 @@ class DownloadPackage(JobProcessor):
 
     async def run(self):
         temp_dir = self._job_info.temp_dir
-        job_id = self._job_info.job_id
+        unique_id = self._job_info.unique_id
         filename = job_consts.DOWNLOAD_PACKAGE_FILE.format(
-            temp_dir=temp_dir, job_id=job_id)
+            temp_dir=temp_dir, unique_id=unique_id)
         unpack_dir = job_consts.JOB_UNPACK_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
+            temp_dir=temp_dir, unique_id=unique_id)
         url = self._job_info.runtimeEnv.workingDir
         await self._download_package(self._http_session, url, filename)
         await self._unpack_package(filename, unpack_dir)
@@ -159,7 +156,6 @@ from ray._private.utils import hex_to_binary
 ray.init(ignore_reinit_error=True,
          address={redis_address},
          _redis_password={redis_password},
-         job_id=ray.JobID({job_id}),
          job_config=ray.job_config.JobConfig({job_config_args}),
 )
 import {driver_entry}
@@ -176,11 +172,11 @@ ray.shutdown()
 
     def _gen_driver_code(self):
         temp_dir = self._job_info.temp_dir
-        job_id = self._job_info.job_id
+        unique_id = self._job_info.unique_id
         job_package_dir = job_consts.JOB_UNPACK_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
+            temp_dir=temp_dir, unique_id=unique_id)
         driver_entry_file = job_consts.JOB_DRIVER_ENTRY_FILE.format(
-            temp_dir=temp_dir, job_id=job_id, uuid=uuid.uuid4())
+            temp_dir=temp_dir, unique_id=unique_id, uuid=uuid.uuid4())
         ip, port = self._redis_address
 
         # Per job config
@@ -194,7 +190,6 @@ ray.shutdown()
                                     if value is not None)
         driver_args = ", ".join([repr(x) for x in self._job_info.driverArgs])
         driver_code = self._template.format(
-            job_id=repr(hex_to_binary(job_id)),
             job_config_args=job_config_args,
             import_path=repr(job_package_dir),
             redis_address=repr(ip + ":" + str(port)),
@@ -210,38 +205,34 @@ ray.shutdown()
         driver_file = self._gen_driver_code()
         driver_cmd = [python, "-u", driver_file]
         stdout_file, stderr_file = self._new_log_files(
-            self._job_info.log_dir, f"driver-{self._job_info.job_id}")
+            self._job_info.log_dir, f"driver-{self._job_info.unique_id}")
         return await self._start_driver(driver_cmd, stdout_file, stderr_file,
                                         self._job_info.env)
 
 
 class JobAgent(dashboard_utils.DashboardAgentModule,
                job_agent_pb2_grpc.JobAgentServiceServicer):
-    def __init__(self, dashboard_agent):
-        super().__init__(dashboard_agent)
-        self._job_table = {}
-
     async def InitializeJobEnv(self, request, context):
-        job_id = binary_to_hex(request.job_id)
-        if job_id in self._job_table:
-            logger.info("[%s] Ignored duplicated InitializeJobEnv request.",
-                        job_id)
-            return job_agent_pb2.InitializeJobEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+        # TODO(fyrestone): Handle duplicated InitializeJobEnv requests
+        # when initializing job environment.
+        # TODO(fyrestone): Support reinitialize job environment.
+
+        # TODO(fyrestone): Use job id instead of unique id.
+        unique_id = secrets.token_hex(6)
 
         # Parse the job description from the request.
         try:
             job_description_data = json.loads(request.job_description)
             job_info = JobInfo(
-                job_id=job_id,
+                unique_id=unique_id,
                 temp_dir=self._dashboard_agent.temp_dir,
                 log_dir=self._dashboard_agent.log_dir,
                 **job_description_data)
         except json.JSONDecodeError as ex:
             error_message = str(ex)
             error_message += f", job_payload:\n{request.job_description}"
-            logger.error("[%s] Initialize job environment failed, %s.", job_id,
-                         error_message)
+            logger.error("[%s] Initialize job environment failed, %s.",
+                         unique_id, error_message)
             return job_agent_pb2.InitializeJobEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
@@ -254,13 +245,13 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
         async def _initialize_job_env():
             os.makedirs(
                 job_consts.JOB_DIR.format(
-                    temp_dir=job_info.temp_dir, job_id=job_id),
+                    temp_dir=job_info.temp_dir, unique_id=unique_id),
                 exist_ok=True)
             # Download the job package.
             await DownloadPackage(job_info,
                                   self._dashboard_agent.http_session).run()
             # Start the driver.
-            logger.info("[%s] Starting driver.", job_id)
+            logger.info("[%s] Starting driver.", unique_id)
             language = job_info.language
             if language == job_consts.PYTHON:
                 driver = await StartPythonDriver(
@@ -271,13 +262,12 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
             job_info.driver = driver
 
         initialize_task = create_task(_initialize_job_env())
-        self._job_table[job_id] = job_info
 
         try:
             await initialize_task
         except asyncio.CancelledError:
             logger.error("[%s] Initialize job environment has been cancelled.",
-                         job_id)
+                         unique_id)
             return job_agent_pb2.InitializeJobEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message="InitializeJobEnv has been cancelled, "
@@ -294,7 +284,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
 
         logger.info(
             "[%s] Job environment initialized, "
-            "the driver (pid=%s) started.", job_id, driver_pid)
+            "the driver (pid=%s) started.", unique_id, driver_pid)
         return job_agent_pb2.InitializeJobEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
             driver_pid=driver_pid)

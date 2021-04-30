@@ -19,10 +19,8 @@ package ray.rpc;
 import "src/ray/protobuf/agent_manager.proto";
 
 message InitializeJobEnvRequest {
-  // The job id.
-  bytes job_id = 1;
   // The job description in JSON.
-  string job_description = 2;
+  string job_description = 1;
 }
 
 message InitializeJobEnvReply {

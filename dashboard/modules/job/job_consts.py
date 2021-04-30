@@ -2,7 +2,8 @@ import os
 from ray.core.generated import common_pb2
 
 # Job agent consts
-JOB_DIR = "{temp_dir}/job/{job_id}/"
+# TODO(fyrestone): We should use job id instead of unique_id.
+JOB_DIR = "{temp_dir}/job/{unique_id}/"
 JOB_UNPACK_DIR = os.path.join(JOB_DIR, "package")
 JOB_DRIVER_ENTRY_FILE = os.path.join(JOB_DIR, "driver-{uuid}.py")
 # Downloader constants
