@@ -210,10 +210,6 @@ class Monitor:
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
-    def _stop_message_recieved(self):
-        return (self.stop_receiver_connection
-                and self.stop_receiver_connection.poll())
-
     def update_event_summary(self):
         """Report the current size of the cluster.
 

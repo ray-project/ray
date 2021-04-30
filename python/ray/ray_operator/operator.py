@@ -216,16 +216,17 @@ def status_handling_loop():
         operator_utils.set_status(cluster_name, cluster_namespace, status)
 
 
-status_handler = threading.Thread(target=status_handling_loop, daemon=True)
-
-
 def main() -> None:
+    # Run status-handling loop.
+    status_handler = threading.Thread(target=status_handling_loop, daemon=True)
     status_handler.start()
+
     # Make directory for Ray cluster configs
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
+
     while True:
-        # This outer loop wait for creation of a RayCluster CRD if it hasn't
+        # This outer loop waits for creation of a RayCluster CRD if it hasn't
         # already been created.
         try:
             # Enter main event loop.
