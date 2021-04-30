@@ -213,7 +213,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
     # E.g. evaluation_interval=2 -> For every other training iteration,
-    # the Trainer.train() and Trainer._evaluate() calls run in parallel.
+    # the Trainer.train() and Trainer.evaluate() calls run in parallel.
     # Note: This is experimental. Possible pitfalls could be race conditions
     # for weight synching at the beginning of the evaluation loop.
     "evaluation_parallel_to_training": False,
@@ -238,7 +238,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer._evaluate() method to see the default implementation. The
+    # Trainer.evaluate() method to see the default implementation. The
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
@@ -795,8 +795,15 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
+    # TODO: (sven) Deprecate in favor of Trainer.evaluate().
     @DeveloperAPI
     def _evaluate(self) -> dict:
+        deprecation_warning(
+            "Trainer._evaluate", "Trainer.evaluate", error=False)
+        return self.evaluate()
+
+    @PublicAPI
+    def evaluate(self) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
@@ -822,11 +829,29 @@ class Trainer(Trainable):
             logger.info("Evaluating current policy for {} episodes.".format(
                 self.config["evaluation_num_episodes"]))
             metrics = None
-            # No evaluation worker set -> Do evaluation using the local worker.
+            # No evaluation worker set ->
+            # Do evaluation using the local worker. Expect error due to the
+            # local worker not having an env.
             if self.evaluation_workers is None:
-                for _ in range(self.config["evaluation_num_episodes"]):
-                    self.workers.local_worker().sample()
-                metrics = collect_metrics(self.workers.local_worker())
+                try:
+                    for _ in range(self.config["evaluation_num_episodes"]):
+                        self.workers.local_worker().sample()
+                    metrics = collect_metrics(self.workers.local_worker())
+                except ValueError as e:
+                    if "RolloutWorker has no `input_reader` object" in \
+                            e.args[0]:
+                        raise ValueError(
+                            "Cannot evaluate w/o an evaluation worker set in "
+                            "the Trainer or w/o an env on the local worker!\n"
+                            "Try one of the following:\n1) Set "
+                            "`evaluation_interval` >= 0 to force creating a "
+                            "separate evaluation worker set.\n2) Set "
+                            "`create_env_on_driver=True` to force the local "
+                            "(non-eval) worker to have an environment to "
+                            "evaluate on.")
+                    else:
+                        raise e
+
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
                 for _ in range(self.config["evaluation_num_episodes"]):

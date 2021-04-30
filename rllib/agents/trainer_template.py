@@ -178,7 +178,7 @@ def build_trainer(
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    eval_future = executor.submit(self._evaluate)
+                    eval_future = executor.submit(self.evaluate)
                     # Parallelism.
                     if self.config["evaluation_parallel_to_training"]:
                         res = next(self.train_exec_impl)
