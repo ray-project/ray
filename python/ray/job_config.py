@@ -81,8 +81,8 @@ class JobConfig:
 
     def get_runtime_env_uris(self):
         """Get the uris of runtime environment"""
-        if self.runtime_env.get("working_dir_uri"):
-            return [self.runtime_env.get("working_dir_uri")]
+        if self.runtime_env.get("uris"):
+            return self.runtime_env.get("uris")
         return []
 
     def _get_proto_runtime(self):
