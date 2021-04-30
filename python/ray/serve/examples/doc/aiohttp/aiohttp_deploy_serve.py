@@ -1,4 +1,4 @@
-# File name: deploy_serve.py
+# File name: aiohttp_deploy_serve.py
 import ray
 from ray import serve
 
@@ -9,13 +9,12 @@ ray.init(address="auto")
 serve.start(http_host=None, detached=True)
 
 
-# Define a function to serve. Alternatively, you could define a stateful class.
+# Set up a deployment with the desired number of replicas. This could also be
+# e a stateful class (e.g., if we had an expensive model to set up).
+@serve.deployment(name="my_model", num_replicas=2)
 async def my_model(request):
     data = await request.body()
     return f"Model received data: {data}"
 
 
-# Set up a backend with the desired number of replicas and set up an endpoint.
-backend_config = serve.BackendConfig(num_replicas=2)
-serve.create_backend("my_backend", my_model, config=backend_config)
-serve.create_endpoint("my_endpoint", backend="my_backend")
+my_model.deploy()

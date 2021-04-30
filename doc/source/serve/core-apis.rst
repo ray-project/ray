@@ -1,6 +1,6 @@
-=========
-Core APIs
-=========
+=====================
+Core API: Deployments
+=====================
 
 .. contents::
 
@@ -33,7 +33,7 @@ A deployment consists of a number of *replicas*, which are individual copies of 
 
 Deployments can be exposed in two ways: over HTTP or in Python via the :ref:`servehandle-api`.
 By default, HTTP requests will be forwarded to the ``__call__`` method of the class (or the function) and a ``Starlette Request`` object will be the sole argument.
-You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests (TODO link).
+You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See :ref:`serve-fastapi-http` for details.
 
 We can also list all available deployments and dynamically get a reference to them:
 
@@ -43,8 +43,44 @@ We can also list all available deployments and dynamically get a reference to th
   {'MyFirstDeployment': <ray.serve.api.ServeDeployment object at 0x7fe0c04c42b0>}
 
   # Returns the same object as the original MyFirstDeployment object.
-  # This can be used to re-deploy, get a handle, etc.
+  # This can be used to redeploy, get a handle, etc.
   deployment = serve.get_deployment("MyFirstDeployment")
+
+Exposing a Deployment
+=====================
+
+By default, deployments are exposed over HTTP at ``http://localhost:8000/<deployment_name>``.
+The HTTP path that the deployment is available at can be changed using the ``route_prefix`` option.
+All requests to ``/{route_prefix}`` and any subpaths will be routed to the deployment (using a longest-prefix match for overlapping route prefixes).
+
+Here's an example:
+
+.. code-block:: python
+
+  @serve.deployment(name="http_deployment", route_prefix="/api")
+  class HTTPDeployment:
+    def __call__(self, request):
+        return "Hello world!"
+
+After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
+We can query the model to verify that it's working.
+
+.. code-block:: python
+
+  import requests
+  print(requests.get("http://127.0.0.1:8000/api").text)
+
+We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+
+.. code-block:: python
+
+  # To get a handle from the same script, use the Deployment object directly:
+  handle = HTTPDeployment.get_handle()
+
+  # To get a handle from a different script, reference it by name:
+  handle = serve.get_deployment("http_deployment").get_handle()
+
+  print(ray.get(handle.remote()))
 
 Updating a Deployment
 =====================
@@ -73,60 +109,27 @@ Deployments can be updated simply by updating the code or configuration options 
   SimpleDeployment.options(num_replicas=2).deploy()
 
 
-If you want to avoid always re-deploying, this behavior can be controlled by providing a ``version`` string for the deployment in the decorator or ``Deployment.options()``.
-If a ``version`` string is provided, a rolling update of the replicas will *only* happen if the version is updated.
-Otherwise, the call to ``.deploy()`` will be a no-op.
-This can be useful when you have many deployments in a script and you only want to re-deploy one of them each time the script runs.
+By default, each call to ``.deploy()`` will cause a redeployment, even if the underlying code and options didn't change.
+This could be detrimental if you have many deployments in a script and and only want to update one: if you re-run the script, all of the deployments will be redeployed, not just the one you updated.
+To prevent this, you may provide a ``version`` string for the deployment as a keyword argument in the decorator or ``Deployment.options()``.
+If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op."
+When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
 
-Exposing a Deployment
-=====================
-
-By default, deployments are exposed over HTTP at ``http://localhost:8000/<deployment_name>``.
-The HTTP path that the deployment is available at can be changed using the ``route_prefix`` option.
-All requests to ``/{route_prefix}`` and any subpaths will be routed to the deployment (using a longest-prefix match for overlapping route prefixes).
-
-.. code-block:: python
-
-  @serve.deployment(name="http_deployment", route_prefix="/api")
-  class HTTPDeployment:
-    def __call__(self, request):
-        return "Hello world!"
-
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified backend.
-We can query the model to verify that it's working.
-
-.. code-block:: python
-
-  import requests
-  print(requests.get("http://127.0.0.1:8000/api").text)
-
-We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
-
-.. code-block:: python
-
-  # To get a handle from the same script, use the Deployment object directly:
-  handle = HTTPDeployment.get_handle()
-
-  # To get a handle from a different script, reference it by name:
-  handle = serve.get_deployment("http_deployment").get_handle()
-
-  print(ray.get(handle.remote()))
-
-.. _configuring-a-backend:
+.. _configuring-a-deployment:
 
 Configuring a Deployment
 ========================
 
 There are a number of things you'll likely want to do with your serving application including
-scaling out or configuring the maximum number of in-flight requests for a backend.
+scaling out or configuring the maximum number of in-flight requests for a deployment.
 All of these options can be specified either in :mod:`@serve.deployment <ray.serve.api.deployment>` or in ``Deployment.options()``.
 
-To update the config options for a running deployment, simply re-deploy it with the new options set.
+To update the config options for a running deployment, simply redeploy it with the new options set.
 
 Scaling Out
 -----------
 
-To scale out a backend to many processes, simply configure the number of replicas.
+To scale out a deployment to many processes, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -212,10 +215,10 @@ If you *do* want to enable this parallelism in your Serve deployment, just set O
 User Configuration (Experimental)
 ---------------------------------
 
-Suppose you want to update a parameter in your model without creating a whole
-new backend.  You can do this by writing a `reconfigure` method for the class
-underlying your deployment.  At runtime, you can then pass in your new parameters
-by setting the `user_config` option.
+Suppose you want to update a parameter in your model without needing to restart
+the replicas in your deployment.  You can do this by writing a `reconfigure` method
+for the class underlying your deployment.  At runtime, you can then pass in your
+new parameters by setting the `user_config` option.
 
 The following simple example will make the usage clear:
 
@@ -223,15 +226,15 @@ The following simple example will make the usage clear:
 
 The `reconfigure` method is called when the class is created if `user_config`
 is set.  In particular, it's also called when new replicas are created in the
-future if scale up your backend later.  The `reconfigure` method is also  called
+future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
 Dependency Management
 =====================
 
-Ray Serve supports serving backends with different (possibly conflicting)
-python dependencies.  For example, you can simultaneously serve one backend
-that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
+Ray Serve supports serving deployments with different (possibly conflicting)
+python dependencies.  For example, you can simultaneously serve one deployment
+that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
 Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_
 via Ray's built-in ``runtime_env`` option for actors.
@@ -250,13 +253,13 @@ Python versions must be the same in both environments.
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
 .. note::
-  If a conda environment is not specified, your backend will be started in the
-  same conda environment as the client (the process deploying the Deployment) by
-  default.  (When using :ref:`ray-client`, your backend will be started in the
+  If a conda environment is not specified, your deployment will be started in the
+  same conda environment as the client (the process creating the deployment) by
+  default.  (When using :ref:`ray-client`, your deployment will be started in the
   conda environment that the Serve controller is running in, which by default is the
   conda environment the remote Ray cluster was started in.)
 
-The dependencies required in the backend may be different than
+The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
 calls). In this case, you should use a delayed import within the class to avoid
 importing unavailable packages in the driver.

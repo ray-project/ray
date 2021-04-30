@@ -4,7 +4,7 @@
 
 
 .. warning::
-  TODO(edoakes): big warning about API change and link to the migration guide here.
+  As of Ray 1.4, Serve has a new API centered around Deployments. The existing API will continue to work until Ray 1.5, at which point it will be deprecated (see the package reference if you're not sure about a specific API). Please see the `migration guide <https://docs.google.com/document/d/1Tgm-bHz6au0B8F_Ps0SLPXh9oyw8pIaGWKWunnK-Kuw>`_ for details on how to update your existing Serve application to use this new API!
 
 .. _rayserve:
 

@@ -61,7 +61,7 @@ By default, Ray Serve offers a simple HTTP proxy that will send requests to the 
 
 Notice that we made this class into a ``Deployment`` with the :mod:`@serve.deployment <ray.serve.api.deployment>` decorator.
 This decorator is where we could set various configuration options such as the number of replicas, unique name of the deployment (it defaults to the class name), or the HTTP route prefix to expose the deployment at.
-See the ``Deployment`` documentation for more details (TODO: LINK HERE).
+See the :mod:`Deployment package reference <ray.serve.api.Deployment>` for more details.
 In order to deploy this, we simply need to call ``Counter.deploy()``.
 
 .. code-block:: python
@@ -70,7 +70,7 @@ In order to deploy this, we simply need to call ``Counter.deploy()``.
 
 .. note::
 
-  Deployments can be configured to improve performance, for example by increasing the number of replicas of the class being served in parallel.  For details, see :ref:`configuring-a-backend`.
+  Deployments can be configured to improve performance, for example by increasing the number of replicas of the class being served in parallel.  For details, see :ref:`configuring-a-deployment`.
 
 Now that our deployment is up and running, let's test it out by making a query over HTTP.  
 In your browser, simply visit ``http://127.0.0.1:8000/Counter``, and you should see the output ``{"count": 1"}``.
@@ -78,7 +78,7 @@ If you keep refreshing the page, the count should increase, as expected.
 
 Now let's say we want to update this deployment to add another method to decrement the counter.
 Here, because we want more flexible HTTP configuration we'll use Serve's FastAPI integration.
-For more information on this, please check out (TODO LINK).
+For more information on this, please see :ref:`serve-fastapi-http`.
 
 .. code-block:: python
 
