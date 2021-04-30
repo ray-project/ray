@@ -82,7 +82,7 @@ class TestPPO(unittest.TestCase):
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
-        # Use default-native keras models whenever possible.
+        # Use default-native keras/torch models whenever possible.
         config["model"]["_use_default_native_models"] = True
 
         config["train_batch_size"] = 128

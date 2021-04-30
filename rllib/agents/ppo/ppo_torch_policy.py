@@ -46,7 +46,7 @@ def ppo_surrogate_loss(
         logits, state, extra_outs = model(train_batch)
         value_fn_out = extra_outs[SampleBatch.VF_PREDS]
     else:
-        logits, state = model.from_batch(train_batch, is_training=True)
+        logits, state = model(train_batch)
         value_fn_out = model.value_function()
     curr_action_dist = dist_class(logits, model)
 
@@ -113,8 +113,6 @@ def ppo_surrogate_loss(
     policy._total_loss = total_loss
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
-    #policy._vf_explained_var = explained_variance(
-    #    train_batch[Postprocessing.VALUE_TARGETS], model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
     policy._value_fn_out = value_fn_out
@@ -140,8 +138,7 @@ def kl_and_loss_stats(policy: Policy,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy._value_fn_out),
+            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,

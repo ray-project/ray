@@ -146,21 +146,22 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
 class Torch_FullyConnectedNetwork(nn.Module):
     """Generic fully connected network as native torch.nn.Module."""
 
-    def __init__(self,
-                 input_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: int,
-                 *,
-                 name: str = "",
-                 fcnet_hiddens: Optional[Sequence[int]] = (),
-                 fcnet_activation: Optional[str] = None,
-                 post_fcnet_hiddens: Optional[Sequence[int]] = (),
-                 post_fcnet_activation: Optional[str] = None,
-                 no_final_linear: bool = False,
-                 vf_share_layers: bool = False,
-                 free_log_std: bool = False,
-                 **kwargs,
-                 ):
+    def __init__(
+            self,
+            input_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            *,
+            name: str = "",
+            fcnet_hiddens: Optional[Sequence[int]] = (),
+            fcnet_activation: Optional[str] = None,
+            post_fcnet_hiddens: Optional[Sequence[int]] = (),
+            post_fcnet_activation: Optional[str] = None,
+            no_final_linear: bool = False,
+            vf_share_layers: bool = False,
+            free_log_std: bool = False,
+            **kwargs,
+    ):
         nn.Module.__init__(self)
 
         hiddens = list(fcnet_hiddens or []) + list(post_fcnet_hiddens or [])
@@ -220,9 +221,6 @@ class Torch_FullyConnectedNetwork(nn.Module):
                     out_size=num_outputs,
                     initializer=normc_initializer(0.01),
                     activation_fn=None)
-            #else:
-            #    self.num_outputs = (
-            #        [int(np.product(input_space.shape))] + hiddens[-1:])[-1]
 
         # Layer to add the log std vars to the state-dependent means.
         if self.free_log_std and self._logits:
@@ -266,8 +264,8 @@ class Torch_FullyConnectedNetwork(nn.Module):
             logits = self._append_free_log_std(logits)
 
         if self._value_branch_separate:
-           value_out = self._value_branch(
-               self._value_branch_separate(flat_in)).squeeze(1)
+            value_out = self._value_branch(
+                self._value_branch_separate(flat_in)).squeeze(1)
         else:
             value_out = self._value_branch(self._features).squeeze(1)
         extra_outs = {SampleBatch.VF_PREDS: value_out}

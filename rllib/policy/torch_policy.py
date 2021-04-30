@@ -351,8 +351,8 @@ class TorchPolicy(Policy):
         input_dict[SampleBatch.ACTIONS] = actions
 
         # Add default and custom fetches.
-        extra_fetches = self.extra_action_out(
-            input_dict, state_batches, self.model, action_dist)
+        extra_fetches = self.extra_action_out(input_dict, state_batches,
+                                              self.model, action_dist)
         extra_fetches.update(extra_outs)
 
         # Action-dist inputs.
@@ -441,8 +441,8 @@ class TorchPolicy(Policy):
                 dist_class = self.dist_class
                 # Deprecated: ModelV2.
                 if isinstance(self.model, ModelV2):
-                    dist_inputs, _ = self.model(
-                        input_dict, state_batches, seq_lens)
+                    dist_inputs, _ = self.model(input_dict, state_batches,
+                                                seq_lens)
                 # Native torch.nn.Module.
                 else:
                     dist_inputs, _, _ = self.model(input_dict)

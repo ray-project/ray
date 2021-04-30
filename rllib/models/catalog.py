@@ -792,26 +792,25 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
-        Keras_FCNet = None
-        Keras_VisionNet = None
-        Torch_FCNet = None
-        Torch_VisionNet = None
+        Native_FCNet = None
+        Native_VisionNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet, \
-                Keras_FullyConnectedNetwork as Keras_FCNet
+                Keras_FullyConnectedNetwork as Native_FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet, \
-                Keras_VisionNetwork as Keras_VisionNet
+                Keras_VisionNetwork as Native_VisionNet
             from ray.rllib.models.tf.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "torch":
             from ray.rllib.models.torch.fcnet import \
                 FullyConnectedNetwork as FCNet, \
-                Torch_FullyConnectedNetwork as Torch_FCNet
-            from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                          VisionNet)
+                Torch_FullyConnectedNetwork as Native_FCNet
+            from ray.rllib.models.torch.visionnet import \
+                VisionNetwork as VisionNet, \
+                Torch_VisionNetwork as Native_VisionNet
             from ray.rllib.models.torch.complex_input_net import \
                 ComplexInputNetwork as ComplexNet
         elif framework == "jax":
@@ -843,11 +842,8 @@ class ModelCatalog:
                 num_framestacks == "auto" or num_framestacks <= 1)):
             # Keras/torch native requested.
             if model_config.get("_use_default_native_models"):
-                if Keras_FCNet:
-                    return Keras_FCNet
-                elif Torch_FCNet and not model_config.get("use_lstm") and \
-                        not model_config.get("use_attention"):
-                    return Torch_FCNet
+                if Native_FCNet:
+                    return Native_FCNet
                 else:
                     return FCNet
             # Classic ModelV2 FCNet.
@@ -858,8 +854,9 @@ class ModelCatalog:
             raise NotImplementedError("No non-FC default net for JAX yet!")
 
         # Last resort: Conv2D stack for single image spaces.
-        if model_config.get("_use_default_native_models") and Keras_VisionNet:
-            return Keras_VisionNet
+        if model_config.get("_use_default_native_models"):
+            if Native_VisionNet:
+                return Native_VisionNet
         return VisionNet
 
     @staticmethod

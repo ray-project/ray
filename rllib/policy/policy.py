@@ -771,24 +771,25 @@ class Policy(metaclass=ABCMeta):
             }
         view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        #init_state = []
-        if not hasattr(obj, "get_initial_state") or \
-                not callable(obj.get_initial_state):
-            #init_state = obj.get_initial_state()
-        #else:
+        init_state = []
+        if hasattr(obj, "get_initial_state") and callable(
+                obj.get_initial_state):
+            init_state = obj.get_initial_state()
+        else:
             # Add this functionality automatically for new native model API.
-            if "state_in_0" not in view_reqs and not isinstance(model, ModelV2):
+            if "state_in_0" not in view_reqs and not isinstance(
+                    model, ModelV2):
                 obj.get_initial_state = lambda: [
                     np.zeros_like(view_req.space.sample())
                     for k, view_req in model.view_requirements.items()
                     if k.startswith("state_in_")]
             else:
                 obj.get_initial_state = lambda: []
-                #if "state_in_0" in view_reqs:
-                #    self.is_recurrent = lambda: True
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
 
-        init_state = obj.get_initial_state()
-        self._is_recurrent = len(init_state) > 0
+        #init_state = obj.get_initial_state()
+        #self._is_recurrent = len(init_state) > 0
 
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
