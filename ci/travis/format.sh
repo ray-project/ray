@@ -96,7 +96,7 @@ YAPF_FLAGS=(
 )
 
 # TODO(dmitri): When more of the codebase is typed properly, the mypy flags
-# should be set to do a more stringent check. 
+# should be set to do a more stringent check.
 MYPY_FLAGS=(
     '--follow-imports=skip'
     '--ignore-missing-imports'
@@ -116,6 +116,7 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
     '--exclude' 'python/ray/thirdparty_files/*'
+    '--exclude' 'python/ray/_private/thirdparty/*'
 )
 
 GIT_LS_EXCLUDES=(
@@ -143,7 +144,7 @@ shellcheck_scripts() {
   shellcheck "${SHELLCHECK_FLAGS[@]}" "$@"
 }
 
-# Runs mypy on each argument in sequence. This is different than running mypy 
+# Runs mypy on each argument in sequence. This is different than running mypy
 # once on the list of arguments.
 mypy_on_each() {
     pushd python/ray

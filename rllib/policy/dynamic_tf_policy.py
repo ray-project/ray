@@ -146,6 +146,7 @@ class DynamicTFPolicy(TFPolicy):
         self._loss_fn = loss_fn
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
+        self._seq_lens = None
 
         dist_class = dist_inputs = None
         if action_sampler_fn or action_distribution_fn:
@@ -181,6 +182,7 @@ class DynamicTFPolicy(TFPolicy):
                 v for k, v in existing_inputs.items()
                 if k.startswith("state_in_")
             ]
+            # Placeholder for RNN time-chunk valid lengths.
             if self._state_inputs:
                 self._seq_lens = existing_inputs["seq_lens"]
         else:
@@ -191,12 +193,19 @@ class DynamicTFPolicy(TFPolicy):
                 ) for k, vr in self.model.view_requirements.items()
                 if k.startswith("state_in_")
             ]
+            # Placeholder for RNN time-chunk valid lengths.
+            if self._state_inputs:
+                self._seq_lens = tf1.placeholder(
+                    dtype=tf.int32, shape=[None], name="seq_lens")
 
         # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
         self.view_requirements = self._get_default_view_requirements()
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.view_requirements)
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
         # Setup standard placeholders.
         if existing_inputs is not None:
@@ -225,9 +234,6 @@ class DynamicTFPolicy(TFPolicy):
             explore = tf1.placeholder_with_default(
                 True, (), name="is_exploring")
 
-        # Placeholder for RNN time-chunk valid lengths.
-        self._seq_lens = tf1.placeholder(
-            dtype=tf.int32, shape=[None], name="seq_lens")
         # Placeholder for `is_training` flag.
         self._input_dict["is_training"] = self._get_is_training_placeholder()
 
@@ -289,8 +295,12 @@ class DynamicTFPolicy(TFPolicy):
             # Default distribution generation behavior:
             # Pass through model. E.g., PG, PPO.
             else:
-                dist_inputs, self._state_out = self.model(
-                    self._input_dict, self._state_inputs, self._seq_lens)
+                if isinstance(self.model, tf.keras.Model):
+                    dist_inputs, self._state_out, self._extra_action_fetches =\
+                        self.model(self._input_dict)
+                else:
+                    dist_inputs, self._state_out = self.model(
+                        self._input_dict, self._state_inputs, self._seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
 
@@ -382,7 +392,7 @@ class DynamicTFPolicy(TFPolicy):
             ])
 
         instance._loss_input_dict = input_dict
-        loss = instance._do_loss_init(input_dict)
+        loss = instance._do_loss_init(SampleBatch(input_dict))
         loss_inputs = [
             (k, existing_inputs[i])
             for i, k in enumerate(self._loss_input_dict_no_rnn.keys())
@@ -446,7 +456,7 @@ class DynamicTFPolicy(TFPolicy):
         dummy_batch = self._get_dummy_batch_from_view_requirements(
             batch_size=32)
 
-        return input_dict, dummy_batch
+        return SampleBatch(input_dict, _seq_lens=self._seq_lens), dummy_batch
 
     def _initialize_loss_from_dummy_batch(
             self, auto_remove_unneeded_view_reqs: bool = True,
@@ -588,6 +598,8 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, train_batch))
-        # override the update ops to be those of the model
-        self._update_ops = self.model.update_ops()
+        # Override the update ops to be those of the model.
+        self._update_ops = []
+        if not isinstance(self.model, tf.keras.Model):
+            self._update_ops = self.model.update_ops()
         return loss
