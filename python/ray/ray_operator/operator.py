@@ -83,6 +83,7 @@ class RayCluster():
             self.start_monitor()
         except Exception:
             cluster_status_q.put((self.name, self.namespace, "Error"))
+            raise
 
     def start_head(self) -> None:
         self.write_config()
