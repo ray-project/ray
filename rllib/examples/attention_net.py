@@ -17,7 +17,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--num-cpus", type=int, default=3)
-parser.add_argument("--framework", choices=["tf", "torch"], default="tf")
+parser.add_argument(
+    "--framework", choices=["tf", "tf2", "tfe", "torch"], default="tf")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-timesteps", type=int, default=500000)
@@ -48,6 +49,9 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
+            # Attention net wrapping (for tf) can already use the native keras
+            # model versions. For torch, this will have no effect.
+            "_use_default_native_models": True,
             "use_attention": True,
             "max_seq_len": 10,
             "attention_num_transformer_units": 1,
