@@ -1,8 +1,8 @@
-============================================
-Calling Deployments via HTTP and ServeHandle
-============================================
+=======================================
+Calling Deployments via HTTP and Python
+=======================================
 
-.. contents:: Calling Deployments via HTTP and ServeHandle
+.. contents:: Calling Deployments via HTTP and Python
 
 Overview
 ========
