@@ -1,12 +1,25 @@
 #pragma once
 
+#include <ray/api/function_manager.h>
+#include <ray/api/serializer.h>
+#include <boost/dll.hpp>
 #include <memory>
-
 #include "absl/synchronization/mutex.h"
 #include "invocation_spec.h"
 #include "ray/core.h"
 
 namespace ray {
+
+namespace internal {
+/// Execute remote functions by networking stream.
+msgpack::sbuffer TaskExecutionHandler(
+    const std::string &func_name,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    msgpack::sbuffer *actor_ptr);
+
+BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
+}  // namespace internal
+
 namespace api {
 
 class AbstractRayRuntime;
@@ -39,7 +52,8 @@ class TaskExecutor {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
-      std::vector<std::shared_ptr<RayObject>> *results);
+      std::vector<std::shared_ptr<RayObject>> *results,
+      std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   virtual ~TaskExecutor(){};
 

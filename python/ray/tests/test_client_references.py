@@ -1,4 +1,5 @@
 import pytest
+from ray.util.client import RayAPIStub
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server_pair, ray_start_cluster_client_server_pair)
@@ -37,8 +38,8 @@ def server_actor_ref_count(server, n):
     [{
         "num_nodes": 1,
         "do_init": False,
-        # This test uses ray.objects(), which only works with the GCS-based
-        # object directory
+        # This test uses ray.state.objects(), which only works with the
+        # GCS-based object directory
         "_system_config": {
             "ownership_based_object_directory_enabled": False
         },
@@ -58,7 +59,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # One put, one function -- the function result thing1 is
         # in a different category, according to the raylet.
-        assert len(real_ray.objects()) == 2
+        assert len(real_ray.state.objects()) == 2
         # But we're maintaining the reference
         assert server_object_ref_count(server, 3)()
         # And can get the data
@@ -74,7 +75,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
         real_ray.init(address=cluster.address)
 
         def test_cond():
-            return len(real_ray.objects()) == 0
+            return len(real_ray.state.objects()) == 0
 
         wait_for_condition(test_cond, timeout=5)
 
@@ -126,7 +127,7 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         def test_cond():
             alive_actors = [
-                v for v in real_ray.actors().values()
+                v for v in real_ray.state.actors().values()
                 if v["State"] != ActorTableData.DEAD
             ]
             return len(alive_actors) == 0
@@ -183,7 +184,56 @@ def test_simple_multiple_references(ray_start_regular):
         del ref2
 
 
+def test_named_actor_refcount(ray_start_regular):
+    with ray_start_client_server_pair() as (ray, server):
+
+        @ray.remote
+        class ActorTest:
+            def __init__(self):
+                self._counter = 0
+
+            def bump(self):
+                self._counter += 1
+
+            def check(self):
+                return self._counter
+
+        ActorTest.options(name="actor", lifetime="detached").remote()
+
+        def connect_api():
+            api = RayAPIStub()
+            api.connect("localhost:50051")
+            api.get_actor("actor")
+            return api
+
+        def check_owners(size):
+            return size == sum(
+                len(x) for x in server.task_servicer.actor_owners.values())
+
+        apis = [connect_api() for i in range(3)]
+        assert check_owners(3)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        assert check_owners(2)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        assert check_owners(1)
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+        apis.pop(0).disconnect()
+        # no more owners should be seen
+        assert check_owners(0)
+        # actor refs shouldn't be removed
+        assert len(server.task_servicer.actor_refs) == 1
+        assert len(server.task_servicer.named_actors) == 1
+
+
 if __name__ == "__main__":
     import sys
     import pytest
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

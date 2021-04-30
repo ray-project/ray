@@ -1,6 +1,7 @@
 # trainer.py
 from collections import Counter
 import os
+import socket
 import sys
 import time
 import ray
@@ -16,7 +17,7 @@ print(ray.nodes())
 @ray.remote
 def f():
     time.sleep(1)
-    return ray.services.get_node_ip_address()
+    return socket.gethostbyname(socket.gethostname())
 
 
 # The following takes one second (assuming that

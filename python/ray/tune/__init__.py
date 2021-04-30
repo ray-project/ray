@@ -1,6 +1,5 @@
 from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
-from ray.tune.function_runner import with_parameters
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
@@ -21,6 +20,7 @@ from ray.tune.sample import (function, sample_from, uniform, quniform, choice,
 from ray.tune.suggest import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.utils.trainable import with_parameters
 
 __all__ = [
     "Trainable", "DurableTrainable", "durable", "Callback", "TuneError",

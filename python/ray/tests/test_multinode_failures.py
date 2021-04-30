@@ -160,10 +160,6 @@ def test_raylet_failed(ray_start_cluster):
     # Kill all raylets on worker nodes.
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
-    # The plasma stores should still be alive on the worker nodes.
-    check_components_alive(cluster, ray_constants.PROCESS_TYPE_PLASMA_STORE,
-                           True)
-
 
 if __name__ == "__main__":
     import pytest

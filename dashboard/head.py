@@ -3,6 +3,7 @@ import socket
 import json
 import asyncio
 import logging
+import ipaddress
 
 import aiohttp
 import aiohttp.web
@@ -45,7 +46,7 @@ class DashboardHead:
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
-        self.ip = ray._private.services.get_node_ip_address()
+        self.ip = ray.util.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
@@ -210,6 +211,8 @@ class DashboardHead:
             raise Exception(f"Failed to find a valid port for dashboard after "
                             f"{self.http_port_retries} retries: {last_ex}")
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
+        http_host = self.ip if ipaddress.ip_address(
+            http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
         # Write the dashboard head port to redis.

@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -294,9 +293,9 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(runner.trial_executor._committed_resources.cpu, 2)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testQueueFilling(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=4)
 
         def f1(config):

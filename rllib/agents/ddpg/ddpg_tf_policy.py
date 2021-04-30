@@ -123,6 +123,8 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     model_out_tp1, _ = model(input_dict_next, [], None)
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
+    policy.target_q_func_vars = policy.target_model.variables()
+
     # Policy network evaluation.
     policy_t = model.get_policy_output(model_out_t)
     policy_tp1 = \
@@ -174,8 +176,9 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         q_tp1_best
 
     # Compute RHS of bellman equation.
-    q_t_selected_target = tf.stop_gradient(train_batch[SampleBatch.REWARDS] +
-                                           gamma**n_step * q_tp1_best_masked)
+    q_t_selected_target = tf.stop_gradient(
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
+        gamma**n_step * q_tp1_best_masked)
 
     # Compute the error (potentially clipped).
     if twin_q:
@@ -422,7 +425,6 @@ DDPGTFPolicy = build_tf_policy(
     before_init=before_init_fn,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False,
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,

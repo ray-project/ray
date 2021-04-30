@@ -103,6 +103,7 @@ class VTraceLoss:
 
         # The entropy loss.
         self.entropy = torch.sum(actions_entropy * valid_mask)
+        self.mean_entropy = self.entropy / torch.sum(valid_mask)
 
         # The summed weighted loss.
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
@@ -155,7 +156,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    policy.loss = VTraceLoss(
+    loss = VTraceLoss(
         actions=_make_time_major(loss_actions, drop_last=True),
         actions_logp=_make_time_major(
             action_dist.logp(actions), drop_last=True),
@@ -180,7 +181,11 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    return policy.loss.total_loss
+    # Store loss object only for multi-GPU tower 0.
+    if policy.device == values.device:
+        policy.loss = loss
+
+    return loss.total_loss
 
 
 def make_time_major(policy, seq_lens, tensor, drop_last=False):
@@ -230,7 +235,7 @@ def stats(policy, train_batch):
     return {
         "cur_lr": policy.cur_lr,
         "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.entropy,
+        "entropy": policy.loss.mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,

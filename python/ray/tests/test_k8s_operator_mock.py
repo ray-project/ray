@@ -10,7 +10,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
 from ray.ray_operator.operator import RayCluster
 from ray.ray_operator.operator_utils import cr_to_config
-from ray.autoscaler._private.kubernetes.node_provider import\
+from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 """
@@ -114,9 +114,11 @@ def custom_resources():
         abs_path, cluster2)
     cr1, cr2 = (yaml.safe_load(open(path1).read()),
                 yaml.safe_load(open(path2).read()))
-    # Metadata and field is filled by K8s in real life.
+    # Namespace uid and filled on resource creation in real life.
     cr1["metadata"]["uid"] = "abc"
     cr2["metadata"]["uid"] = "xyz"
+    cr1["metadata"]["namespace"] = "ray"
+    cr2["metadata"]["namespace"] = "ray"
     return cr1, cr2
 
 
@@ -132,7 +134,8 @@ class OperatorTest(unittest.TestCase):
                 patch.object(KubernetesNodeProvider, CREATE_NODE,
                              mock_create_node),\
                 patch.object(KubernetesNodeProvider, BOOTSTRAP_CONFIG,
-                             mock_bootstrap_config):
+                             mock_bootstrap_config),\
+                patch.object(os, "mkdir"):
 
             cluster_cr1, cluster_cr2 = custom_resources()
 

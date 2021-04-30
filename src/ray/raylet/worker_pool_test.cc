@@ -16,6 +16,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
@@ -32,9 +33,13 @@ JobID JOB_ID = JobID::FromInt(1);
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
+static inline std::string GetNumJavaWorkersPerProcessSystemProperty(int num) {
+  return std::string("-Dray.job.num-java-workers-per-process=") + std::to_string(num);
+}
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient(boost::asio::io_service &io_service) : io_service_(io_service) {}
+  MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -66,12 +71,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::list<rpc::ClientCallback<rpc::ExitReply>> callbacks_;
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 };
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  explicit WorkerPoolMock(boost::asio::io_service &io_service,
+  explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
@@ -210,15 +215,13 @@ class WorkerPoolTest : public ::testing::Test {
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    worker_pool_ =
-        std::unique_ptr<WorkerPoolMock>(new WorkerPoolMock(io_service_, worker_commands));
+    worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_, worker_commands);
     rpc::JobConfig job_config;
     job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
   }
 
-  void TestStartupWorkerProcessCount(Language language, int num_workers_per_process,
-                                     std::vector<std::string> expected_worker_command) {
+  void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
     int desired_initial_worker_process_count = 100;
     int expected_worker_process_count = static_cast<int>(std::ceil(
         static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) / num_workers_per_process));
@@ -234,7 +237,12 @@ class WorkerPoolTest : public ::testing::Test {
         last_started_worker_process = prev;
         const auto &real_command =
             worker_pool_->GetWorkerCommand(last_started_worker_process);
-        ASSERT_EQ(real_command, expected_worker_command);
+        if (language == Language::JAVA) {
+          auto it = std::find(
+              real_command.begin(), real_command.end(),
+              GetNumJavaWorkersPerProcessSystemProperty(num_workers_per_process));
+          ASSERT_NE(it, real_command.end());
+        }
       } else {
         ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(),
                   expected_worker_process_count);
@@ -249,7 +257,7 @@ class WorkerPoolTest : public ::testing::Test {
       mock_worker_rpc_clients_;
 
  protected:
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
@@ -263,7 +271,8 @@ class WorkerPoolTest : public ::testing::Test {
 static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
-    const std::vector<std::string> &dynamic_worker_options = {}) {
+    const std::vector<std::string> &dynamic_worker_options = {},
+    const TaskID &task_id = TaskID::Nil()) {
   rpc::TaskSpec message;
   message.set_job_id(job_id.Binary());
   message.set_language(language);
@@ -272,6 +281,7 @@ static inline TaskSpecification ExampleTaskSpec(
     message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   } else if (!actor_creation_id.IsNil()) {
     message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.set_task_id(task_id.Binary());
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
     for (const auto &option : dynamic_worker_options) {
       message.mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
@@ -280,10 +290,6 @@ static inline TaskSpecification ExampleTaskSpec(
     message.set_type(TaskType::NORMAL_TASK);
   }
   return TaskSpecification(std::move(message));
-}
-
-static inline std::string GetNumJavaWorkersPerProcessSystemProperty(int num) {
-  return std::string("-Dray.job.num-java-workers-per-process=") + std::to_string(num);
 }
 
 TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
@@ -335,14 +341,11 @@ TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
 }
 
 TEST_F(WorkerPoolTest, StartupPythonWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::PYTHON, 1, {"dummy_py_worker_command"});
+  TestStartupWorkerProcessCount(Language::PYTHON, 1);
 }
 
 TEST_F(WorkerPoolTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(
-      Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA,
-      {"java", GetNumJavaWorkersPerProcessSystemProperty(NUM_WORKERS_PER_PROCESS_JAVA),
-       "MainClass"});
+  TestStartupWorkerProcessCount(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA);
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
@@ -416,25 +419,47 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 }
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
-  TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, JOB_ID,
-      ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1), {"test_op_0", "test_op_1"});
+  std::vector<std::string> actor_jvm_options;
+  actor_jvm_options.insert(
+      actor_jvm_options.end(),
+      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
+  auto task_id = TaskID::ForDriverTask(JOB_ID);
+  auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
+  TaskSpecification task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID,
+                                                actor_id, actor_jvm_options, task_id);
 
   rpc::JobConfig job_config = rpc::JobConfig();
-  job_config.add_code_search_path("/test/code_serch_path");
+  job_config.add_code_search_path("/test/code_search_path");
   job_config.set_num_java_workers_per_process(1);
+  job_config.add_jvm_options("-Xmx1g");
+  job_config.add_jvm_options("-Xms500m");
+  job_config.add_jvm_options("-Dmy-job.hello=world");
+  job_config.add_jvm_options("-Dmy-job.foo=bar");
   worker_pool_->HandleJobStarted(JOB_ID, job_config);
 
-  worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID,
-                                   task_spec.DynamicWorkerOptions());
+  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
-  ASSERT_EQ(real_command,
-            std::vector<std::string>({"java", "test_op_0", "test_op_1",
-                                      "-Dray.job.code-search-path=/test/code_serch_path",
-                                      GetNumJavaWorkersPerProcessSystemProperty(1),
-                                      "MainClass"}));
+  // NOTE: When adding a new parameter to Java worker command, think carefully about the
+  // position of this new parameter. Do not modify the order of existing parameters.
+  std::vector<std::string> expected_command;
+  expected_command.push_back("java");
+  // Ray-defined per-job options
+  expected_command.insert(expected_command.end(),
+                          {"-Dray.job.code-search-path=/test/code_search_path"});
+  // User-defined per-job options
+  expected_command.insert(
+      expected_command.end(),
+      {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
+  // Ray-defined per-process options
+  expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
+  // User-defined per-process options
+  expected_command.insert(expected_command.end(), actor_jvm_options.begin(),
+                          actor_jvm_options.end());
+  // Entry point
+  expected_command.push_back("MainClass");
+  ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(JOB_ID);
 }
 
@@ -894,6 +919,41 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   mock_rpc_client_it = mock_worker_rpc_clients_.find(
       worker_pool_->GetIdleWorkers().front().first->WorkerId());
   ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+
+  // Start two IO workers. These don't count towards the limit.
+  {
+    RAY_LOG(INFO) << "XXX";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
+    auto worker = CreateSpillWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushSpillWorker(worker);
+  }
+  {
+    RAY_LOG(INFO) << "YYY";
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
+    auto worker = CreateRestoreWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    worker_pool_->PushRestoreWorker(worker);
+  }
+  // All workers still alive.
+  worker_pool_->SetCurrentTimeMs(10000);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
+  for (auto &worker : worker_pool_->GetIdleWorkers()) {
+    mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
+    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+  }
+  int num_callbacks = 0;
+  auto callback = [&](std::shared_ptr<WorkerInterface> worker) { num_callbacks++; };
+  worker_pool_->PopSpillWorker(callback);
+  worker_pool_->PopRestoreWorker(callback);
+  ASSERT_EQ(num_callbacks, 2);
 }
 
 TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {

@@ -22,6 +22,13 @@ class ClusterResourceSchedulerInterface {
  public:
   virtual ~ClusterResourceSchedulerInterface() = default;
 
+  /// Add a local resource that is available.
+  ///
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void AddLocalResourceInstances(const std::string &resource_name,
+                                 std::vector<FixedPoint> instances);
+
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
@@ -62,7 +69,7 @@ class ClusterResourceSchedulerInterface {
   ///
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

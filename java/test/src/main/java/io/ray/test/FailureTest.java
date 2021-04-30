@@ -80,13 +80,27 @@ public class FailureTest extends BaseTest {
     }
   }
 
+  private static void assertTaskFailedWithRayActorException(ObjectRef<?> objectRef) {
+    try {
+      objectRef.get();
+      Assert.fail("Task didn't fail.");
+    } catch (RayActorException e) {
+      Throwable rootCause = e;
+      while (rootCause.getCause() != null) {
+        rootCause = rootCause.getCause();
+      }
+      Assert.assertTrue(rootCause instanceof RuntimeException);
+      Assert.assertTrue(rootCause.getMessage().contains(EXCEPTION_MESSAGE));
+    }
+  }
+
   public void testNormalTaskFailure() {
     assertTaskFailedWithRayTaskException(Ray.task(FailureTest::badFunc).remote());
   }
 
   public void testActorCreationFailure() {
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, true).remote();
-    assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
+    assertTaskFailedWithRayActorException(actor.task(BadActor::badMethod).remote());
   }
 
   public void testActorTaskFailure() {

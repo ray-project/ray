@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/rpc/server_call.h"
 
@@ -30,9 +31,8 @@ class GlobalStateAccessor {
   ///
   /// \param redis_address The address of GCS Redis.
   /// \param redis_password The password of GCS Redis.
-  /// \param is_test Whether this accessor is used for tests.
   explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password, bool is_test = false);
+                               const std::string &redis_password);
 
   ~GlobalStateAccessor();
 
@@ -211,7 +211,7 @@ class GlobalStateAccessor {
   std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
 
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 };
 
 }  // namespace gcs

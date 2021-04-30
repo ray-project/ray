@@ -20,6 +20,10 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
     CWorkerID,
 )
+
+from ray.includes.gcs_client cimport CGcsClient
+
+
 from ray.includes.common cimport (
     CAddress,
     CActorCreationOptions,
@@ -34,6 +38,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
+    LocalMemoryBuffer,
     CJobConfig,
 )
 from ray.includes.function_descriptor cimport (
@@ -87,6 +92,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
+        void ConnectToRaylet()
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
@@ -215,6 +221,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
+        shared_ptr[CGcsClient] GetGcsClient() const
+
         c_bool IsExiting() const
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
@@ -227,6 +235,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
+        c_bool interactive
         c_string node_ip_address
         int node_manager_port
         c_string raylet_ip_address
@@ -242,7 +251,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &arg_reference_ids,
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
-            c_vector[shared_ptr[CRayObject]] *returns) nogil
+            c_vector[shared_ptr[CRayObject]] *returns,
+            shared_ptr[LocalMemoryBuffer]
+            &creation_task_exception_pb_bytes) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
@@ -256,6 +267,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(
             const c_vector[c_string]&,
             CWorkerType) nogil) delete_spilled_objects
+        (void(
+            const c_string&,
+            const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
@@ -264,8 +278,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (c_bool() nogil) kill_main
         CCoreWorkerOptions()
         (void() nogil) terminate_asyncio_thread
-        int metrics_agent_port
         c_string serialized_job_config
+        int metrics_agent_port
+        c_bool connect_on_start
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

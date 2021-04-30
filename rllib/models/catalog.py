@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 from typing import List, Optional, Type, Union
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
@@ -19,7 +19,8 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -34,6 +35,14 @@ logger = logging.getLogger(__name__)
 # yapf: disable
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
+    # Experimental flag.
+    # If True, try to use a native (tf.keras.Model or torch.Module) default
+    # model instead of our built-in ModelV2 defaults.
+    # If False (default), use "classic" ModelV2 default models.
+    # Note that this currently only works for framework != torch AND fully
+    # connected default networks.
+    "_use_default_native_models": False,
+
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
     # These are used if no custom model is specified and the input space is 1D.
@@ -90,7 +99,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
-    # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
@@ -115,10 +123,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_position_wise_mlp_dim": 32,
     # The initial bias values for the 2 GRU gates within a transformer unit.
     "attention_init_gru_gate_bias": 2.0,
-    # TODO: Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
-    # "attention_use_n_prev_actions": 0,
+    # Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
+    "attention_use_n_prev_actions": 0,
     # Whether to feed r_{t-n:t-1} to GTrXL.
-    # "attention_use_n_prev_rewards": 0,
+    "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
     # Which framestacking size to use for Atari envs.
@@ -228,20 +236,33 @@ class ModelCatalog:
             dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, Box):
-            if len(action_space.shape) > 1:
-                raise UnsupportedSpaceException(
-                    "Action space has multiple dimensions "
-                    "{}. ".format(action_space.shape) +
-                    "Consider reshaping this into a single dimension, "
-                    "using a custom action distribution, "
-                    "using a Tuple action space, or the multi-agent API.")
-            # TODO(sven): Check for bounds and return SquashedNormal, etc..
-            if dist_type is None:
-                dist_cls = TorchDiagGaussian if framework == "torch" \
-                    else DiagGaussian
-            elif dist_type == "deterministic":
-                dist_cls = TorchDeterministic if framework == "torch" \
-                    else Deterministic
+            if action_space.dtype.name.startswith("int"):
+                low_ = np.min(action_space.low)
+                high_ = np.max(action_space.high)
+                assert np.all(action_space.low == low_)
+                assert np.all(action_space.high == high_)
+                dist_cls = TorchMultiCategorical if framework == "torch" \
+                    else MultiCategorical
+                num_cats = int(np.product(action_space.shape))
+                return partial(
+                    dist_cls,
+                    input_lens=[high_ - low_ + 1 for _ in range(num_cats)],
+                    action_space=action_space), num_cats * (high_ - low_ + 1)
+            else:
+                if len(action_space.shape) > 1:
+                    raise UnsupportedSpaceException(
+                        "Action space has multiple dimensions "
+                        "{}. ".format(action_space.shape) +
+                        "Consider reshaping this into a single dimension, "
+                        "using a custom action distribution, "
+                        "using a Tuple action space, or the multi-agent API.")
+                # TODO(sven): Check for bounds and return SquashedNormal, etc..
+                if dist_type is None:
+                    dist_cls = TorchDiagGaussian if framework == "torch" \
+                        else DiagGaussian
+                elif dist_type == "deterministic":
+                    dist_cls = TorchDeterministic if framework == "torch" \
+                        else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, Discrete):
             dist_cls = TorchCategorical if framework == "torch" else \
@@ -328,7 +349,8 @@ class ModelCatalog:
             action_placeholder (Tensor): A placeholder for the actions
         """
 
-        dtype, shape = ModelCatalog.get_action_shape(action_space)
+        dtype, shape = ModelCatalog.get_action_shape(
+            action_space, framework="tf")
 
         return tf1.placeholder(dtype, shape=shape, name=name)
 
@@ -379,10 +401,13 @@ class ModelCatalog:
                 model_cls = _global_registry.get(RLLIB_MODEL,
                                                  model_config["custom_model"])
 
+            # Only allow ModelV2 or native keras Models.
             if not issubclass(model_cls, ModelV2):
-                raise ValueError(
-                    "`model_cls` must be a ModelV2 sub-class, but is"
-                    " {}!".format(model_cls))
+                if framework not in ["tf", "tf2", "tfe"] or \
+                        not issubclass(model_cls, tf.keras.Model):
+                    raise ValueError(
+                        "`model_cls` must be a ModelV2 sub-class, but is"
+                        " {}!".format(model_cls))
 
             logger.info("Wrapping {} as {}".format(model_cls, model_interface))
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
@@ -414,30 +439,51 @@ class ModelCatalog:
                     return v
 
                 with tf.variable_creator_scope(track_var_creation):
-                    # Try calling with kwargs first (custom ModelV2 should
-                    # accept these as kwargs, not get them from
-                    # config["custom_model_config"] anymore).
-                    try:
-                        instance = model_cls(obs_space, action_space,
-                                             num_outputs, model_config, name,
-                                             **customized_model_kwargs)
-                    except TypeError as e:
-                        # Keyword error: Try old way w/o kwargs.
-                        if "__init__() got an unexpected " in e.args[0]:
-                            instance = model_cls(obs_space, action_space,
-                                                 num_outputs, model_config,
-                                                 name, **model_kwargs)
-                            logger.warning(
-                                "Custom ModelV2 should accept all custom "
-                                "options as **kwargs, instead of expecting"
-                                " them in config['custom_model_config']!")
-                        # Other error -> re-raise.
-                        else:
-                            raise e
+                    if issubclass(model_cls, tf.keras.Model):
+                        instance = model_cls(
+                            input_space=obs_space,
+                            action_space=action_space,
+                            num_outputs=num_outputs,
+                            name=name,
+                            **customized_model_kwargs,
+                        )
+                    else:
+                        # Try calling with kwargs first (custom ModelV2 should
+                        # accept these as kwargs, not get them from
+                        # config["custom_model_config"] anymore).
+                        try:
+                            instance = model_cls(
+                                obs_space,
+                                action_space,
+                                num_outputs,
+                                model_config,
+                                name,
+                                **customized_model_kwargs,
+                            )
+                        except TypeError as e:
+                            # Keyword error: Try old way w/o kwargs.
+                            if "__init__() got an unexpected " in e.args[0]:
+                                instance = model_cls(
+                                    obs_space,
+                                    action_space,
+                                    num_outputs,
+                                    model_config,
+                                    name,
+                                    **model_kwargs,
+                                )
+                                logger.warning(
+                                    "Custom ModelV2 should accept all custom "
+                                    "options as **kwargs, instead of expecting"
+                                    " them in config['custom_model_config']!")
+                            # Other error -> re-raise.
+                            else:
+                                raise e
 
                 # User still registered TFModelV2's variables: Check, whether
                 # ok.
-                registered = set(instance.var_list)
+                registered = []
+                if not isinstance(instance, tf.keras.Model):
+                    registered = set(instance.var_list)
                 if len(registered) > 0:
                     not_registered = set()
                     for var in created:
@@ -531,6 +577,15 @@ class ModelCatalog:
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+
+            if issubclass(wrapper, tf.keras.Model):
+                return wrapper(
+                    input_space=obs_space,
+                    action_space=action_space,
+                    num_outputs=num_outputs,
+                    name=name,
+                    **dict(model_kwargs, **model_config),
+                )
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
 
@@ -660,6 +715,8 @@ class ModelCatalog:
             model_name (str): Name to register the model under.
             model_class (type): Python class of the model.
         """
+        if issubclass(model_class, tf.keras.Model):
+            deprecation_warning(old="register_custom_model", error=False)
         _global_registry.register(RLLIB_MODEL, model_name, model_class)
 
     @staticmethod
@@ -680,10 +737,10 @@ class ModelCatalog:
 
     @staticmethod
     def _wrap_if_needed(model_cls: type, model_interface: type) -> type:
-        assert issubclass(model_cls, ModelV2), model_cls
-
         if not model_interface or issubclass(model_cls, model_interface):
             return model_cls
+
+        assert issubclass(model_cls, ModelV2), model_cls
 
         class wrapper(model_interface, model_cls):
             pass
@@ -701,10 +758,12 @@ class ModelCatalog:
 
         VisionNet = None
         ComplexNet = None
+        Keras_FCNet = None
 
         if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
-                FullyConnectedNetwork as FCNet
+                FullyConnectedNetwork as FCNet, \
+                Keras_FullyConnectedNetwork as Keras_FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
             from ray.rllib.models.tf.complex_input_net import \
@@ -738,12 +797,19 @@ class ModelCatalog:
                           for s in space_to_check.spaces)):
             return ComplexNet
 
-        # Single, flattenable/one-hot-abe space -> Simple FCNet.
+        # Single, flattenable/one-hot-able space -> Simple FCNet.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
                 len(input_space.shape) == 2 and (
                 num_framestacks == "auto" or num_framestacks <= 1)):
-            return FCNet
+            # Keras native requested AND no auto-rnn-wrapping AND .
+            if model_config.get("_use_default_native_models") and \
+                    Keras_FCNet and not model_config.get("use_lstm") and \
+                    not model_config.get("use_attention"):
+                return Keras_FCNet
+            # Classic ModelV2 FCNet.
+            else:
+                return FCNet
 
         elif framework == "jax":
             raise NotImplementedError("No non-FC default net for JAX yet!")

@@ -6,7 +6,7 @@ import requests
 import traceback
 
 import ray
-from ray.utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (
     format_web_url,
@@ -34,7 +34,7 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
 
-    ip = ray._private.services.get_node_ip_address()
+    ip = ray.util.get_node_ip_address()
 
     def _check():
         resp = requests.get(f"{webui_url}/jobs?view=summary")

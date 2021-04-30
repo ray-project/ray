@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
@@ -41,17 +42,17 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.grpc_server_name = "MockedGcsServer";
     config_.grpc_server_thread_num = 1;
     config_.redis_address = "127.0.0.1";
-    config_.is_test = true;
+    config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
 
-    client_io_service_.reset(new boost::asio::io_service());
+    client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     }));
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -67,21 +68,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
     // Create GCS client.
     gcs::GcsClientOptions options(config_.redis_address, config_.redis_port,
-                                  config_.redis_password, config_.is_test);
+                                  config_.redis_password);
     gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
   void TearDown() override {
     client_io_service_->stop();
+    client_io_service_thread_->join();
     gcs_client_->Disconnect();
 
-    gcs_server_->Stop();
     server_io_service_->stop();
     server_io_service_thread_->join();
+    gcs_server_->Stop();
     gcs_server_.reset();
     TestSetupUtil::FlushAllRedisServers();
-    client_io_service_thread_->join();
   }
 
   void RestartGcsServer() {
@@ -92,7 +93,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
 
-    server_io_service_.reset(new boost::asio::io_service());
+    server_io_service_.reset(new instrumented_io_context());
     gcs_server_.reset(new gcs::GcsServer(config_, *server_io_service_));
     gcs_server_->Start();
     server_io_service_thread_.reset(new std::thread([this] {
@@ -538,12 +539,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> server_io_service_;
+  std::unique_ptr<instrumented_io_context> server_io_service_;
 
   // GCS client.
-  std::unique_ptr<gcs::GcsClient> gcs_client_;
   std::unique_ptr<std::thread> client_io_service_thread_;
-  std::unique_ptr<boost::asio::io_service> client_io_service_;
+  std::unique_ptr<instrumented_io_context> client_io_service_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
 
   // Timeout waiting for GCS server reply, default is 2s.
   const std::chrono::milliseconds timeout_ms_{2000};
@@ -999,6 +1000,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
                            const ActorID &id, const rpc::ActorTableData &data) {
     subscribe_all_notifications.emplace_back(data);
     ++num_subscribe_all_notifications;
+    RAY_LOG(INFO) << "The number of actors subscription messages received is "
+                  << num_subscribe_all_notifications;
   };
   // Subscribe to updates of all actors.
   ASSERT_TRUE(SubscribeAllActors(subscribe_all));
@@ -1011,20 +1014,36 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
                              const ActorID &actor_id, const gcs::ActorTableData &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
+    RAY_LOG(INFO) << "The number of actor subscription messages received is "
+                  << num_subscribe_one_notifications;
   };
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
+  // In order to prevent receiving the message of other test case publish, we get the
+  // expected number of actor subscription messages before registering actor.
+  auto expected_num_subscribe_all_notifications = num_subscribe_all_notifications + 1;
+  auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
+
   // NOTE: In the process of actor registration, if the callback function of
   // `WaitForActorOutOfScope` is executed first, and then the callback function of
-  // `ActorTable().Put` is executed, the actor registration fails; otherwise, the actor
-  // registration succeeds. So we can't assert whether the actor is registered
+  // `ActorTable().Put` is executed, the actor registration fails, we will receive one
+  // notification message; otherwise, the actor registration succeeds, we will receive
+  // two notification messages. So we can't assert whether the actor is registered
   // successfully.
   RegisterActor(actor_table_data, false);
 
-  // We should receive a new notification from the subscribe channel.
-  WaitForExpectedCount(num_subscribe_all_notifications, 1);
-  WaitForExpectedCount(num_subscribe_one_notifications, 1);
+  // We should receive new notification from the subscribe channel.
+  auto condition_subscribe_all = [&num_subscribe_all_notifications,
+                                  expected_num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_all, timeout_ms_.count()));
+  auto condition_subscribe_one = [&num_subscribe_one_notifications,
+                                  expected_num_subscribe_one_notifications]() {
+    return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_one, timeout_ms_.count()));
 
   // Restart GCS server.
   RestartGcsServer();
@@ -1033,7 +1052,12 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
   // the actor because it finds that the actor is out of scope, so we'll receive another
   // notification of DEAD state.
-  WaitForExpectedCount(num_subscribe_one_notifications, 3);
+  expected_num_subscribe_one_notifications += 2;
+  auto condition_subscribe_one_restart = [&num_subscribe_one_notifications,
+                                          expected_num_subscribe_one_notifications]() {
+    return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
+  };
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_one_restart, timeout_ms_.count()));
 
   // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
   // client will register the actor again. When an actor is registered, the status in GCS
@@ -1043,12 +1067,15 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
   // more.
   // If the status of the actor is `DEPENDENCIES_UNREADY`, we will fetch two records, so
-  // `num_subscribe_all_notifications` will be 4. If the status of the actor is `DEAD`, we
-  // will fetch one record, so `num_subscribe_all_notifications` will be 3.
-  auto condition = [&num_subscribe_all_notifications]() {
-    return num_subscribe_all_notifications == 3 || num_subscribe_all_notifications == 4;
+  // `num_subscribe_all_notifications` will increase by 3. If the status of the actor is
+  // `DEAD`, we will fetch one record, so `num_subscribe_all_notifications` will increase
+  // by 2.
+  expected_num_subscribe_all_notifications += 2;
+  auto condition_subscribe_all_restart = [&num_subscribe_all_notifications,
+                                          expected_num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
   };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  EXPECT_TRUE(WaitForCondition(condition_subscribe_all_restart, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
@@ -1245,10 +1272,10 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   std::vector<std::unique_ptr<std::thread>> threads;
   threads.resize(size);
 
-  // The number of times each thread executes subscribe & resubscribe & unsubscribe.
+  // The number of times each thread executes subscribe & unsubscribe.
   int sub_and_unsub_loop_count = 20;
 
-  // Multithreading subscribe/resubscribe/unsubscribe actors.
+  // Multithreading subscribe/unsubscribe actors.
   auto job_id = JobID::FromInt(1);
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
@@ -1256,7 +1283,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
             actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
-        gcs_client_->Actors().AsyncResubscribe(false);
         UnsubscribeActor(actor_id);
       }
     }));
@@ -1266,7 +1292,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
     thread.reset();
   }
 
-  // Multithreading subscribe/resubscribe/unsubscribe objects.
+  // Multithreading subscribe/unsubscribe objects.
   for (int index = 0; index < size; ++index) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
@@ -1274,7 +1300,6 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
         ASSERT_TRUE(SubscribeToLocations(
             object_id, [](const ObjectID &id,
                           const std::vector<rpc::ObjectLocationChange> &result) {}));
-        gcs_client_->Objects().AsyncResubscribe(false);
         UnsubscribeToLocations(object_id);
       }
     }));
@@ -1318,16 +1343,17 @@ TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // Register actors and the actors will be destroyed.
   JobID job_id = JobID::FromInt(1);
+  absl::flat_hash_set<ActorID> actor_ids;
   int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
   }
 
   // Restart GCS.
   RestartGcsServer();
 
-  absl::flat_hash_set<ActorID> actor_ids;
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);

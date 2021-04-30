@@ -1,4 +1,4 @@
-from ray.utils import get_function_args
+from ray._private.utils import get_function_args
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
@@ -73,6 +73,10 @@ def create_searcher(
         from ray.tune.suggest.sigopt import SigOptSearch
         return SigOptSearch
 
+    def _import_hebo_search():
+        from ray.tune.suggest.hebo import HEBOSearch
+        return HEBOSearch
+
     SEARCH_ALG_IMPORT = {
         "variant_generator": _import_variant_generator,
         "random": _import_variant_generator,
@@ -86,6 +90,7 @@ def create_searcher(
         "optuna": _import_optuna_search,
         "zoopt": _import_zoopt_search,
         "sigopt": _import_sigopt_search,
+        "hebo": _import_hebo_search,
     }
     search_alg = search_alg.lower()
     if search_alg not in SEARCH_ALG_IMPORT:

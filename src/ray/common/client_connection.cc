@@ -107,11 +107,26 @@ void ServerConnection::WriteBufferAsync(
     const std::vector<boost::asio::const_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be written.
-  boost::asio::async_write(
-      socket_, buffer,
-      [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
-        handler(boost_to_ray_status(ec));
-      });
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    auto &io_context =
+        static_cast<instrumented_io_context &>(socket_.get_executor().context());
+    const auto stats_handle =
+        io_context.RecordStart("ClientConnection.async_write.WriteBufferAsync");
+    boost::asio::async_write(
+        socket_, buffer,
+        [handler, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
+          io_context.RecordExecution(
+              [handler, ec]() { handler(boost_to_ray_status(ec)); },
+              std::move(stats_handle));
+        });
+  } else {
+    boost::asio::async_write(
+        socket_, buffer,
+        [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
+          handler(boost_to_ray_status(ec));
+        });
+  }
 }
 
 Status ServerConnection::ReadBuffer(
@@ -140,11 +155,26 @@ void ServerConnection::ReadBufferAsync(
     const std::vector<boost::asio::mutable_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be read.
-  boost::asio::async_read(
-      socket_, buffer,
-      [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
-        handler(boost_to_ray_status(ec));
-      });
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    auto &io_context =
+        static_cast<instrumented_io_context &>(socket_.get_executor().context());
+    const auto stats_handle =
+        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+    boost::asio::async_read(
+        socket_, buffer,
+        [handler, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
+          io_context.RecordExecution(
+              [handler, ec]() { handler(boost_to_ray_status(ec)); },
+              std::move(stats_handle));
+        });
+  } else {
+    boost::asio::async_read(
+        socket_, buffer,
+        [handler](const boost::system::error_code &ec, size_t bytes_transferred) {
+          handler(boost_to_ray_status(ec));
+        });
+  }
 }
 
 ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
@@ -192,7 +222,7 @@ void ServerConnection::WriteMessageAsync(
   async_writes_ += 1;
   bytes_written_ += length;
 
-  auto write_buffer = std::unique_ptr<AsyncWriteBuffer>(new AsyncWriteBuffer());
+  auto write_buffer = std::make_unique<AsyncWriteBuffer>();
   write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
@@ -257,25 +287,56 @@ void ServerConnection::DoAsyncWrites() {
     return;
   }
   auto this_ptr = this->shared_from_this();
-  boost::asio::async_write(
-      ServerConnection::socket_, message_buffers,
-      [this, this_ptr, num_messages, call_handlers](
-          const boost::system::error_code &error, size_t bytes_transferred) {
-        ray::Status status = boost_to_ray_status(error);
-        if (error.value() == boost::system::errc::errc_t::broken_pipe) {
-          RAY_LOG(ERROR) << "Broken Pipe happened during calling "
-                         << "ServerConnection::DoAsyncWrites.";
-          // From now on, calling DoAsyncWrites will directly call the handler
-          // with this broken-pipe status.
-          async_write_broken_pipe_ = true;
-        } else if (!status.ok()) {
-          RAY_LOG(ERROR) << "Error encountered during calling "
-                         << "ServerConnection::DoAsyncWrites, message: "
-                         << status.message()
-                         << ", error code: " << static_cast<int>(error.value());
-        }
-        call_handlers(status, num_messages);
-      });
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    auto &io_context =
+        static_cast<instrumented_io_context &>(socket_.get_executor().context());
+    const auto stats_handle =
+        io_context.RecordStart("ClientConnection.async_write.DoAsyncWrites");
+    boost::asio::async_write(
+        socket_, message_buffers,
+        [this, this_ptr, num_messages, call_handlers,
+         stats_handle = std::move(stats_handle),
+         &io_context](const boost::system::error_code &error, size_t bytes_transferred) {
+          io_context.RecordExecution(
+              [this, this_ptr, num_messages, call_handlers, error]() {
+                ray::Status status = boost_to_ray_status(error);
+                if (error.value() == boost::system::errc::errc_t::broken_pipe) {
+                  RAY_LOG(ERROR) << "Broken Pipe happened during calling "
+                                 << "ServerConnection::DoAsyncWrites.";
+                  // From now on, calling DoAsyncWrites will directly call the handler
+                  // with this broken-pipe status.
+                  async_write_broken_pipe_ = true;
+                } else if (!status.ok()) {
+                  RAY_LOG(ERROR)
+                      << "Error encountered during calling "
+                      << "ServerConnection::DoAsyncWrites, message: " << status.message()
+                      << ", error code: " << static_cast<int>(error.value());
+                }
+                call_handlers(status, num_messages);
+              },
+              std::move(stats_handle));
+        });
+  } else {
+    boost::asio::async_write(
+        ServerConnection::socket_, message_buffers,
+        [this, this_ptr, num_messages, call_handlers](
+            const boost::system::error_code &error, size_t bytes_transferred) {
+          ray::Status status = boost_to_ray_status(error);
+          if (error.value() == boost::system::errc::errc_t::broken_pipe) {
+            RAY_LOG(ERROR) << "Broken Pipe happened during calling "
+                           << "ServerConnection::DoAsyncWrites.";
+            // From now on, calling DoAsyncWrites will directly call the handler
+            // with this broken-pipe status.
+            async_write_broken_pipe_ = true;
+          } else if (!status.ok()) {
+            RAY_LOG(ERROR) << "Error encountered during calling "
+                           << "ServerConnection::DoAsyncWrites, message: "
+                           << status.message()
+                           << ", error code: " << static_cast<int>(error.value());
+          }
+          call_handlers(status, num_messages);
+        });
+  }
 }
 
 std::shared_ptr<ClientConnection> ClientConnection::Create(
@@ -317,10 +378,25 @@ void ClientConnection::ProcessMessages() {
       boost::asio::buffer(&read_type_, sizeof(read_type_)),
       boost::asio::buffer(&read_length_, sizeof(read_length_)),
   };
-  boost::asio::async_read(
-      ServerConnection::socket_, header,
-      boost::bind(&ClientConnection::ProcessMessageHeader,
-                  shared_ClientConnection_from_this(), boost::asio::placeholders::error));
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    auto this_ptr = shared_ClientConnection_from_this();
+    auto &io_context = static_cast<instrumented_io_context &>(
+        ServerConnection::socket_.get_executor().context());
+    const auto stats_handle =
+        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+    boost::asio::async_read(
+        ServerConnection::socket_, header,
+        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
+          io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessageHeader(ec); },
+                                     std::move(stats_handle));
+        });
+  } else {
+    boost::asio::async_read(ServerConnection::socket_, header,
+                            boost::bind(&ClientConnection::ProcessMessageHeader,
+                                        shared_ClientConnection_from_this(),
+                                        boost::asio::placeholders::error));
+  }
 }
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
@@ -343,10 +419,25 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
   read_message_.resize(read_length_);
   ServerConnection::bytes_read_ += read_length_;
   // Wait for the message to be read.
-  boost::asio::async_read(
-      ServerConnection::socket_, boost::asio::buffer(read_message_),
-      boost::bind(&ClientConnection::ProcessMessage, shared_ClientConnection_from_this(),
-                  boost::asio::placeholders::error));
+  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+    auto this_ptr = shared_ClientConnection_from_this();
+    auto &io_context = static_cast<instrumented_io_context &>(
+        ServerConnection::socket_.get_executor().context());
+    const auto stats_handle =
+        io_context.RecordStart("ClientConnection.async_read.ReadBufferAsync");
+    boost::asio::async_read(
+        ServerConnection::socket_, boost::asio::buffer(read_message_),
+        [this, this_ptr, stats_handle = std::move(stats_handle), &io_context](
+            const boost::system::error_code &ec, size_t bytes_transferred) {
+          io_context.RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
+                                     std::move(stats_handle));
+        });
+  } else {
+    boost::asio::async_read(ServerConnection::socket_, boost::asio::buffer(read_message_),
+                            boost::bind(&ClientConnection::ProcessMessage,
+                                        shared_ClientConnection_from_this(),
+                                        boost::asio::placeholders::error));
+  }
 }
 
 bool ClientConnection::CheckRayCookie() {

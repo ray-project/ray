@@ -6,19 +6,21 @@ import sys
 import socket
 import tempfile
 import time
+from unittest import mock
 
 import numpy as np
 import pickle
 import pytest
 
 import ray
+from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
+import ray._private.utils
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
-import subprocess
 
 from ray.test_utils import (check_call_ray, wait_for_condition,
                             wait_for_num_actors)
@@ -39,11 +41,11 @@ def test_global_state_api(shutdown_only):
     # the object ref in GCS because Raylet removes the object ref from GCS
     # asynchronously.
     # Because we can't control when workers create the temporary objects, so
-    # We can't assert that `ray.objects()` returns an empty dict. Here we just
-    # make sure `ray.objects()` succeeds.
-    assert len(ray.objects()) >= 0
+    # We can't assert that `ray.state.objects()` returns an empty dict. Here
+    # we just make sure `ray.state.objects()` succeeds.
+    assert len(ray.state.objects()) >= 0
 
-    job_id = ray.utils.compute_job_id_from_driver(
+    job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray.worker.global_worker.worker_id))
 
     client_table = ray.nodes()
@@ -61,7 +63,7 @@ def test_global_state_api(shutdown_only):
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.actors()
+    actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
     actor_info, = actor_table.values()
@@ -71,7 +73,7 @@ def test_global_state_api(shutdown_only):
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -194,26 +196,6 @@ def test_object_ref_properties():
     assert id_from_dumps == object_ref
 
 
-@pytest.fixture
-def shutdown_only_with_initialization_check():
-    yield None
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    assert not ray.is_initialized()
-
-
-def test_initialized(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0)
-    assert ray.is_initialized()
-
-
-def test_initialized_local_mode(shutdown_only_with_initialization_check):
-    assert not ray.is_initialized()
-    ray.init(num_cpus=0, local_mode=True)
-    assert ray.is_initialized()
-
-
 def test_wait_reconstruction(shutdown_only):
     ray.init(num_cpus=1, object_store_memory=int(10**8))
 
@@ -291,7 +273,7 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray.utils.decode(
+        output = ray._private.utils.decode(
             check_call_ray(["stack"], capture_stdout=True))
         if ("unique_name_1" in output and "unique_name_2" in output
                 and "unique_name_3" in output):
@@ -412,17 +394,6 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
-
-
-def test_ray_start_and_stop():
-    for i in range(10):
-        subprocess.check_call(["ray", "start", "--head"])
-        subprocess.check_call(["ray", "stop"])
-
-
-def test_ray_memory(shutdown_only):
-    ray.init(num_cpus=1)
-    subprocess.check_call(["ray", "memory"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):
@@ -631,9 +602,9 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 64
 
     # No cpuset used
@@ -647,9 +618,9 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 26
 
     # Quota set
@@ -663,10 +634,103 @@ def test_detect_docker_cpus():
         quota_file.flush()
         period_file.flush()
         cpuset_file.flush()
-        assert ray.utils._get_docker_cpus(
+        assert ray._private.utils._get_docker_cpus(
             cpu_quota_file_name=quota_file.name,
-            cpu_share_file_name=period_file.name,
+            cpu_period_file_name=period_file.name,
             cpuset_file_name=cpuset_file.name) == 0.42
+
+
+@pytest.mark.skipif(
+    sys.platform.startswith("win"), reason="No need to test on Windows.")
+def test_k8s_cpu():
+    """Test all the functions in dashboard/k8s_utils.py.
+    Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
+    Files were obtained from within a K8s pod with 2 CPU request, CPU limit
+    unset, with 1 CPU of stress applied.
+    """
+
+    # Some experimentally-obtained K8S CPU usage files for use in test_k8s_cpu.
+    PROCSTAT1 = \
+    """cpu  2945022 98 3329420 148744854 39522 0 118587 0 0 0
+    cpu0 370299 14 413841 18589778 5304 0 15288 0 0 0
+    cpu1 378637 10 414414 18589275 5283 0 14731 0 0 0
+    cpu2 367328 8 420914 18590974 4844 0 14416 0 0 0
+    cpu3 368378 11 423720 18572899 4948 0 14394 0 0 0
+    cpu4 369051 13 414615 18607285 4736 0 14383 0 0 0
+    cpu5 362958 10 415984 18576655 4590 0 16614 0 0 0
+    cpu6 362536 13 414430 18605197 4785 0 14353 0 0 0
+    cpu7 365833 15 411499 18612787 5028 0 14405 0 0 0
+    intr 1000694027 125 0 0 39 154 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1028 0 2160913 0 2779605 8 0 3981333 3665198 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    ctxt 1574979439
+    btime 1615208601
+    processes 857411
+    procs_running 6
+    procs_blocked 0
+    softirq 524311775 0 230142964 27143 63542182 0 0 171 74042767 0 156556548
+    """ # noqa
+
+    PROCSTAT2 = \
+    """cpu  2945152 98 3329436 148745483 39522 0 118587 0 0 0
+    cpu0 370399 14 413841 18589778 5304 0 15288 0 0 0
+    cpu1 378647 10 414415 18589362 5283 0 14731 0 0 0
+    cpu2 367329 8 420916 18591067 4844 0 14416 0 0 0
+    cpu3 368381 11 423724 18572989 4948 0 14395 0 0 0
+    cpu4 369052 13 414618 18607374 4736 0 14383 0 0 0
+    cpu5 362968 10 415986 18576741 4590 0 16614 0 0 0
+    cpu6 362537 13 414432 18605290 4785 0 14353 0 0 0
+    cpu7 365836 15 411502 18612878 5028 0 14405 0 0 0
+    intr 1000700905 125 0 0 39 154 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1028 0 2160923 0 2779605 8 0 3981353 3665218 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+    ctxt 1574988760
+    btime 1615208601
+    processes 857411
+    procs_running 4
+    procs_blocked 0
+    softirq 524317451 0 230145523 27143 63542930 0 0 171 74043232 0 156558452
+    """ # noqa
+
+    CPUACCTUSAGE1 = "2268980984108"
+
+    CPUACCTUSAGE2 = "2270120061999"
+
+    CPUSHARES = "2048"
+
+    shares_file, cpu_file, proc_stat_file = [
+        tempfile.NamedTemporaryFile("w+") for _ in range(3)
+    ]
+    shares_file.write(CPUSHARES)
+    cpu_file.write(CPUACCTUSAGE1)
+    proc_stat_file.write(PROCSTAT1)
+    for file in shares_file, cpu_file, proc_stat_file:
+        file.flush()
+    with mock.patch("ray._private.utils.os.environ",
+                    {"KUBERNETES_SERVICE_HOST"}),\
+            mock.patch("ray.new_dashboard.k8s_utils.CPU_USAGE_PATH",
+                       cpu_file.name),\
+            mock.patch("ray.new_dashboard.k8s_utils.PROC_STAT_PATH",
+                       proc_stat_file.name),\
+            mock.patch("ray._private.utils.get_k8s_cpus.__defaults__",
+                       (shares_file.name,)):
+
+        # Test helpers
+        assert ray._private.utils.get_num_cpus() == 2
+        assert k8s_utils._cpu_usage() == 2268980984108
+        assert k8s_utils._system_usage() == 1551775030000000
+        assert k8s_utils._host_num_cpus() == 8
+
+        # No delta for first computation, return 0.
+        assert k8s_utils.cpu_percent() == 0.0
+
+        # Write new usage info obtained after 1 sec wait.
+        for file in cpu_file, proc_stat_file:
+            file.truncate(0)
+            file.seek(0)
+        cpu_file.write(CPUACCTUSAGE2)
+        proc_stat_file.write(PROCSTAT2)
+        for file in cpu_file, proc_stat_file:
+            file.flush()
+
+        # Files were extracted under 1 CPU of load on a 2 CPU pod
+        assert 50 < k8s_utils.cpu_percent() < 60
 
 
 def test_override_environment_variables_task(ray_start_regular):
@@ -788,6 +852,38 @@ def test_override_environment_variables_complex(shutdown_only):
         get_env.options(override_environment_variables={
             "a": "b",
         }).remote("z")) == "job_z")
+
+
+def test_override_environment_variables_reuse(shutdown_only):
+    """Test that previously set env vars don't pollute newer calls."""
+    ray.init()
+
+    env_var_name = "TEST123"
+    val1 = "VAL1"
+    val2 = "VAL2"
+    assert os.environ.get(env_var_name) is None
+
+    @ray.remote
+    def f():
+        return os.environ.get(env_var_name)
+
+    @ray.remote
+    def g():
+        return os.environ.get(env_var_name)
+
+    assert ray.get(f.remote()) is None
+    assert ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val1
+        }).remote()) == val1
+    assert ray.get(f.remote()) is None
+    assert ray.get(g.remote()) is None
+    assert ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val2
+        }).remote()) == val2
+    assert ray.get(g.remote()) is None
+    assert ray.get(f.remote()) is None
 
 
 def test_sync_job_config(shutdown_only):

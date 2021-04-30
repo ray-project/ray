@@ -396,6 +396,13 @@ via SSH, which quickly can become a performance bottleneck. The :class:`DurableT
 
 .. autofunction:: ray.tune.durable
 
+.. _tune-with-parameters:
+
+tune.with_parameters
+--------------------
+
+.. autofunction:: ray.tune.with_parameters
+
 
 StatusReporter
 --------------

@@ -23,7 +23,7 @@ from ray.includes.unique_ids cimport (
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -62,7 +62,7 @@ cdef class BaseID:
         return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
-        return self.binary() != other.binary()
+        return type(self) != type(other) or self.binary() != other.binary()
 
     def __bytes__(self):
         return self.binary()

@@ -5,7 +5,6 @@ import logging
 import math
 from typing import Dict, List, Optional, Union
 
-import ConfigSpace
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
@@ -15,7 +14,13 @@ from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
+
+try:
+    import ConfigSpace
+    from hpbandster.optimizers.config_generators.bohb import BOHB
+except ImportError:
+    BOHB = ConfigSpace = None
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +110,14 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[Union[Dict,
-                                       ConfigSpace.ConfigurationSpace]] = None,
+                 space: Optional[Union[
+                     Dict, "ConfigSpace.ConfigurationSpace"]] = None,
                  bohb_config: Optional[Dict] = None,
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  seed: Optional[int] = None):
-        from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, """HpBandSter must be installed!
             You can install HpBandSter with the command:
             `pip install hpbandster ConfigSpace`."""
@@ -199,7 +203,7 @@ class TuneBOHB(Searcher):
                 config, info = self.bohber.get_config(None)
             self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
-            return unflatten_dict(config)
+            return unflatten_list_dict(config)
         return None
 
     def on_trial_result(self, trial_id: str, result: Dict):
@@ -236,7 +240,7 @@ class TuneBOHB(Searcher):
         self.running.add(trial_id)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
+    def convert_search_space(spec: Dict) -> "ConfigSpace.ConfigurationSpace":
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
@@ -312,7 +316,7 @@ class TuneBOHB(Searcher):
 
         cs = ConfigSpace.ConfigurationSpace()
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(str(p) for p in path)
             value = resolve_value(par, domain)
             cs.add_hyperparameter(value)
 

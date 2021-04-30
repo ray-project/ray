@@ -87,9 +87,11 @@ def try_import_tf(error=False):
     # Try "reducing" tf to tf.compat.v1.
     try:
         tf1_module = tf_module.compat.v1
+        tf1_module.logging.set_verbosity(tf1_module.logging.ERROR)
         if not was_imported:
             tf1_module.disable_v2_behavior()
             tf1_module.enable_resource_variables()
+        tf1_module.logging.set_verbosity(tf1_module.logging.WARN)
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module

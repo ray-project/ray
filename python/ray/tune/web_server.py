@@ -8,7 +8,7 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
-from ray.utils import binary_to_hex, hex_to_binary
+from ray._private.utils import binary_to_hex, hex_to_binary
 
 logger = logging.getLogger(__name__)
 

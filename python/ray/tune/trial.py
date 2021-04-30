@@ -27,17 +27,10 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
-from ray.utils import binary_to_hex, hex_to_binary
+from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
-if "MAX_LEN_IDENTIFIER" in os.environ:
-    logger.error(
-        "The MAX_LEN_IDENTIFIER environment variable is deprecated and will "
-        "be removed in the future. Use TUNE_MAX_LEN_IDENTIFIER instead.")
-MAX_LEN_IDENTIFIER = int(
-    os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
-                   os.environ.get("MAX_LEN_IDENTIFIER", 130)))
 
 
 class Location:
@@ -224,14 +217,26 @@ class Trial:
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+
+            # If Trainable returns resources, do not allow manual override via
+            # `resources_per_trial` by the user.
             if default_resources:
-                if resources:
+                if resources or placement_group_factory:
                     raise ValueError(
                         "Resources for {} have been automatically set to {} "
                         "by its `default_resource_request()` method. Please "
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
-                resources = default_resources
+
+                # New way: Trainable returns a PlacementGroupFactory object.
+                if isinstance(default_resources, PlacementGroupFactory):
+                    placement_group_factory = default_resources
+                    resources = None
+                # Set placement group factory to None for backwards
+                # compatibility.
+                else:
+                    placement_group_factory = None
+                    resources = default_resources
         self.location = Location()
 
         self.resources = resources or Resources(cpu=1, gpu=0)
@@ -335,6 +340,7 @@ class Trial:
                     logger.warning(exc)
                 self.placement_group_factory = None
 
+        # Set placement group factory flag to True in Resources object.
         if self.placement_group_factory:
             resource_kwargs = self.resources._asdict()
             resource_kwargs["has_placement_group"] = True
@@ -615,6 +621,13 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
+            if "MAX_LEN_IDENTIFIER" in os.environ:
+                logger.error("The MAX_LEN_IDENTIFIER environment variable is "
+                             "deprecated and will be removed in the future. "
+                             "Use TUNE_MAX_LEN_IDENTIFIER instead.")
+            MAX_LEN_IDENTIFIER = int(
+                os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
+                               os.environ.get("MAX_LEN_IDENTIFIER", 130)))
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"

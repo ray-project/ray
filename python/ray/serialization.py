@@ -4,7 +4,7 @@ import traceback
 
 import ray.cloudpickle as pickle
 from ray import ray_constants
-import ray.utils
+import ray._private.utils
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
@@ -18,6 +18,7 @@ from ray._raylet import (
     MessagePackSerializedObject,
     RawSerializedObject,
 )
+from ray import serialization_addons
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class DeserializationError(Exception):
 
 def _object_ref_deserializer(binary, owner_address):
     # NOTE(suquark): This function should be a global function so
-    # cloudpickle can access it directly. Otherwise couldpickle
+    # cloudpickle can access it directly. Otherwise cloudpickle
     # has to dump the whole function definition, which is inefficient.
 
     # NOTE(swang): Must deserialize the object first before asking
@@ -92,6 +93,7 @@ class SerializationContext:
             return _object_ref_deserializer, (obj.binary(), owner_address)
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
+        serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer
@@ -212,11 +214,16 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
+                if data:
+                    pb_bytes = self._deserialize_msgpack_data(
+                        data, metadata_fields)
+                    if pb_bytes:
+                        return RayError.from_bytes(pb_bytes)
                 return RayActorError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return ObjectLostError(ray.ObjectRef(object_ref.binary()))
+                return ObjectLostError(object_ref.hex())
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
@@ -237,7 +244,6 @@ class SerializationContext:
                                                 data_metadata_pairs):
             assert self.get_outer_object_ref() is None
             self.set_outer_object_ref(object_ref)
-            obj = None
             try:
                 obj = self._deserialize_object(data, metadata, object_ref)
             except Exception as e:

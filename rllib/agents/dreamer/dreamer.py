@@ -247,6 +247,8 @@ def get_policy_class(config):
 
 def validate_config(config):
     config["action_repeat"] = config["env_config"]["frame_skip"]
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for Dreamer!")
     if config["framework"] != "torch":
         raise ValueError("Dreamer not supported in Tensorflow yet!")
     if config["batch_mode"] != "complete_episodes":

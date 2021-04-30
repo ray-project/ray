@@ -8,7 +8,6 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 
 ## Branch Cut
 - [ ] Release branch created
-- [ ] PR created to update “latest” version on master (do not merge yet)
 - [ ] Release branch versions updated
 	- [ ] Version keys have new version
 	- [ ] Update of “Latest” commits cherry-picked into release branch
@@ -63,6 +62,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 	- [ ] K8s operator test
 - [ ] Data processing tests
     - [ ] streaming_shuffle
+	- [ ] dask on ray test
 - [ ] Tune tests
     - [ ] test_bookkeeping_overhead
     - [x] test_result_throughput_cluster (ignore final time)

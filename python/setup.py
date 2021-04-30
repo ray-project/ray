@@ -51,7 +51,6 @@ pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -80,7 +79,7 @@ ray_files += [
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
@@ -95,21 +94,15 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "serve": [
-        "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'", "starlette"
-    ],
-    "tune": [
-        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
-        "tensorboardX"
-    ],
+    "default": ["colorful"],
+    "serve": ["uvicorn", "requests", "pydantic>=1.8", "starlette", "fastapi"],
+    "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "atari_py",
     "dm_tree",
-    "gym[atari]",
+    "gym",
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
@@ -129,9 +122,8 @@ install_requires = [
     "aiohttp_cors",
     "aioredis",
     "click >= 7.0",
-    "cloudpickle",
     "colorama",
-    "colorful",
+    "dataclasses; python_version < '3.7'",
     "filelock",
     "gpustat",
     "grpcio >= 1.28.1",

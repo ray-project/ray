@@ -18,7 +18,7 @@ import ray
 import psutil
 import ray._private.services as services
 import ray.ray_constants as ray_constants
-import ray.utils
+import ray._private.utils
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -53,7 +53,8 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
         if deleted:
             continue
 
-        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
+        if ray._private.utils.decode(
+                info[b"node_ip_address"]) == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
@@ -104,7 +105,7 @@ def add_click_options(options):
 @click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    ray.ray_logging.setup_logger(level, logging_format)
+    ray._private.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
 
 
@@ -129,7 +130,13 @@ def cli(logging_level, logging_format):
     type=int,
     default=ray_constants.DEFAULT_DASHBOARD_PORT,
     help="The remote port your dashboard runs on")
-def dashboard(cluster_config_file, cluster_name, port, remote_port):
+@click.option(
+    "--no-config-cache",
+    is_flag=True,
+    default=False,
+    help="Disable the local cluster config cache.")
+def dashboard(cluster_config_file, cluster_name, port, remote_port,
+              no_config_cache):
     """Port-forward a Ray cluster's dashboard to the local machine."""
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
@@ -146,7 +153,8 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
         exec_cluster(
             cluster_config_file,
             override_cluster_name=cluster_name,
-            port_forward=port_forward)
+            port_forward=port_forward,
+            no_config_cache=no_config_cache)
         click.echo("Successfully established connection.")
     except Exception as e:
         raise click.ClickException(
@@ -396,13 +404,6 @@ def debug(address):
     default=None,
     help="manually specify the root temporary dir of the Ray process")
 @click.option(
-    "--java-worker-options",
-    required=False,
-    hidden=True,
-    default=None,
-    type=str,
-    help="Overwrite the options to start Java workers.")
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -435,6 +436,13 @@ def debug(address):
     default=False,
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
+@click.option(
+    "--worker-setup-hook",
+    hidden=True,
+    default=None,
+    type=str,
+    help="Module path to the Python function that will be used to set up the "
+    "environment for the worker process.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -444,9 +452,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, system_config, lru_evict,
-          enable_object_reconstruction, metrics_export_port, no_monitor,
-          log_style, log_color, verbose):
+          temp_dir, system_config, lru_evict, enable_object_reconstruction,
+          metrics_export_port, no_monitor, worker_setup_hook, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -478,7 +486,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
-    ray_params = ray.parameter.RayParams(
+    ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
@@ -503,12 +511,12 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
-        java_worker_options=java_worker_options,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
-        no_monitor=no_monitor)
+        no_monitor=no_monitor,
+        worker_setup_hook=worker_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -1333,7 +1341,7 @@ def timeline(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = os.path.join(ray.utils.get_user_temp_dir(),
+    filename = os.path.join(ray._private.utils.get_user_temp_dir(),
                             f"ray-timeline-{time}.json")
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)
@@ -1367,6 +1375,12 @@ def timeline(address):
     help="Sort object references in ascending order by a SortingType \
 (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 @click.option(
+    "--units",
+    type=click.Choice(["B", "KB", "MB", "GB"]),
+    default="B",
+    help="Specify unit metrics for displaying object sizes \
+(e.g. B, KB, MB, GB).")
+@click.option(
     "--no-format",
     is_flag=True,
     type=bool,
@@ -1378,14 +1392,21 @@ terminal width is less than 137 characters.")
     is_flag=True,
     default=False,
     help="Display plasma store stats only.")
-def memory(address, redis_password, group_by, sort_by, no_format, stats_only):
+@click.option(
+    "--num-entries",
+    "--n",
+    type=int,
+    default=None,
+    help="Specify number of sorted entries per group.")
+def memory(address, redis_password, group_by, sort_by, units, no_format,
+           stats_only, num_entries):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(address, redis_password, group_by, sort_by,
-                               no_format, stats_only)
+                               units, no_format, stats_only, num_entries)
     print(f"{header}\n{mem_stats}")
 
 
@@ -1607,6 +1628,66 @@ def global_gc(address):
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
+
+
+@cli.command(name="health-check", hidden=True)
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+@click.option(
+    "--component",
+    required=False,
+    type=str,
+    help="Health check for a specific component. Currently supports: "
+    "[ray_client_server]")
+def healthcheck(address, redis_password, component):
+    """
+    This is NOT a public api.
+
+    Health check a Ray or a specific component. Exit code 0 is healthy.
+    """
+
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+
+    if not component:
+        # If no component is specified, we are health checking the core. If
+        # client creation or ping fails, we will still exit with a non-zero
+        # exit code.
+        redis_client.ping()
+        sys.exit(0)
+
+    report_str = redis_client.hget(f"healthcheck:{component}", "value")
+    if not report_str:
+        # Status was never updated
+        sys.exit(1)
+
+    report = json.loads(report_str)
+
+    # TODO (Alex): We probably shouldn't rely on time here, but cloud providers
+    # have very well synchronized NTP servers, so this should be fine in
+    # practice.
+    cur_time = time.time()
+    report_time = float(report["time"])
+
+    # If the status is too old, the service has probably already died.
+    delta = cur_time - report_time
+    time_ok = delta < ray.ray_constants.HEALTHCHECK_EXPIRATION_S
+
+    if time_ok:
+        sys.exit(0)
+    else:
+        sys.exit(1)
 
 
 @cli.command()
