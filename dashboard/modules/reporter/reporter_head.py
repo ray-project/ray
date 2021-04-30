@@ -99,6 +99,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             **self._ray_config,
         )
 
+    @routes.get("/api/runtime_env")
+    async def get_runtime_env(self, req):
+        aioredis_client = self._dashboard_head.aioredis_client
+        hash_ = req.query["hash"]
+        result = await aioredis_client.hget(hash_, "value")
+        return dashboard_utils.rest_response(
+            success=True, message=result.decode())
+
     @routes.get("/api/cluster_status")
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
@@ -111,7 +119,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
         """
-
         aioredis_client = self._dashboard_head.aioredis_client
         legacy_status = await aioredis_client.hget(
             DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
