@@ -207,6 +207,10 @@ If you want to use the same Deployment to serve both HTTP and ServeHandle traffi
 
     Deployment.deploy()
 
+Now we can invoke the same logic from both HTTP or Python:
+
+.. code-block:: python
+
     print(requests.get("http://localhost:8000/api?name=Alice"))
     > Hello Alice!
 

@@ -4,7 +4,7 @@
 
 
 .. warning::
-  As of Ray 1.4, Serve has a new API centered around the concept of "Deployments." Deployments offer a more streamlined API and can be declaratively updated, which should improve both development and production workflows. The existing APIs will continue to work until Ray 1.5, at which point they will be removed (see the package reference if you're not sure about a specific API). Please see the `migration guide <https://docs.google.com/document/d/1Tgm-bHz6au0B8F_Ps0SLPXh9oyw8pIaGWKWunnK-Kuw>`_ for details on how to update your existing Serve application to use this new API and as always we welcome feedback on `Slack <https://docs.google.com/forms/u/1/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform?usp=send_form>`_, `GitHub <https://github.com/ray-project/ray/issues>`_, or the `Ray forum <http://discuss.ray.io/>`_!
+  As of Ray 1.4, Serve has a new API centered around the concept of "Deployments." Deployments offer a more streamlined API and can be declaratively updated, which should improve both development and production workflows. The existing APIs have not changed from Ray 1.4 and will continue to work until Ray 1.5, at which point they will be removed (see the package reference if you're not sure about a specific API). Please see the `migration guide <https://docs.google.com/document/d/1Tgm-bHz6au0B8F_Ps0SLPXh9oyw8pIaGWKWunnK-Kuw>`_ for details on how to update your existing Serve application to use this new API and as always we welcome feedback on `Slack <https://docs.google.com/forms/u/1/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform?usp=send_form>`_, `GitHub <https://github.com/ray-project/ray/issues>`_, or the `Ray forum <http://discuss.ray.io/>`_!
 
 .. _rayserve:
 
@@ -78,7 +78,7 @@ necessary for production deployments.
 
 Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
 
-- :ref:`_serve-model-composition`---ability to flexibly compose multiple models and independently scale and update each.
+- :ref:`serve-model-composition`---ability to flexibly compose multiple models and independently scale and update each.
 - :ref:`serve-batching`---built in request batching to help you meet your performance objectives.
 - :ref:`serve-cpus-gpus`---specify fractional resource requirements to fully saturate each of your GPUs with several models.
 
@@ -87,8 +87,8 @@ For more on the motivation behind Ray Serve, check out these `meetup slides <htt
 When should I use Ray Serve?
 ----------------------------
 
-Ray Serve is a simple (but flexible) tool for deploying, operating, and monitoring Python-based machine learning models.
-Ray Serve excels when scaling out to serve models in production is a necessity. This might be because of large-scale batch processing
+Ray Serve is a flexible tool that's easy to use for deploying, operating, and monitoring Python-based machine learning applications.
+Ray Serve excels when you want to mix business logic with ML models and scaling out in production is a necessity. This might be because of large-scale batch processing
 requirements or because you want to scale up a model pipeline consisting of many individual models with different performance properties.
 
 If you plan on running on multiple machines, Ray Serve will serve you well!
