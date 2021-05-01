@@ -69,6 +69,8 @@ class GcsResourceReportBroadcaster {
   uint64_t broadcast_period_ms_;
 
   void SendBroadcast();
+
+  friend class GcsResourceReportBroadcasterTest;
 };
 }  // namespace gcs
 }  // namespace ray

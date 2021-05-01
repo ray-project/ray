@@ -27,29 +27,77 @@ using ::testing::_;
 class GcsResourceReportBroadcasterTest : public ::testing::Test {
  public:
   GcsResourceReportBroadcasterTest()
-      : broadcaster_(
+      : num_batches_sent_(0),
+        broadcaster_(
             /*raylet_client_pool*/ nullptr,
             /*get_resource_usage_batch_for_broadcast*/
             [](rpc::ResourceUsageBatchData &batch) {}
 
             ,
-            /*send_batch*/ [this](const rpc::Address &address,
-                                  std::shared_ptr<rpc::NodeManagerClientPool> &pool,
-                                  std::string &data,
-                                  const rpc::ClientCallback<rpc::UpdateResourceUsageReply>
-                                      &callback) {}) {
-    callbacks_.push_back();
-  }
+            /*send_batch*/
+            [this](const rpc::Address &address,
+                   std::shared_ptr<rpc::NodeManagerClientPool> &pool, std::string &data,
+                   const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+              num_batches_sent_++;
+              callbacks_.push_back(callback);
+            }) {}
 
- private:
-  std::deque<rpc::ClientCallback<rpc::UpdateResourceUsageReply>> callacks_;
+  void SendBroadcast() { broadcaster_.SendBroadcast(); }
+
+  int num_batches_sent_;
+  std::deque<rpc::ClientCallback<rpc::UpdateResourceUsageReply>> callbacks_;
 
   GcsResourceReportBroadcaster broadcaster_;
 };
 
 TEST_F(GcsResourceReportBroadcasterTest, TestBasic) {
   auto node_info = Mocker::GenNodeInfo();
-  broadcaster_.HandleNodeAdded(node_info);
+  broadcaster_.HandleNodeAdded(*node_info);
+  SendBroadcast();
+  ASSERT_EQ(callbacks_.size(), 1);
+  ASSERT_EQ(num_batches_sent_, 1);
+}
+
+TEST_F(GcsResourceReportBroadcasterTest, TestStragglerNodes) {
+  // When a node doesn't ACK a batch update, drop future requests to that node to prevent
+  // a queue from building up.
+  for (int i = 0; i < 10; i++) {
+    auto node_info = Mocker::GenNodeInfo();
+    broadcaster_.HandleNodeAdded(*node_info);
+  }
+
+  SendBroadcast();
+  ASSERT_EQ(callbacks_.size(), 10);
+  ASSERT_EQ(num_batches_sent_, 10);
+
+  // Only 7 nodes reply.
+  for (int i = 0; i < 7; i++) {
+    rpc::UpdateResourceUsageReply reply;
+    auto &callback = callbacks_.front();
+    callback(Status::OK(), reply);
+    callbacks_.pop_front();
+  }
+  ASSERT_EQ(callbacks_.size(), 3);
+  ASSERT_EQ(num_batches_sent_, 10);
+
+  // We should only send a new rpc to the 7 nodes that haven't received one yet.
+  SendBroadcast();
+  ASSERT_EQ(callbacks_.size(), 10);
+  ASSERT_EQ(num_batches_sent_, 17);
+
+  // Now clear the queue and resume sending broadcasts to everyone.
+  while (callbacks_.size()) {
+    rpc::UpdateResourceUsageReply reply;
+    auto &callback = callbacks_.front();
+    callback(Status::OK(), reply);
+    callbacks_.pop_front();
+  }
+  ASSERT_EQ(callbacks_.size(), 0);
+  ASSERT_EQ(num_batches_sent_, 17);
+
+  SendBroadcast();
+  ASSERT_EQ(callbacks_.size(), 10);
+  ASSERT_EQ(num_batches_sent_, 27);
 }
 
 }  // namespace gcs
