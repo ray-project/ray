@@ -1,7 +1,7 @@
 import numpy as np
 import gym
 from gym.spaces import Discrete, MultiDiscrete
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC

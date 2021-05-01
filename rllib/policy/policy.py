@@ -788,9 +788,6 @@ class Policy(metaclass=ABCMeta):
                 if "state_in_0" in view_reqs:
                     self.is_recurrent = lambda: True
 
-        #init_state = obj.get_initial_state()
-        #self._is_recurrent = len(init_state) > 0
-
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state

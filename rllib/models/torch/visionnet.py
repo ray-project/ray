@@ -292,7 +292,6 @@ class Torch_VisionNetwork(nn.Module):
             no_final_linear: bool = False,
             vf_share_layers: bool = False,
             num_framestacks: Union[int, str] = "auto",
-            #free_log_std: bool = False,
             **kwargs,
     ):
         nn.Module.__init__(self)

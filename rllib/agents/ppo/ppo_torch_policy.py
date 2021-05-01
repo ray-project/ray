@@ -116,6 +116,8 @@ def ppo_surrogate_loss(
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
     policy._value_fn_out = value_fn_out
+    policy._vf_explained_var = explained_variance(
+        train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out)
 
     return total_loss
 
@@ -137,8 +139,7 @@ def kl_and_loss_stats(policy: Policy,
         "total_loss": policy._total_loss,
         "policy_loss": policy._mean_policy_loss,
         "vf_loss": policy._mean_vf_loss,
-        "vf_explained_var": explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
+        "vf_explained_var": policy._vf_explained_var,
         "kl": policy._mean_kl,
         "entropy": policy._mean_entropy,
         "entropy_coeff": policy.entropy_coeff,
