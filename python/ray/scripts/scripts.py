@@ -437,6 +437,14 @@ def debug(address):
     help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
 @click.option(
+    "--tracing-startup-hook",
+    type=str,
+    hidden=True,
+    default=None,
+    help="The function that sets up tracing with a tracing provider, remote "
+    "span processor, and additional instruments. See docs.ray.io/tracing.html "
+    "for more info.")
+@click.option(
     "--worker-setup-hook",
     hidden=True,
     default=None,
@@ -453,8 +461,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, worker_setup_hook, log_style,
-          log_color, verbose):
+          metrics_export_port, no_monitor, tracing_startup_hook,
+          worker_setup_hook, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -516,6 +524,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
+        tracing_startup_hook=tracing_startup_hook,
         worker_setup_hook=worker_setup_hook)
     if head:
         # Use default if port is none, allocate an available port if port is 0
