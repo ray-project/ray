@@ -678,7 +678,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        Trainer._validate_config(self, self.config)
+        self._validate_config(self, self.config)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -1138,7 +1138,8 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(trainer_obj_or_none, config: PartialTrainerConfigDict):
+    def _validate_config(trainer_obj_or_none,
+                         config: PartialTrainerConfigDict):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1176,12 +1177,14 @@ class Trainer(Trainable):
             if framework != "tf":
                 config["simple_optimizer"] = True
             # TF + Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are TFPolicies).
+            # if all policies used are DynamicTFPolicies).
             elif len(config["multiagent"]["policies"]) > 0:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
-                default_policy_cls = None if trainer_obj_or_none is None else getattr(trainer_obj_or_none, "_policy_class", None)
-                if any((p[0] or default_policy_cls) is None or not issubclass(p[0] or default_policy_cls, DynamicTFPolicy)
-                       for p[0] in config["multiagent"]["policies"].values()):
+                default_policy_cls = None if trainer_obj_or_none is None else \
+                    getattr(trainer_obj_or_none, "_policy_class", None)
+                if any((p[0] or default_policy_cls) is None or not issubclass(
+                        p[0] or default_policy_cls, DynamicTFPolicy)
+                       for p in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:
                     config["simple_optimizer"] = False
