@@ -705,12 +705,13 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
+        seq_lens = self._dummy_batch["seq_lens"]
+
         state_ins = []
         i = 0
         while "state_in_{}".format(i) in self._dummy_batch:
             state_ins.append(self._dummy_batch["state_in_{}".format(i)])
             i += 1
-        seq_lens = self._dummy_batch["seq_lens"]
         dummy_inputs = {
             k: self._dummy_batch[k]
             for k in self._dummy_batch.keys() if k != "is_training"
@@ -877,20 +878,22 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = lr
+        self._lr_schedule = None
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
+            self.cur_lr = lr
         else:
-            self.lr_schedule = PiecewiseSchedule(
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = self._lr_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for opt in self._optimizers:
-            for p in opt.param_groups:
-                p["lr"] = self.cur_lr
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
+                for p in opt.param_groups:
+                    p["lr"] = self.cur_lr
 
 
 @DeveloperAPI

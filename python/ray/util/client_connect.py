@@ -35,6 +35,5 @@ def connect(conn_str: str,
 
 
 def disconnect():
-    if not ray.is_connected():
-        raise RuntimeError("Ray Client is currently disconnected.")
+    """Disconnects from server; is idempotent."""
     return ray.disconnect()
