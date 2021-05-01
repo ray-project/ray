@@ -191,7 +191,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
-        idxes = self._sample_proportional(num_items) #list(range(num_items))
+
+        idxes = self._sample_proportional(num_items)
 
         weights = []
         batch_indexes = []
