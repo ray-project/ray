@@ -161,7 +161,7 @@ def run(args, parser):
             }
         }
 
-    verbose = 3
+    verbose = 1
     for exp in experiments.values():
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
