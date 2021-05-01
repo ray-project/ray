@@ -71,7 +71,6 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
-        RAY_LOG(ERROR) << "Requesting";
         rpc_sent = true;
         rpc::RequestResourceReportReply temp;
         callback(Status::OK(), temp);

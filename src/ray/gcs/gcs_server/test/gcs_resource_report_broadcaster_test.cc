@@ -16,7 +16,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
+#include "ray/gcs/gcs_server/gcs_resource_report_broadcaster.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -26,20 +26,31 @@ using ::testing::_;
 
 class GcsResourceReportBroadcasterTest : public ::testing::Test {
  public:
-  GcsResourceReportBroadcasterTest() {
+  GcsResourceReportBroadcasterTest()
+      : broadcaster_(
+            /*raylet_client_pool*/ nullptr,
+            /*get_resource_usage_batch_for_broadcast*/
+            [](rpc::ResourceUsageBatchData &batch) {}
+
+            ,
+            /*send_batch*/ [this](const rpc::Address &address,
+                                  std::shared_ptr<rpc::NodeManagerClientPool> &pool,
+                                  std::string &data,
+                                  const rpc::ClientCallback<rpc::UpdateResourceUsageReply>
+                                      &callback) {}) {
+    callbacks_.push_back();
   }
 
+ private:
+  std::deque<rpc::ClientCallback<rpc::UpdateResourceUsageReply>> callacks_;
+
+  GcsResourceReportBroadcaster broadcaster_;
 };
 
 TEST_F(GcsResourceReportBroadcasterTest, TestBasic) {
+  auto node_info = Mocker::GenNodeInfo();
+  broadcaster_.HandleNodeAdded(node_info);
 }
-
-
-
-
-
-
-
 
 }  // namespace gcs
 }  // namespace ray

@@ -10,10 +10,10 @@ GcsResourceReportBroadcaster::GcsResourceReportBroadcaster(
         get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
                        std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
-                       const rpc::ClientCallback<rpc::RequestResourceReportReply> &
-                       )> send_batch
+                       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
+        send_batch
 
-                                                           )
+    )
     : ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
@@ -88,9 +88,25 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
 
   absl::MutexLock guard(&mutex_);
   for (const auto &pair : nodes_) {
+    const auto &node_id = pair.first;
     const auto &address = pair.second;
-    send_batch_(address, raylet_client_pool_, serialized_batch, [](){});
+
+    auto &num_inflight = inflight_updates_[node_id];
+
+    if (num_inflight >= 1) {
+      continue;
+    }
+
+    auto callback = [this, node_id, &num_inflight](
+                        const Status &status,
+                        const rpc::UpdateResourceUsageReply &reply) {
+      absl::MutexLock guard(&mutex_);
+      num_inflight--;
+    };
+    num_inflight++;
+    send_batch_(address, raylet_client_pool_, serialized_batch, callback);
   }
+}
 
 }  // namespace gcs
 }  // namespace ray

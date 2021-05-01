@@ -15,18 +15,16 @@ class GcsResourceReportBroadcaster {
       /* Default values should only be changed for testing. */
       std::function<void(const rpc::Address &,
                          std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
-                         const rpc::ClientCallback<rpc::RequestResourceReportReply> &
-                         )>
-          send_batch = [](const rpc::Address &address,
-                          std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
-                          std::string &serialized_resource_usage_batch,
-                          const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback
-                          ) {
-            auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
-            raylet_client->UpdateResourceUsage(
-                serialized_resource_usage_batch,
-                callback;
-          });
+                         const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
+          send_batch =
+              [](const rpc::Address &address,
+                 std::shared_ptr<rpc::NodeManagerClientPool> &raylet_client_pool,
+                 std::string &serialized_resource_usage_batch,
+                 const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+                auto raylet_client = raylet_client_pool->GetOrConnectByAddress(address);
+                raylet_client->UpdateResourceUsage(serialized_resource_usage_batch,
+                                                   callback);
+              });
   ~GcsResourceReportBroadcaster();
 
   void Initialize(const GcsInitData &gcs_init_data);
@@ -58,16 +56,15 @@ class GcsResourceReportBroadcaster {
   std::function<void(rpc::ResourceUsageBatchData &)>
       get_resource_usage_batch_for_broadcast_;
 
-
-      std::function<void(const rpc::Address &,
-                         std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
-                         const rpc::ClientCallback<rpc::RequestResourceReportReply> &
-                         )>
+  std::function<void(const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
+                     std::string &,
+                     const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
       send_batch_;
 
-  // A lock to protect nodes_
+  // A lock to protect the data structures.
   absl::Mutex mutex_;
   std::unordered_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
+  std::unordered_map<NodeID, uint64_t> inflight_updates_ GUARDED_BY(mutex_);
 
   uint64_t broadcast_period_ms_;
 
