@@ -145,8 +145,9 @@ class SlimFC(nn.Module):
         if initializer is None:
             initializer = nn.init.xavier_uniform_
         initializer(linear.weight)
+        #nn.init.constant_(linear.weight, 0.05)
         if use_bias is True:
-            nn.init.constant_(linear.bias, bias_init)
+            nn.init.constant_(linear.bias, bias_init)#0.01)
         layers.append(linear)
         # Activation function (if any; default=None (linear)).
         if isinstance(activation_fn, str):

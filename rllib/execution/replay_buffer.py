@@ -191,8 +191,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
-
-        idxes = self._sample_proportional(num_items)
+        idxes = self._sample_proportional(num_items) #list(range(num_items))
 
         weights = []
         batch_indexes = []
@@ -414,7 +413,6 @@ class LocalReplayBuffer(ParallelIteratorWorker):
 
         if self.num_added < self.replay_starts:
             return None
-
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.

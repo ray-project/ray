@@ -1,9 +1,17 @@
 hopper_cql:
-    env: ray.rllib.examples.env.d4rl_env.hopper_medium
+    env: 
+        grid_search:
+            #- ray.rllib.examples.env.d4rl_env.hopper_random
+            #- ray.rllib.examples.env.d4rl_env.hopper_medium
+            #- ray.rllib.examples.env.d4rl_env.hopper_expert
+            - ray.rllib.examples.env.d4rl_env.hopper_medium_replay
     run: CQL
     config:
         # SAC Configs
-        input: d4rl.hopper-medium-v0
+        #input: d4rl.hopper-random-v0
+        #input: d4rl.hopper-medium-v0
+        #input: d4rl.hopper-expert-v0
+        input: d4rl.hopper-medium-replay-v0
         framework: torch
         soft_horizon: False
         horizon: 1000
@@ -20,7 +28,7 @@ hopper_cql:
         rollout_fragment_length: 1
         prioritized_replay: false
         train_batch_size: 256
-        target_network_update_freq: 1
+        target_network_update_freq: 0
         timesteps_per_iteration: 1000
         learning_starts: 10
         optimization:

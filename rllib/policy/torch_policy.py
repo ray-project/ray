@@ -536,7 +536,9 @@ class TorchPolicy(Policy):
     def apply_gradients(self, gradients: ModelGradients) -> None:
         if gradients == _directStepOptimizerSingleton:
             for i, opt in enumerate(self._optimizers):
-                opt.step()
+                pass
+                #opt.zero_grad()
+                #opt.step()
         else:
             # TODO(sven): Not supported for multiple optimizers yet.
             assert len(self._optimizers) == 1
@@ -792,8 +794,8 @@ class TorchPolicy(Policy):
                                 param.grad.data.zero_()
                         '''
                         # Recompute gradients of loss over all variables.
-                        loss_out[opt_idx].backward(
-                            retain_graph=(opt_idx < len(self._optimizers) - 1))
+                        #loss_out[opt_idx].backward(
+                            #retain_graph=(opt_idx < len(self._optimizers) - 1))
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
