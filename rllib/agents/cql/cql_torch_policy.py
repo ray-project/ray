@@ -25,6 +25,7 @@ from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     convert_to_torch_tensor
+from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -34,20 +35,12 @@ logger = logging.getLogger(__name__)
 MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
-# For Unsquashing Actions
-def atanh(x):
-    one_plus_x = (1 + x).clamp(min=1e-6)
-    one_minus_x = (1 - x).clamp(min=1e-6)
-    return 0.5*torch.log(one_plus_x/ one_minus_x)
-
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
     obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
         obs.shape[0] * num_repeat, obs.shape[1])
     policy_dist = action_dist(model.get_policy_output(obs_temp), model)
     actions, logp_ = policy_dist.sample_logp()
-    #actions = policy_dist.sample()
-    #log_p = policy_dist.logp(actions)
     logp = logp_.unsqueeze(-1)
     return actions, logp.view(obs.shape[0], num_repeat, 1)
 

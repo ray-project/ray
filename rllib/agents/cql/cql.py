@@ -2,8 +2,8 @@
 """
 import numpy as np
 from typing import Optional, Type, List
-from ray.rllib.offline.shuffled_input import ShuffledInput
 
+from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
@@ -21,7 +21,6 @@ from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import TrainerConfigDict
-
 
 
 # yapf: disable

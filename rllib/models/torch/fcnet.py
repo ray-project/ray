@@ -32,7 +32,6 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         no_final_linear = model_config.get("no_final_linear")
         self.vf_share_layers = model_config.get("vf_share_layers")
         self.free_log_std = model_config.get("free_log_std")
-        self.num_outputs = num_outputs
         # Generate free-floating bias variables for the second half of
         # the outputs.
         if self.free_log_std:
@@ -76,24 +75,11 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
                         activation_fn=activation))
                 prev_layer_size = hiddens[-1]
             if num_outputs:
-                # Delete later
-                if num_outputs%2==0:
-                    self._logits = SlimFC(
-                        in_size=prev_layer_size,
-                        out_size=num_outputs//2,
-                        initializer=normc_initializer(0.01),
-                        activation_fn=None)    
-                    self.last_log_std = SlimFC(
-                        in_size=prev_layer_size,
-                        out_size=num_outputs//2,
-                        initializer=normc_initializer(0.01),
-                        activation_fn=None)
-                else:   
-                    self._logits = SlimFC(
-                        in_size=prev_layer_size,
-                        out_size=num_outputs,
-                        initializer=normc_initializer(0.01),
-                        activation_fn=None)
+                self._logits = SlimFC(
+                    in_size=prev_layer_size,
+                    out_size=num_outputs,
+                    initializer=normc_initializer(0.01),
+                    activation_fn=None)
             else:
                 self.num_outputs = (
                     [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
@@ -138,9 +124,6 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         self._features = self._hidden_layers(self._last_flat_in)
         logits = self._logits(self._features) if self._logits else \
             self._features
-        if self.num_outputs%2==0:
-            log_std = self.last_log_std(self._features)
-            logits = torch.cat([logits, log_std], dim=-1)
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
         return logits, state
