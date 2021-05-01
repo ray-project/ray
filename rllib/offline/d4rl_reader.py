@@ -33,7 +33,6 @@ class D4RLReader(InputReader):
     def next(self) -> SampleBatchType:
         if self.counter >= self.dataset.count:
             self.counter = 0
-            #self.dataset.shuffle()
 
         self.counter += 1
         return self.dataset.slice(start=self.counter, end=self.counter + 1)
