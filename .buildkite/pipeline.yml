@@ -89,6 +89,8 @@
 
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
+  soft_fail:
+    - exit_status: 1
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 TF_VERSION=2.1.0 TFP_VERSION=0.8 TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh

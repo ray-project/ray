@@ -6,11 +6,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 import os
 import queue
-import sys
 
 import threading
 from typing import Any
-from typing import List
 from typing import Dict
 from typing import Set
 from typing import Optional
@@ -90,9 +88,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def PrepRuntimeEnv(self, request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
         job_config = ray.worker.global_worker.core_worker.get_job_config()
-        missing_uris = self._prepare_runtime_env(job_config.runtime_env)
-        if len(missing_uris) != 0:
-            raise grpc.RpcError(f"Missing uris: {missing_uris}")
+        try:
+            self._prepare_runtime_env(job_config.runtime_env)
+        except Exception as e:
+            raise grpc.RpcError(f"Prepare runtime env failed with {e}")
         return ray_client_pb2.PrepRuntimeEnvResponse()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
@@ -477,21 +476,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
 
-    def _prepare_runtime_env(self, job_runtime_env) -> List[str]:
+    def _prepare_runtime_env(self, job_runtime_env):
         """Download runtime environment to local node"""
-        missing_uris = []
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
-            for uri in uris:
-                try:
-                    working_dir = runtime_env.fetch_package(uri)
-                    if working_dir:
-                        os.chdir(str(working_dir))
-                        sys.path.insert(0, str(working_dir))
-                except IOError:
-                    missing_uris.append(uri)
-        return missing_uris
+            working_dir = runtime_env.ensure_runtime_env_setup(uris)
+            if working_dir:
+                os.chdir(working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,

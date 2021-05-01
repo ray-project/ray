@@ -343,6 +343,7 @@ Papers
    ray-metrics.rst
    ray-debugging.rst
    ray-logging.rst
+   ray-tracing.rst
 
 .. toctree::
    :hidden:
