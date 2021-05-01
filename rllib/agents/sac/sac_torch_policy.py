@@ -369,7 +369,7 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
     policy.actor_optim = torch.optim.Adam(
         params=policy.model.policy_variables(),
         lr=config["optimization"]["actor_learning_rate"],
-        #eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
+        eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
     critic_split = len(policy.model.q_variables())
@@ -380,7 +380,7 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
         torch.optim.Adam(
             params=policy.model.q_variables()[:critic_split],
             lr=config["optimization"]["critic_learning_rate"],
-            #eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
+            eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
         )
     ]
     if config["twin_q"]:
@@ -388,12 +388,12 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
             torch.optim.Adam(
                 params=policy.model.q_variables()[critic_split:],
                 lr=config["optimization"]["critic_learning_rate"],
-                #eps=1e-7,  # to match tf.keras.optimizers.Adam's eps default
+                eps=1e-7,  # to match tf.keras.optimizers.Adam's eps default
             ))
     policy.alpha_optim = torch.optim.Adam(
         params=[policy.model.log_alpha],
         lr=config["optimization"]["entropy_learning_rate"],
-        #eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
+        eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
     return tuple([policy.alpha_optim] + [policy.actor_optim] + policy.critic_optims)

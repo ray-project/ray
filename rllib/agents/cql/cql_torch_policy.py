@@ -174,7 +174,6 @@ def cql_loss(policy: Policy, model: ModelV2,
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
-    #q_tp1 = q_tp1 - alpha * log_pis_tp1
     q_tp1_best = torch.squeeze(input=q_tp1, dim=-1)
     q_tp1_best_masked = (1.0 - terminals.float()) * q_tp1_best
 
@@ -198,7 +197,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     rand_actions = convert_to_torch_tensor(
         torch.FloatTensor(actions.shape[0] * num_actions,
                           actions.shape[-1]).uniform_(action_low, action_high),
-        policy.device) #(0.1, 0.1)
+        policy.device)
     curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
                                                     model_out_t, num_actions)
     next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
@@ -261,10 +260,6 @@ def cql_loss(policy: Policy, model: ModelV2,
         critic_loss[1].backward(retain_graph=False)
         critic1_optimizer.step()
 
-    #print(obs.shape[0], alpha_loss, actor_loss, critic_loss)
-    #if obs.shape[0]==256:
-        #import pdb; pdb.set_trace()
-
     # Save for stats function.
     policy.q_t = q_t_selected
     policy.policy_t = policy_t
@@ -277,7 +272,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.alpha_value = alpha
     policy.target_entropy = model.target_entropy
     # CQL Stats
-    #policy.cql_loss = cql_loss
+    policy.cql_loss = cql_loss
     if use_lagrange:
         policy.log_alpha_prime_value = model.log_alpha_prime[0]
         policy.alpha_prime_value = alpha_prime
@@ -293,7 +288,7 @@ def cql_loss(policy: Policy, model: ModelV2,
 def cql_stats(policy: Policy,
               train_batch: SampleBatch) -> Dict[str, TensorType]:
     sac_dict = stats(policy, train_batch)
-    #sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
+    sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
     if policy.config["lagrangian"]:
         sac_dict["log_alpha_prime_value"] = policy.log_alpha_prime_value
         sac_dict["alpha_prime_value"] = policy.alpha_prime_value
