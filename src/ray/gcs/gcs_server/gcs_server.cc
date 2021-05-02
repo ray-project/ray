@@ -430,7 +430,8 @@ void GcsServer::PrintDebugInfo() {
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
 
   if (config_.grpc_based_resource_broadcast) {
-    stream << gcs_resource_report_broadcaster_->DebugString() << "\n";
+    stream << "\n"
+           << gcs_resource_report_broadcaster_->DebugString();
   }
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.

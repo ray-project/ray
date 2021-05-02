@@ -1470,6 +1470,7 @@ void NodeManager::HandleUpdateResourceUsage(
   ResourceUsageBatchData batch;
   batch.ParseFromString(request.serialized_resource_usage_batch());
   ResourceUsageBatchReceived(batch);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestResourceReport(

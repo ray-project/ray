@@ -108,9 +108,14 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
       continue;
     }
 
-    auto callback = [this, node_id, &num_inflight](
+    double start_time = absl::GetCurrentTimeNanos();
+    auto callback = [this, node_id, &num_inflight, start_time](
                         const Status &status,
                         const rpc::UpdateResourceUsageReply &reply) {
+      double end_time = absl::GetCurrentTimeNanos();
+      double lapsed_time_ms = (end_time - start_time) * 1e6;
+      ray::stats::GcsUpdateResourceUsageTime.Record(lapsed_time_ms);
+
       absl::MutexLock guard(&mutex_);
       num_inflight--;
     };
