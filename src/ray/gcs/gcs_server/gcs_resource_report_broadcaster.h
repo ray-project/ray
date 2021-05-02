@@ -41,6 +41,8 @@ class GcsResourceReportBroadcaster {
   /// Event handler when a node leaves the cluster.
   void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
+  std::string DebugString() const;
+
  private:
   // An asio service which does the broadcasting work.
   instrumented_io_context broadcast_service_;
@@ -69,7 +71,10 @@ class GcsResourceReportBroadcaster {
   /// is inflight if its reply has not been received and it has not timed out.
   std::unordered_map<NodeID, uint64_t> inflight_updates_ GUARDED_BY(mutex_);
 
-  uint64_t broadcast_period_ms_;
+  /// The number of nodes skipped in the latest broadcast round. This is useful for
+  /// diagnostic purposes.
+  uint64_t num_skipped_nodes_;
+  const uint64_t broadcast_period_ms_;
 
   void SendBroadcast();
 

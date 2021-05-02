@@ -18,6 +18,7 @@ GcsResourceReportBroadcaster::GcsResourceReportBroadcaster(
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
       send_batch_(send_batch),
+      num_skipped_nodes_(0),
       broadcast_period_ms_(
           RayConfig::instance().raylet_report_resources_period_milliseconds()) {}
 
@@ -78,6 +79,14 @@ void GcsResourceReportBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
   }
 }
 
+std::string GcsResourceReportBroadcaster::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsResourceReportBroadcaster: {Tracked nodes: " << nodes_.size()
+         << ", Nodes skipped in last broadcast: " << num_skipped_nodes_;
+
+  return stream.str();
+}
+
 void GcsResourceReportBroadcaster::SendBroadcast() {
   rpc::ResourceUsageBatchData batch;
   get_resource_usage_batch_for_broadcast_(batch);
@@ -87,6 +96,7 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
   stats::OutboundHeartbeatSizeKB.Record((double)(batch.ByteSizeLong() / 1024.0));
 
   absl::MutexLock guard(&mutex_);
+  num_skipped_nodes_ = 0;
   for (const auto &pair : nodes_) {
     const auto &node_id = pair.first;
     const auto &address = pair.second;
@@ -94,6 +104,7 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
     auto &num_inflight = inflight_updates_[node_id];
 
     if (num_inflight >= 1) {
+      num_skipped_nodes_++;
       continue;
     }
 

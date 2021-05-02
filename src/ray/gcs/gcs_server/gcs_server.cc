@@ -428,6 +428,10 @@ void GcsServer::PrintDebugInfo() {
          << gcs_placement_group_manager_->DebugString() << "\n"
          << gcs_pub_sub_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+
+  if (config_.grpc_based_resource_broadcast) {
+    stream << gcs_resource_report_broadcaster_->DebugString() << "\n";
+  }
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
