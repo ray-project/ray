@@ -167,6 +167,7 @@ class TorchPolicy(Policy):
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
+        self._is_recurrent = len(self._init_state) > 0
 
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.view_requirements)

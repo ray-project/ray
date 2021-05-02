@@ -11,7 +11,7 @@
 import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -387,3 +387,357 @@ class AttentionWrapper(TorchModelV2, nn.Module):
     def value_function(self) -> TensorType:
         assert self._features is not None, "Must call forward() first!"
         return torch.reshape(self._value_branch(self._features), [-1])
+
+
+class Torch_GTrXLNet(nn.Module):
+    """A GTrXL net Model described in [2].
+
+    Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
+    For an example script, see: `ray/rllib/examples/attention_net.py`.
+
+    To use this network as a replacement for an RNN, configure your Trainer
+    as follows:
+
+    Examples:
+        >> config["model"]["custom_model"] = GTrXLNet
+        >> config["model"]["max_seq_len"] = 10
+        >> config["model"]["custom_model_config"] = {
+        >>     num_transformer_units=1,
+        >>     attention_dim=32,
+        >>     num_heads=2,
+        >>     memory_tau=50,
+        >>     etc..
+        >> }
+    """
+
+    def __init__(self,
+                 input_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: Optional[int],
+                 *,
+                 num_transformer_units: int = 1,
+                 attention_dim: int = 64,
+                 num_heads: int = 2,
+                 memory_inference: int = 50,
+                 memory_training: int = 50,
+                 head_dim: int = 32,
+                 position_wise_mlp_dim: int = 32,
+                 init_gru_gate_bias: float = 2.0,
+                 **kwargs):
+        """Initializes a GTrXLNet.
+
+        Args:
+            num_transformer_units (int): The number of Transformer repeats to
+                use (denoted L in [2]).
+            attention_dim (int): The input and output dimensions of one
+                Transformer unit.
+            num_heads (int): The number of attention heads to use in parallel.
+                Denoted as `H` in [3].
+            memory_inference (int): The number of timesteps to concat (time
+                axis) and feed into the next transformer unit as inference
+                input. The first transformer unit will receive this number of
+                past observations (plus the current one), instead.
+            memory_training (int): The number of timesteps to concat (time
+                axis) and feed into the next transformer unit as training
+                input (plus the actual input sequence of len=max_seq_len).
+                The first transformer unit will receive this number of
+                past observations (plus the input sequence), instead.
+            head_dim (int): The dimension of a single(!) attention head within
+                a multi-head attention unit. Denoted as `d` in [3].
+            position_wise_mlp_dim (int): The dimension of the hidden layer
+                within the position-wise MLP (after the multi-head attention
+                block within one Transformer unit). This is the size of the
+                first of the two layers within the PositionwiseFeedforward. The
+                second layer always has size=`attention_dim`.
+            init_gru_gate_bias (float): Initial bias values for the GRU gates
+                (two GRUs per Transformer unit, one after the MHA, one after
+                the position-wise MLP).
+        """
+
+        nn.Module.__init__(self)
+
+        self.num_transformer_units = num_transformer_units
+        self.attention_dim = attention_dim
+        self.num_heads = num_heads
+        self.memory_inference = memory_inference
+        self.memory_training = memory_training
+        self.head_dim = head_dim
+        self.max_seq_len = max_seq_len
+        self.obs_dim = input_space.shape[0]
+
+        self.linear_layer = SlimFC(
+            in_size=self.obs_dim, out_size=self.attention_dim)
+
+        self.layers = [self.linear_layer]
+
+        attention_layers = []
+        # 2) Create L Transformer blocks according to [2].
+        for i in range(self.num_transformer_units):
+            # RelativeMultiHeadAttention part.
+            MHA_layer = SkipConnection(
+                RelativeMultiHeadAttention(
+                    in_dim=self.attention_dim,
+                    out_dim=self.attention_dim,
+                    num_heads=num_heads,
+                    head_dim=head_dim,
+                    input_layernorm=True,
+                    output_activation=nn.ReLU),
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
+
+            # Position-wise MultiLayerPerceptron part.
+            E_layer = SkipConnection(
+                nn.Sequential(
+                    torch.nn.LayerNorm(self.attention_dim),
+                    SlimFC(
+                        in_size=self.attention_dim,
+                        out_size=position_wise_mlp_dim,
+                        use_bias=False,
+                        activation_fn=nn.ReLU),
+                    SlimFC(
+                        in_size=position_wise_mlp_dim,
+                        out_size=self.attention_dim,
+                        use_bias=False,
+                        activation_fn=nn.ReLU)),
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
+
+            # Build a list of all attanlayers in order.
+            attention_layers.extend([MHA_layer, E_layer])
+
+        # Create a Sequential such that all parameters inside the attention
+        # layers are automatically registered with this top-level model.
+        self.attention_layers = nn.Sequential(*attention_layers)
+        self.layers.extend(attention_layers)
+
+        # Final layers if num_outputs not None.
+        self.logits = None
+        self.values_out = None
+        # Last value output.
+        self._value_out = None
+        # Postprocess GTrXL output with another hidden layer.
+        if num_outputs is not None:
+            self.logits = SlimFC(
+                in_size=self.attention_dim,
+                out_size=self.num_outputs,
+                activation_fn=nn.ReLU)
+
+            # Value function used by all RLlib Torch RL implementations.
+            self.values_out = SlimFC(
+                in_size=self.attention_dim, out_size=1, activation_fn=None)
+        #else:
+        #    self.num_outputs = self.attention_dim
+
+        # Setup trajectory views (`memory-inference` x past memory outs).
+        for i in range(self.num_transformer_units):
+            space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
+            self.view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift="-{}:-1".format(self.memory_inference),
+                    # Repeat the incoming state every max-seq-len times.
+                    batch_repeat_value=self.max_seq_len,
+                    space=space)
+            self.view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=space,
+                    used_for_training=False)
+
+    def forward(self, input_dict: SampleBatch) -> \
+            (TensorType, List[TensorType], Dict[str, TensorType]):
+        # Add the needed batch rank (tf Models' Input requires this).
+        observations = input_dict[SampleBatch.OBS]
+        # Add the time dim to observations.
+        B = len(input_dict["seq_lens"])
+        T = observations.shape[0] // B
+        observations = torch.reshape(observations,
+                                     [-1, T] + list(observations.shape[1:]))
+
+        all_out = observations
+        memory_outs = []
+        for i in range(len(self.layers)):
+            # MHA layers which need memory passed in.
+            if i % 2 == 1:
+                all_out = self.layers[i](all_out, memory=state[i // 2])
+            # Either self.linear_layer (initial obs -> attn. dim layer) or
+            # MultiLayerPerceptrons. The output of these layers is always the
+            # memory for the next forward pass.
+            else:
+                all_out = self.layers[i](all_out)
+                memory_outs.append(all_out)
+
+        # Discard last output (not needed as a memory since it's the last
+        # layer).
+        memory_outs = memory_outs[:-1]
+
+        if self.logits is not None:
+            out = self.logits(all_out)
+            self._value_out = self.values_out(all_out)
+            out_dim = self.num_outputs
+        else:
+            out = all_out
+            out_dim = self.attention_dim
+
+        return torch.reshape(out, [-1, out_dim]), [
+            torch.reshape(m, [-1, self.attention_dim]) for m in memory_outs
+        ], {SampleBatch.VF_PREDS: torch.reshape(self._value_out, [-1])}
+
+    ## TODO: (sven) Deprecate this once trajectory view API has fully matured.
+    #@override(RecurrentNetwork)
+    #def get_initial_state(self) -> List[np.ndarray]:
+    #    return []
+
+    #@override(ModelV2)
+    #def value_function(self) -> TensorType:
+    #    assert self._value_out is not None,\
+    #        "Must call forward first AND must have value branch!"
+    #    return
+
+
+class Torch_AttentionWrapper(nn.Module):
+    """A torch auto-GTrXL wrapper used when `use_attention`=True."""
+
+    def __init__(self,
+                 input_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 num_outputs: int,
+                 *,
+                 wrapped_cls: Type["torch.nn.Module"],
+                 max_seq_len: int = 20,
+                 attention_num_transformer_units: int = 1,
+                 attention_dim: int = 64,
+                 attention_num_heads: int = 1,
+                 attention_head_dim: int = 32,
+                 attention_memory_inference: int = 50,
+                 attention_memory_training: int = 50,
+                 attention_position_wise_mlp_dim: int = 32,
+                 attention_init_gru_gate_bias: int = 2.0,
+                 attention_use_n_prev_actions: int = 0,
+                 attention_use_n_prev_rewards: int = 0,
+                 **kwargs,
+                 ):
+
+        nn.Module.__init__(self)
+        self.wrapped_torch_model = wrapped_cls(
+            input_space, action_space, None, **kwargs)
+
+        self.action_space = action_space
+        self.max_seq_len = max_seq_len
+        self.use_n_prev_actions = attention_use_n_prev_actions
+        self.use_n_prev_rewards = attention_use_n_prev_rewards
+        self.attention_dim = attention_dim
+
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, MultiDiscrete):
+            self.action_dim = np.product(action_space.nvec)
+        elif action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
+
+        # Add prev-action/reward nodes to input to LSTM.
+        if self.use_n_prev_actions:
+            self.num_outputs += self.use_n_prev_actions * self.action_dim
+        if self.use_n_prev_rewards:
+            self.num_outputs += self.use_n_prev_rewards
+
+        if self.num_outputs is not None:
+            in_space = gym.spaces.Box(
+                float("-inf"),
+                float("inf"),
+                shape=(self.num_outputs, ),
+                dtype=np.float32)
+        else:
+            in_space = input_space
+
+        # Construct GTrXL sub-module w/ num_outputs=None (so it does not
+        # create a logits/value output; we'll do this ourselves in this wrapper
+        # here).
+        self.gtrxl = Torch_GTrXLNet(
+            in_space,
+            action_space,
+            None,
+            num_transformer_units=attention_num_transformer_units,
+            attention_dim=self.attention_dim,
+            num_heads=attention_num_heads,
+            head_dim=attention_head_dim,
+            memory_inference=attention_memory_inference,
+            memory_training=attention_memory_training,
+            position_wise_mlp_dim=attention_position_wise_mlp_dim,
+            init_gru_gate_bias=attention_init_gru_gate_bias,
+        )
+
+        # Set final num_outputs to correct value (depending on action space).
+        #self.num_outputs = num_outputs
+
+        # Postprocess GTrXL output with another hidden layer and compute
+        # values.
+        self._logits_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=self.num_outputs,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+        self._value_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=1,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+
+        self.view_requirements = self.gtrxl.view_requirements
+        self.view_requirements["obs"].space = self.obs_space
+
+        # Add prev-a/r to this model's view, if required.
+        if self.use_n_prev_actions:
+            self.view_requirements[SampleBatch.PREV_ACTIONS] = \
+                ViewRequirement(
+                    SampleBatch.ACTIONS,
+                    space=self.action_space,
+                    shift="-{}:-1".format(self.use_n_prev_actions))
+        if self.use_n_prev_rewards:
+            self.view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(
+                    SampleBatch.REWARDS,
+                    shift="-{}:-1".format(self.use_n_prev_rewards))
+
+    def forward(self, input_dict: SampleBatch) -> \
+            (TensorType, List[TensorType], Dict[str, TensorType]):
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict)
+
+        # Concat. prev-action/reward if required.
+        prev_a_r = []
+        if self.use_n_prev_actions:
+            if isinstance(self.action_space, Discrete):
+                for i in range(self.use_n_prev_actions):
+                    prev_a_r.append(
+                        one_hot(
+                            input_dict[SampleBatch.PREV_ACTIONS][:, i].float(),
+                            self.action_space))
+            elif isinstance(self.action_space, MultiDiscrete):
+                for i in range(
+                        self.use_n_prev_actions,
+                        step=self.action_space.shape[0]):
+                    prev_a_r.append(
+                        one_hot(
+                            input_dict[SampleBatch.PREV_ACTIONS]
+                            [:, i:i + self.action_space.shape[0]].float(),
+                            self.action_space))
+            else:
+                prev_a_r.append(
+                    torch.reshape(
+                        input_dict[SampleBatch.PREV_ACTIONS].float(),
+                        [-1, self.use_n_prev_actions * self.action_dim]))
+        if self.use_n_prev_rewards:
+            prev_a_r.append(
+                torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
+                              [-1, self.use_n_prev_rewards]))
+
+        if prev_a_r:
+            wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
+
+        # Then through our GTrXL.
+        input_dict["obs_flat"] = input_dict["obs"] = wrapped_out
+
+        self._features, memory_outs = self.gtrxl(input_dict)
+        model_out = self._logits_branch(self._features)
+        return model_out, memory_outs, \
+               {SampleBatch.VF_PREDS: torch.reshape(self._value_branch(self._features), [-1])}

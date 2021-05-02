@@ -496,7 +496,6 @@ class AttentionWrapper(TFModelV2):
 class Keras_GTrXLNet(tf.keras.Model if tf else object):
     """A GTrXL net Model described in [2].
 
-    This is still in an experimental phase.
     Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
     For an example script, see: `ray/rllib/examples/attention_net.py`.
 

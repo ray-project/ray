@@ -625,19 +625,27 @@ class ModelCatalog:
                     model_config.get("use_attention"):
 
                 from ray.rllib.models.torch.attention_net import \
-                    AttentionWrapper
-                from ray.rllib.models.torch.recurrent_net import LSTMWrapper
+                    AttentionWrapper, Torch_AttentionWrapper
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper, \
+                    Torch_LSTMWrapper
 
                 wrapped_cls = v2_class
-                forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper)
+                    if not issubclass(wrapped_cls, ModelV2):
+                        v2_class = Torch_LSTMWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, LSTMWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
                 else:
-                    v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, AttentionWrapper)
-
-                v2_class._wrapped_forward = forward
+                    if not issubclass(wrapped_cls, ModelV2):
+                        v2_class = Torch_AttentionWrapper
+                        model_config["wrapped_cls"] = wrapped_cls
+                    else:
+                        v2_class = ModelCatalog._wrap_if_needed(
+                            wrapped_cls, AttentionWrapper)
+                        v2_class._wrapped_forward = wrapped_cls.forward
 
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)

@@ -167,7 +167,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        # __sphinx_doc_begin__
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action"]:
             self.view_requirements[SampleBatch.PREV_ACTIONS] = \
@@ -176,7 +175,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         if model_config["lstm_use_prev_reward"]:
             self.view_requirements[SampleBatch.PREV_REWARDS] = \
                 ViewRequirement(SampleBatch.REWARDS, shift=-1)
-        # __sphinx_doc_end__
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
@@ -264,20 +262,27 @@ class Torch_LSTMWrapper(nn.Module):
             _time_major: bool = False,
             **kwargs,
     ):
-
         nn.Module.__init__(self)
 
-        # At this point, self.num_outputs is the number of nodes coming
-        # from the wrapped (underlying) model. In other words, self.num_outputs
-        # is the input size for the LSTM layer.
-        # If None, set it to the observation space.
-        if self.num_outputs is None:
-            self.num_outputs = int(np.product(self.obs_space.shape))
+        self.wrapped_torch_model = wrapped_cls(
+            input_space, action_space, None, **kwargs)
 
-        self.cell_size = lstm_cell_size
-        self.time_major = _time_major
-        self.use_prev_action = lstm_use_prev_action
-        self.use_prev_reward = lstm_use_prev_reward
+        self.action_space = action_space
+        self.max_seq_len = max_seq_len
+
+        # Guess the number of outputs for the wrapped model by performing
+        # a dummy forward pass. This will output a tensor that will serve as
+        # input size for the LSTM layer (plus maybe prev-actions/rewards).
+        # If no layers in the wrapped model, set it to the
+        # observation space.
+        dummy_out, _, _ = self.wrapped_torch_model({
+            SampleBatch.OBS: torch.from_numpy(np.array([input_space.sample()]))
+        })
+        wrapped_num_outputs = int(dummy_out.shape[1])
+
+        self.lstm_cell_size = lstm_cell_size
+        self.lstm_use_prev_action = lstm_use_prev_action
+        self.lstm_use_prev_reward = lstm_use_prev_reward
 
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
@@ -289,24 +294,21 @@ class Torch_LSTMWrapper(nn.Module):
             self.action_dim = int(len(action_space))
 
         # Add prev-action/reward nodes to input to LSTM.
-        if self.use_prev_action:
-            self.num_outputs += self.action_dim
-        if self.use_prev_reward:
-            self.num_outputs += 1
+        if self.lstm_use_prev_action:
+            wrapped_num_outputs += self.action_dim
+        if self.lstm_use_prev_reward:
+            wrapped_num_outputs += 1
 
         # Define actual LSTM layer (with num_outputs being the nodes coming
         # from the wrapped (underlying) layer).
-        self.lstm = nn.LSTM(
-            self.num_outputs, self.cell_size, batch_first=not self.time_major)
-
-        # Set self.num_outputs to the number of output nodes desired by the
-        # caller of this constructor.
-        self.num_outputs = num_outputs
+        self._lstm = nn.LSTM(
+            wrapped_num_outputs, self.lstm_cell_size,
+            batch_first=not self.time_major)
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
             in_size=self.cell_size,
-            out_size=self.num_outputs,
+            out_size=num_outputs,
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
         self._value_branch = SlimFC(
@@ -326,11 +328,22 @@ class Torch_LSTMWrapper(nn.Module):
                 ViewRequirement(SampleBatch.REWARDS, shift=-1)
         # __sphinx_doc_end__
 
-    @override(RecurrentNetwork)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
-                seq_lens: TensorType) -> (TensorType, List[TensorType]):
-        assert seq_lens is not None
+        # Internal states view requirements.
+        for i in range(2):
+            space = Box(-1.0, 1.0, shape=(self.lstm_cell_size, ))
+            self.view_requirements["state_in_{}".format(i)] = \
+                ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    batch_repeat_value=max_seq_len,
+                    space=space)
+            self.view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(space=space, used_for_training=True)
+
+    def forward(self, input_dict: SampleBatch) -> \
+            (TensorType, List[TensorType], Dict[str, TensorType]):
+        assert input_dict.get("seq_lens") is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
@@ -351,45 +364,16 @@ class Torch_LSTMWrapper(nn.Module):
         if prev_a_r:
             wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
 
+        max_seq_len = wrapped_out.shape[0] // len(input_dict["seq_lens"])
+        wrapped_out_plus_time_dim = add_time_dimension(
+            wrapped_out, max_seq_len=max_seq_len, framework="torch")
         # Then through our LSTM.
-        input_dict["obs_flat"] = wrapped_out
-        return super().forward(input_dict, state, seq_lens)
-
-    @override(RecurrentNetwork)
-    def forward_rnn(self, inputs: TensorType, state: List[TensorType],
-                    seq_lens: TensorType) -> (TensorType, List[TensorType]):
-        # Don't show paddings to RNN(?)
-        # TODO: (sven) For now, only allow, iff time_major=True to not break
-        #  anything retrospectively (time_major not supported previously).
-        # max_seq_len = inputs.shape[0]
-        # time_major = self.model_config["_time_major"]
-        # if time_major and max_seq_len > 1:
-        #     inputs = torch.nn.utils.rnn.pack_padded_sequence(
-        #         inputs, seq_lens,
-        #         batch_first=not time_major, enforce_sorted=False)
-        self._features, [h, c] = self.lstm(
-            inputs,
-            [torch.unsqueeze(state[0], 0),
-             torch.unsqueeze(state[1], 0)])
-        # Re-apply paddings.
-        # if time_major and max_seq_len > 1:
-        #     self._features, _ = torch.nn.utils.rnn.pad_packed_sequence(
-        #         self._features,
-        #         batch_first=not time_major)
-        model_out = self._logits_branch(self._features)
-        return model_out, [torch.squeeze(h, 0), torch.squeeze(c, 0)]
-
-    @override(ModelV2)
-    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
-        # Place hidden states on same device as model.
-        linear = next(self._logits_branch._model.children())
-        h = [
-            linear.weight.new(1, self.cell_size).zero_().squeeze(0),
-            linear.weight.new(1, self.cell_size).zero_().squeeze(0)
-        ]
-        return h
-
-    @override(ModelV2)
-    def value_function(self) -> TensorType:
-        assert self._features is not None, "must call forward() first"
-        return torch.reshape(self._value_branch(self._features), [-1])
+        model_out, value_out, h, c = self._lstm([
+            wrapped_out_plus_time_dim, input_dict["seq_lens"],
+            input_dict["state_in_0"], input_dict["state_in_1"]
+        ])
+        model_out_no_time_dim = torch.reshape(
+            model_out, torch.cat([[-1], model_out.shape[2:]], dim=0))
+        return model_out_no_time_dim, [h, c], {
+            SampleBatch.VF_PREDS: torch.reshape(value_out, [-1])
+        }
