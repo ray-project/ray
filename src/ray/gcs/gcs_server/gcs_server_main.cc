@@ -105,8 +105,6 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().pull_based_resource_reporting();
   gcs_server_config.grpc_based_resource_broadcast =
       RayConfig::instance().grpc_based_resource_broadcast();
-  RAY_LOG(ERROR) << "in main, broadcast: "
-                 << gcs_server_config.grpc_based_resource_broadcast;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

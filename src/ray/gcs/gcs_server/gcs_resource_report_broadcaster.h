@@ -61,9 +61,11 @@ class GcsResourceReportBroadcaster {
                      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &)>
       send_batch_;
 
-  // A lock to protect the data structures.
+  /// A lock to protect the data structures.
   absl::Mutex mutex_;
+  /// The set of nodes and their addresses which are subscribed to resource usage changes.
   std::unordered_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
+  /// The number of inflight resource usage updates per node. After being sent, a request is inflight if its reply has not been received and it has not timed out.
   std::unordered_map<NodeID, uint64_t> inflight_updates_ GUARDED_BY(mutex_);
 
   uint64_t broadcast_period_ms_;
