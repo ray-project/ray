@@ -956,11 +956,29 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
 
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   RAY_CHECK(worker != nullptr);
-  cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-  worker->ClearAllocatedInstances();
-  cluster_resource_scheduler_->ReleaseWorkerResources(
-      worker->GetLifetimeAllocatedInstances());
-  worker->ClearLifetimeAllocatedInstances();
+  auto allocated_instances = worker->GetAllocatedInstances();
+  if (allocated_instances != nullptr) {
+    if (worker->IsBlocked()) {
+      // If the worker is blocked, its CPU instances have already been released. We clear
+      // the CPU instances to avoid double freeing.
+      allocated_instances->ClearCPUInstances();
+    }
+    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
+    worker->ClearAllocatedInstances();
+    return;
+  }
+
+  auto lifetime_allocated_instances = worker->GetLifetimeAllocatedInstances();
+  if (lifetime_allocated_instances != nullptr) {
+    if (worker->IsBlocked()) {
+      // If the worker is blocked, its CPU instances have already been released. We clear
+      // the CPU instances to avoid double freeing.
+      lifetime_allocated_instances->ClearCPUInstances();
+    }
+    cluster_resource_scheduler_->ReleaseWorkerResources(
+        worker->GetLifetimeAllocatedInstances());
+    worker->ClearLifetimeAllocatedInstances();
+  }
 }
 
 bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
@@ -977,6 +995,7 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
       for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
+      worker->MarkBlocked();
       return true;
     }
   }
@@ -997,6 +1016,7 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
       // negative, at most one task can "borrow" this worker's resources.
       cluster_resource_scheduler_->SubtractCPUResourceInstances(
           cpu_instances, /*allow_going_negative=*/true);
+      worker->MarkUnblocked();
       return true;
     }
   }

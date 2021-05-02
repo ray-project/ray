@@ -129,6 +129,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_tempfile.py",
     "test_unhandled_error.py",
+    "test_top_level_api.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -193,6 +194,15 @@ py_test(
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+)
+
+# TODO: use py_test(env = ...) in the build file with bazel 4.0
+py_test(
+  name = "test_tracing",
+  size = "small",
+  srcs = SRCS + ["test_tracing.py"],
+  tags = ["exclusive"],
+  deps = ["//:ray_lib"]
 )
 
 py_test(
