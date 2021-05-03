@@ -124,6 +124,5 @@ TEST_F(GrpcBasedResourceBroadcasterTest, TestNodeRemoval) {
   AssertNoLeaks();
 }
 
-
 }  // namespace gcs
 }  // namespace ray

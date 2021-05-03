@@ -117,7 +117,8 @@ void GrpcBasedResourceBroadcaster::SendBroadcast() {
 
       absl::MutexLock guard(&mutex_);
       if (inflight_updates_.count(node_id)) {
-        // The entry may have already been freed if the node was removed before the request finished.
+        // The entry may have already been freed if the node was removed before the
+        // request finished.
         inflight_updates_[node_id] = false;
       }
     };
