@@ -22,7 +22,7 @@ pendulum-sac:
         no_done_at_end: true
         n_step: 3
         rollout_fragment_length: 1
-        prioritized_replay: false
+        prioritized_replay: true
         train_batch_size: 256
         target_network_update_freq: 1
         timesteps_per_iteration: 1000
