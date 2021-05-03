@@ -1,5 +1,6 @@
 import gym
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
@@ -14,6 +15,9 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 jax, _ = try_import_jax()
 torch, _ = try_import_torch()

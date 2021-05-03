@@ -249,6 +249,7 @@ def test_not_killing_workers_that_own_objects(shutdown_only):
 
     expected_num_workers = 6
     # Create a nested tasks to start 8 workers each of which owns an object.
+
     @ray.remote
     def nested(i):
         # The task owns an object.

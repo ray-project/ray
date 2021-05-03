@@ -121,7 +121,7 @@ def _dir_travel(
     e = _get_gitignore(path)
     if e is not None:
         excludes.append(e)
-    skip = any([e(path) for e in excludes])
+    skip = any(e(path) for e in excludes)
     if not skip:
         handler(path)
         if path.is_dir():
