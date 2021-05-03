@@ -908,6 +908,7 @@ class TFPolicy(Policy):
             Feed dict of data.
         """
 
+        # Get batch ready for RNNs, if applicable.
         if not isinstance(train_batch,
                           SampleBatch) or not train_batch.zero_padded:
             pad_batch_to_sequences_of_same_size(
@@ -918,10 +919,6 @@ class TFPolicy(Policy):
                 feature_keys=list(self._loss_input_dict_no_rnn.keys()),
                 view_requirements=self.view_requirements,
             )
-        else:
-            train_batch["seq_lens"] = train_batch.seq_lens
-
-        # Get batch ready for RNNs, if applicable.
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

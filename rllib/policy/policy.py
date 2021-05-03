@@ -11,13 +11,14 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
@@ -651,13 +652,13 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-            postprocessed_batch.seq_lens = seq_lens
+            postprocessed_batch["seq_lens"] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
         train_batch.is_training = True
         if seq_lens is not None:
-            train_batch.seq_lens = seq_lens
+            train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -764,6 +765,7 @@ class Policy(metaclass=ABCMeta):
         """
         self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
+
         obj = model or self
         if model and not hasattr(model, "view_requirements"):
             model.view_requirements = {
@@ -776,7 +778,17 @@ class Policy(metaclass=ABCMeta):
                 obj.get_initial_state):
             init_state = obj.get_initial_state()
         else:
-            obj.get_initial_state = lambda: []
+            # Add this functionality automatically for new native model API.
+            if tf and isinstance(model, tf.keras.Model) and \
+                    "state_in_0" not in view_reqs:
+                obj.get_initial_state = lambda: [
+                    np.zeros_like(view_req.space.sample())
+                    for k, view_req in model.view_requirements.items()
+                    if k.startswith("state_in_")]
+            else:
+                obj.get_initial_state = lambda: []
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
         for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state
