@@ -41,7 +41,7 @@ class GcsResourceReportBroadcaster {
   /// Event handler when a node leaves the cluster.
   void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
-  std::string DebugString() const;
+  std::string DebugString();
 
  private:
   // An asio service which does the broadcasting work.

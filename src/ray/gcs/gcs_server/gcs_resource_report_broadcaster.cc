@@ -79,7 +79,8 @@ void GcsResourceReportBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
   }
 }
 
-std::string GcsResourceReportBroadcaster::DebugString() const {
+std::string GcsResourceReportBroadcaster::DebugString() {
+  absl::MutexLock guard(&mutex_);
   std::ostringstream stream;
   stream << "GcsResourceReportBroadcaster: {Tracked nodes: " << nodes_.size()
          << ", Nodes skipped in last broadcast: " << num_skipped_nodes_;
@@ -109,7 +110,7 @@ void GcsResourceReportBroadcaster::SendBroadcast() {
     }
 
     double start_time = absl::GetCurrentTimeNanos();
-    auto callback = [this, node_id, &num_inflight, start_time](
+    auto callback = [this, &num_inflight, start_time](
                         const Status &status,
                         const rpc::UpdateResourceUsageReply &reply) {
       double end_time = absl::GetCurrentTimeNanos();
