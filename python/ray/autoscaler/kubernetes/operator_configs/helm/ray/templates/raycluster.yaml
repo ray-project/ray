@@ -47,6 +47,7 @@ spec:
             - containerPort: 6379  # Redis port
             - containerPort: 10001  # Used by Ray Client
             - containerPort: 8265  # Used by Ray Dashboard
+            - containerPort: 8000 # Used by Ray Serve
 
             # This volume allocates shared memory for Ray to use for its plasma
             # object store. If you do not provide this, Ray will fall back to
