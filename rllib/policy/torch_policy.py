@@ -477,8 +477,6 @@ class TorchPolicy(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
-        else:
-            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
@@ -712,12 +710,13 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
+        seq_lens = self._dummy_batch["seq_lens"]
+
         state_ins = []
         i = 0
         while "state_in_{}".format(i) in self._dummy_batch:
             state_ins.append(self._dummy_batch["state_in_{}".format(i)])
             i += 1
-        seq_lens = self._dummy_batch["seq_lens"]
         dummy_inputs = {
             k: self._dummy_batch[k]
             for k in self._dummy_batch.keys() if k != "is_training"
