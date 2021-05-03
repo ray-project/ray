@@ -60,13 +60,12 @@ DEFAULT_STATS_DIR = "./results"
 DEFAULT_UTILIZATION_SAMPLE_PERIOD = 5.0
 
 
-def dummy_batch_consumer(consumer_idx, batches):
+def dummy_batch_consumer(consumer_idx, epoch, batches):
     pass
 
 
 def run_trials(
         num_epochs,
-        num_rounds,
         filenames,
         num_reducers,
         num_trainers,
@@ -82,8 +81,7 @@ def run_trials(
         shuffle = shuffle_from_disk
     else:
         print(
-            "Using from-memory shuffler that caches data in memory between "
-            "rounds.")
+            "Using from-memory shuffler.")
         if collect_stats:
             shuffle = shuffle_from_memory_with_stats
         else:
@@ -96,7 +94,6 @@ def run_trials(
                 filenames,
                 dummy_batch_consumer,
                 num_epochs,
-                num_rounds,
                 num_reducers,
                 num_trainers,
                 max_concurrent_epochs,
@@ -113,7 +110,6 @@ def run_trials(
                 filenames,
                 dummy_batch_consumer,
                 num_epochs,
-                num_rounds,
                 num_reducers,
                 num_trainers,
                 max_concurrent_epochs,
@@ -140,9 +136,6 @@ if __name__ == "__main__":
     parser.add_argument("--num-epochs", type=int, default=10)
     parser.add_argument(
         "--max-concurrent-epochs", type=int, default=None)
-    parser.add_argument("--num-rounds", type=int, default=10)
-    parser.add_argument(
-        "--max-concurrent-rounds", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--num-trials", type=int, default=None)
     parser.add_argument("--trials-timeout", type=int, default=None)
@@ -158,7 +151,6 @@ if __name__ == "__main__":
     parser.add_argument("--use-old-data", action="store_true")
     parser.add_argument("--no-stats", action="store_true")
     parser.add_argument("--no-epoch-stats", action="store_true")
-    parser.add_argument("--no-round-stats", action="store_true")
     parser.add_argument("--no-consume-stats", action="store_true")
     parser.add_argument("--overwrite-stats", action="store_true")
     args = parser.parse_args()
@@ -226,15 +218,6 @@ if __name__ == "__main__":
     num_trainers = args.num_trainers
     batch_size = args.batch_size
 
-    # Calculate the number of shuffle rounds.
-    num_rounds = args.num_rounds
-    # TODO(Clark): Handle uneven rounds (remainders).
-    # num_rounds = max(
-    #     num_rows / num_trainers / batch_size / batches_per_round, 1)
-    # # Assert even division (no remainders, uneven rounds).
-    # assert num_rounds % 1 == 0
-    # num_rounds = int(num_rounds)
-
     num_epochs = args.num_epochs
     max_concurrent_epochs = args.max_concurrent_epochs
     if max_concurrent_epochs is None or max_concurrent_epochs > num_epochs:
@@ -259,20 +242,18 @@ if __name__ == "__main__":
             "From disk shuffler not yet updated for new config.")
     if num_trials is not None:
         print(f"Running {num_trials} shuffle trials with {num_epochs} epochs, "
-              f"{num_rounds} rounds, {num_reducers} reducers, {num_trainers} "
-              f"trainers, and a batch size of {batch_size} over {num_rows} "
-              "rows.")
+              f"{num_reducers} reducers, {num_trainers} trainers, and a batch "
+              f"size of {batch_size} over {num_rows} rows.")
     else:
         print(f"Running {trials_timeout} seconds of shuffle trials with "
-              f"{num_epochs} epochs, {num_rounds} rounds, {num_reducers} "
-              f"reducers, {num_trainers} trainers, and a batch size of "
-              f"{batch_size} over {num_rows} rows.")
+              f"{num_epochs} epochs, {num_reducers} reducers, {num_trainers} "
+              f"trainers, and a batch size of {batch_size} over {num_rows} "
+              "rows.")
     print(f"Shuffling will be pipelined with at most "
           f"{max_concurrent_epochs} concurrent epochs.")
     collect_stats = not args.no_stats
     all_stats = run_trials(
         num_epochs,
-        num_rounds,
         filenames,
         num_reducers,
         num_trainers,
@@ -289,7 +270,6 @@ if __name__ == "__main__":
             args.overwrite_stats,
             args.stats_dir,
             args.no_epoch_stats,
-            args.no_round_stats,
             args.no_consume_stats,
             use_from_disk_shuffler,
             num_rows,
@@ -298,7 +278,6 @@ if __name__ == "__main__":
             num_reducers,
             num_trainers,
             num_epochs,
-            num_rounds,
             max_concurrent_epochs)
     else:
         print("Shuffle trials done, no detailed stats collected.")

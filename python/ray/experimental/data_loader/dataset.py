@@ -24,8 +24,6 @@ class ShufflingDataset:
         num_trainers (int): Number of trainer workers.
         batch_size (int): Size of the batches that the iterator should yield.
         rank (int): The worker rank of the current process.
-        num_rounds (optional, int): The number of shuffle rounds that the
-            shuffler should perform. Default is 2.
         num_reducers (optional, int): The number of shuffler reducers. Default
             is the number of trainers x the number of cores on the master
             (rank 0) worker.
@@ -39,7 +37,6 @@ class ShufflingDataset:
             num_trainers: int,
             batch_size: int,
             rank: int,
-            num_rounds: int = 2,
             num_reducers: int = None,
             max_concurrent_epochs: int = 2,
             max_batch_queue_size: int = 100):
@@ -48,7 +45,6 @@ class ShufflingDataset:
 
         self._batch_size = batch_size
 
-        # TODO(Clark): Find way to do this without batch consumer proxy queue.
         if rank == 0:
             # rank == 0 --> master process
             # Create the batch queue. Trainers will consume GPU batches
@@ -60,7 +56,7 @@ class ShufflingDataset:
             # corresponding batch queue, and have each trainer reference their
             # single batch queue.
             self._batch_queue = MultiQueue(
-                num_trainers, max_batch_queue_size,
+                num_epochs * num_trainers, max_batch_queue_size,
                 name=MULTIQUEUE_ACTOR_NAME, connect=False)
             # Kick off shuffle.
             # TODO(Clark): Move the shuffle kickoff to an init() method so the
@@ -68,9 +64,9 @@ class ShufflingDataset:
             self._shuffle_result = ray.remote(shuffle_from_memory).remote(
                 filenames,
                 functools.partial(
-                    batch_consumer, self._batch_queue, batch_size),
+                    batch_consumer, self._batch_queue, batch_size,
+                    num_trainers),
                 num_epochs,
-                num_rounds,
                 num_reducers,
                 num_trainers,
                 max_concurrent_epochs,
@@ -79,21 +75,42 @@ class ShufflingDataset:
             # rank != 0 --> worker process
             # Connect to the batch queue.
             self._batch_queue = MultiQueue(
-                num_trainers, max_batch_queue_size,
+                num_epochs * num_trainers, max_batch_queue_size,
                 name=MULTIQUEUE_ACTOR_NAME, connect=True)
             self._shuffle_result = None
 
+        self._num_epochs = num_epochs
+        self._num_trainers = num_trainers
         self._rank = rank
+        self._epoch = None
+
+    def set_epoch(self, epoch):
+        """
+        Set the current training epoch. This should be called before
+        constructing the iterator on this dataset (e.g. before the
+        enumerate(train_loader) call).
+
+        Args:
+            epoch (int) The epoch number for the training epoch that is about
+                to start.
+        """
+        self._epoch = epoch
 
     def __iter__(self):
         """
         This iterator yields GPU batches from the shuffling queue.
         """
+        if self._epoch is None:
+            raise ValueError(
+                "You must set the epoch on this dataset via set_epoch()"
+                "before constructing the iterator.")
+
         leftover_batches = None
         while True:
             # TODO(Clark): Add get_up_to queue method that can fetch up to
             # some number of batches in a single RPC.
-            batches = self._batch_queue.get(self._rank, block=True)
+            queue_idx = self._epoch * self._num_trainers + self._rank
+            batches = self._batch_queue.get(queue_idx, block=True)
             if batches is None:
                 break
             batches = ray.get(batches)
@@ -118,26 +135,35 @@ class ShufflingDataset:
         # Consume leftover batch.
         if leftover_batches is not None:
             yield leftover_batches
-        if self._shuffle_result is not None:
+        if (
+                self._epoch == self._num_epochs - 1 and
+                self._shuffle_result is not None):
             ray.get(self._shuffle_result)
 
 
 def batch_consumer(
         queue: MultiQueue,
         batch_size: int,
+        num_trainers: int,
         rank: int,
+        epoch: int,
         batches: Iterable[ray.ObjectRef]):
     """
     Batch consumer that will be provided to the shuffler.
     """
+    queue_idx = epoch * num_trainers + rank
+    print(
+        f"Sending batch to queue for epoch {epoch} and rank {rank} at index: "
+        f"{queue_idx}")
     if batches is None:
-        queue.put(rank, None)
+        queue.put(queue_idx, None)
     else:
-        queue.put_batch(rank, batches)
+        queue.put_batch(queue_idx, batches)
 
 
 def debug_batch_consumer(
         rank: int,
+        epoch: int,
         batches: Iterable[pd.DataFrame]):
     num_batches = len(batches) if batches is not None else 0
     print(f"Received {num_batches} batches in consumer {rank}.")
@@ -184,7 +210,7 @@ if __name__ == "__main__":
     num_trainers = 1
     batch_size = 20000
     rank = 0
-    num_reducers = 4
+    num_reducers = 8
     print(f"Creating shuffling dataset with {batch_size} batch size, "
           f"{num_epochs} epochs, {num_reducers} reducers, and {num_trainers} "
           "trainers.")
@@ -197,6 +223,8 @@ if __name__ == "__main__":
         rank,
         num_reducers=num_reducers)
 
-    for batch_idx, batch in enumerate(ds):
-        print(f"Consuming batch {batch_idx}!")
+    for epoch in range(num_epochs):
+        ds.set_epoch(epoch)
+        for batch_idx, batch in enumerate(ds):
+            print(f"Consuming batch {batch_idx}!")
     print("Done consuming batches.")

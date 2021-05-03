@@ -76,7 +76,7 @@ head_node:
               - Key: anyscale-user
                 Value: "clark@anyscale.com"
               - Key: anyscale-expiration
-                Value: "2021-05-01"
+                Value: "2021-05-10"
 
     # Additional options in the boto docs.
 
@@ -114,7 +114,7 @@ cluster_synced_files: []
 
 # Whether changes to directories in file_mounts or cluster_synced_files in the head node
 # should sync to the worker node continuously
-file_mounts_sync_continuously: False
+file_mounts_sync_continuously: True
 
 # Patterns for files to exclude when running rsync up or rsync down
 rsync_exclude:

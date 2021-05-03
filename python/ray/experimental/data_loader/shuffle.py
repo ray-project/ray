@@ -1,4 +1,3 @@
-import itertools
 import time
 import timeit
 import threading
@@ -10,8 +9,7 @@ from smart_open import open
 
 import ray
 from ray.experimental.data_loader.stats import (
-    TrialStatsCollector, TrialStatsCollectorFromMemory, collect_store_stats,
-    TrialStatsFromMemory)
+    TrialStatsCollector, collect_store_stats, TrialStats)
 
 
 #
@@ -21,16 +19,14 @@ from ray.experimental.data_loader.stats import (
 
 def shuffle_from_memory_with_stats(
         filenames: List[str],
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        batch_consumer: Callable[[int, int, Iterable[pd.DataFrame]], None],
         num_epochs: int,
-        num_rounds: int,
         num_reducers: int,
         num_trainers: int,
         max_concurrent_epochs: int,
-        utilization_sample_period: float) -> (TrialStatsFromMemory, List):
+        utilization_sample_period: float) -> (TrialStats, List):
     """
-    Shuffle the provided dataset every epoch, using round-based shuffling that
-    caches the input dataset in cluster memory at the beginning of each epoch.
+    Shuffle the provided dataset every epoch.
     """
     stats = None
     store_stats = []
@@ -42,14 +38,12 @@ def shuffle_from_memory_with_stats(
         store_stats_collector_thread.start()
 
         print(
-            f"Doing {num_epochs} epochs each with {num_rounds} shuffle "
-            "rounds.")
+            f"Doing {num_epochs} epochs of shuffling.")
 
         stats = shuffle_from_memory(
             filenames,
             batch_consumer,
             num_epochs,
-            num_rounds,
             num_reducers,
             num_trainers,
             max_concurrent_epochs,
@@ -65,23 +59,20 @@ def shuffle_from_memory_with_stats(
 
 def shuffle_from_memory_no_stats(
         filenames: List[str],
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        batch_consumer: Callable[[int, int, Iterable[pd.DataFrame]], None],
         num_epochs: int,
-        num_rounds: int,
         num_reducers: int,
         num_trainers: int,
         max_concurrent_epochs: int,
         utilization_sample_period: float) -> (float, None):
     """
-    Shuffle the provided dataset every epoch, using round-based shuffling that
-    caches the input dataset in cluster memory at the beginning of each epoch.
+    Shuffle the provided dataset every epoch.
     """
-    print(f"Doing {num_epochs} epochs each with {num_rounds} shuffle rounds.")
+    print(f"Doing {num_epochs} epochs of shuffling.")
     duration = shuffle_from_memory(
         filenames,
         batch_consumer,
         num_epochs,
-        num_rounds,
         num_reducers,
         num_trainers,
         max_concurrent_epochs,
@@ -91,47 +82,61 @@ def shuffle_from_memory_no_stats(
 
 def shuffle_from_memory(
         filenames: List[str],
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        batch_consumer: Callable[[int, int, Iterable[pd.DataFrame]], None],
         num_epochs: int,
-        num_rounds: int,
         num_reducers: int,
         num_trainers: int,
         max_concurrent_epochs: int,
-        collect_stats: bool = True) -> Union[TrialStatsFromMemory, float]:
+        collect_stats: bool = True) -> Union[TrialStats, float]:
     if collect_stats:
-        stats_collector = TrialStatsCollectorFromMemory.remote(
-            num_epochs, len(filenames), num_reducers, num_trainers, num_rounds)
+        stats_collector = TrialStatsCollector.remote(
+            num_epochs, len(filenames), num_reducers, num_trainers)
     else:
         stats_collector = None
 
     start = timeit.default_timer()
 
+    # A list containing reducer output refs for all in-progress epochs.
     in_progress = []
+    # We wait for reducer outputs in num_trainers batches given that trainers
+    # will consume the reducer outputs in lockstep for a training step, so
+    # num_trainers reducer outputs should be released at ~the same time.
+    # TODO(Clark): Tweak this heuristic.
+    wait_batch = num_trainers
     num_done = 0
-    reducer_wait_batch = 1
     for epoch_idx in range(num_epochs):
         # Throttle epoch pipelining.
-        # TODO(Clark): Find a way to more aggressively delete object
-        # references without slow wait loops.
-        reducers_to_wait_for = (
-            len(in_progress) - (
-                (max_concurrent_epochs - 1) * num_rounds * num_reducers *
-                num_trainers))
-        if reducers_to_wait_for > 0:
+        # Get the number of epochs currently in progress.
+        num_in_progress_epochs = len(in_progress) // num_reducers
+        # Get the number of epochs whose finishing we need to wait for before
+        # starting another epoch.
+        epochs_to_wait_for = 1 + num_in_progress_epochs - max_concurrent_epochs
+        if epochs_to_wait_for > 0:
+            # Convert the number of epochs we need to wait for to the number of
+            # reducers that we need to wait for.
+            reducers_to_wait_for = epochs_to_wait_for * num_reducers
             print(f"Throttling on epoch {epoch_idx}, waiting for "
-                  f"{reducers_to_wait_for} reducer-trainer chunks, "
-                  f"{len(in_progress)} in progress.")
+                  f"{epochs_to_wait_for} epochs, {num_in_progress_epochs} in "
+                  "progress.")
+            # We wait on the reducers from the first epochs_to_wait_for epochs,
+            # ensuring that we give earlier straggler epochs all of the
+            # resources they need to finish since epochs are consumed in order.
+            refs_to_wait_for = in_progress[:reducers_to_wait_for]
+            in_progress = in_progress[reducers_to_wait_for:]
             start_throttle = timeit.default_timer()
-            while reducers_to_wait_for > 0:
-                new_done, in_progress = ray.wait(
-                    in_progress, num_returns=reducer_wait_batch)
-                num_done += len(new_done)
+            # While throttling, we wait for these refs in num_trainers batches
+            # in order to more aggressively free the associated reducer objects
+            # from the object store.
+            while refs_to_wait_for:
+                new_done, refs_to_wait_for = ray.wait(
+                    refs_to_wait_for, num_returns=wait_batch,
+                    fetch_local=False)
+                num_done += wait_batch
                 del new_done
-                reducers_to_wait_for -= reducer_wait_batch
             time = timeit.default_timer() - start
             throughput = num_done / time
-            print(f"Throughput after throttle: {throughput:.2f} reducer "
-                  "trainer chunks/sec")
+            print(f"Throughput after throttle: {throughput:.2f} reducer"
+                  " chunks/sec")
             if stats_collector is not None:
                 stats_collector.epoch_throttle_done.remote(
                     epoch_idx, timeit.default_timer() - start_throttle)
@@ -140,28 +145,23 @@ def shuffle_from_memory(
             epoch_idx,
             filenames,
             batch_consumer,
-            num_rounds,
             num_reducers,
             num_trainers,
             start,
             stats_collector)
         in_progress.extend(epoch_reducers)
 
-    print(f"Waiting until last {len(in_progress)} reducer-trainer chunks are "
+    print(f"Waiting until last {len(in_progress)} reducer chunks are "
           "done.")
     # Block until all epochs are done.
-    wait_batch = max(len(in_progress) // 10, 1)
     while in_progress:
-        done, in_progress = ray.wait(in_progress, num_returns=wait_batch)
-        del done
+        new_done, in_progress = ray.wait(
+            in_progress, num_returns=wait_batch, fetch_local=False)
+        del new_done
 
     print("All epochs done.")
 
     end = timeit.default_timer()
-
-    # Signal to all batch consumers that we're done producing batches.
-    for consumer_idx in range(num_trainers):
-        batch_consumer(consumer_idx, None)
 
     if stats_collector is not None:
         stats_collector.trial_done.remote(end - start)
@@ -174,143 +174,70 @@ def shuffle_from_memory(
 def shuffle_from_memory_epoch(
         epoch: int,
         filenames: List[str],
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
-        num_rounds: int,
+        batch_consumer: Callable[[int, int, Iterable[pd.DataFrame]], None],
         num_reducers: int,
         num_trainers: int,
         trial_start: float,
-        stats_collector: Union[TrialStatsCollectorFromMemory, None]) -> None:
-    rounds_of_partitions = shuffle_map(
-        filenames, num_rounds, num_reducers, stats_collector, epoch)
+        stats_collector: Union[TrialStatsCollector, None]) -> None:
     if stats_collector is not None:
         stats_collector.epoch_start.remote(epoch)
-
-    epoch_reducers = []
-    # TODO(Clark): Move to streaming implementation.
-    # TODO(Clark): Make mapper, reducer, and trainer IDs stable in the stats
-    # across rounds, epochs, and trials?
-    for round_index, round_partitions in enumerate(rounds_of_partitions):
-        round_reducers = shuffle_from_memory_round(
-            batch_consumer,
-            num_reducers,
-            num_trainers,
-            epoch,
-            round_index,
-            trial_start,
-            stats_collector,
-            *round_partitions)
-
-        epoch_reducers.extend(round_reducers)
-
-    return epoch_reducers
-
-
-def shuffle_map(
-        filenames: List[str],
-        num_rounds: int,
-        num_reducers: int,
-        stats_collector: Union[TrialStatsCollectorFromMemory, None],
-        epoch: int) -> List[List[ray.ObjectRef]]:
-    # TODO(Clark): In each epoch, we're currently loading the full dataset
-    # from disk, shuffling each file, and partitioning these files into rounds.
-    # We should optimize this so we aren't having to do a disk load at the
-    # beginning of each epoch.
-    # One option would be to read the files into the object store at the
-    # beginning of training, chunked by round partitions, and only select from
-    # the desired round partition in each round, shuffle within each round
-    # partition, and split to reducers. At the beginning of each epoch, the
-    # round partitions could be globally shuffled.
-    reducer_partitions = []
+    reducers_partitions = []
     for filename in filenames:
-        file_reducer_parts = shuffle_map_file.options(
-            num_returns=num_rounds * num_reducers).remote(
-                filename, num_rounds, num_reducers,
-                stats_collector, epoch)
+        file_reducer_parts = shuffle_map.options(
+            num_returns=num_reducers).remote(
+                filename, num_reducers, stats_collector, epoch)
         if not isinstance(file_reducer_parts, list):
             file_reducer_parts = [file_reducer_parts]
-        file_reducer_parts = chunk_it_contiguous(
-            file_reducer_parts, num_reducers)
-        assert len(file_reducer_parts) == num_rounds
-        reducer_partitions.append(file_reducer_parts)
-    return list(zip(*reducer_partitions))
+        reducers_partitions.append(file_reducer_parts)
+
+    shuffled = []
+    for reducer_idx, reducer_partitions in enumerate(
+            zip(*reducers_partitions)):
+        consumer_batches = shuffle_reduce.remote(
+            reducer_idx,
+            stats_collector,
+            epoch,
+            *reducer_partitions)
+        shuffled.append(consumer_batches)
+    for trainer_idx, batches in enumerate(
+            np.array_split(shuffled, num_trainers)):
+        consume(
+            trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
+            list(batches))
+        # Signal to all batch consumers that we're done producing batches for
+        # this epoch.
+        batch_consumer(trainer_idx, epoch, None)
+    return shuffled
 
 
 @ray.remote
-def shuffle_map_file(
+def shuffle_map(
         filename: str,
-        num_rounds: int,
         num_reducers: int,
-        stats_collector: Union[TrialStatsCollectorFromMemory, None],
+        stats_collector: Union[TrialStatsCollector, None],
         epoch: int) -> List[List[ray.ObjectRef]]:
     if stats_collector is not None:
-        stats_collector.cache_map_start.remote(epoch)
+        stats_collector.map_start.remote(epoch)
     start = timeit.default_timer()
     # Load file.
     rows = pd.read_parquet(open(filename, "rb"))
+    assert len(rows) > num_reducers
     end_read = timeit.default_timer()
 
-    # Create random round assignment.
-    round_assignment = np.random.randint(num_rounds, size=len(rows))
-    # Partition the rows into a partition per reducer per round.
+    # Create random reducer assignment.
+    reducer_assignment = np.random.randint(num_reducers, size=len(rows))
+    # Partition the rows into a partition per reducer.
     reducer_parts = []
-    for round_idx in range(num_rounds):
-        round_part = rows[round_assignment == round_idx]
-        reducer_assignment = np.random.randint(
-            num_reducers, size=len(round_part))
-        for reducer_idx in range(num_reducers):
-            reducer_part = round_part[reducer_assignment == reducer_idx]
-            reducer_parts.append(reducer_part)
+    for reducer_idx in range(num_reducers):
+        reducer_part = rows[reducer_assignment == reducer_idx]
+        reducer_parts.append(reducer_part)
     if len(reducer_parts) == 1:
         reducer_parts = reducer_parts[0]
     duration = timeit.default_timer() - start
     read_duration = end_read - start
     if stats_collector is not None:
-        stats_collector.cache_map_done.remote(epoch, duration, read_duration)
+        stats_collector.map_done.remote(epoch, duration, read_duration)
     return reducer_parts
-
-
-def shuffle_from_memory_round(
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
-        num_reducers: int,
-        num_trainers: int,
-        epoch: int,
-        round_index: int,
-        trial_start: float,
-        stats_collector: Union[TrialStatsCollectorFromMemory, None],
-        *reducers_partitions: List[List[pd.DataFrame]]) -> None:
-    if stats_collector is not None:
-        stats_collector.round_start.remote(epoch, round_index)
-    shuffled = []
-    # reducers_partitions is a 2D (num_files, max(num_reducers, num_files))
-    # array of reducer partitions; we chunk it into a (num_files, num_reducers)
-    # array of reducer partitions, unzip it into a (num_reducers, num_files)
-    # array of reducer partitions, and feed each set of reducer partitions into
-    # a reducer.
-    for reducer_idx, reducer_partitions in enumerate(zip(
-            *[
-                chunk_it(file_part, num_reducers)
-                for file_part in reducers_partitions])):
-        consumer_batches = shuffle_reduce.options(
-            num_returns=num_trainers).remote(
-                reducer_idx,
-                num_trainers,
-                stats_collector,
-                epoch,
-                round_index,
-                *itertools.chain.from_iterable(reducer_partitions))
-        if not isinstance(consumer_batches, list):
-            consumer_batches = [consumer_batches]
-        shuffled.append(consumer_batches)
-    for trainer_idx, batches in enumerate(
-        zip(
-            *[
-                chunk_it(reducer_part, num_trainers)
-                for reducer_part in shuffled])):
-        consume(
-            trainer_idx, batch_consumer, trial_start, stats_collector, epoch,
-            round_index, list(itertools.chain.from_iterable(batches)))
-    shuffled = list(itertools.chain.from_iterable(shuffled))
-    return shuffled
 
 
 #
@@ -320,43 +247,42 @@ def shuffle_from_memory_round(
 
 @ray.remote
 def shuffle_reduce(
-        reduce_index: int, num_trainers: int,
+        reduce_index: int,
         stats_collector: Union[TrialStatsCollector, None], epoch: int,
-        round_index: int, *chunks: pd.DataFrame) -> List[pd.DataFrame]:
+        *chunks: pd.DataFrame) -> List[pd.DataFrame]:
     if stats_collector is not None:
-        stats_collector.reduce_start.remote(epoch, round_index)
+        stats_collector.reduce_start.remote(epoch)
     start = timeit.default_timer()
     # Concatenate chunks from all mapper partitions.
     batch = pd.concat(chunks)
     # Shuffle the batch.
     batch = batch.sample(frac=1)
-    # Return a list of batches, one for each trainer.
-    batch = np.array_split(batch, num_trainers)
     if len(batch) == 1:
         batch = batch[0]
     duration = timeit.default_timer() - start
     if stats_collector is not None:
-        stats_collector.reduce_done.remote(epoch, round_index, duration)
+        stats_collector.reduce_done.remote(epoch, duration)
     return batch
 
 
 def consume(
         trainer_idx: int,
-        batch_consumer: Callable[[int, Iterable[pd.DataFrame]], None],
+        batch_consumer: Callable[[int, int, Iterable[pd.DataFrame]], None],
         trial_start: float, stats_collector: Union[TrialStatsCollector, None],
-        epoch: int, round_index: int, batches: List[ray.ObjectRef]) -> None:
-    print(f"Sending to consumer {trainer_idx} in epoch {epoch}, round "
-          f"{round_index}")
+        epoch: int, batches: List[ray.ObjectRef]) -> None:
+    print(f"Sending to consumer {trainer_idx} in epoch {epoch}")
     if stats_collector is not None:
-        stats_collector.consume_start.remote(epoch, round_index)
+        stats_collector.consume_start.remote(epoch)
     start = timeit.default_timer()
     trial_time_to_consume = start - trial_start
-    batch_consumer(trainer_idx, batches)
+    # TODO(Clark): Confirm that epochs are consumed in order, e.g. that batches
+    # from epoch 2 aren't interleaved with batches from epoch 1.
+    batch_consumer(trainer_idx, epoch, batches)
     end = timeit.default_timer()
     duration = end - start
     if stats_collector is not None:
         stats_collector.consume_done.remote(
-            epoch, round_index, duration, trial_time_to_consume)
+            epoch, duration, trial_time_to_consume)
 
 
 #

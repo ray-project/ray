@@ -31,6 +31,18 @@ class TorchIterableShufflingDataset(IterableDataset):
             batch_transform = lambda batch: batch  # noqa: E731
         self._batch_transform = batch_transform
 
+    def set_epoch(self, epoch):
+        """
+        Set the current training epoch. This should be called before
+        constructing the iterator on this dataset (e.g. before the
+        enumerate(train_loader) call).
+
+        Args:
+            epoch (int) The epoch number for the training epoch that is about
+                to start.
+        """
+        self._ds.set_epoch(epoch)
+
     def __iter__(self):
         for df in iter(self._ds):
             yield self._batch_transform(df)
@@ -243,6 +255,18 @@ class TorchShufflingDataset(IterableDataset):
             label_shape=label_shape,
             label_type=label_type)
 
+    def set_epoch(self, epoch):
+        """
+        Set the current training epoch. This should be called before
+        constructing the iterator on this dataset (e.g. before the
+        enumerate(train_loader) call).
+
+        Args:
+            epoch (int) The epoch number for the training epoch that is about
+                to start.
+        """
+        self._ds.set_epoch(epoch)
+
     def __iter__(self):
         for df in iter(self._ds):
             yield self._batch_transform(df)
@@ -303,11 +327,10 @@ if __name__ == "__main__":
     print("Creating Torch shuffling dataset.")
     torch_ds = TorchIterableShufflingDataset(ds, batch_transform)
 
-    # Set batch_size=None to disable the Torch data loader's automatic
-    # batching.
-    data_loader = torch.utils.data.DataLoader(torch_ds, batch_size=None)
+    for epoch in range(num_epochs):
+        torch_ds.set_epoch(epoch)
 
-    for batch_idx, (data, targets) in enumerate(data_loader):
-        print(f"Consuming batch {batch_idx}: "
-              f"{len(data)} features, {len(targets)} samples")
+        for batch_idx, (data, targets) in enumerate(torch_ds):
+            print(f"Consuming batch {batch_idx}: "
+                  f"{len(data)} features, {len(targets)} samples")
     print("Done consuming batches.")
