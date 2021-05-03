@@ -2,7 +2,7 @@
 apiVersion: cluster.ray.io/v1
 kind: RayCluster
 metadata:
-  name: {{ .Values.rayClusterName }}
+  name: {{ .Release.Name }}
 spec:
   # The maximum number of workers nodes to launch in addition to the head node.
   maxWorkers: {{ include "ray.clusterMaxWorkers" . }}
