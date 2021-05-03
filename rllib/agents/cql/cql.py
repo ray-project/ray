@@ -180,7 +180,10 @@ def after_init(trainer):
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
     else:
-        print("Error here?, otherwise buffer would be empty!")
+        raise ValueError(
+            "Unknown offline input! config['input'] must either be list of offline "
+            "files (json) or a D4RL-specific InputReader specifier (e.g. "
+            "'d4rl.hopper-medium-v0').")
 
 
 CQLTrainer = SACTrainer.with_updates(
