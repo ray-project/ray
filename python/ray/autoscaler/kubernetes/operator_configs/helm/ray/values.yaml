@@ -22,6 +22,12 @@ podTypes:
     # Number of NVIDIA GPUs used by this pod type.
     # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
     numGPU: 0
+    # Optionally, signal additional resources to Ray with string-int key-value pairs.
+    # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
+    # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+    rayResources: {}
+    # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+    nodeSelector: {}
   - name: ray-worker-type
     # Minimum number of Ray workers of this pod type to keep running.
     minWorkers: 2
@@ -36,6 +42,12 @@ podTypes:
     # Number of NVIDIA GPUs used by this pod type.
     # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
     numGPU: 0
+    # Optionally, signal additional resources to Ray with string-int key-value pairs.
+    # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
+    # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+    rayResources: {}
+    # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+    nodeSelector: {}
 
 
 # Operator settings:

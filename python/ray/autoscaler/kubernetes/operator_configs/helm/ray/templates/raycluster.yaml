@@ -21,6 +21,10 @@ spec:
     - name: {{ .name }}
       minWorkers: {{ .minWorkers }}
       maxWorkers: {{ .maxWorkers }}
+      {{- if .rayResources }}
+      rayResources:
+        {{- .rayResources | nindent 8 }}
+      {{- end }}
       podConfig:
         apiVersion: v1
         kind: Pod
@@ -72,6 +76,10 @@ spec:
                 {{- if .numGPU }}
                 nvidia.com/gpu: {{ .numGPU }}
                 {{- end }}
+            {{- if .nodeSelector }}
+            nodeSelector:
+                {{- toYaml .nodeSelector | nindent 16 }}
+            {{- end }}
     {{- end }}
   # Commands to start Ray on the head node. You don't need to change this.
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
