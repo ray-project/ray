@@ -10,7 +10,7 @@ serve.start(http_host=None, detached=True)
 
 
 # Set up a deployment with the desired number of replicas. This could also be
-# e a stateful class (e.g., if we had an expensive model to set up).
+# a stateful class (e.g., if we had an expensive model to set up).
 @serve.deployment(name="my_model", num_replicas=2)
 async def my_model(request):
     data = await request.body()

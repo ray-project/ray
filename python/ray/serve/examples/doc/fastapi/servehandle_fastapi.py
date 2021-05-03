@@ -28,6 +28,6 @@ async def startup_event():
 
 @app.get("/generate")
 async def generate(query: str):
-    # Get a handle to our Ray Serve endpoint so we can query it in Python.
+    # Get a handle to our deployment so we can query it in Python.
     handle = GPT2.get_handle()
     return await handle.remote(query)

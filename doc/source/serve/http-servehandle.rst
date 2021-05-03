@@ -26,7 +26,7 @@ As described in the :doc:`tutorial`, when you create a deployment, it is exposed
         def __call__(self, request):
             pass
 
-When you make a request to the Serve HTTP server at ``/counter``, it will forward the request to the Deployment's ``__call__`` method and provide a `Starlette Request object <https://www.starlette.io/requests/>`_ as the sole argument. The ``__call__`` method can return any JSON-serializable object or a `Starlette Response object <https://www.starlette.io/responses/>`_ (e.g., to return a custom status code).
+When you make a request to the Serve HTTP server at ``/counter``, it will forward the request to the deployment's ``__call__`` method and provide a `Starlette Request object <https://www.starlette.io/requests/>`_ as the sole argument. The ``__call__`` method can return any JSON-serializable object or a `Starlette Response object <https://www.starlette.io/responses/>`_ (e.g., to return a custom status code).
 
 Below, we discuss some advanced features for customizing Ray Serve's HTTP functionality.
 
@@ -35,7 +35,7 @@ Below, we discuss some advanced features for customizing Ray Serve's HTTP functi
 FastAPI HTTP Deployments
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-If you want to define more complex HTTP handling logic, Serve integrates with `FastAPI <https://fastapi.tiangolo.com/>`_. This allows you to define a Serve Deployment using the :mod:`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out `their documentation <https://fastapi.tiangolo.com/>`_.
+If you want to define more complex HTTP handling logic, Serve integrates with `FastAPI <https://fastapi.tiangolo.com/>`_. This allows you to define a Serve deployment using the :mod:`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out `their documentation <https://fastapi.tiangolo.com/>`_.
 
 .. code-block:: python
 
@@ -52,7 +52,7 @@ If you want to define more complex HTTP handling logic, Serve integrates with `F
 
     MyFastAPIDeployment.deploy()
 
-Now if you send a request to ``/hello``, this will be routed to the ``root`` method of our Deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
+Now if you send a request to ``/hello``, this will be routed to the ``root`` method of our deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
 
 .. code-block:: python
 
@@ -92,7 +92,9 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
     class FastAPIWrapper:
         pass
 
-This is useful for scaling out an existing FastAPI app with no modifications necessary. You can also combine routes defined this way with routes defined on the Deployment:
+This is useful for scaling out an existing FastAPI app with no modifications necessary.
+Existing middlewares, automatic OpenAPI documentation generation, and other advanced FastAPI features should work as-is.
+You can also combine routes defined this way with routes defined on the deployment:
 
 .. code-block:: python
 
@@ -165,15 +167,15 @@ ServeHandle: Calling Deployments from Python
 
 Ray Serve enables you to query models both from HTTP and Python. This feature
 enables seamless :ref:`model composition<serve-model-composition>`. You can
-get a ``ServeHandle`` corresponding to Deployment, similar how you can
-reach an endpoint through HTTP via a specific route. When you issue a request
-to an endpoint through ``ServeHandle``, the request is load balanced across
+get a ``ServeHandle`` corresponding to deployment, similar how you can
+reach a deployment through HTTP via a specific route. When you issue a request
+to a deployment through ``ServeHandle``, the request is load balanced across
 available replicas in the same way an HTTP request is.
 
-To call a Ray Serve endpoint from python, use :mod:`Deployment.get_handle <ray.serve.api.Deployment>` 
-to get a handle to the Deployment, then use 
+To call a Ray Serve deployment from python, use :mod:`Deployment.get_handle <ray.serve.api.Deployment>` 
+to get a handle to the deployment, then use 
 :mod:`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests
-to that Deployment. These requests can pass ordinary args and kwargs that are
+to that deployment. These requests can pass ordinary args and kwargs that are
 passed directly to the method. This returns a Ray ``ObjectRef`` whose result
 can be waited for or retrieved using ``ray.wait`` or ``ray.get``.
 
@@ -185,7 +187,7 @@ can be waited for or retrieved using ``ray.wait`` or ``ray.get``.
             return f"Method1: {arg}"
 
         def __call__(self, arg):
-            return f"Method1: {arg}"
+            return f"__call__: {arg}"
 
     Deployment.deploy()
 
@@ -193,7 +195,7 @@ can be waited for or retrieved using ``ray.wait`` or ``ray.get``.
     ray.get(handle.remote("hi")) # Defaults to calling the __call__ method.
     ray.get(handle.method1.remote("hi")) # Call a different method.
 
-If you want to use the same Deployment to serve both HTTP and ServeHandle traffic, the recommended best practice is to define an internal method that the HTTP handling logic will call:
+If you want to use the same deployment to serve both HTTP and ServeHandle traffic, the recommended best practice is to define an internal method that the HTTP handling logic will call:
 
 .. code-block:: python
 

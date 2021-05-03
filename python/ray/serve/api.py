@@ -1194,6 +1194,9 @@ class Deployment:
                 f"version={self.version},"
                 f"route_prefix={route_prefix})")
 
+    def __repr__(self):
+        return str(self)
+
 
 @overload
 def deployment(backend_def: Callable) -> Deployment:

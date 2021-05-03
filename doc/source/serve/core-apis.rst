@@ -40,7 +40,8 @@ We can also list all available deployments and dynamically get a reference to th
 .. code-block:: python
 
   >> serve.list_deployments()
-  {'MyFirstDeployment': <ray.serve.api.ServeDeployment object at 0x7fe0c04c42b0>}
+  {'A': Deployment(name=A,version=None,route_prefix=/A)}
+  {'MyFirstDeployment': Deployment(name=MyFirstDeployment,version=None,route_prefix=/MyFirstDeployment}
 
   # Returns the same object as the original MyFirstDeployment object.
   # This can be used to redeploy, get a handle, etc.
@@ -98,6 +99,7 @@ Deployments can be updated simply by updating the code or configuration options 
   SimpleDeployment.deploy()
 
   # Re-deploys, creating an additional replica.
+  # This could be the SAME Python script, modified and re-run.
   @serve.deployment(name="my_deployment", num_replicas=2)
   class SimpleDeployment:
       pass
@@ -105,7 +107,7 @@ Deployments can be updated simply by updating the code or configuration options 
   SimpleDeployment.deploy()
 
   # You can also use Deployment.options() to change options without redefining
-  # the class.
+  # the class. This is useful for programmatically updating deployments.
   SimpleDeployment.options(num_replicas=2).deploy()
 
 
