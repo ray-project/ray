@@ -11,7 +11,6 @@ from smart_open import open
 
 import ray
 
-
 # TODO(Clark): Convert this stats data model to be based on a Pandas DataFrame
 # instead of nested data classes.
 
@@ -167,10 +166,8 @@ class EpochStatsCollector_:
         assert self._map_stage_duration is not None
         assert len(self._map_durations) == self._num_maps
         assert len(self._read_durations) == self._num_maps
-        return MapStats(
-            self._map_durations,
-            self._map_stage_duration,
-            self._read_durations)
+        return MapStats(self._map_durations, self._map_stage_duration,
+                        self._read_durations)
 
     def get_reduce_stats(self):
         assert len(self._reduce_durations) == self._num_reduces
@@ -197,20 +194,17 @@ class EpochStatsCollector_:
         assert self._maps_done == self._num_maps
         assert self._reduces_done == self._num_reduces
         assert self._consumes_done == self._num_consumes
-        return EpochStats(
-            self._duration,
-            self.get_map_stats(),
-            self.get_reduce_stats(),
-            self.get_consume_stats(),
-            self.get_throttle_stats())
+        return EpochStats(self._duration, self.get_map_stats(),
+                          self.get_reduce_stats(), self.get_consume_stats(),
+                          self.get_throttle_stats())
 
 
 class TrialStatsCollector_:
-    def __init__(
-            self, num_epochs, num_maps, num_reduces, num_consumes):
+    def __init__(self, num_epochs, num_maps, num_reduces, num_consumes):
         self._collectors = [
             EpochStatsCollector_(num_maps, num_reduces, num_consumes)
-            for _ in range(num_epochs)]
+            for _ in range(num_epochs)
+        ]
         self._duration = None
 
         self._trial_done_ev = asyncio.Event()
@@ -246,37 +240,22 @@ class TrialStatsCollector_:
     async def get_stats(self):
         await self._trial_done_ev.wait()
         epoch_stats = await asyncio.gather(
-            *[
-                collector.get_stats()
-                for collector in self._collectors])
+            *[collector.get_stats() for collector in self._collectors])
         assert self._duration is not None
-        return TrialStats(
-            epoch_stats,
-            self._duration)
+        return TrialStats(epoch_stats, self._duration)
 
 
 TrialStatsCollector = ray.remote(TrialStatsCollector_)
-
 
 #
 # Stats processing utilities.
 #
 
 
-def process_stats(
-        all_stats,
-        overwrite_stats,
-        stats_dir,
-        no_epoch_stats,
-        no_consume_stats,
-        use_from_disk_shuffler,
-        num_rows,
-        num_row_groups_per_file,
-        batch_size,
-        num_reducers,
-        num_trainers,
-        num_epochs,
-        max_concurrent_epochs):
+def process_stats(all_stats, overwrite_stats, stats_dir, no_epoch_stats,
+                  no_consume_stats, use_from_disk_shuffler, num_rows,
+                  num_row_groups_per_file, batch_size, num_reducers,
+                  num_trainers, num_epochs, max_concurrent_epochs):
     stats_list, store_stats_list = zip(*all_stats)
     times = [stats.duration for stats in stats_list]
     mean = np.mean(times)
@@ -284,13 +263,14 @@ def process_stats(
     store_bytes_used = [
         getattr(store_stats_sample, "object_store_bytes_used", 0)
         for trial_store_stats in store_stats_list
-        for _, store_stats_sample in trial_store_stats]
+        for _, store_stats_sample in trial_store_stats
+    ]
     num_store_stats_samples = sum(
         len(trial_store_stats) for trial_store_stats in store_stats_list)
     max_utilization = human_readable_size(np.max(store_bytes_used))
     throughput_std = np.std([num_epochs * num_rows / time for time in times])
-    batch_throughput_std = np.std([
-        (num_epochs * num_rows / batch_size) / time for time in times])
+    batch_throughput_std = np.std(
+        [(num_epochs * num_rows / batch_size) / time for time in times])
     print(f"\nMean over {len(times)} trials: {mean:.3f}s +- {std}")
     print(f"Mean throughput over {len(times)} trials: "
           f"{num_epochs * num_rows / mean:.2f} rows/s +- {throughput_std:.2f}")
@@ -300,8 +280,7 @@ def process_stats(
     print(f"Max object store utilization over {num_store_stats_samples} "
           f"samples: {max_utilization}\n")
 
-    shuffle_type = (
-        "from_disk" if use_from_disk_shuffler else "from_memory")
+    shuffle_type = ("from_disk" if use_from_disk_shuffler else "from_memory")
     overwrite_stats = overwrite_stats
     if stats_dir.startswith("s3"):
         write_mode = "w"
@@ -314,9 +293,8 @@ def process_stats(
         f"trial_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
         "batch_size.csv")
     filename = os.path.join(stats_dir, filename)
-    write_header = (
-        overwrite_stats or not os.path.exists(filename) or
-        os.path.getsize(filename) == 0)
+    write_header = (overwrite_stats or not os.path.exists(filename)
+                    or os.path.getsize(filename) == 0)
     print(f"Writing out trial stats to {filename}.")
     # TODO(Clark): Add per-mapper, per-reducer, and per-trainer stat CSVs.
 
@@ -371,7 +349,8 @@ def process_stats(
             "avg_time_to_consume",  # across epochs, consumers
             "std_time_to_consume",  # across epochs, consumers
             "max_time_to_consume",  # across epochs, consumers
-            "min_time_to_consume"]  # across epochs, consumers
+            "min_time_to_consume"
+        ]  # across epochs, consumers
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
@@ -414,14 +393,14 @@ def process_stats(
                 # Consume stage.
                 consume_stats = epoch_stats.consume_stats
                 consume_task_durations.extend(consume_stats.task_durations)
-                consume_stage_durations.append(
-                    consume_stats.stage_duration)
+                consume_stage_durations.append(consume_stats.stage_duration)
                 consume_times.extend(consume_stats.consume_times)
 
             # Trial store stats.
             store_bytes_used = [
                 getattr(store_stats_, "object_store_bytes_used", 0)
-                for _, store_stats_ in store_stats]
+                for _, store_stats_ in store_stats
+            ]
             row["avg_object_store_utilization_duration"] = np.mean(
                 store_bytes_used)
             row["max_object_store_utilization_duration"] = np.max(
@@ -474,9 +453,8 @@ def process_stats(
             f"epoch_stats_{shuffle_type}_{hr_num_rows}_rows_{hr_batch_size}_"
             "batch_size.csv")
         filename = os.path.join(stats_dir, filename)
-        write_header = (
-            overwrite_stats or not os.path.exists(filename) or
-            os.path.getsize(filename) == 0)
+        write_header = (overwrite_stats or not os.path.exists(filename)
+                        or os.path.getsize(filename) == 0)
         print(f"Writing out epoch stats to {filename}.")
         # TODO(Clark): Add per-mapper, per-reducer, and per-trainer stat CSVs.
         with open(filename, write_mode) as f:
@@ -512,7 +490,8 @@ def process_stats(
                 "avg_time_to_consume",  # across consumers
                 "std_time_to_consume",  # across consumers
                 "max_time_to_consume",  # across consumers
-                "min_time_to_consume"]  # across consumers
+                "min_time_to_consume"
+            ]  # across consumers
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
                 writer.writeheader()
@@ -524,8 +503,8 @@ def process_stats(
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
             }
-            for trial, (trial_stats, trial_store_stats) in enumerate(
-                    all_stats):
+            for trial, (trial_stats,
+                        trial_store_stats) in enumerate(all_stats):
                 row["trial"] = trial
                 for epoch, stats in enumerate(trial_stats.epoch_stats):
                     row["epoch"] = epoch
@@ -583,22 +562,14 @@ def process_stats(
             "batch_size.csv")
         filename = os.path.join(stats_dir, filename)
         print(f"Writing out consume stats to {filename}.")
-        write_header = (
-            overwrite_stats or not os.path.exists(filename) or
-            os.path.getsize(filename) == 0)
+        write_header = (overwrite_stats or not os.path.exists(filename)
+                        or os.path.getsize(filename) == 0)
         with open(filename, write_mode) as f:
             fieldnames = [
-                "shuffle_type",
-                "num_row_groups_per_file",
-                "num_reducers",
-                "num_trainers",
-                "num_epochs",
-                "max_concurrent_epochs",
-                "trial",
-                "epoch",
-                "consumer",
-                "consume_task_duration",
-                "consume_time"]
+                "shuffle_type", "num_row_groups_per_file", "num_reducers",
+                "num_trainers", "num_epochs", "max_concurrent_epochs", "trial",
+                "epoch", "consumer", "consume_task_duration", "consume_time"
+            ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if write_header:
                 writer.writeheader()
@@ -610,8 +581,8 @@ def process_stats(
                 "num_epochs": num_epochs,
                 "max_concurrent_epochs": max_concurrent_epochs,
             }
-            for trial, (trial_stats, trial_store_stats) in enumerate(
-                    all_stats):
+            for trial, (trial_stats,
+                        trial_store_stats) in enumerate(all_stats):
                 row["trial"] = trial
                 for epoch, stats in enumerate(trial_stats.epoch_stats):
                     row["epoch"] = epoch
@@ -632,7 +603,7 @@ UNITS = ["", "K", "M", "B", "T", "Q"]
 def human_readable_big_num(num):
     idx = int(math.log10(num) // 3)
     unit = UNITS[idx]
-    new_num = num / 10 ** (3 * idx)
+    new_num = num / 10**(3 * idx)
     if new_num % 1 == 0:
         return f"{int(new_num)}{unit}"
     else:
@@ -684,12 +655,11 @@ def get_store_stats(timeout=5):
     return reply.store_stats
 
 
-def collect_store_stats(
-        store_stats,
-        done_event,
-        utilization_sample_period,
-        do_print=True,
-        fetch_timeout=10):
+def collect_store_stats(store_stats,
+                        done_event,
+                        utilization_sample_period,
+                        do_print=True,
+                        fetch_timeout=10):
     is_done = False
     while not is_done:
         get_time = timeit.default_timer()

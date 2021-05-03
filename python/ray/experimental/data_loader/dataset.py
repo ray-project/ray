@@ -30,16 +30,16 @@ class ShufflingDataset:
         max_concurrent_epochs (optional, int): The maximum number of epochs
             whose shuffling stages should execute concurrently. Default is 2.
     """
-    def __init__(
-            self,
-            filenames: List[str],
-            num_epochs: int,
-            num_trainers: int,
-            batch_size: int,
-            rank: int,
-            num_reducers: int = None,
-            max_concurrent_epochs: int = 2,
-            max_batch_queue_size: int = 100):
+
+    def __init__(self,
+                 filenames: List[str],
+                 num_epochs: int,
+                 num_trainers: int,
+                 batch_size: int,
+                 rank: int,
+                 num_reducers: int = None,
+                 max_concurrent_epochs: int = 2,
+                 max_batch_queue_size: int = 100):
         if num_reducers is None:
             num_reducers = num_trainers * get_num_cpus()
 
@@ -56,16 +56,17 @@ class ShufflingDataset:
             # corresponding batch queue, and have each trainer reference their
             # single batch queue.
             self._batch_queue = MultiQueue(
-                num_epochs * num_trainers, max_batch_queue_size,
-                name=MULTIQUEUE_ACTOR_NAME, connect=False)
+                num_epochs * num_trainers,
+                max_batch_queue_size,
+                name=MULTIQUEUE_ACTOR_NAME,
+                connect=False)
             # Kick off shuffle.
             # TODO(Clark): Move the shuffle kickoff to an init() method so the
             # user can better control when the shuffling starts?
             self._shuffle_result = ray.remote(shuffle_from_memory).remote(
                 filenames,
-                functools.partial(
-                    batch_consumer, self._batch_queue, batch_size,
-                    num_trainers),
+                functools.partial(batch_consumer, self._batch_queue,
+                                  batch_size, num_trainers),
                 num_epochs,
                 num_reducers,
                 num_trainers,
@@ -75,8 +76,10 @@ class ShufflingDataset:
             # rank != 0 --> worker process
             # Connect to the batch queue.
             self._batch_queue = MultiQueue(
-                num_epochs * num_trainers, max_batch_queue_size,
-                name=MULTIQUEUE_ACTOR_NAME, connect=True)
+                num_epochs * num_trainers,
+                max_batch_queue_size,
+                name=MULTIQUEUE_ACTOR_NAME,
+                connect=True)
             self._shuffle_result = None
 
         self._num_epochs = num_epochs
@@ -120,8 +123,8 @@ class ShufflingDataset:
                 leftover_batch = batches.tail(leftover)
                 # Slice off the leftover.
                 batches = batches.head(-leftover)
-                leftover_batches = pd.concat([
-                    leftover_batches, leftover_batch])
+                leftover_batches = pd.concat(
+                    [leftover_batches, leftover_batch])
                 # If leftover_batches contains a full batch, yield it.
                 if len(leftover_batches) > self._batch_size:
                     batch = leftover_batches.head(self._batch_size)
@@ -135,19 +138,13 @@ class ShufflingDataset:
         # Consume leftover batch.
         if leftover_batches is not None:
             yield leftover_batches
-        if (
-                self._epoch == self._num_epochs - 1 and
-                self._shuffle_result is not None):
+        if (self._epoch == self._num_epochs - 1
+                and self._shuffle_result is not None):
             ray.get(self._shuffle_result)
 
 
-def batch_consumer(
-        queue: MultiQueue,
-        batch_size: int,
-        num_trainers: int,
-        rank: int,
-        epoch: int,
-        batches: Iterable[ray.ObjectRef]):
+def batch_consumer(queue: MultiQueue, batch_size: int, num_trainers: int,
+                   rank: int, epoch: int, batches: Iterable[ray.ObjectRef]):
     """
     Batch consumer that will be provided to the shuffler.
     """
@@ -161,10 +158,8 @@ def batch_consumer(
         queue.put_batch(queue_idx, batches)
 
 
-def debug_batch_consumer(
-        rank: int,
-        epoch: int,
-        batches: Iterable[pd.DataFrame]):
+def debug_batch_consumer(rank: int, epoch: int,
+                         batches: Iterable[pd.DataFrame]):
     num_batches = len(batches) if batches is not None else 0
     print(f"Received {num_batches} batches in consumer {rank}.")
 
@@ -190,22 +185,20 @@ if __name__ == "__main__":
     # order to work around an idle working killing bug that's causing objects
     # to be lost. We should fix this.
     ray.init(_system_config={"idle_worker_killing_time_threshold_ms": 10**6})
-    num_rows = 10 ** 6
+    num_rows = 10**6
     num_files = 10
     num_row_groups_per_file = 1
     max_row_group_skew = 0.0
     data_dir = "data"
-    print(
-        f"Generating {num_rows} rows over {num_files} files, with "
-        f"{num_row_groups_per_file} row groups per file and at most "
-        f"{100 * max_row_group_skew:.1f}% row group skew.")
-    filenames, num_bytes = generate_data(
-        num_rows, num_files, num_row_groups_per_file, max_row_group_skew,
-        data_dir)
-    print(
-        f"Generated {len(filenames)} files containing {num_rows} rows "
-        f"with {num_row_groups_per_file} row groups per file, totalling "
-        f"{human_readable_size(num_bytes)}.")
+    print(f"Generating {num_rows} rows over {num_files} files, with "
+          f"{num_row_groups_per_file} row groups per file and at most "
+          f"{100 * max_row_group_skew:.1f}% row group skew.")
+    filenames, num_bytes = generate_data(num_rows, num_files,
+                                         num_row_groups_per_file,
+                                         max_row_group_skew, data_dir)
+    print(f"Generated {len(filenames)} files containing {num_rows} rows "
+          f"with {num_row_groups_per_file} row groups per file, totalling "
+          f"{human_readable_size(num_bytes)}.")
     num_epochs = 4
     num_trainers = 1
     batch_size = 20000

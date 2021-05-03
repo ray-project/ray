@@ -22,9 +22,10 @@ class TorchIterableShufflingDataset(IterableDataset):
             from the iterator. If this is not provided, no transform will take
             place.
     """
-    def __init__(
-            self, ds: ShufflingDataset,
-            batch_transform: Callable[[pd.DataFrame], Any] = None):
+
+    def __init__(self,
+                 ds: ShufflingDataset,
+                 batch_transform: Callable[[pd.DataFrame], Any] = None):
         super().__init__()
         self._ds = ds
         if batch_transform is None:
@@ -49,12 +50,12 @@ class TorchIterableShufflingDataset(IterableDataset):
 
 
 def dataframe_to_tensor_factory(
-    feature_columns: List[Any] = None,
-    feature_shapes: Optional[List[Any]] = None,
-    feature_types: Optional[List[torch.dtype]] = None,
-    label_column: Any = None,
-    label_shape: Optional[int] = None,
-    label_type: Optional[torch.dtype] = None,
+        feature_columns: List[Any] = None,
+        feature_shapes: Optional[List[Any]] = None,
+        feature_types: Optional[List[torch.dtype]] = None,
+        label_column: Any = None,
+        label_shape: Optional[int] = None,
+        label_type: Optional[torch.dtype] = None,
 ) -> Callable[[pd.DataFrame], Tuple[torch.Tensor, torch.Tensor]]:
     """
     Returns a Pandas DataFrame --> PyTorch Tensor converter, using the
@@ -78,11 +79,15 @@ def dataframe_to_tensor_factory(
         (features, labels) tuple of Torch tensors.
     """
     (
-        feature_columns, feature_shapes, feature_types, label_column,
-        label_shape, label_type,
-    ) = _normalize_torch_data_spec(
-            feature_columns, feature_shapes, feature_types, label_column,
-            label_shape, label_type)
+        feature_columns,
+        feature_shapes,
+        feature_types,
+        label_column,
+        label_shape,
+        label_type,
+    ) = _normalize_torch_data_spec(feature_columns, feature_shapes,
+                                   feature_types, label_column, label_shape,
+                                   label_type)
     return functools.partial(
         convert_to_tensor,
         feature_columns=feature_columns,
@@ -149,9 +154,8 @@ def _normalize_torch_data_spec(
     if not label_type:
         label_type = torch.float
 
-    return (
-        feature_columns, feature_shapes, feature_types, label_column,
-        label_shape, label_type)
+    return (feature_columns, feature_shapes, feature_types, label_column,
+            label_shape, label_type)
 
 
 def convert_to_tensor(df: pd.DataFrame, feature_columns: List[Any],
@@ -218,34 +222,33 @@ class TorchShufflingDataset(IterableDataset):
         **shuffle_kwargs: Other configuration options for dataset shuffling,
             see ShufflingDataset for options.
     """
-    def __init__(
-            self,
-            filenames: List[str],
-            num_epochs: int,
-            num_trainers: int,
-            batch_size: int,
-            rank: int,
-            feature_columns: List[Any] = None,
-            feature_shapes: Optional[List[Any]] = None,
-            feature_types: Optional[List[torch.dtype]] = None,
-            label_column: Any = None,
-            label_shape: Optional[int] = None,
-            label_type: Optional[torch.dtype] = None,
-            **shuffle_kwargs):
+
+    def __init__(self,
+                 filenames: List[str],
+                 num_epochs: int,
+                 num_trainers: int,
+                 batch_size: int,
+                 rank: int,
+                 feature_columns: List[Any] = None,
+                 feature_shapes: Optional[List[Any]] = None,
+                 feature_types: Optional[List[torch.dtype]] = None,
+                 label_column: Any = None,
+                 label_shape: Optional[int] = None,
+                 label_type: Optional[torch.dtype] = None,
+                 **shuffle_kwargs):
         super().__init__()
-        self._ds = ShufflingDataset(
-            filenames,
-            num_epochs,
-            num_trainers,
-            batch_size,
-            rank,
-            **shuffle_kwargs)
+        self._ds = ShufflingDataset(filenames, num_epochs, num_trainers,
+                                    batch_size, rank, **shuffle_kwargs)
         (
-            feature_columns, feature_shapes, feature_types, label_column,
-            label_shape, label_type,
-        ) = _normalize_torch_data_spec(
-                feature_columns, feature_shapes, feature_types, label_column,
-                label_shape, label_type)
+            feature_columns,
+            feature_shapes,
+            feature_types,
+            label_column,
+            label_shape,
+            label_type,
+        ) = _normalize_torch_data_spec(feature_columns, feature_shapes,
+                                       feature_types, label_column,
+                                       label_shape, label_type)
         self._batch_transform = functools.partial(
             convert_to_tensor,
             feature_columns=feature_columns,
@@ -274,27 +277,25 @@ class TorchShufflingDataset(IterableDataset):
 
 if __name__ == "__main__":
     import ray
-    from ray.experimental.data_loader.data_generation import (
-        generate_data, DATA_SPEC)
+    from ray.experimental.data_loader.data_generation import (generate_data,
+                                                              DATA_SPEC)
     from ray.experimental.data_loader.stats import human_readable_size
     print("Starting Ray...")
     ray.init(_system_config={"idle_worker_killing_time_threshold_ms": 10**6})
-    num_rows = 10 ** 6
+    num_rows = 10**6
     num_files = 10
     num_row_groups_per_file = 1
     max_row_group_skew = 0.0
     data_dir = "data"
-    print(
-        f"Generating {num_rows} rows over {num_files} files, with "
-        f"{num_row_groups_per_file} row groups per file and at most "
-        f"{100 * max_row_group_skew:.1f}% row group skew.")
-    filenames, num_bytes = generate_data(
-        num_rows, num_files, num_row_groups_per_file, max_row_group_skew,
-        data_dir)
-    print(
-        f"Generated {len(filenames)} files containing {num_rows} rows "
-        f"with {num_row_groups_per_file} row groups per file, totalling "
-        f"{human_readable_size(num_bytes)}.")
+    print(f"Generating {num_rows} rows over {num_files} files, with "
+          f"{num_row_groups_per_file} row groups per file and at most "
+          f"{100 * max_row_group_skew:.1f}% row group skew.")
+    filenames, num_bytes = generate_data(num_rows, num_files,
+                                         num_row_groups_per_file,
+                                         max_row_group_skew, data_dir)
+    print(f"Generated {len(filenames)} files containing {num_rows} rows "
+          f"with {num_row_groups_per_file} row groups per file, totalling "
+          f"{human_readable_size(num_bytes)}.")
     num_epochs = 4
     num_trainers = 1
     batch_size = 20000
@@ -316,7 +317,8 @@ if __name__ == "__main__":
         np.complex128: torch.complex128
     }
     feature_types = [
-        numpy_to_torch_dtype[dtype] for _, _, dtype in DATA_SPEC.values()]
+        numpy_to_torch_dtype[dtype] for _, _, dtype in DATA_SPEC.values()
+    ]
     label_column = feature_columns.pop()
     label_type = feature_types.pop()
     batch_transform = dataframe_to_tensor_factory(

@@ -22,6 +22,5 @@ class Validator:
         shuffled = pd.concat(chunks)
         num_expected_rows = self.get_num_expected_rows()
         assert num_expected_rows == len(shuffled)
-        assert (
-            list(shuffled["key"]) != list(range(num_expected_rows)) and
-            set(shuffled["key"]) == set(range(num_expected_rows)))
+        assert (list(shuffled["key"]) != list(range(num_expected_rows))
+                and set(shuffled["key"]) == set(range(num_expected_rows)))

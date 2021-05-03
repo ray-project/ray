@@ -47,8 +47,11 @@ class MultiQueue:
         >>> q = Queue(actor_options={"num_cpus": 1})
     """
 
-    def __init__(self, num_queues: int, maxsize: int = 0,
-                 name: str = None, connect: bool = False,
+    def __init__(self,
+                 num_queues: int,
+                 maxsize: int = 0,
+                 name: str = None,
+                 connect: bool = False,
                  actor_options: Optional[Dict] = None) -> None:
         self.num_queues = num_queues
         self.maxsize = maxsize
@@ -60,9 +63,8 @@ class MultiQueue:
             actor_options = actor_options or {}
             if name is not None:
                 actor_options["name"] = name
-            self.actor = ray.remote(
-                _QueueActor).options(
-                    **actor_options).remote(self.num_queues, self.maxsize)
+            self.actor = ray.remote(_QueueActor).options(
+                **actor_options).remote(self.num_queues, self.maxsize)
 
     def __len__(self) -> int:
         return sum(
@@ -113,12 +115,11 @@ class MultiQueue:
             else:
                 ray.get(self.actor.put.remote(queue_idx, item, timeout))
 
-    def put_batch(
-            self,
-            queue_idx: int,
-            items: Iterable,
-            block: bool = True,
-            timeout: Optional[float] = None) -> None:
+    def put_batch(self,
+                  queue_idx: int,
+                  items: Iterable,
+                  block: bool = True,
+                  timeout: Optional[float] = None) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full, blocks until the queue is no
@@ -172,8 +173,7 @@ class MultiQueue:
             else:
                 await self.actor.put.remote(queue_idx, item, timeout)
 
-    def get(
-            self,
+    def get(self,
             queue_idx: int,
             block: bool = True,
             timeout: Optional[float] = None) -> Any:
@@ -321,15 +321,15 @@ class _QueueActor:
     async def put_batch(self, queue_idx: int, items, timeout=None):
         for item in items:
             try:
-                await asyncio.wait_for(
-                    self.queues[queue_idx].put(item), timeout)
+                await asyncio.wait_for(self.queues[queue_idx].put(item),
+                                       timeout)
             except asyncio.TimeoutError:
                 raise Full
 
     async def get(self, queue_idx: int, timeout=None):
         try:
-            return await asyncio.wait_for(
-                self.queues[queue_idx].get(), timeout)
+            return await asyncio.wait_for(self.queues[queue_idx].get(),
+                                          timeout)
         except asyncio.TimeoutError:
             raise Empty
 
@@ -338,9 +338,8 @@ class _QueueActor:
 
     def put_nowait_batch(self, queue_idx: int, items):
         # If maxsize is 0, queue is unbounded, so no need to check size.
-        if (
-                self.maxsize > 0 and len(items) +
-                self.qsize(queue_idx) > self.maxsize):
+        if (self.maxsize > 0
+                and len(items) + self.qsize(queue_idx) > self.maxsize):
             raise Full(f"Cannot add {len(items)} items to queue of size "
                        f"{self.qsize()} and maxsize {self.maxsize}.")
         for item in items:

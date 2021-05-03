@@ -9,11 +9,10 @@ import ray
 from ray.experimental.data_loader.shuffle import (
     shuffle_from_disk, shuffle_from_memory_with_stats,
     shuffle_from_memory_no_stats)
-from ray.experimental.data_loader.stats import (
-    process_stats, human_readable_size)
+from ray.experimental.data_loader.stats import (process_stats,
+                                                human_readable_size)
 
 from ray.experimental.data_loader.data_generation import generate_data
-
 
 # TODOs:
 # - [DONE] Add support for multiple epochs in a single trial.
@@ -30,7 +29,6 @@ from ray.experimental.data_loader.data_generation import generate_data
 # - [DONE] Conclusions attached to those graphs.
 # - Explore streaming implementation of cache map stage, where we sample and
 #   pop one round partition at a time.
-
 
 # TODOs:
 # - [DONE] Instrument profiling:
@@ -53,7 +51,6 @@ from ray.experimental.data_loader.data_generation import generate_data
 #  - is arrived at iteratively, can vary across models
 # 4M rows/group, 256k rows/batch -> 170MB/file
 
-
 DEFAULT_DATA_DIR = "/mnt/disk0/benchmark_scratch"
 DEFAULT_STATS_DIR = "./results"
 
@@ -64,24 +61,21 @@ def dummy_batch_consumer(consumer_idx, epoch, batches):
     pass
 
 
-def run_trials(
-        num_epochs,
-        filenames,
-        num_reducers,
-        num_trainers,
-        max_concurrent_epochs,
-        utilization_sample_period,
-        collect_stats=True,
-        use_from_disk_shuffler=False,
-        num_trials=None,
-        trials_timeout=None):
+def run_trials(num_epochs,
+               filenames,
+               num_reducers,
+               num_trainers,
+               max_concurrent_epochs,
+               utilization_sample_period,
+               collect_stats=True,
+               use_from_disk_shuffler=False,
+               num_trials=None,
+               trials_timeout=None):
     if use_from_disk_shuffler:
-        print(
-            "Using from-disk shuffler that loads data from disk each round.")
+        print("Using from-disk shuffler that loads data from disk each round.")
         shuffle = shuffle_from_disk
     else:
-        print(
-            "Using from-memory shuffler.")
+        print("Using from-memory shuffler.")
         if collect_stats:
             shuffle = shuffle_from_memory_with_stats
         else:
@@ -91,13 +85,8 @@ def run_trials(
         for trial in range(num_trials):
             print(f"Starting trial {trial}.")
             stats, store_stats = shuffle(
-                filenames,
-                dummy_batch_consumer,
-                num_epochs,
-                num_reducers,
-                num_trainers,
-                max_concurrent_epochs,
-                utilization_sample_period)
+                filenames, dummy_batch_consumer, num_epochs, num_reducers,
+                num_trainers, max_concurrent_epochs, utilization_sample_period)
             duration = stats.duration if collect_stats else stats
             print(f"Trial {trial} done after {duration} seconds.")
             all_stats.append((stats, store_stats))
@@ -107,13 +96,8 @@ def run_trials(
         while timeit.default_timer() - start < trials_timeout:
             print(f"Starting trial {trial}.")
             stats, store_stats = shuffle(
-                filenames,
-                dummy_batch_consumer,
-                num_epochs,
-                num_reducers,
-                num_trainers,
-                max_concurrent_epochs,
-                utilization_sample_period)
+                filenames, dummy_batch_consumer, num_epochs, num_reducers,
+                num_trainers, max_concurrent_epochs, utilization_sample_period)
             duration = stats.duration if collect_stats else stats
             print(f"Trial {trial} done after {duration} seconds.")
             all_stats.append((stats, store_stats))
@@ -125,17 +109,15 @@ def run_trials(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Shuffling data loader")
-    parser.add_argument("--num-rows", type=int, default=4*(10**11))
+    parser = argparse.ArgumentParser(description="Shuffling data loader")
+    parser.add_argument("--num-rows", type=int, default=4 * (10**11))
     parser.add_argument("--num-files", type=int, default=100)
     parser.add_argument("--max-row-group-skew", type=float, default=0.0)
     parser.add_argument("--num-row-groups-per-file", type=int, default=1)
     parser.add_argument("--num-reducers", type=int, default=5)
     parser.add_argument("--num-trainers", type=int, default=5)
     parser.add_argument("--num-epochs", type=int, default=10)
-    parser.add_argument(
-        "--max-concurrent-epochs", type=int, default=None)
+    parser.add_argument("--max-concurrent-epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--num-trials", type=int, default=None)
     parser.add_argument("--trials-timeout", type=int, default=None)
@@ -192,26 +174,20 @@ if __name__ == "__main__":
     num_files = args.num_files
     max_row_group_skew = args.max_row_group_skew
     if not args.use_old_data:
-        print(
-            f"Generating {num_rows} rows over {num_files} files, with "
-            f"{num_row_groups_per_file} row groups per file and at most "
-            f"{100 * max_row_group_skew:.1f}% row group skew.")
-        filenames, num_bytes = generate_data(
-            num_rows,
-            num_files,
-            num_row_groups_per_file,
-            max_row_group_skew,
-            data_dir)
-        print(
-            f"Generated {len(filenames)} files containing {num_rows} rows "
-            f"with {num_row_groups_per_file} row groups per file, totalling "
-            f"{human_readable_size(num_bytes)}.")
+        print(f"Generating {num_rows} rows over {num_files} files, with "
+              f"{num_row_groups_per_file} row groups per file and at most "
+              f"{100 * max_row_group_skew:.1f}% row group skew.")
+        filenames, num_bytes = generate_data(num_rows, num_files,
+                                             num_row_groups_per_file,
+                                             max_row_group_skew, data_dir)
+        print(f"Generated {len(filenames)} files containing {num_rows} rows "
+              f"with {num_row_groups_per_file} row groups per file, totalling "
+              f"{human_readable_size(num_bytes)}.")
     else:
         filenames = [
-            os.path.join(
-                data_dir,
-                f"input_data_{file_index}.parquet.snappy")
-            for file_index in range(num_files)]
+            os.path.join(data_dir, f"input_data_{file_index}.parquet.snappy")
+            for file_index in range(num_files)
+        ]
         print("Not generating input data, using existing data instead.")
 
     num_reducers = args.num_reducers
@@ -252,33 +228,17 @@ if __name__ == "__main__":
     print(f"Shuffling will be pipelined with at most "
           f"{max_concurrent_epochs} concurrent epochs.")
     collect_stats = not args.no_stats
-    all_stats = run_trials(
-        num_epochs,
-        filenames,
-        num_reducers,
-        num_trainers,
-        max_concurrent_epochs,
-        utilization_sample_period,
-        collect_stats,
-        use_from_disk_shuffler,
-        num_trials,
-        trials_timeout)
+    all_stats = run_trials(num_epochs, filenames, num_reducers, num_trainers,
+                           max_concurrent_epochs, utilization_sample_period,
+                           collect_stats, use_from_disk_shuffler, num_trials,
+                           trials_timeout)
 
     if collect_stats:
-        process_stats(
-            all_stats,
-            args.overwrite_stats,
-            args.stats_dir,
-            args.no_epoch_stats,
-            args.no_consume_stats,
-            use_from_disk_shuffler,
-            num_rows,
-            num_row_groups_per_file,
-            batch_size,
-            num_reducers,
-            num_trainers,
-            num_epochs,
-            max_concurrent_epochs)
+        process_stats(all_stats, args.overwrite_stats, args.stats_dir,
+                      args.no_epoch_stats, args.no_consume_stats,
+                      use_from_disk_shuffler, num_rows,
+                      num_row_groups_per_file, batch_size, num_reducers,
+                      num_trainers, num_epochs, max_concurrent_epochs)
     else:
         print("Shuffle trials done, no detailed stats collected.")
         times, _ = zip(*all_stats)
@@ -286,8 +246,8 @@ if __name__ == "__main__":
         std = np.std(times)
         throughput_std = np.std(
             [num_epochs * num_rows / time for time in times])
-        batch_throughput_std = np.std([
-            (num_epochs * num_rows / batch_size) / time for time in times])
+        batch_throughput_std = np.std(
+            [(num_epochs * num_rows / batch_size) / time for time in times])
         print(f"\nMean over {len(times)} trials: {mean:.3f}s +- {std}")
         print(f"Mean throughput over {len(times)} trials: "
               f"{num_epochs * num_rows / mean:.2f} rows/s +- "
