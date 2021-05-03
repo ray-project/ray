@@ -4,7 +4,6 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
-import os
 import queue
 
 import threading
@@ -63,7 +62,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
         else:
-            job_config = None
+            job_config = JobConfig()
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
@@ -71,28 +70,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 self.ray_connect_handler(job_config)
-        if job_config is None:
-            return ray_client_pb2.InitResponse()
-        job_config = job_config.get_proto_job_config()
-        # If the server has been initialized, we need to compare whether the
-        # runtime env is compatible.
-        if current_job_config and set(job_config.runtime_env.uris) != set(
-                current_job_config.runtime_env.uris):
+
+        # JobConfig sets parameters for the tasks and actors spawned by this
+        # driver, so we must have an exact match here.
+        if current_job_config and current_job_config != job_config:
             return ray_client_pb2.InitResponse(
                 ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env.uris} "
-                f"current one {current_job_config.runtime_env.uris}")
-        return ray_client_pb2.InitResponse(ok=True)
+                msg="JobConfig doesn't match. Only one JobConfig can be "
+                "running on a Ray client server at once.")
 
-    def PrepRuntimeEnv(self, request,
-                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
-        job_config = ray.worker.global_worker.core_worker.get_job_config()
-        try:
-            self._prepare_runtime_env(job_config.runtime_env)
-        except Exception as e:
-            raise grpc.RpcError(f"Prepare runtime env failed with {e}")
-        return ray_client_pb2.PrepRuntimeEnvResponse()
+        return ray_client_pb2.InitResponse(ok=True)
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
@@ -475,15 +462,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         for k in kwarg_map:
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
-
-    def _prepare_runtime_env(self, job_runtime_env):
-        """Download runtime environment to local node"""
-        uris = job_runtime_env.uris
-        from ray._private import runtime_env
-        with disable_client_hook():
-            working_dir = runtime_env.ensure_runtime_env_setup(uris)
-            if working_dir:
-                os.chdir(working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,

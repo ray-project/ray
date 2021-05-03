@@ -451,8 +451,14 @@ class Worker:
     def is_connected(self) -> bool:
         return self._conn_state == grpc.ChannelConnectivity.READY
 
-    def _server_init(self, job_config: JobConfig):
-        """Initialize the server"""
+    def server_init(self, job_config: JobConfig):
+        """Initialize the Ray client server.
+
+        This sends an RPC to the server to have it initialize the driver.
+
+        If a runtime environment was specified, it will be uploaded to the
+        cluster if it does not already exist.
+        """
         try:
             if job_config is None:
                 init_req = ray_client_pb2.InitRequest()
@@ -462,7 +468,7 @@ class Worker:
             import ray._private.runtime_env as runtime_env
             import tempfile
             with tempfile.TemporaryDirectory() as tmp_dir:
-                (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
+                runtime_env.PKG_DIR = tmp_dir
                 # Generate the uri for runtime env
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
@@ -472,9 +478,6 @@ class Worker:
                     logger.error("Init failed due to: ", init_resp.msg)
                     raise IOError(init_resp.msg)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
-                runtime_env.PKG_DIR = old_dir
-                prep_req = ray_client_pb2.PrepRuntimeEnvRequest()
-                self.data_client.PrepRuntimeEnv(prep_req)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
 

@@ -31,7 +31,7 @@ class JobConfig:
             self.worker_env = worker_env
         import ray._private.runtime_env as runtime_support
         if runtime_env:
-            # Remove working_dir rom the dict here, since that needs to be
+            # Remove working_dir from the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
             without_dir = dict(runtime_env)
             if "working_dir" in without_dir:
@@ -52,6 +52,17 @@ class JobConfig:
             f"{type(code_search_path)}"
         self.runtime_env = runtime_env or dict()
         self.client_job = client_job
+
+    def __eq__(self, other):
+        return all([
+            self.worker_env == other.worker_env,
+            self.num_java_workers_per_process ==
+            other.num_java_workers_per_process,
+            self.jvm_options == other.jvm_options,
+            self.code_search_path == other.code_search_path,
+            self.runtime_env == other.runtime_env,
+            self.client_job == other.client_job,
+        ])
 
     def serialize(self):
         """Serialize the struct into protobuf string"""

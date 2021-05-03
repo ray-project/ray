@@ -256,16 +256,8 @@ message InitResponse {
   string msg = 2;
 }
 
-message PrepRuntimeEnvRequest {
-}
-
-message PrepRuntimeEnvResponse {
-}
-
 service RayletDriver {
   rpc Init(InitRequest) returns (InitResponse) {
-  }
-  rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
   }
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -328,7 +320,6 @@ message DataRequest {
     ReleaseRequest release = 4;
     ConnectionInfoRequest connection_info = 5;
     InitRequest init = 6;
-    PrepRuntimeEnvRequest prep_runtime_env = 7;
   }
 }
 
@@ -341,7 +332,6 @@ message DataResponse {
     ReleaseResponse release = 4;
     ConnectionInfoResponse connection_info = 5;
     InitResponse init = 6;
-    PrepRuntimeEnvResponse prep_runtime_env = 7;
   }
 }
 

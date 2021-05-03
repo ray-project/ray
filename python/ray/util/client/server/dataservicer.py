@@ -110,12 +110,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 elif req_type == "connection_info":
                     resp = ray_client_pb2.DataResponse(
                         connection_info=self._build_connection_response())
-                elif req_type == "prep_runtime_env":
-                    with self.clients_lock:
-                        resp_prep = self.basic_service.PrepRuntimeEnv(
-                            req.prep_runtime_env)
-                        resp = ray_client_pb2.DataResponse(
-                            prep_runtime_env=resp_prep)
                 else:
                     raise Exception(f"Unreachable code: Request type "
                                     f"{req_type} not handled in Datapath")
