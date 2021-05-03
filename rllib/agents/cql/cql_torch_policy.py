@@ -39,7 +39,8 @@ MEAN_MAX = 9.0
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
     obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
         obs.shape[0] * num_repeat, obs.shape[1])
-    policy_dist = action_dist(model.get_policy_output(obs_temp), model)
+    logits = model.get_policy_output(obs_temp)
+    policy_dist = action_dist(logits, model)
     actions, logp_ = policy_dist.sample_logp()
     logp = logp_.unsqueeze(-1)
     return actions, logp.view(obs.shape[0], num_repeat, 1)
@@ -189,9 +190,9 @@ def cql_loss(policy: Policy, model: ModelV2,
     else:
         td_error = base_td_error
 
-    critic_loss_0 = nn.functional.mse_loss(q_t_selected, q_t_target)
+    critic_loss_1 = nn.functional.mse_loss(q_t_selected, q_t_target)
     if twin_q:
-        critic_loss_1 = nn.functional.mse_loss(twin_q_t_selected, q_t_target)
+        critic_loss_2 = nn.functional.mse_loss(twin_q_t_selected, q_t_target)
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions = convert_to_torch_tensor(
@@ -252,13 +253,13 @@ def cql_loss(policy: Policy, model: ModelV2,
         critic_loss.append(critic_loss_1 + min_qf2_loss)
 
     if obs.shape[0] == policy.config["train_batch_size"]:
-        critic0_optimizer.zero_grad()
-        critic_loss[0].backward(retain_graph=True)
-        critic0_optimizer.step()
-
         critic1_optimizer.zero_grad()
-        critic_loss[1].backward(retain_graph=False)
+        critic_loss[0].backward(retain_graph=True)
         critic1_optimizer.step()
+
+        critic2_optimizer.zero_grad()
+        critic_loss[1].backward(retain_graph=False)
+        critic2_optimizer.step()
 
     # Save for stats function.
     policy.q_t = q_t_selected
