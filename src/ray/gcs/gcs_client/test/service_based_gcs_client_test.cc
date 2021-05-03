@@ -30,7 +30,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
         "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
-        "maximum_gcs_dead_node_cached_count,10");
+        "maximum_gcs_dead_node_cached_count,10;"
+        "grpc_based_resource_broadcast,false");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -677,7 +678,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
 }
 
-/*
 TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   // Subscribe to node resource changes.
   std::atomic<int> add_count(0);
@@ -708,7 +708,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   WaitForExpectedCount(remove_count, 1);
   ASSERT_TRUE(GetResources(node_id).empty());
 }
-*/
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   // Subscribe batched state of all nodes from GCS.

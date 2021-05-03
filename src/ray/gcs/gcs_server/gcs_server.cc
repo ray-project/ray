@@ -149,7 +149,7 @@ void GcsServer::Stop() {
     }
 
     if (config_.grpc_based_resource_broadcast) {
-      gcs_resource_report_broadcaster_->Stop();
+      grpc_based_resource_broadcaster_->Stop();
     }
 
     is_stopped_ = true;
@@ -319,7 +319,7 @@ void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
   if (config_.grpc_based_resource_broadcast) {
-    gcs_resource_report_broadcaster_.reset(new GcsResourceReportBroadcaster(
+    grpc_based_resource_broadcaster_.reset(new GrpcBasedResourceBroadcaster(
         raylet_client_pool_,
         [this](rpc::ResourceUsageBatchData &buffer) {
           gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
@@ -327,8 +327,8 @@ void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data)
 
         ));
 
-    gcs_resource_report_broadcaster_->Initialize(gcs_init_data);
-    gcs_resource_report_broadcaster_->Start();
+    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
+    grpc_based_resource_broadcaster_->Start();
   }
 }
 
@@ -369,7 +369,7 @@ void GcsServer::InstallEventListeners() {
       gcs_resource_report_poller_->HandleNodeAdded(*node);
     }
     if (config_.grpc_based_resource_broadcast) {
-      gcs_resource_report_broadcaster_->HandleNodeAdded(*node);
+      grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
     }
   });
   gcs_node_manager_->AddNodeRemovedListener(
@@ -385,7 +385,7 @@ void GcsServer::InstallEventListeners() {
           gcs_resource_report_poller_->HandleNodeRemoved(*node);
         }
         if (config_.grpc_based_resource_broadcast) {
-          gcs_resource_report_broadcaster_->HandleNodeRemoved(*node);
+          grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
         }
       });
 
@@ -430,7 +430,7 @@ void GcsServer::PrintDebugInfo() {
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
 
   if (config_.grpc_based_resource_broadcast) {
-    stream << "\n" << gcs_resource_report_broadcaster_->DebugString();
+    stream << "\n" << grpc_based_resource_broadcaster_->DebugString();
   }
   // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
   // gcs_debug_state.txt.

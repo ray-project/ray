@@ -21,12 +21,12 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool broadcast_enabled)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage),
-      broadcast_enabled_(broadcast_enabled) {
-  if (broadcast_enabled_) {
+      redis_broadcast_enabled_(redis_broadcast_enabled) {
+  if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
         RayConfig::instance().raylet_report_resources_period_milliseconds(),
