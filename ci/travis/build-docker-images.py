@@ -390,13 +390,13 @@ if __name__ == "__main__":
     build_type = args.build_type
     if build_type in {HUMAN, MERGE, BUILDKITE
                       } or _check_if_docker_files_modified():
+        DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         if is_merge:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()
             DOCKER_CLIENT.api.login(username=username, password=password)
-        DOCKER_CLIENT = docker.from_env()
         copy_wheels()
         base_images_built = build_or_pull_base_images(args.base)
         build_ray()
