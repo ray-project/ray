@@ -23,9 +23,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, atanh, \
     convert_to_torch_tensor
-from ray.rllib.utils.torch_ops import atanh
 
 torch, nn = try_import_torch()
 F = nn.functional
