@@ -40,3 +40,7 @@ noOperator: false
 # If true, will not launch a Ray cluster with this release.
 # (Can be used to set up the operator without launching a Ray cluster.)
 noRayCluster: false
+# If true, the operator is scoped to the Release namespace
+# and only manages RayClusters in that namespace.
+# By default, the operator is cluster-scoped and runs in the default namespace.
+namespacedOperator: false

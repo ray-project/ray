@@ -1,4 +1,4 @@
-{{- if not .Values.noOperator }}
+{{- if .Values.namespacedOperator and not .Values.noOperator }}
 ---
 apiVersion: v1
 kind: ServiceAccount
