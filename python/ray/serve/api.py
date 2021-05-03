@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import collections
 import inspect
 import os
 import time
@@ -10,18 +11,22 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
 from warnings import warn
 from weakref import WeakValueDictionary
 
+from starlette.requests import Request
+
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
-                              ReplicaConfig)
+from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
-                             get_random_letters, logger,
-                             make_fastapi_class_based_view)
+from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view,
+                                 make_startup_shutdown_hooks)
+from ray.serve.utils import (ensure_serialization_context, format_actor_name,
+                             get_current_node_resource_key, get_random_letters,
+                             logger)
 
 import ray
 
@@ -332,15 +337,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata()
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -380,15 +381,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(is_asgi_app=replica_config.is_asgi_app)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -941,7 +938,7 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def ingress(app: Union["FastAPI", "APIRouter"], ):
+def ingress(app: Union["FastAPI", "APIRouter"]):
     """Mark a FastAPI application ingress for Serve.
 
     Args:
@@ -961,12 +958,43 @@ def ingress(app: Union["FastAPI", "APIRouter"], ):
         if not inspect.isclass(cls):
             raise ValueError("@serve.ingress must be used with a class.")
 
-        cls._serve_asgi_app = app
+        if issubclass(cls, collections.abc.Callable):
+            raise ValueError(
+                "Class passed to @serve.ingress may not have __call__ method.")
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         make_fastapi_class_based_view(app, cls)
 
-        return cls
+        # Free the state of the app so subsequent modification won't affect
+        # this ingress deployment. We don't use copy.copy here to avoid
+        # recursion issue.
+        ensure_serialization_context()
+        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+
+        startup_hook, shutdown_hook = make_startup_shutdown_hooks(frozen_app)
+
+        class FastAPIWrapper(cls):
+            async def __init__(self, *args, **kwargs):
+                # TODO(edoakes): should the startup_hook run before or after
+                # the constructor?
+                await startup_hook()
+                super().__init__(*args, **kwargs)
+
+            async def __call__(self, request: Request):
+                sender = ASGIHTTPSender()
+                await frozen_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                return sender.build_starlette_response()
+
+            def __del__(self):
+                asyncio.get_event_loop().run_until_complete(shutdown_hook())
+
+        FastAPIWrapper.__name__ = cls.__name__
+        return FastAPIWrapper
 
     return decorator
 

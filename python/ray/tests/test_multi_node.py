@@ -6,22 +6,7 @@ import time
 import ray
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
-                            wait_for_condition, init_error_pubsub,
-                            get_error_message)
-
-
-def test_remote_raylet_cleanup(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node()
-    cluster.add_node()
-    cluster.add_node()
-    cluster.wait_for_nodes()
-
-    def remote_raylets_dead():
-        return not cluster.remaining_processes_alive()
-
-    cluster.remove_node(cluster.head_node, allow_graceful=False)
-    wait_for_condition(remote_raylets_dead)
+                            init_error_pubsub, get_error_message)
 
 
 def test_error_isolation(call_ray_start):
@@ -183,8 +168,8 @@ print("success")
     [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
         "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.objects(), which only works with the GCS-based
-        # object directory
+        # This test uses ray.state.objects(), which only works with the
+        # GCS-based object directory
         "{\"ownership_based_object_directory_enabled\":false}",
     ],
     indirect=True)
@@ -205,7 +190,7 @@ object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
-    if len(ray.objects()) == 1000:
+    if len(ray.state.objects()) == 1000:
         break
 else:
     raise Exception("Objects did not appear in object table.")
@@ -217,7 +202,7 @@ print("success")
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if len(ray.objects()) == 0:
+        if len(ray.state.objects()) == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")

@@ -1,11 +1,20 @@
 import time
-
-from typing import (List, Dict, Optional, Union)
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
+from typing import TYPE_CHECKING
 
 import ray
-from ray._raylet import PlacementGroupID, ObjectRef
+from ray._raylet import ObjectRef
+from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
 from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
+from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.client_mode_hook import client_mode_wrap
+
+if TYPE_CHECKING:
+    from ray.util.common import ClientObjectRef  # noqa
 
 bundle_reservation_check = None
 
@@ -31,14 +40,16 @@ class PlacementGroup:
     """A handle to a placement group."""
 
     @staticmethod
-    def empty():
+    def empty() -> "PlacementGroup":
         return PlacementGroup(PlacementGroupID.nil())
 
-    def __init__(self, id: PlacementGroupID):
+    def __init__(self,
+                 id: PlacementGroupID,
+                 bundle_cache: Optional[List[Dict]] = None):
         self.id = id
-        self.bundle_cache = None
+        self.bundle_cache = bundle_cache
 
-    def ready(self) -> ObjectRef:
+    def ready(self) -> Union[ObjectRef, "ClientObjectRef"]:
         """Returns an ObjectRef to check ready status.
 
         This API runs a small dummy task to wait for placement group creation.
@@ -67,7 +78,7 @@ class PlacementGroup:
         bundle_index = 0
         bundle = self.bundle_cache[bundle_index]
 
-        resource_name, value = self._get_none_zero_resource(bundle)
+        resource_name, value = self._get_a_non_zero_resource(bundle)
         num_cpus = 0
         num_gpus = 0
         memory = 0
@@ -96,11 +107,7 @@ class PlacementGroup:
         Return:
              True if the placement group is created. False otherwise.
         """
-        worker = ray.worker.global_worker
-        worker.check_connected()
-
-        return worker.core_worker.wait_placement_group_ready(
-            self.id, timeout_seconds)
+        return _call_placement_group_ready(self.id, timeout_seconds)
 
     @property
     def bundle_specs(self) -> List[Dict]:
@@ -109,12 +116,54 @@ class PlacementGroup:
         return self.bundle_cache
 
     @property
-    def bundle_count(self):
+    def bundle_count(self) -> int:
         self._fill_bundle_cache_if_needed()
         return len(self.bundle_cache)
 
-    def _get_none_zero_resource(self, bundle: List[Dict]):
-        # Set a mock value to schedule a dummy task.
+    def to_dict(self) -> dict:
+        """Convert this placement group into a dict for purposes of json
+        serialization.
+
+        Used when passing a placement group as an option to a Ray client remote
+        function. See set_task_options in util/client/common.py.
+
+        Return:
+            Dictionary with json-serializable keys representing the placemnent
+            group.
+        """
+        # Placement group id is converted to a hex /string/ to make it
+        # serializable.
+        return {"id": self.id.hex(), "bundle_cache": self.bundle_cache}
+
+    @staticmethod
+    def from_dict(pg_dict: dict) -> "PlacementGroup":
+        """Instantiate and return a PlacementGroup from its json-serializable
+        dict representation.
+
+        Used by Ray Client on server-side to deserialize placement group
+        option. See decode_options in util/client/server/server.py.
+
+        Args:
+            serializable_form(dict): Dictionary representing a placement group.
+        Return:
+            A placement group made from the data in the input dict.
+        """
+        # Validate serialized dict
+        assert isinstance(pg_dict, dict)
+        assert pg_dict.keys() == {"id", "bundle_cache"}
+        # The value associated to key "id" is a hex string.
+        assert isinstance(pg_dict["id"], str)
+        if pg_dict["bundle_cache"] is not None:
+            assert isinstance(pg_dict["bundle_cache"], list)
+
+        # Deserialize and return a Placement Group.
+        id_bytes = bytes.fromhex(pg_dict["id"])
+        pg_id = PlacementGroupID(id_bytes)
+        bundle_cache = pg_dict["bundle_cache"]
+        return PlacementGroup(pg_id, bundle_cache)
+
+    def _get_a_non_zero_resource(self, bundle: Dict):
+        # Any number between 0-1 should be fine.
         MOCK_VALUE = 0.001
         for key, value in bundle.items():
             if value > 0:
@@ -123,31 +172,46 @@ class PlacementGroup:
                 return key, value
         assert False, "This code should be unreachable."
 
-    def _fill_bundle_cache_if_needed(self):
+    def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
-            # Since creating placement group is async, it is
-            # possible table is not ready yet. To avoid the
-            # problem, we should keep trying with timeout.
-            TIMEOUT_SECOND = 30
-            WAIT_INTERVAL = 0.05
-            timeout_cnt = 0
-            worker = ray.worker.global_worker
-            worker.check_connected()
-
-            while timeout_cnt < int(TIMEOUT_SECOND / WAIT_INTERVAL):
-                pg_info = ray.state.state.placement_group_table(self.id)
-                if pg_info:
-                    self.bundle_cache = list(pg_info["bundles"].values())
-                    return
-                time.sleep(WAIT_INTERVAL)
-                timeout_cnt += 1
-
-            raise RuntimeError(
-                "Couldn't get the bundle information of placement group id "
-                f"{self.id} in {TIMEOUT_SECOND} seconds. It is likely "
-                "because GCS server is too busy.")
+            self.bundle_cache = _get_bundle_cache(self.id)
 
 
+@client_mode_wrap
+def _call_placement_group_ready(pg_id: PlacementGroupID,
+                                timeout_seconds: int) -> bool:
+    worker = ray.worker.global_worker
+    worker.check_connected()
+
+    return worker.core_worker.wait_placement_group_ready(
+        pg_id, timeout_seconds)
+
+
+@client_mode_wrap
+def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
+    # Since creating placement group is async, it is
+    # possible table is not ready yet. To avoid the
+    # problem, we should keep trying with timeout.
+    TIMEOUT_SECOND = 30
+    WAIT_INTERVAL = 0.05
+    timeout_cnt = 0
+    worker = ray.worker.global_worker
+    worker.check_connected()
+
+    while timeout_cnt < int(TIMEOUT_SECOND / WAIT_INTERVAL):
+        pg_info = ray.state.state.placement_group_table(pg_id)
+        if pg_info:
+            return list(pg_info["bundles"].values())
+        time.sleep(WAIT_INTERVAL)
+        timeout_cnt += 1
+
+    raise RuntimeError(
+        "Couldn't get the bundle information of placement group id "
+        f"{id} in {TIMEOUT_SECOND} seconds. It is likely "
+        "because GCS server is too busy.")
+
+
+@client_mode_wrap
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
                     name: str = "",
@@ -208,7 +272,8 @@ def placement_group(bundles: List[Dict[str, float]],
     return PlacementGroup(placement_group_id)
 
 
-def remove_placement_group(placement_group: PlacementGroup):
+@client_mode_wrap
+def remove_placement_group(placement_group: PlacementGroup) -> None:
     """Asynchronously remove placement group.
 
     Args:
@@ -221,7 +286,8 @@ def remove_placement_group(placement_group: PlacementGroup):
     worker.core_worker.remove_placement_group(placement_group.id)
 
 
-def get_placement_group(placement_group_name: str):
+@client_mode_wrap
+def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """Get a placement group object with a global name.
 
     Returns:
@@ -244,6 +310,7 @@ def get_placement_group(placement_group_name: str):
                 hex_to_binary(placement_group_info["placement_group_id"])))
 
 
+@client_mode_wrap
 def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
 
@@ -286,6 +353,9 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
             None if the current task or actor wasn't
             created with any placement group.
     """
+    if client_mode_should_convert():
+        # Client mode is only a driver.
+        return None
     worker = ray.worker.global_worker
     worker.check_connected()
     pg_id = worker.placement_group_id
@@ -295,7 +365,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
 
 
 def check_placement_group_index(placement_group: PlacementGroup,
-                                bundle_index: int):
+                                bundle_index: int) -> None:
     assert placement_group is not None
     if placement_group.id.is_nil():
         if bundle_index != -1:

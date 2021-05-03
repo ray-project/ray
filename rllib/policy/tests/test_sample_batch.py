@@ -20,9 +20,9 @@ class TestSampleBatch(unittest.TestCase):
             "b": np.array([[0.1, 0.2], [0.3, 0.4]]),
             "c": True,
         }
-        batch = SampleBatch(base_dict, _dont_check_lens=True)
+        batch = SampleBatch(base_dict)
         try:
-            SampleBatch(base_dict, _dont_check_lens=False)
+            SampleBatch(base_dict)
         except AssertionError:
             pass  # expected
         keys_ = list(base_dict.keys())
@@ -34,14 +34,14 @@ class TestSampleBatch(unittest.TestCase):
 
         # Add an item and check, whether it's in the "added" list.
         batch["d"] = np.array(1)
-        assert batch.added_keys == {"d"}
+        assert batch.added_keys == {"d"}, batch.added_keys
         # Access two keys and check, whether they are in the
         # "accessed" list.
         print(batch["a"], batch["b"])
-        assert batch.accessed_keys == {"a", "b"}
+        assert batch.accessed_keys == {"a", "b"}, batch.accessed_keys
         # Delete a key and check, whether it's in the "deleted" list.
         del batch["c"]
-        assert batch.deleted_keys == {"c"}
+        assert batch.deleted_keys == {"c"}, batch.deleted_keys
 
 
 if __name__ == "__main__":

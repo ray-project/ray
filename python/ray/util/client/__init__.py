@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-04-09"
+CURRENT_PROTOCOL_VERSION = "2021-04-19"
 
 
 class RayAPIStub:
@@ -85,9 +85,8 @@ class RayAPIStub:
         regular worker's serialization_context mechanism.
         """
         import ray.serialization_addons
-        from ray.util.client.ray_client_helpers import (
-            RayClientSerializationContext)
-        ctx = RayClientSerializationContext()
+        from ray.util.serialization import StandaloneSerializationContext
+        ctx = StandaloneSerializationContext()
         ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],
