@@ -40,7 +40,8 @@ def apply_grad_clipping(policy, optimizer, loss):
 
 
 def atanh(x):
-    return 0.5 * torch.log((1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
+    return 0.5 * torch.log(
+        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
 
 
 def convert_to_non_torch_type(stats):

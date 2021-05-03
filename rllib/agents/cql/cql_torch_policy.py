@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 MEAN_MIN = -9.0
 MEAN_MAX = 9.0
 
+
 # Returns policy tiled actions and log probabilities for CQL Loss
 def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
     obs_temp = obs.unsqueeze(1).repeat(1, num_repeat, 1).view(
@@ -87,10 +88,10 @@ def cql_loss(policy: Policy, model: ModelV2,
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    alpha_optimizer = policy._optimizers[0]
-    policy_optimizer = policy._optimizers[1]
-    critic0_optimizer = policy._optimizers[2]
-    critic1_optimizer = policy._optimizers[3]
+    policy_optimizer = policy._optimizers[0]
+    critic1_optimizer = policy._optimizers[1]
+    critic2_optimizer = policy._optimizers[2]
+    alpha_optimizer = policy._optimizers[3]
 
     model_out_t, _ = model({
         "obs": obs,
@@ -132,17 +133,21 @@ def cql_loss(policy: Policy, model: ModelV2,
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
+
         def bc_log(model, obs, actions):
             z = atanh(actions)
             logits = model.get_policy_output(obs)
             mean, log_std = torch.chunk(logits, 2, dim=-1)
             # Mean Clamping for Stability
             mean = torch.clamp(mean, MEAN_MIN, MEAN_MAX)
-            log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+            log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT,
+                                  MAX_LOG_NN_OUTPUT)
             std = torch.exp(log_std)
             normal_dist = torch.distributions.Normal(mean, std)
-            return torch.sum(normal_dist.log_prob(z) - torch.log(
-            1 - actions * actions + SMALL_NUMBER), dim=-1)
+            return torch.sum(
+                normal_dist.log_prob(z) -
+                torch.log(1 - actions * actions + SMALL_NUMBER),
+                dim=-1)
 
         bc_logp = bc_log(model, model_out_t, actions)
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
@@ -156,7 +161,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     # SAC Loss:
     # Q-values for the batched actions.
     action_dist_tp1 = action_dist_class(
-    model.get_policy_output(model_out_tp1), policy.model)
+        model.get_policy_output(model_out_tp1), policy.model)
     policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
 
     log_pis_tp1 = torch.unsqueeze(log_pis_tp1, -1)
@@ -180,7 +185,8 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # compute RHS of bellman equation
     q_t_target = (
-        rewards + (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
+        rewards +
+        (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
 
     # Compute the TD-error (potentially clipped), for priority replay buffer
     base_td_error = torch.abs(q_t_selected - q_t_target)
@@ -248,9 +254,9 @@ def cql_loss(policy: Policy, model: ModelV2,
     if twin_q:
         cql_loss.append(min_qf2_loss)
 
-    critic_loss = [critic_loss_0 + min_qf1_loss]
+    critic_loss = [critic_loss_1 + min_qf1_loss]
     if twin_q:
-        critic_loss.append(critic_loss_1 + min_qf2_loss)
+        critic_loss.append(critic_loss_2 + min_qf2_loss)
 
     if obs.shape[0] == policy.config["train_batch_size"]:
         critic1_optimizer.zero_grad()
@@ -283,7 +289,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     if use_lagrange:
         return tuple([policy.actor_loss] + policy.critic_loss +
                      [policy.alpha_loss] + [policy.alpha_prime_loss])
-    return tuple([policy.alpha_loss] + [policy.actor_loss] + policy.critic_loss)
+    return tuple([policy.actor_loss] + policy.critic_loss +
+                 [policy.alpha_loss])
 
 
 def cql_stats(policy: Policy,
@@ -323,6 +330,14 @@ def cql_setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         policy.model.log_alpha_prime = policy.model.log_alpha_prime.to(
             policy.device)
 
+
+def compute_gradients_fn(policy, postprocessed_batch):
+    batches = [policy._lazy_tensor_dict(postprocessed_batch)]
+    model = policy.model
+    policy._loss(policy, model, policy.dist_class, batches[0])
+    return [None, dict()]
+
+
 def apply_gradients_fn(policy, gradients):
     return
 
@@ -343,5 +358,6 @@ CQLTorchPolicy = build_policy_class(
     make_model_and_action_dist=build_sac_model_and_action_dist,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
+    compute_gradients_fn=compute_gradients_fn,
     apply_gradients_fn=apply_gradients_fn,
 )
