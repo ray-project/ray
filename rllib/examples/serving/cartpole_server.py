@@ -32,7 +32,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(local_mode=True)#TODO
 
     env = "CartPole-v0"
     connector_config = {
@@ -40,7 +40,8 @@ if __name__ == "__main__":
         "input": (
             lambda ioctx: PolicyServerInput(ioctx, SERVER_ADDRESS, SERVER_PORT)
         ),
-        # Use a single worker process to run the server.
+        ## Use a single worker process to run the server.
+        #Try w/ 2, see what happens ...
         "num_workers": 0,
         # Disable OPE, since the rollouts are coming from online clients.
         "input_evaluation": [],
