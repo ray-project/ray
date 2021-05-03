@@ -162,4 +162,4 @@ static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
 
 static Histogram GcsUpdateResourceUsageTime(
     "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
-    "ms", {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}, {CustomKey});
+    "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});
