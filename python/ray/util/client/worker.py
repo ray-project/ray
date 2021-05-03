@@ -9,6 +9,7 @@ import time
 import uuid
 from collections import defaultdict
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -165,6 +166,12 @@ class Worker:
             "ray_commit": data.ray_commit,
             "protocol_version": data.protocol_version,
         }
+
+    def register_callback(
+            self, ref: ClientObjectRef,
+            callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
+        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
+        self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -457,7 +464,7 @@ class Worker:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
-                runtime_env.rewrite_working_dir_uri(job_config)
+                runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
                 init_resp = self.data_client.Init(init_req)

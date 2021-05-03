@@ -414,7 +414,7 @@ class TestDDPG(unittest.TestCase):
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -422,7 +422,7 @@ class TestDDPG(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.ones(shape=(batch_size, )),
-        }
+        })
 
     def _ddpg_loss_helper(self, train_batch, weights, ks, fw, gamma,
                           huber_threshold, l2_reg, sess):

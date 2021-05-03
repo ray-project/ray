@@ -282,7 +282,7 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON) {
-    if (runtime_env.conda_env_name != "") {
+    if (!runtime_env.IsEmpty()) {
       const std::string conda_env_name = runtime_env.conda_env_name;
       worker_command_args.push_back("--conda-env-name=" + conda_env_name);
     } else {
@@ -664,15 +664,23 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
-  if (it != state.dedicated_workers_to_tasks.end()) {
-    // The worker is used for the actor creation task with dynamic options.
-    // Put it into idle dedicated worker pool.
-    const auto task_id = it->second;
+  auto it_p = state.pending_dedicated_workers_to_tasks.find(worker->GetProcess());
+  auto it_r = state.registered_dedicated_workers_to_tasks.find(worker->GetProcess());
+  if (it_p != state.pending_dedicated_workers_to_tasks.end()) {
+    // The worker is used for a task which needs a dedicated worker process.
+    // Put it into the idle dedicated worker pool.
+    const auto task_id = it_p->second;
     state.idle_dedicated_workers[task_id] = worker;
+  } else if (it_r != state.registered_dedicated_workers_to_tasks.end()) {
+    // The dedicated worker has been used before and should be added again
+    // to the idle dedicated worker pool.
+    const auto task_id = it_r->second;
+    state.idle_dedicated_workers[task_id] = worker;
+    // The worker has been assigned to the pool, so we can remove it from this map.
+    state.registered_dedicated_workers_to_tasks.erase(it_r);
   } else {
-    // The worker is not used for the actor creation task with dynamic options.
-    // Put the worker to the idle pool.
+    // The worker is not used for a task which needs a dedicated worker process.
+    // Put the worker to the general idle pool.
     state.idle.insert(worker);
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
@@ -829,7 +837,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      task_spec.RuntimeEnv().conda_env_name != "") {
+      !task_spec.RuntimeEnv().IsEmpty()) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options, or any task with environment variable overrides, or
     // any task with a specified RuntimeEnv.
@@ -840,9 +848,13 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
       // Because we found a worker that can perform this task,
-      // we can remove it from dedicated_workers_to_tasks.
-      state.dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
+      // we can remove it from pending_dedicated_workers_to_tasks.
+      state.pending_dedicated_workers_to_tasks.erase(worker->GetProcess());
+      state.tasks_to_pending_dedicated_workers.erase(task_spec.TaskId());
+      // We don't want this dedicated worker to end up in the general idle pool because
+      // it has state from its environment, so keep track of it in this map.
+      state.registered_dedicated_workers_to_tasks[worker->GetProcess()] =
+          task_spec.TaskId();
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
@@ -855,8 +867,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                              task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
                              task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
-        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
+        state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+        state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
       }
     }
   } else if (task_spec.IsActorTask()) {
@@ -1087,8 +1099,8 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  auto it = state.tasks_to_dedicated_workers.find(task_id);
-  return it != state.tasks_to_dedicated_workers.end();
+  auto it = state.tasks_to_pending_dedicated_workers.find(task_id);
+  return it != state.tasks_to_pending_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {

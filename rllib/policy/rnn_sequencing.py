@@ -75,8 +75,8 @@ def pad_batch_to_sequences_of_same_size(
     if "state_in_0" in batch or "state_out_0" in batch:
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
-        if batch.seq_lens is not None and \
-                len(batch["state_in_0"]) == len(batch.seq_lens):
+        if batch.get("seq_lens") is not None and \
+                len(batch["state_in_0"]) == len(batch["seq_lens"]):
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
@@ -113,7 +113,7 @@ def pad_batch_to_sequences_of_same_size(
             episode_ids=batch.get(SampleBatch.EPS_ID),
             unroll_ids=batch.get(SampleBatch.UNROLL_ID),
             agent_indices=batch.get(SampleBatch.AGENT_INDEX),
-            seq_lens=getattr(batch, "seq_lens", batch.get("seq_lens")),
+            seq_lens=batch.get("seq_lens"),
             max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             states_already_reduced_to_init=states_already_reduced_to_init,
@@ -318,12 +318,12 @@ def timeslice_along_seq_lens_with_overlap(
         zero_init_states=True) -> List["SampleBatch"]:
     """Slices batch along `seq_lens` (each seq-len item produces one batch).
 
-    Asserts that seq_lens is given or sample_batch.seq_lens is not None.
+    Asserts that seq_lens is given or sample_batch["seq_lens"] is not None.
 
     Args:
         sample_batch (SampleBatch): The SampleBatch to timeslice.
         seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
-            at. If None, use `sample_batch.seq_lens`.
+            at. If None, use `sample_batch["seq_lens"]`.
         zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
             additional timesteps gained via setting pre_overlap or
@@ -354,10 +354,10 @@ def timeslice_along_seq_lens_with_overlap(
         #  count (makes sure each slice has exactly length 10).
     """
     if seq_lens is None:
-        seq_lens = sample_batch.seq_lens
+        seq_lens = sample_batch.get("seq_lens")
     assert seq_lens is not None and len(seq_lens) > 0, \
         "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
-    # Generate n slices based on self.seq_lens.
+    # Generate n slices based on seq_lens.
     start = 0
     slices = []
     for seq_len in seq_lens:
@@ -391,10 +391,13 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.items()
+                for k, v in sample_batch.items() if k != "seq_lens"
             }
         else:
-            data = {k: v[begin:end] for k, v in sample_batch.items()}
+            data = {
+                k: v[begin:end]
+                for k, v in sample_batch.items() if k != "seq_lens"
+            }
 
         if zero_init_states_:
             i = 0
@@ -416,8 +419,7 @@ def timeslice_along_seq_lens_with_overlap(
                 i += 1
                 key = "state_in_{}".format(i)
 
-        timeslices.append(
-            SampleBatch(data, _seq_lens=[end - begin], _dont_check_lens=True))
+        timeslices.append(SampleBatch(data, seq_lens=[end - begin]))
 
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:

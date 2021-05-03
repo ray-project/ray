@@ -288,6 +288,7 @@ def check_compute_single_action(trainer,
         pol = trainer.get_policy()
     except AttributeError:
         pol = trainer.policy
+    model = pol.model
 
     action_space = pol.action_space
 
@@ -328,7 +329,14 @@ def check_compute_single_action(trainer,
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None
                 if include_state:
-                    state_in = pol.model.get_initial_state()
+                    state_in = model.get_initial_state()
+                    if not state_in:
+                        state_in = []
+                        i = 0
+                        while f"state_in_{i}" in model.view_requirements:
+                            state_in.append(model.view_requirements[
+                                f"state_in_{i}"].space.sample())
+                            i += 1
                 action_in = action_space.sample() \
                     if include_prev_action_reward else None
                 reward_in = 1.0 if include_prev_action_reward else None

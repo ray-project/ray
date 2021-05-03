@@ -263,7 +263,6 @@ Papers
    serve/http-servehandle.rst
    serve/deployment.rst
    serve/ml-models.rst
-   serve/advanced-traffic.rst
    serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
@@ -343,6 +342,7 @@ Papers
    ray-metrics.rst
    ray-debugging.rst
    ray-logging.rst
+   ray-tracing.rst
 
 .. toctree::
    :hidden:
