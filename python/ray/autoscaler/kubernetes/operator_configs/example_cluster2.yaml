@@ -25,8 +25,8 @@ spec:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster2-ray-head-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-head-
       spec:
         restartPolicy: Never
 
@@ -76,13 +76,13 @@ spec:
     maxWorkers: 3
     # User-specified custom resources for use by Ray. Object with string keys and integer values.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    rayResources: {"baz": 5, "quux": 17}
+    rayResources: {"example-resource-c": 5, "example-resource-d": 17}
     podConfig:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster2-ray-worker-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-worker-
       spec:
         restartPolicy: Never
         volumes:

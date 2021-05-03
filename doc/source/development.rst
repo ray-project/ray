@@ -46,8 +46,8 @@ Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscale
     # This replaces miniconda3/lib/python3.7/site-packages/ray/tune
     # with your local `ray/python/ray/tune`.
 
-Building Ray (full)
--------------------
+Building Ray on Linux (full)
+----------------------------
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 
@@ -70,8 +70,6 @@ For MacOS, run the following commands:
   brew install wget
 
   pip install cython==0.29.0 pytest
-
-For Windows, see the :ref:`Windows Dependencies <windows-dependencies>` section.
 
 Ray can be built from the repository as follows.
 
@@ -99,9 +97,53 @@ directory will take effect without reinstalling the package.
 
 .. warning:: if you run ``python setup.py install``, files will be copied from the Ray directory to a directory of Python packages (``/lib/python3.6/site-packages/ray``). This means that changes you make to files in the Ray directory will not have any effect.
 
+Building Ray on Windows (full)
+------------------------------
+
+**Requirements**
+
+The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
+
+- bazel 3.2
+- Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
+- JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
+- Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
+- git for Windows, version 2.31.1 or later (https://git-scm.com/download/win)
+
+**Steps**
+
+1. Enable Developer mode on Windows 10 systems. This is necessary so git can create symlinks.
+
+   1. Open Settings app;
+   2. Go to "Update & Security";
+   3. Go to "For Developers" on the left pane;
+   4. Turn on "Developer mode".
+
+2. Add the following Miniconda subdirectories to PATH. If Miniconda was installed for all users, the following paths are correct. If Miniconda is installed for a single user, adjust the paths accordingly.
+
+   - ``C:\ProgramData\Miniconda3``
+   - ``C:\ProgramData\Miniconda3\Scripts``
+   - ``C:\ProgramData\Miniconda3\Library\bin``
+
+3. Define an environment variable BAZEL_SH to point to bash.exe. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
+
+4. Install cython and pytest:
+
+.. code-block:: shell
+
+  pip install cython==0.29.0 pytest
+
+5. Download ray source code and build it.
+
+.. code-block:: shell
+
+  # cd to the directory under which the ray source tree will be downloaded.
+  git clone -c core.symlinks=true https://github.com/ray-project/ray.git
+  cd ray\python
+  pip install -e . --verbose
 
 Fast, Debug, and Optimized Builds
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------
 
 Currently, Ray is built with optimizations, which can take a long time and
 interfere with debugging. To perform fast, debug, or optimized builds, you can

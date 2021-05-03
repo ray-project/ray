@@ -9,11 +9,11 @@ serve.start()
 logger = logging.getLogger("ray")
 
 
-def f(request):
+@serve.deployment
+def f(*args):
     logger.info("Some info!")
 
 
-serve.create_backend("my_backend", f)
-serve.create_endpoint("my_endpoint", backend="my_backend", route="/f")
+f.deploy()
 
 requests.get("http://127.0.0.1:8000/f")

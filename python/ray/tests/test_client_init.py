@@ -98,6 +98,15 @@ def test_basic_preregister(init_and_serve):
         ray.disconnect()
 
 
+def test_idempotent_disconnect(init_and_serve):
+    from ray.util.client import ray
+    ray.disconnect()
+    ray.disconnect()
+    ray.connect("localhost:50051")
+    ray.disconnect()
+    ray.disconnect()
+
+
 def test_num_clients(init_and_serve_lazy):
     # Tests num clients reporting; useful if you want to build an app that
     # load balances clients between Ray client servers.

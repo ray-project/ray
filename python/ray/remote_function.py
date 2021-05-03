@@ -1,4 +1,5 @@
 import logging
+import inspect
 from functools import wraps
 
 from ray import cloudpickle as pickle
@@ -13,6 +14,8 @@ from ray.util.placement_group import (
 )
 import ray._private.signature
 import ray._private.runtime_env as runtime_support
+from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
+                                             _inject_tracing_into_function)
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -69,10 +72,14 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
+        if inspect.iscoroutinefunction(function):
+            raise ValueError("'async def' should not be used for remote "
+                             "tasks. You can wrap the async function with "
+                             "`asyncio.get_event_loop.run_until(f())`. "
+                             "See more at docs.ray.io/async_api.html")
         self._language = language
-        self._function = function
-        self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+        self._function = _inject_tracing_into_function(function)
+        self._function_name = (function.__module__ + "." + function.__name__)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -169,6 +176,7 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    @_tracing_task_invocation
     def _remote(self,
                 args=None,
                 kwargs=None,

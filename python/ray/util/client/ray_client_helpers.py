@@ -1,7 +1,6 @@
 from contextlib import contextmanager
 
 import ray as real_ray
-import ray.cloudpickle as pickle
 import ray.util.client.server.server as ray_client_server
 from ray.util.client import ray
 from ray._private.client_mode_hook import enable_client_mode
@@ -46,23 +45,6 @@ def ray_start_cluster_client_server_pair(address):
         ray._inside_client_test = False
         ray.disconnect()
         server.stop(0)
-
-
-class RayClientSerializationContext:
-    # NOTE(simon): Used for registering custom serializers. We cannot directly
-    # use the SerializationContext because it requires Ray workers. Please
-    # make sure to keep the API consistent.
-
-    def _unregister_cloudpickle_reducer(self, cls):
-        pickle.CloudPickler.dispatch.pop(cls, None)
-
-    def _register_cloudpickle_serializer(self, cls, custom_serializer,
-                                         custom_deserializer):
-        def _CloudPicklerReducer(obj):
-            return custom_deserializer, (custom_serializer(obj), )
-
-        # construct a reducer
-        pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
 
 @contextmanager
