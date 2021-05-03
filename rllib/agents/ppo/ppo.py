@@ -126,7 +126,7 @@ def validate_config(config: TrainerConfigDict) -> None:
     # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
     # if necessary.
     calculated_min_rollout_size = \
-        config["num_workers"] * config["num_envs_per_worker"] * \
+        (config["num_workers"] or 1) * config["num_envs_per_worker"] * \
         config["rollout_fragment_length"]
     if config["train_batch_size"] % calculated_min_rollout_size != 0:
         new_rollout_fragment_length = config["train_batch_size"] / (
