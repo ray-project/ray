@@ -73,6 +73,7 @@ def _setup_cluster_for_test(ray_start_cluster):
         counter.inc()
         counter = ray.get(ray.put(counter))  # Test serialization.
         counter.inc()
+        counter.inc(2)
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
@@ -139,7 +140,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_counter_sample = [
             m for m in metric_samples if "test_counter" in m.name
         ][0]
-        assert test_counter_sample.value == 2.0
+        assert test_counter_sample.value == 4.0
 
         test_driver_counter_sample = [
             m for m in metric_samples if "test_driver_counter" in m.name
@@ -268,7 +269,7 @@ def test_basic_custom_metrics(metric_mock):
         "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
     tags = {"a": "10", "b": "b"}
-    histogram.record(8, tags=tags)
+    histogram.observe(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
 
 
