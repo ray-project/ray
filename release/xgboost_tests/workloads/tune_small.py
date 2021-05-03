@@ -9,6 +9,10 @@ Acceptance criteria: Should run through and report final results, as well
 as the Ray Tune results table. No trials should error. All trials should
 run in parallel.
 """
+from collections import Counter
+import json
+import time
+
 import ray
 from ray import tune
 
@@ -46,6 +50,7 @@ if __name__ == "__main__":
 
     ray.init(address="auto")
 
+    start = time.time()
     analysis = tune.run(
         train_wrapper,
         config=search_space,
@@ -54,5 +59,13 @@ if __name__ == "__main__":
             "cpu": 1,
             "extra_cpu": 3
         })
+    taken = time.time() - start
+
+    result = {
+        "time_taken": taken,
+        "trial_states": dict(Counter([trial.status for trial in analysis.trials]))
+    }
+    with open("/tmp/tune_small.json", "wt") as f:
+        json.dump(result, f)
 
     print("PASSED.")
