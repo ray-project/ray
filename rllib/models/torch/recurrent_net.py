@@ -264,8 +264,8 @@ class Torch_LSTMWrapper(nn.Module):
     ):
         nn.Module.__init__(self)
 
-        self.wrapped_torch_model = wrapped_cls(
-            input_space, action_space, None, **kwargs)
+        self.wrapped_torch_model = wrapped_cls(input_space, action_space, None,
+                                               **kwargs)
 
         self.action_space = action_space
         self.max_seq_len = max_seq_len
@@ -276,7 +276,8 @@ class Torch_LSTMWrapper(nn.Module):
         # If no layers in the wrapped model, set it to the
         # observation space.
         dummy_out, _, _ = self.wrapped_torch_model({
-            SampleBatch.OBS: torch.from_numpy(np.array([input_space.sample()]))
+            SampleBatch.OBS: torch.from_numpy(
+                np.array([input_space.sample()]))
         })
         wrapped_num_outputs = int(dummy_out.shape[1])
 
@@ -302,7 +303,8 @@ class Torch_LSTMWrapper(nn.Module):
         # Define actual LSTM layer (with num_outputs being the nodes coming
         # from the wrapped (underlying) layer).
         self._lstm = nn.LSTM(
-            wrapped_num_outputs, self.lstm_cell_size,
+            wrapped_num_outputs,
+            self.lstm_cell_size,
             batch_first=not self.time_major)
 
         # Postprocess LSTM output with another hidden layer and compute values.

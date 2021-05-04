@@ -578,7 +578,9 @@ class Torch_GTrXLNet(nn.Module):
 
         return torch.reshape(out, [-1, out_dim]), [
             torch.reshape(m, [-1, self.attention_dim]) for m in memory_outs
-        ], {SampleBatch.VF_PREDS: torch.reshape(self._value_out, [-1])}
+        ], {
+            SampleBatch.VF_PREDS: torch.reshape(self._value_out, [-1])
+        }
 
     ## TODO: (sven) Deprecate this once trajectory view API has fully matured.
     #@override(RecurrentNetwork)
@@ -595,29 +597,30 @@ class Torch_GTrXLNet(nn.Module):
 class Torch_AttentionWrapper(nn.Module):
     """A torch auto-GTrXL wrapper used when `use_attention`=True."""
 
-    def __init__(self,
-                 input_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space,
-                 num_outputs: int,
-                 *,
-                 wrapped_cls: Type["torch.nn.Module"],
-                 max_seq_len: int = 20,
-                 attention_num_transformer_units: int = 1,
-                 attention_dim: int = 64,
-                 attention_num_heads: int = 1,
-                 attention_head_dim: int = 32,
-                 attention_memory_inference: int = 50,
-                 attention_memory_training: int = 50,
-                 attention_position_wise_mlp_dim: int = 32,
-                 attention_init_gru_gate_bias: int = 2.0,
-                 attention_use_n_prev_actions: int = 0,
-                 attention_use_n_prev_rewards: int = 0,
-                 **kwargs,
-                 ):
+    def __init__(
+            self,
+            input_space: gym.spaces.Space,
+            action_space: gym.spaces.Space,
+            num_outputs: int,
+            *,
+            wrapped_cls: Type["torch.nn.Module"],
+            max_seq_len: int = 20,
+            attention_num_transformer_units: int = 1,
+            attention_dim: int = 64,
+            attention_num_heads: int = 1,
+            attention_head_dim: int = 32,
+            attention_memory_inference: int = 50,
+            attention_memory_training: int = 50,
+            attention_position_wise_mlp_dim: int = 32,
+            attention_init_gru_gate_bias: int = 2.0,
+            attention_use_n_prev_actions: int = 0,
+            attention_use_n_prev_rewards: int = 0,
+            **kwargs,
+    ):
 
         nn.Module.__init__(self)
-        self.wrapped_torch_model = wrapped_cls(
-            input_space, action_space, None, **kwargs)
+        self.wrapped_torch_model = wrapped_cls(input_space, action_space, None,
+                                               **kwargs)
 
         self.action_space = action_space
         self.max_seq_len = max_seq_len
@@ -636,11 +639,11 @@ class Torch_AttentionWrapper(nn.Module):
 
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_n_prev_actions:
-            self.num_outputs += self.use_n_prev_actions * self.action_dim
+            wrapped_num_outputs += self.use_n_prev_actions * self.action_dim
         if self.use_n_prev_rewards:
-            self.num_outputs += self.use_n_prev_rewards
+            wrapped_num_outputs += self.use_n_prev_rewards
 
-        if self.num_outputs is not None:
+        if num_outputs is not None:
             in_space = gym.spaces.Box(
                 float("-inf"),
                 float("inf"),
