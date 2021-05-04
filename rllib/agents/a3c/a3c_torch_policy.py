@@ -46,23 +46,33 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     policy.pi_err = -torch.sum(
         torch.masked_select(log_probs * train_batch[Postprocessing.ADVANTAGES],
                             valid_mask))
-    policy.value_err = 0.5 * torch.sum(
-        torch.pow(
-            torch.masked_select(
-                values.reshape(-1) - train_batch[Postprocessing.VALUE_TARGETS],
-                valid_mask), 2.0))
+
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
+        policy.value_err = 0.5 * torch.sum(
+            torch.pow(
+                torch.masked_select(
+                    values.reshape(-1) -
+                    train_batch[Postprocessing.VALUE_TARGETS], valid_mask),
+                2.0))
+    # Ignore the value function.
+    else:
+        policy.value_err = 0.0
+
     policy.entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
-    overall_err = (
+
+    total_loss = (
         policy.pi_err + policy.value_err * policy.config["vf_loss_coeff"] -
         policy.entropy * policy.config["entropy_coeff"])
-    return overall_err
+
+    return total_loss
 
 
 def loss_and_entropy_stats(policy, train_batch):
     return {
-        "policy_entropy": policy.entropy.item(),
-        "policy_loss": policy.pi_err.item(),
-        "vf_loss": policy.value_err.item(),
+        "policy_entropy": policy.entropy,
+        "policy_loss": policy.pi_err,
+        "vf_loss": policy.value_err,
     }
 
 
