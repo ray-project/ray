@@ -1131,7 +1131,6 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   WaitForExpectedCount(object2_change_count, 3);
 }
 
-/*
 TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
@@ -1183,7 +1182,6 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   WaitForExpectedCount(resource_change_count, 2);
   WaitForExpectedCount(batch_resource_usage_count, 2);
 }
-*/
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   JobID job_id = JobID::FromInt(6);
