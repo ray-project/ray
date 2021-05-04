@@ -205,7 +205,7 @@ class KubernetesOperatorTest(unittest.TestCase):
             operator_pod = [pod for pod in pods() if "operator" in pod].pop()
             wait_for_logs(operator_pod)
 
-            print(">>>Confirming 'Running' status for first cluster.")
+            print(">>>Confirming 'Running' status for second cluster.")
             wait_for_status("example-cluster2", "Running")
             print(">>>Deleting second cluster's head.")
             head_pod = [pod for pod in pods() if "2-ray-head" in pod].pop()
