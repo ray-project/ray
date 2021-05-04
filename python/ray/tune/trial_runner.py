@@ -223,7 +223,7 @@ class TrialRunner:
                 # Use a minimum of 16 to trigger fast autoscaling
                 # Scale up to at most the number of available cluster CPUs
                 cluster_cpus = ray.cluster_resources().get("CPU", 1.)
-                self._max_pending_trials = max(16, cluster_cpus)
+                self._max_pending_trials = max(16, int(cluster_cpus * 1.1))
 
                 if self._max_pending_trials > 128:
                     logger.warning(
