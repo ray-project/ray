@@ -1,6 +1,5 @@
 import functools
-import itertools
-from typing import TypeVar, List, Tuple, Iterable, Iterator
+from typing import List, Iterable
 
 import pandas as pd
 import ray
@@ -9,6 +8,7 @@ from ray.experimental.data_loader.shuffle import shuffle_from_memory
 from ray.experimental.data_loader.multiqueue import MultiQueue
 
 MULTIQUEUE_ACTOR_NAME = "MultiQueue"
+REDUCER_CLUSTER_CORE_SHARE = 0.6
 
 
 class ShufflingDataset:
@@ -24,10 +24,12 @@ class ShufflingDataset:
         num_trainers (int): Number of trainer workers.
         batch_size (int): Size of the batches that the iterator should yield.
         rank (int): The worker rank of the current process.
-        num_reducers (optional, int): The number of shuffler reducers. Default
+        drop_last (Optional[bool]): Whether to drop the last batch if it's
+            incomplete (smaller than batch_size). Default is False.
+        num_reducers (Optional[int]): The number of shuffler reducers. Default
             is the number of trainers x the number of cores on the master
-            (rank 0) worker.
-        max_concurrent_epochs (optional, int): The maximum number of epochs
+            (rank 0) worker x 0.6.
+        max_concurrent_epochs (Optional[int]): The maximum number of epochs
             whose shuffling stages should execute concurrently. Default is 2.
     """
 
@@ -37,11 +39,13 @@ class ShufflingDataset:
                  num_trainers: int,
                  batch_size: int,
                  rank: int,
+                 drop_last: bool = False,
                  num_reducers: int = None,
                  max_concurrent_epochs: int = 2,
                  max_batch_queue_size: int = 100):
         if num_reducers is None:
-            num_reducers = num_trainers * get_num_cpus()
+            num_reducers = int(
+                num_trainers * get_num_cpus() * REDUCER_CLUSTER_CORE_SHARE)
 
         self._batch_size = batch_size
 
@@ -49,12 +53,6 @@ class ShufflingDataset:
             # rank == 0 --> master process
             # Create the batch queue. Trainers will consume GPU batches
             # through this batch queue.
-            # TODO(Clark): If the shuffle API was changed to take num_trainers
-            # batch consumers instead of a single batch consumer, instead of
-            # having a single batch multi-queue, we could create num_trainers
-            # batch queues, have each batch consumer close over their
-            # corresponding batch queue, and have each trainer reference their
-            # single batch queue.
             self._batch_queue = MultiQueue(
                 num_epochs * num_trainers,
                 max_batch_queue_size,
@@ -86,6 +84,11 @@ class ShufflingDataset:
         self._num_trainers = num_trainers
         self._rank = rank
         self._epoch = None
+        # Used to check that the user is correctly setting the epoch at the
+        # beginning of each epoch.
+        self._last_epoch = None
+
+        self._drop_last = drop_last
 
     def set_epoch(self, epoch):
         """
@@ -103,44 +106,52 @@ class ShufflingDataset:
         """
         This iterator yields GPU batches from the shuffling queue.
         """
-        if self._epoch is None:
+        if self._epoch is None or self._epoch == self._last_epoch:
             raise ValueError(
                 "You must set the epoch on this dataset via set_epoch()"
-                "before constructing the iterator.")
+                "at the beginning of each epoch, before iterating over this "
+                "dataset (e.g. via enumerate(ds)).")
 
-        leftover_batches = None
+        # Batch leftover buffer.
+        df_buffer = None
         while True:
-            # TODO(Clark): Add get_up_to queue method that can fetch up to
-            # some number of batches in a single RPC.
             queue_idx = self._epoch * self._num_trainers + self._rank
             batches = self._batch_queue.get(queue_idx, block=True)
             if batches is None:
                 break
-            batches = ray.get(batches)
-            # Handle leftover batches.
-            leftover = len(batches) % self._batch_size
-            if leftover != 0:
-                leftover_batch = batches.tail(leftover)
-                # Slice off the leftover.
-                batches = batches.head(-leftover)
-                leftover_batches = pd.concat(
-                    [leftover_batches, leftover_batch])
-                # If leftover_batches contains a full batch, yield it.
-                if len(leftover_batches) > self._batch_size:
-                    batch = leftover_batches.head(self._batch_size)
-                    # Slice off the to-be-yielded batch.
-                    leftover_batches = leftover_batches.tail(-self._batch_size)
-                    yield batch
-            # At this point, we're guaranteed to have that
-            # len(batches) % self._batch_size == 0
-            for batch in chunk_df(batches, self._batch_size):
-                yield batch
-        # Consume leftover batch.
-        if leftover_batches is not None:
-            yield leftover_batches
+            df = ray.get(batches)
+
+            # Get first-slice offset into current dataframe.
+            df_buffer_len = len(df_buffer) if df_buffer is not None else 0
+            offset = self._batch_size - df_buffer_len
+            # If we already have a leftover batch, concatenate it with a
+            # front-slice of the current dataframe, attempting to create a
+            # full-sized batch.
+            # If we don't already have a leftover batch, we consume the first
+            # batch in the current dataframe here.
+            df_buffer = pd.concat([df_buffer, df[:offset]])
+            # If we have a full-sized batch, yield it. Otherwise, hang on to
+            # it and yield it in a future round, once we have a full batch.
+            if len(df_buffer) == self._batch_size:
+                yield df_buffer
+                df_buffer = None
+            # Yield batches from the current dataframe.
+            pos = offset  # Fallback if offset > len(df).
+            for pos in range(offset,
+                             len(df) - self._batch_size + 1, self._batch_size):
+                yield df[pos:pos + self._batch_size]
+            # If leftover (incomplete) batch, save for later.
+            pos += self._batch_size
+            if pos < len(df):
+                df_buffer = df[pos:]
+        # Yield leftover (incomplete) batch if we're not dropping incomplete
+        # batches.
+        if df_buffer is not None and not self._drop_last:
+            yield df_buffer
         if (self._epoch == self._num_epochs - 1
                 and self._shuffle_result is not None):
             ray.get(self._shuffle_result)
+        self._last_epoch = self._epoch
 
 
 def batch_consumer(queue: MultiQueue, batch_size: int, num_trainers: int,
@@ -149,9 +160,6 @@ def batch_consumer(queue: MultiQueue, batch_size: int, num_trainers: int,
     Batch consumer that will be provided to the shuffler.
     """
     queue_idx = epoch * num_trainers + rank
-    print(
-        f"Sending batch to queue for epoch {epoch} and rank {rank} at index: "
-        f"{queue_idx}")
     if batches is None:
         queue.put(queue_idx, None)
     else:
@@ -162,19 +170,6 @@ def debug_batch_consumer(rank: int, epoch: int,
                          batches: Iterable[pd.DataFrame]):
     num_batches = len(batches) if batches is not None else 0
     print(f"Received {num_batches} batches in consumer {rank}.")
-
-
-T = TypeVar("T")
-
-
-def chunk_df(df: pd.DataFrame, n: int) -> Tuple[pd.DataFrame, ...]:
-    for pos in range(0, len(df), n):
-        yield df[pos:pos + n]
-
-
-def chunk(iterable: Iterable[T], n: int) -> Iterator[Tuple[T, ...]]:
-    it = iter(iterable)
-    return iter(lambda: tuple(itertools.islice(it, n)), ())
 
 
 if __name__ == "__main__":

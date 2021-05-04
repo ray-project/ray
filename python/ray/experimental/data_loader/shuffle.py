@@ -142,14 +142,11 @@ def shuffle_from_memory(
             start, stats_collector)
         in_progress.extend(epoch_reducers)
 
-    print(f"Waiting until last {len(in_progress)} reducer chunks are " "done.")
     # Block until all epochs are done.
     while in_progress:
         new_done, in_progress = ray.wait(
             in_progress, num_returns=wait_batch, fetch_local=False)
         del new_done
-
-    print("All epochs done.")
 
     end = timeit.default_timer()
 
@@ -250,13 +247,10 @@ def consume(trainer_idx: int,
             trial_start: float,
             stats_collector: Union[TrialStatsCollector, None], epoch: int,
             batches: List[ray.ObjectRef]) -> None:
-    print(f"Sending to consumer {trainer_idx} in epoch {epoch}")
     if stats_collector is not None:
         stats_collector.consume_start.remote(epoch)
     start = timeit.default_timer()
     trial_time_to_consume = start - trial_start
-    # TODO(Clark): Confirm that epochs are consumed in order, e.g. that batches
-    # from epoch 2 aren't interleaved with batches from epoch 1.
     batch_consumer(trainer_idx, epoch, batches)
     end = timeit.default_timer()
     duration = end - start
