@@ -34,8 +34,11 @@ spec:
             type: object
             properties:
               phase:
-                description: Running or Error
+                description: Running, Error, or AutoscalingExceptionRecovery
                 type: string
+              autoscalerRetries:
+                description: Number of Ray cluster restarts triggered by autoscaler failure.
+                type: integer
           spec:
             type: object
             required:
