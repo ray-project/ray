@@ -13,9 +13,9 @@ def env_integer(key, default):
         if value.isdigit():
             return int(os.environ[key])
 
-        logger.warning(f"Found {key} in environment, but value must "
-                       f"be an integer. Got: {value}. Returning "
-                       f"provided default {default}.")
+        logger.debug(f"Found {key} in environment, but value must "
+                     f"be an integer. Got: {value}. Returning "
+                     f"provided default {default}.")
         return default
     return default
 
