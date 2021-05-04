@@ -45,8 +45,8 @@ class GrpcBasedResourceBroadcasterTest : public ::testing::Test {
   void SendBroadcast() { broadcaster_.SendBroadcast(); }
 
   void AssertNoLeaks() {
-    ASSERT_EQ(broadcaster_.nodes_.size(), 0);
     absl::MutexLock guard(&broadcaster_.mutex_);
+    ASSERT_EQ(broadcaster_.nodes_.size(), 0);
     ASSERT_EQ(broadcaster_.inflight_updates_.size(), 0);
   }
 
