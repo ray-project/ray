@@ -1,4 +1,3 @@
-Script started on 2021-03-30 04:50:46-07:00 [TERM="screen" TTY="/dev/pts/11" COLUMNS="80" LINES="24"]
 2021-03-30 04:50:47,333	INFO worker.py:654 -- Connecting to existing Ray cluster at address: 172.31.5.155:6379
 Waiting for more nodes to come up: 0/4 (0 seconds passed)
 Waiting for more nodes to come up: 1/4 (10 seconds passed)
