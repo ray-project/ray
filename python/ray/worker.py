@@ -1614,10 +1614,11 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @client_mode_hook
 def get_actor(name):
-    """Get a handle to a detached actor.
+    """Get a handle to a named actor.
 
-    Gets a handle to a detached actor with the given name. The actor must
-    have been created with Actor.options(name="name").remote().
+    Gets a handle to an actor with the given name. The actor must
+    have been created with Actor.options(name="name").remote(). This
+    works for both detached & non-detached actors.
 
     Returns:
         ActorHandle to the actor.
