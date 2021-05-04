@@ -115,7 +115,6 @@ class RolloutWorker(ParallelIteratorWorker):
             "car_policy2": SampleBatch(...),
             "traffic_light_policy": SampleBatch(...)})
     """
-
     @DeveloperAPI
     @classmethod
     def as_remote(cls,
@@ -124,66 +123,65 @@ class RolloutWorker(ParallelIteratorWorker):
                   memory: int = None,
                   object_store_memory: int = None,
                   resources: dict = None) -> type:
-        return ray.remote(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            object_store_memory=object_store_memory,
-            resources=resources)(cls)
+        return ray.remote(num_cpus=num_cpus,
+                          num_gpus=num_gpus,
+                          memory=memory,
+                          object_store_memory=object_store_memory,
+                          resources=resources)(cls)
 
     @DeveloperAPI
     def __init__(
-            self,
-            *,
-            env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext],
-                                            None]] = None,
-            policy_spec: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
-            policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
-            tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
-            rollout_fragment_length: int = 100,
-            count_steps_by: str = "env_steps",
-            batch_mode: str = "truncate_episodes",
-            episode_horizon: int = None,
-            preprocessor_pref: str = "deepmind",
-            sample_async: bool = False,
-            compress_observations: bool = False,
-            num_envs: int = 1,
-            observation_fn: "ObservationFunction" = None,
-            observation_filter: str = "NoFilter",
-            clip_rewards: bool = None,
-            clip_actions: bool = True,
-            env_config: EnvConfigDict = None,
-            model_config: ModelConfigDict = None,
-            policy_config: TrainerConfigDict = None,
-            worker_index: int = 0,
-            num_workers: int = 0,
-            record_env: Union[bool, str] = False,
-            log_dir: str = None,
-            log_level: str = None,
-            callbacks: Type["DefaultCallbacks"] = None,
-            input_creator: Callable[[
-                IOContext
-            ], InputReader] = lambda ioctx: ioctx.default_sampler_input(),
-            input_evaluation: List[str] = frozenset([]),
-            output_creator: Callable[
-                [IOContext], OutputWriter] = lambda ioctx: NoopOutput(),
-            remote_worker_envs: bool = False,
-            remote_env_batch_wait_ms: int = 0,
-            soft_horizon: bool = False,
-            no_done_at_end: bool = False,
-            seed: int = None,
-            extra_python_environs: dict = None,
-            fake_sampler: bool = False,
-            spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
-                                                  gym.spaces.Space]]] = None,
-            policy: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
-            monitor_path=None,
+        self,
+        *,
+        env_creator: Callable[[EnvContext], EnvType],
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
+        policy_spec: Union[type,
+                           Dict[str,
+                                Tuple[Optional[type], gym.Space, gym.Space,
+                                      PartialTrainerConfigDict]]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
+        policies_to_train: Optional[List[PolicyID]] = None,
+        tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+        rollout_fragment_length: int = 100,
+        count_steps_by: str = "env_steps",
+        batch_mode: str = "truncate_episodes",
+        episode_horizon: int = None,
+        preprocessor_pref: str = "deepmind",
+        sample_async: bool = False,
+        compress_observations: bool = False,
+        num_envs: int = 1,
+        observation_fn: "ObservationFunction" = None,
+        observation_filter: str = "NoFilter",
+        clip_rewards: bool = None,
+        clip_actions: bool = True,
+        env_config: EnvConfigDict = None,
+        model_config: ModelConfigDict = None,
+        policy_config: TrainerConfigDict = None,
+        worker_index: int = 0,
+        num_workers: int = 0,
+        record_env: Union[bool, str] = False,
+        log_dir: str = None,
+        log_level: str = None,
+        callbacks: Type["DefaultCallbacks"] = None,
+        input_creator: Callable[
+            [IOContext],
+            InputReader] = lambda ioctx: ioctx.default_sampler_input(),
+        input_evaluation: List[str] = frozenset([]),
+        output_creator: Callable[[IOContext],
+                                 OutputWriter] = lambda ioctx: NoopOutput(),
+        remote_worker_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
+        soft_horizon: bool = False,
+        no_done_at_end: bool = False,
+        seed: int = None,
+        extra_python_environs: dict = None,
+        fake_sampler: bool = False,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]] = None,
+        policy: Union[type, Dict[str,
+                                 Tuple[Optional[type], gym.Space, gym.Space,
+                                       PartialTrainerConfigDict]]] = None,
+        monitor_path=None,
     ):
         """Initialize a rollout worker.
 
@@ -349,8 +347,9 @@ class RolloutWorker(ParallelIteratorWorker):
         elif log_level == "DEBUG":
             enable_periodic_logging()
 
-        env_context = EnvContext(
-            env_config or {}, worker_index, num_workers=num_workers)
+        env_context = EnvContext(env_config or {},
+                                 worker_index,
+                                 num_workers=num_workers)
         self.env_context = env_context
         self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
@@ -475,8 +474,9 @@ class RolloutWorker(ParallelIteratorWorker):
         self.make_env_fn = make_env
 
         self.tf_sess = None
-        policy_dict = _validate_and_canonicalize(
-            policy_spec, self.env, spaces=spaces)
+        policy_dict = _validate_and_canonicalize(policy_spec,
+                                                 self.env,
+                                                 spaces=spaces)
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
         self.policy_map: Dict[PolicyID, Policy] = None
@@ -504,9 +504,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
                 else:
-                    self.tf_sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)))
+                    self.tf_sess = tf1.Session(config=tf1.ConfigProto(
+                        gpu_options=tf1.GPUOptions(allow_growth=True)))
                 with self.tf_sess.as_default():
                     # set graph-level seed
                     if seed is not None:
@@ -778,7 +777,8 @@ class RolloutWorker(ParallelIteratorWorker):
         }
 
     @DeveloperAPI
-    def set_weights(self, weights: ModelWeights,
+    def set_weights(self,
+                    weights: ModelWeights,
                     global_vars: dict = None) -> None:
         """Sets the model weights of this worker.
 
@@ -851,8 +851,8 @@ class RolloutWorker(ParallelIteratorWorker):
             if self.tf_sess is not None:
                 builder = TFRunBuilder(self.tf_sess, "apply_gradients")
                 outputs = {
-                    pid: self.policy_map[pid]._build_apply_gradients(
-                        builder, grad)
+                    pid:
+                    self.policy_map[pid]._build_apply_gradients(builder, grad)
                     for pid, grad in grads.items()
                 }
                 return {k: builder.get(v) for k, v in outputs.items()}
@@ -903,8 +903,8 @@ class RolloutWorker(ParallelIteratorWorker):
             info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
         else:
             info_out = {
-                DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
-                .learn_on_batch(samples)
+                DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID].
+                learn_on_batch(samples)
             }
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
@@ -967,8 +967,9 @@ class RolloutWorker(ParallelIteratorWorker):
             return [func(e) for e in envs]
 
     @DeveloperAPI
-    def get_policy(
-            self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
+    def get_policy(self,
+                   policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID
+                   ) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
@@ -1113,8 +1114,8 @@ class RolloutWorker(ParallelIteratorWorker):
         return func(self, *args)
 
     def _build_policy_map(
-            self, policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict
+        self, policy_dict: MultiAgentPolicyConfigDict,
+        policy_config: TrainerConfigDict
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
         policy_map = {}
         preprocessors = {}
@@ -1170,11 +1171,10 @@ class RolloutWorker(ParallelIteratorWorker):
         logger.info("Joining process group, url={}, world_rank={}, "
                     "world_size={}, backend={}".format(url, world_rank,
                                                        world_size, backend))
-        torch.distributed.init_process_group(
-            backend=backend,
-            init_method=url,
-            rank=world_rank,
-            world_size=world_size)
+        torch.distributed.init_process_group(backend=backend,
+                                             init_method=url,
+                                             rank=world_rank,
+                                             world_size=world_size)
 
         for pid, policy in self.policy_map.items():
             if not isinstance(policy, TorchPolicy):
