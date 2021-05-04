@@ -5,22 +5,20 @@ from typing import Optional, Type, List
 from ray.rllib.offline.shuffled_input import ShuffledInput
 
 from ray.actor import ActorHandle
+from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
+from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
-from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils import merge_dicts
-
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
-from ray.rllib.policy.policy import LEARNER_STATS_KEY
-from ray.rllib.agents.dqn.dqn import calculate_rr_weights
+from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+    UpdateTargetNetwork
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.typing import TrainerConfigDict
 
 # yapf: disable
@@ -156,19 +154,6 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
-    """Calculate the round robin weights for the rollout and train steps"""
-    if not config["training_intensity"]:
-        return [1, 1]
-    # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
-    # Training intensity is specified in terms of
-    # (steps_replayed / steps_sampled), so adjust for the native ratio.
-    weights = [1, config["training_intensity"] / native_ratio]
-    return weights
-
-
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     if config["framework"] == "torch":
         return CQLTorchPolicy
@@ -196,10 +181,15 @@ def after_init(trainer):
             # next-obs to cause learning problems.
             if SampleBatch.NEXT_OBS not in batch:
                 batch[SampleBatch.NEXT_OBS] = \
-                    np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
+                    np.concatenate([
+                        batch[SampleBatch.OBS][1:],
+                        np.zeros_like(batch[SampleBatch.OBS][0:1])
+                    ])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
-        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into replay buffer, which has capacity {replay_buffer.buffer_size}.")
+        print(
+            f"Loaded {num_batches} batches ({total_timesteps} ts) into "
+            f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
         raise ValueError("`input` config for CQL must be D4RL environment "
                          "specifier or list of offline files!")

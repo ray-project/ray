@@ -57,7 +57,7 @@ def q_values_repeat(model, obs, actions, twin=False):
 def cql_loss(policy: Policy, model: ModelV2,
              dist_class: Type[TorchDistributionWrapper],
              train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
-    logger.info(f"Current iteration = {policy.cur_iter}")
+    print(f"Current iteration = {policy.cur_iter}")  #TODO
     policy.cur_iter += 1
 
     # For best performance, turn deterministic off
@@ -234,7 +234,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.alpha_value = alpha
     policy.target_entropy = model.target_entropy
     # CQL Stats
-    #policy.cql_loss = cql_loss
+    policy.cql_loss = cql_loss
     if use_lagrange:
         policy.log_alpha_prime_value = model.log_alpha_prime[0]
         policy.alpha_prime_value = alpha_prime
@@ -251,7 +251,7 @@ def cql_loss(policy: Policy, model: ModelV2,
 def cql_stats(policy: Policy,
               train_batch: SampleBatch) -> Dict[str, TensorType]:
     sac_dict = stats(policy, train_batch)
-    # sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
+    sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
     if policy.config["lagrangian"]:
         sac_dict["log_alpha_prime_value"] = policy.log_alpha_prime_value
         sac_dict["alpha_prime_value"] = policy.alpha_prime_value
