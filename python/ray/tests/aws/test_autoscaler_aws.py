@@ -413,6 +413,8 @@ def test_log_to_cli(iam_client_stub, ec2_client_stub):
     # Only side-effect is to print logs to cli, called just to
     # check that it runs without error
     log_to_cli(config)
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
 
 
 if __name__ == "__main__":
