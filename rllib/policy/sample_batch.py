@@ -123,7 +123,8 @@ class SampleBatch(dict):
         """Concatenates n data dicts or MultiAgentBatches.
 
         Args:
-            samples (List[Dict[TensorType]]]): List of dicts of data (numpy).
+            samples (List[Dict[str, TensorType]]]): List of dicts of data
+                (numpy).
 
         Returns:
             Union[SampleBatch, MultiAgentBatch]: A new (compressed)
