@@ -2,7 +2,6 @@
 """
 import numpy as np
 from typing import Optional, Type, List
-from ray.rllib.offline.shuffled_input import ShuffledInput
 
 from ray.actor import ActorHandle
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
@@ -16,6 +15,7 @@ from ray.rllib.execution.replay_ops import Replay
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
     UpdateTargetNetwork
+from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
@@ -180,19 +180,19 @@ def after_init(trainer):
             # and therefore force-set DONE=True to avoid this missing
             # next-obs to cause learning problems.
             if SampleBatch.NEXT_OBS not in batch:
+                obs = batch[SampleBatch.OBS]
                 batch[SampleBatch.NEXT_OBS] = \
-                    np.concatenate([
-                        batch[SampleBatch.OBS][1:],
-                        np.zeros_like(batch[SampleBatch.OBS][0:1])
-                    ])
+                    np.concatenate([obs[1:], np.zeros_like(obs[0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
         print(
             f"Loaded {num_batches} batches ({total_timesteps} ts) into "
             f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
-        raise ValueError("`input` config for CQL must be D4RL environment "
-                         "specifier or list of offline files!")
+        raise ValueError(
+            "Unknown offline input! config['input'] must either be list of offline "
+            "files (json) or a D4RL-specific InputReader specifier (e.g. "
+            "'d4rl.hopper-medium-v0').")
 
 
 CQLTrainer = SACTrainer.with_updates(

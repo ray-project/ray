@@ -315,8 +315,8 @@ def actor_critic_loss(
     policy.target_entropy = model.target_entropy
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.alpha_loss] + [policy.actor_loss] +
-                 policy.critic_loss)
+    return tuple([policy.actor_loss] + policy.critic_loss +
+                 [policy.alpha_loss])
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -395,8 +395,8 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
         eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
-    return tuple([policy.alpha_optim] + [policy.actor_optim] +
-                 policy.critic_optims)
+    return tuple([policy.actor_optim] + policy.critic_optims +
+                 [policy.alpha_optim])
 
 
 class ComputeTDErrorMixin:
