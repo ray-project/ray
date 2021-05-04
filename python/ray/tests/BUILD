@@ -66,9 +66,7 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
-    "test_object_manager.py",
     "test_object_spilling.py",
-    "test_object_spilling_2.py",
     "test_output.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
@@ -87,6 +85,8 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_object_spilling_2.py",
+    "test_object_manager.py",
     "test_reference_counting_2.py",
     "test_multi_tenancy.py",
   ],
