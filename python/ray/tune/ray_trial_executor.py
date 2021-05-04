@@ -19,7 +19,8 @@ from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
-from ray.tune.utils.placement_groups import PlacementGroupManager
+from ray.tune.utils.placement_groups import PlacementGroupManager, \
+    get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
@@ -160,7 +161,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
-        self._pg_manager = PlacementGroupManager()
+        self._pg_manager = PlacementGroupManager(prefix=get_tune_pg_prefix())
         self._staged_trials = set()
         self._just_staged_trials = set()
         self._trial_just_finished = False
@@ -179,6 +180,10 @@ class RayTrialExecutor(TrialExecutor):
         if self._wait_for_pg < 0:
             self._wait_for_pg = None
 
+        self.last_pg_recon = 0
+        self.pg_recon_interval = float(
+            os.environ.get("TUNE_PLACEMENT_GROUP_RECON_INTERVAL", "5"))
+
         self._buffer_length = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
         self._buffer_min_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
@@ -196,6 +201,9 @@ class RayTrialExecutor(TrialExecutor):
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return self._pg_manager.in_staging_grace_period()
+
+    def set_max_pending_trials(self, max_pending: int):
+        self._pg_manager.set_max_staging(max_pending)
 
     def stage_and_update_status(self, trials: List[Trial]):
         """Check and update statuses of scheduled placement groups.
@@ -783,7 +791,9 @@ class RayTrialExecutor(TrialExecutor):
 
         """
         if trial.uses_placement_groups:
-            return trial in self._staged_trials or self._pg_manager.can_stage()
+            return trial in self._staged_trials or self._pg_manager.can_stage(
+            ) or self._pg_manager.has_ready(
+                trial, update=True)
 
         return self.has_resources(trial.resources)
 
@@ -887,7 +897,13 @@ class RayTrialExecutor(TrialExecutor):
     def on_step_end(self, trial_runner):
         self._just_staged_trials.clear()
 
-        self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
+        if time.time() > self.last_pg_recon + self.pg_recon_interval:
+            # Only do this every now and then - usually the placement groups
+            # should not get out of sync, and calling this often is inefficient
+            self._pg_manager.reconcile_placement_groups(
+                trial_runner.get_trials())
+            self.last_pg_recon = time.time()
+
         self._pg_manager.cleanup()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
@@ -989,8 +1005,9 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self):
+    def cleanup(self, trial_runner):
         self._trial_cleanup.cleanup(partial=False)
+        self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
 

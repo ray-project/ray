@@ -10,7 +10,7 @@ import time
 
 import ray
 import ray.test_utils
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
                             kill_actor_and_wait_for_failure,
                             wait_for_condition)
@@ -335,6 +335,7 @@ def test_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor did not restore from a checkpoint.
@@ -371,6 +372,7 @@ def test_remote_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -411,6 +413,7 @@ def test_checkpoint_distributed_handle(ray_start_cluster_2_nodes):
 
     # Kill the second plasma store to get rid of the cached objects and
     # trigger the corresponding raylet to exit.
+    # TODO: kill raylet instead once this test is not skipped.
     get_non_head_nodes(cluster)[0].kill_plasma_store(wait=True)
 
     # Check that the actor restored from a checkpoint.
@@ -735,11 +738,13 @@ def test_detached_actor_cleanup(ray_start_regular):
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
-        actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+        actor_status = ray.state.actors(
+            actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+            actor_status = ray.state.actors(
+                actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -769,11 +774,11 @@ detached_actor = DetachedActor.options(lifetime="detached", name="{}").remote()
 assert ray.get(detached_actor.ping.remote()) == "pong"
 ray.kill(detached_actor)
 # Wait until actor dies.
-actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
 while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-    actor_status = ray.actors(actor_id=detached_actor._actor_id.hex())
+    actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
     if wait_time >= max_wait_time:
@@ -835,11 +840,11 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
     node_failure_actor_name = "node_failure_actor_name"
 
     def wait_until_actor_dead(handle):
-        actor_status = ray.actors(actor_id=handle._actor_id.hex())
+        actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
         while actor_status["State"] != ray.gcs_utils.ActorTableData.DEAD:
-            actor_status = ray.actors(actor_id=handle._actor_id.hex())
+            actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
             if wait_time >= max_wait_time:
@@ -922,7 +927,7 @@ def test_actor_creation_task_crash(ray_start_regular):
             return count
 
         def set_count(self, count):
-            _internal_kv_put("count", count, True)
+            _internal_kv_put("count", str(count), True)
 
     # Verify we can get the object successfully.
     ra = RestartableActor.remote()

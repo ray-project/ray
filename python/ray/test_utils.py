@@ -8,7 +8,7 @@ import sys
 import time
 import socket
 import math
-
+from typing import Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
@@ -178,11 +178,12 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script):
+def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 
     Args:
-        driver_script: A string to run as a Python script.
+        driver_script (str): A string to run as a Python script.
+        env (dict): The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -191,7 +192,9 @@ def run_string_as_driver(driver_script):
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
@@ -202,7 +205,7 @@ def run_string_as_driver(driver_script):
     return out
 
 
-def run_string_as_driver_nonblocking(driver_script):
+def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
@@ -222,7 +225,8 @@ def run_string_as_driver_nonblocking(driver_script):
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -232,7 +236,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
-                _ for _ in ray.actors().values()
+                _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state
         ]) >= num_actors:
             return
@@ -242,11 +246,11 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.actors(actor_id)
+        actor_status = ray.state.actors(actor_id)
         if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
@@ -489,7 +493,7 @@ def new_scheduler_enabled():
 
 
 def client_test_enabled() -> bool:
-    return os.environ.get("RAY_CLIENT_MODE") == "1"
+    return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
 def fetch_prometheus(prom_addresses):

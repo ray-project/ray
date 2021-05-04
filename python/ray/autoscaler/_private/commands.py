@@ -1,4 +1,5 @@
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import datetime
 import hashlib
 import json
@@ -25,7 +26,8 @@ from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import \
-    AUTOSCALER_RESOURCE_REQUEST_CHANNEL
+    AUTOSCALER_RESOURCE_REQUEST_CHANNEL, \
+    MAX_PARALLEL_SHUTDOWN_WORKERS
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
     hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
@@ -104,13 +106,15 @@ def debug_status(status, error) -> str:
     else:
         status = status.decode("utf-8")
         as_dict = json.loads(status)
+        time = datetime.datetime.fromtimestamp(as_dict["time"])
         lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
         if "autoscaler_report" in as_dict:
             autoscaler_summary = AutoscalerSummary(
                 **as_dict["autoscaler_report"])
-            status = format_info_string(lm_summary, autoscaler_summary)
+            status = format_info_string(
+                lm_summary, autoscaler_summary, time=time)
         else:
-            status = format_info_string_no_node_types(lm_summary)
+            status = format_info_string_no_node_types(lm_summary, time=time)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -248,6 +252,7 @@ CONFIG_CACHE_VERSION = 1
 def _bootstrap_config(config: Dict[str, Any],
                       no_config_cache: bool = False) -> Dict[str, Any]:
     config = prepare_config(config)
+    # NOTE: multi-node-type autoscaler is guaranteed to be in use after this.
 
     hasher = hashlib.sha1()
     hasher.update(json.dumps([config], sort_keys=True).encode("utf-8"))
@@ -403,7 +408,12 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
                 file_mounts_contents_hash="",
                 is_head_node=False,
                 docker_config=config.get("docker"))
-            _exec(updater, cmd=f"docker stop {container_name}", run_env="host")
+
+            _exec(
+                updater,
+                f"docker stop {container_name}",
+                with_output=False,
+                run_env="host")
         except Exception:
             cli_logger.warning(f"Docker stop failed on {node}")
 
@@ -413,9 +423,21 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-        for node in A:
-            run_docker_stop(node, container_name)
 
+        # This is to ensure that the parallel SSH calls below do not mess with
+        # the users terminal.
+        output_redir = cmd_output_util.is_output_redirected()
+        cmd_output_util.set_output_redirected(True)
+        allow_interactive = cmd_output_util.does_allow_interactive()
+        cmd_output_util.set_allow_interactive(False)
+
+        with ThreadPoolExecutor(
+                max_workers=MAX_PARALLEL_SHUTDOWN_WORKERS) as executor:
+            for node in A:
+                executor.submit(
+                    run_docker_stop, node=node, container_name=container_name)
+        cmd_output_util.set_output_redirected(output_redir)
+        cmd_output_util.set_allow_interactive(allow_interactive)
     with LogTimer("teardown_cluster: done."):
         while A:
             provider.terminate_nodes(A)
@@ -1238,8 +1260,8 @@ def get_cluster_dump_archive(cluster_config_file: Optional[str] = None,
 
     if not nodes:
         cli_logger.error(
-            f"No nodes found. Specify with `--host` or by passing a ray "
-            f"cluster config to `--cluster`.")
+            "No nodes found. Specify with `--host` or by passing a ray "
+            "cluster config to `--cluster`.")
         return None
 
     if cluster_config_file:

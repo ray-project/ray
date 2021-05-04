@@ -1,4 +1,5 @@
 import logging
+import inspect
 from functools import wraps
 
 from ray import cloudpickle as pickle
@@ -11,8 +12,10 @@ from ray.util.placement_group import (
     check_placement_group_index,
     get_current_placement_group,
 )
-from ray._private.utils import get_conda_env_dir
 import ray._private.signature
+import ray._private.runtime_env as runtime_support
+from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
+                                             _inject_tracing_into_function)
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -69,10 +72,14 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries):
+        if inspect.iscoroutinefunction(function):
+            raise ValueError("'async def' should not be used for remote "
+                             "tasks. You can wrap the async function with "
+                             "`asyncio.get_event_loop.run_until(f())`. "
+                             "See more at docs.ray.io/async_api.html")
         self._language = language
-        self._function = function
-        self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+        self._function = _inject_tracing_into_function(function)
+        self._function_name = (function.__module__ + "." + function.__name__)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -169,6 +176,7 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    @_tracing_task_invocation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -262,12 +270,12 @@ class RemoteFunction:
             accelerator_type)
 
         if runtime_env:
-            conda_env = runtime_env.get("conda_env")
-            if conda_env is not None:
-                conda_env_dir = get_conda_env_dir(conda_env)
-                if override_environment_variables is None:
-                    override_environment_variables = {}
-                override_environment_variables.update(PYTHONHOME=conda_env_dir)
+            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = (
+                parsed_runtime_env.to_worker_env_vars(
+                    override_environment_variables))
+        else:
+            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -294,6 +302,7 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
+                parsed_runtime_env,
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

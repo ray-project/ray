@@ -7,18 +7,18 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
     TorchDirichlet
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss, l2_loss
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
-    LocalOptimizer
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+    LocalOptimizer, GradInfoDict
 
 torch, nn = try_import_torch()
 
@@ -201,7 +201,7 @@ def make_ddpg_optimizers(policy: Policy,
     return policy._actor_optimizer, policy._critic_optimizer
 
 
-def apply_gradients_fn(policy: Policy) -> None:
+def apply_gradients_fn(policy: Policy, gradients: GradInfoDict) -> None:
     # For policy gradient, update policy net one time v.s.
     # update critic net `policy_delay` time(s).
     if policy.global_step % policy.config["policy_delay"] == 0:
@@ -238,14 +238,15 @@ class ComputeTDErrorMixin:
     def __init__(self, loss_fn):
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            input_dict = self._lazy_tensor_dict({
-                SampleBatch.CUR_OBS: obs_t,
-                SampleBatch.ACTIONS: act_t,
-                SampleBatch.REWARDS: rew_t,
-                SampleBatch.NEXT_OBS: obs_tp1,
-                SampleBatch.DONES: done_mask,
-                PRIO_WEIGHTS: importance_weights,
-            })
+            input_dict = self._lazy_tensor_dict(
+                SampleBatch({
+                    SampleBatch.CUR_OBS: obs_t,
+                    SampleBatch.ACTIONS: act_t,
+                    SampleBatch.REWARDS: rew_t,
+                    SampleBatch.NEXT_OBS: obs_tp1,
+                    SampleBatch.DONES: done_mask,
+                    PRIO_WEIGHTS: importance_weights,
+                }))
             # Do forward pass on loss to update td errors attribute
             # (one TD-error value per item in batch to update PR weights).
             loss_fn(self, self.model, None, input_dict)

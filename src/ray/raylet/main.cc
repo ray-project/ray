@@ -50,9 +50,16 @@ DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
+DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
-DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
+#ifdef __linux__
+DEFINE_string(plasma_directory, "/dev/shm",
+              "The shared memory directory of the object store.");
+#else
+DEFINE_string(plasma_directory, "/tmp",
+              "The shared memory directory of the object store.");
+#endif
 DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 #ifndef RAYLET_TEST
 
@@ -87,6 +94,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
+  const std::string resource_dir = FLAGS_resource_dir;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -105,7 +113,11 @@ int main(int argc, char *argv[]) {
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
+  // `enable_async_conn` as false.
+  ray::gcs::GcsClientOptions client_options(
+      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
   gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
@@ -157,6 +169,8 @@ int main(int argc, char *argv[]) {
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
+        node_manager_config.pull_based_resource_reporting =
+            RayConfig::instance().pull_based_resource_reporting();
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -192,6 +206,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
+        node_manager_config.resource_dir = resource_dir;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
         node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
@@ -206,6 +221,9 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
             RayConfig::instance().object_manager_push_timeout_ms();
+        if (object_store_memory < 0) {
+          RAY_LOG(FATAL) << "Object store memory should be set.";
+        }
         object_manager_config.object_store_memory = object_store_memory;
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();

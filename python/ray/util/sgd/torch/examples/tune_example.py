@@ -128,7 +128,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=3)
     else:
         ray.init(address=args.address)
     CustomTrainingOperator = TrainingOperator.from_creators(

@@ -182,7 +182,7 @@ Node Docker
 
     :ref:`image <cluster-configuration-image>`: str
     :ref:`pull_before_run <cluster-configuration-pull-before-run>`: bool
-    :ref:`run_options <cluster-configuration-run-options>`:
+    :ref:`worker_run_options <cluster-configuration-worker-run-options>`:
         - str
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
@@ -658,6 +658,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If enabled, Ray will not automatically specify the size ``/dev/shm`` for the started container and the runtime's default value (64MiB for Docker) will be used.
+If ``--shm-size=<>`` is manually added to ``run_options``, this is *automatically* set to ``True``, meaning that Ray will defer to the user-provided value.
 
 * **Required:** No
 * **Importance:** Low
@@ -965,7 +966,7 @@ The minimum number of workers to maintain for this node type regardless of utili
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`.
+The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
 * **Required:** No
 * **Importance:** High

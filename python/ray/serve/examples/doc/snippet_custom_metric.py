@@ -5,10 +5,11 @@ from ray.util import metrics
 import time
 
 ray.init(address="auto")
-client = serve.start()
+serve.start()
 
 
-class MyBackendClass:
+@serve.deployment
+class MyBackend:
     def __init__(self):
         self.my_counter = metrics.Counter(
             "my_counter",
@@ -18,15 +19,14 @@ class MyBackendClass:
             "backend": serve.get_current_backend_tag()
         })
 
-    def __call__(self, request):
-        if "excellent" in request.query_params:
+    def call(self, excellent=False):
+        if excellent:
             self.my_counter.inc()
 
 
-client.create_backend("my_backend", MyBackendClass)
-client.create_endpoint("my_endpoint", backend="my_backend")
+MyBackend.deploy()
 
-handle = client.get_handle("my_endpoint")
-while (True):
-    ray.get(handle.remote(excellent=True))
+handle = MyBackend.get_handle()
+while True:
+    ray.get(handle.call.remote(excellent=True))
     time.sleep(1)

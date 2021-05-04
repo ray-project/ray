@@ -51,6 +51,7 @@ from ray.includes.common cimport (
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
+    CRuntimeEnv,
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
@@ -68,6 +69,7 @@ from ray.includes.common cimport (
     WORKER_TYPE_DRIVER,
     WORKER_TYPE_SPILL_WORKER,
     WORKER_TYPE_RESTORE_WORKER,
+    WORKER_TYPE_UTIL_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -90,10 +92,13 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
 )
+
+from ray.includes.gcs_client cimport CGcsClient
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 
 import ray
+import ray._private.util_worker_handlers as util_worker_handlers
 from ray import external_storage
 from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
@@ -101,6 +106,7 @@ import ray._private.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
+    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -127,13 +133,13 @@ include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
 include "includes/metric.pxi"
+include "includes/gcs_client.pxi"
 
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
 
 logger = logging.getLogger(__name__)
-
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
@@ -448,7 +454,6 @@ cdef execute_task(
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                     and function_name == "__ray_terminate__"):
-                worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -492,12 +497,6 @@ cdef execute_task(
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
-                        if inspect.iscoroutinefunction(function_executor):
-                            raise ValueError(
-                                "'async def' should not be used for remote "
-                                "tasks. You can wrap the async function with "
-                                "`asyncio.get_event_loop.run_until(f())`. "
-                                "See more at docs.ray.io/async_api.html")
                         outputs = function_executor(*args, **kwargs)
                         next_breakpoint = (
                             ray.worker.global_worker.debugger_breakpoint)
@@ -535,9 +534,6 @@ cdef execute_task(
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
 
-            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                worker.mark_actor_init_failed(error)
-
             backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
@@ -557,6 +553,8 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                raise RayActorError.from_task_error(failure_object)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
@@ -570,6 +568,11 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
+# return a protobuf-serialized ray_exception
+cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
+    cdef bytes py_bytes = ray_error.to_bytes()
+    return make_shared[LocalMemoryBuffer](
+        <uint8_t*>py_bytes, len(py_bytes), True)
 
 cdef CRayStatus task_execution_handler(
         CTaskType task_type,
@@ -580,8 +583,8 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
-        c_vector[shared_ptr[CRayObject]] *returns) nogil:
-
+        c_vector[shared_ptr[CRayObject]] *returns,
+        shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
     with gil:
         try:
             client_was_enabled = _disable_client_hook()
@@ -591,21 +594,37 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
                              debugger_breakpoint, returns)
-            except Exception:
-                traceback_str = traceback.format_exc() + (
-                    "An unexpected internal error occurred while the worker "
-                    "was executing a task.")
-                ray._private.utils.push_error_to_driver(
-                    ray.worker.global_worker,
-                    "worker_crash",
-                    traceback_str,
-                    job_id=None)
-                sys.exit(1)
+            except Exception as e:
+                sys_exit = SystemExit()
+                if isinstance(e, RayActorError) and \
+                   e.has_creation_task_error():
+                    traceback_str = str(e)
+                    logger.error("Exception raised "
+                                 f"in creation task: {traceback_str}")
+                    # Cython's bug that doesn't allow reference assignment,
+                    # this is a workaroud.
+                    # See https://github.com/cython/cython/issues/1863
+                    (&creation_task_exception_pb_bytes)[0] = (
+                        ray_error_to_memory_buf(e))
+                    sys_exit.is_creation_task_error = True
+                else:
+                    traceback_str = traceback.format_exc() + (
+                        "An unexpected internal error "
+                        "occurred while the worker "
+                        "was executing a task.")
+                    ray._private.utils.push_error_to_driver(
+                        ray.worker.global_worker,
+                        "worker_crash",
+                        traceback_str,
+                        job_id=None)
+                raise sys_exit
         except SystemExit as e:
             # Tell the core worker to exit as soon as the result objects
             # are processed.
             if hasattr(e, "is_ray_terminate"):
                 return CRayStatus.IntentionalSystemExit()
+            elif hasattr(e, "is_creation_task_error"):
+                return CRayStatus.CreationTaskError()
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
@@ -642,6 +661,14 @@ cdef void gc_collect() nogil:
                     num_freed, end - start))
 
 
+cdef void run_on_util_worker_handler(
+        c_string req,
+        c_vector[c_string] args) nogil:
+    with gil:
+        util_worker_handlers.dispatch(
+            req.decode(), [arg.decode() for arg in args])
+
+
 cdef c_vector[c_string] spill_objects_handler(
         const c_vector[CObjectID]& object_ids_to_spill,
         const c_vector[c_string]& owner_addresses) nogil:
@@ -656,10 +683,10 @@ cdef c_vector[c_string] spill_objects_handler(
                     object_refs, owner_addresses)
             for url in urls:
                 return_urls.push_back(url)
-        except Exception:
+        except Exception as err:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
-                "was spilling objects.")
+                "was spilling objects: {}".format(err))
             logger.exception(exception_str)
             ray._private.utils.push_error_to_driver(
                 ray.worker.global_worker,
@@ -810,6 +837,14 @@ cdef void terminate_asyncio_thread() nogil:
         core_worker.destroy_event_loop_if_exists()
 
 
+def connect_to_gcs(ip, port, password):
+    return GcsClient.make_from_address(ip, port, password)
+
+
+def disconnect_from_gcs(gcs_client):
+    gcs_client.disconnect()
+
+
 # An empty profile event context to be used when the timeline is disabled.
 cdef class EmptyProfileEvent:
     def __enter__(self):
@@ -840,6 +875,9 @@ cdef class CoreWorker:
         elif worker_type == ray.RESTORE_WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_RESTORE_WORKER
+        elif worker_type == ray.UTIL_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_UTIL_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -850,6 +888,8 @@ cdef class CoreWorker:
         options.enable_logging = True
         options.log_dir = log_dir.encode("utf-8")
         options.install_failure_signal_handler = True
+        # https://stackoverflow.com/questions/2356399/tell-if-python-is-in-interactive-mode
+        options.interactive = hasattr(sys, "ps1")
         options.node_ip_address = node_ip_address.encode("utf-8")
         options.node_manager_port = node_manager_port
         options.raylet_ip_address = raylet_ip_address.encode("utf-8")
@@ -862,6 +902,7 @@ cdef class CoreWorker:
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
+        options.run_on_util_worker_handler = run_on_util_worker_handler
         options.unhandled_exception_handler = unhandled_exception_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
@@ -871,6 +912,7 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
+        options.connect_on_start = False
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -882,6 +924,14 @@ cdef class CoreWorker:
             # driver.
             if self.is_driver:
                 CCoreWorkerProcess.Shutdown()
+
+    def get_gcs_client(self):
+        return GcsClient.make_from_existing(
+            CCoreWorkerProcess.GetCoreWorker().GetGcsClient())
+
+    def notify_raylet(self):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().ConnectToRaylet()
 
     def run_task_loop(self):
         with nogil:
@@ -1153,7 +1203,9 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    override_environment_variables):
+                    runtime_env,
+                    override_environment_variables
+                    ):
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
@@ -1161,12 +1213,15 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
+            conda_env_name = runtime_env.conda_env_name or ""
+            c_runtime_env = CRuntimeEnv(conda_env_name)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1177,7 +1232,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
-                    c_override_environment_variables),
+                    c_runtime_env, c_override_environment_variables),
                 &return_ids, max_retries,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1202,6 +1257,7 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
+                     runtime_env,
                      override_environment_variables
                      ):
         cdef:
@@ -1213,6 +1269,7 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
+            CRuntimeEnv c_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
@@ -1220,6 +1277,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            c_runtime_env = CRuntimeEnv(runtime_env.conda_env_name or "")
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1235,6 +1293,7 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
+                        c_runtime_env,
                         c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
@@ -1654,11 +1713,14 @@ cdef class CoreWorker:
             CNodeID.FromBinary(client_id.binary()))
 
     def get_job_config(self):
-        cdef CJobConfig c_job_config = \
-            CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
-        job_config = ray.gcs_utils.JobConfig()
-        job_config.ParseFromString(c_job_config.SerializeAsString())
-        return job_config
+        cdef CJobConfig c_job_config
+        # We can cache the deserialized job config object here because
+        # the job config will not change after a job is submitted.
+        if self.job_config is None:
+            c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
+            self.job_config = ray.gcs_utils.JobConfig()
+            self.job_config.ParseFromString(c_job_config.SerializeAsString())
+        return self.job_config
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

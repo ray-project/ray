@@ -15,11 +15,9 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -28,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
-        x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        return tf.nest.map_structure(_convert_to_tf, x)
+        dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
+        return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
     # Special handling of "Repeated" values.
@@ -41,7 +39,8 @@ def _convert_to_tf(x, dtype=None):
     if x is not None:
         d = dtype
         x = tf.nest.map_structure(
-            lambda f: tf.convert_to_tensor(f, d) if f is not None else None, x)
+            lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
+            else tf.convert_to_tensor(f, d) if f is not None else None, x)
     return x
 
 
@@ -200,7 +199,7 @@ def build_eager_tf_policy(
         action_sampler_fn=None,
         action_distribution_fn=None,
         mixins=None,
-        obs_include_prev_action_reward=True,
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
         get_batch_divisibility_req=None,
         # Deprecated args.
         extra_action_fetches_fn=None):
@@ -224,11 +223,28 @@ def build_eager_tf_policy(
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
+
+            # Log device and worker index.
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info(
+                    "TF-eager Policy (worker={}) running on GPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info(
+                    "TF-eager Policy (worker={}) running on CPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+
             self._is_training = False
             self._loss_initialized = False
             self._sess = None
@@ -346,8 +362,6 @@ def build_eager_tf_policy(
                     batch_divisibility_req=self.batch_divisibility_req,
                     view_requirements=self.view_requirements,
                 )
-            else:
-                postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
             self._is_training = True
             postprocessed_batch["is_training"] = True
@@ -406,13 +420,12 @@ def build_eager_tf_policy(
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            if obs_include_prev_action_reward:
-                if prev_action_batch is not None:
-                    input_dict[SampleBatch.PREV_ACTIONS] = \
-                        tf.convert_to_tensor(prev_action_batch)
-                if prev_reward_batch is not None:
-                    input_dict[SampleBatch.PREV_REWARDS] = \
-                        tf.convert_to_tensor(prev_reward_batch)
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             return self._compute_action_helper(input_dict, state_batches,
                                                episodes, explore, timestep)
@@ -429,7 +442,7 @@ def build_eager_tf_policy(
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             # Pack internal state inputs into (separate) list.
             state_batches = [
@@ -457,6 +470,9 @@ def build_eager_tf_policy(
             batch_size = input_dict[SampleBatch.CUR_OBS].shape[0]
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
+
+            # Add default and custom fetches.
+            extra_fetches = {}
 
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
@@ -504,6 +520,14 @@ def build_eager_tf_policy(
                                         is_training=False)
                             else:
                                 raise e
+                    elif isinstance(self.model, tf.keras.Model):
+                        input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                        if state_batches and "state_in_0" not in input_dict:
+                            for i, s in enumerate(state_batches):
+                                input_dict[f"state_in_{i}"] = s
+                        self._lazy_tensor_dict(input_dict)
+                        dist_inputs, state_out, extra_fetches = \
+                            self.model(input_dict)
                     else:
                         dist_inputs, state_out = self.model(
                             input_dict, state_batches, seq_lens)
@@ -516,8 +540,6 @@ def build_eager_tf_policy(
                         timestep=timestep,
                         explore=explore)
 
-            # Add default and custom fetches.
-            extra_fetches = {}
             # Action-logp and action-prob.
             if logp is not None:
                 extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
@@ -552,13 +574,12 @@ def build_eager_tf_policy(
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
             }
-            if obs_include_prev_action_reward:
-                if prev_action_batch is not None:
-                    input_dict[SampleBatch.PREV_ACTIONS] = \
-                        tf.convert_to_tensor(prev_action_batch)
-                if prev_reward_batch is not None:
-                    input_dict[SampleBatch.PREV_REWARDS] = \
-                        tf.convert_to_tensor(prev_reward_batch)
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -610,7 +631,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def get_state(self):
             state = {"_state": super().get_state()}
-            state["_optimizer_variables"] = self._optimizer.variables()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
             return state
 
         @override(Policy)
@@ -632,7 +656,10 @@ def build_eager_tf_policy(
 
         def variables(self):
             """Return the list of all savable variables for this policy."""
-            return self.model.variables()
+            if isinstance(self.model, tf.keras.Model):
+                return self.model.variables
+            else:
+                return self.model.variables()
 
         @override(Policy)
         def is_recurrent(self):
@@ -685,7 +712,10 @@ def build_eager_tf_policy(
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
-            variables = self.model.trainable_variables()
+            if isinstance(self.model, tf.keras.Model):
+                variables = self.model.trainable_variables
+            else:
+                variables = self.model.trainable_variables()
 
             if gradients_fn:
 
@@ -733,15 +763,12 @@ def build_eager_tf_policy(
                 })
             return fetches
 
-        def _lazy_tensor_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(_convert_to_tf)
-            return train_batch
-
-        def _lazy_numpy_dict(self, postprocessed_batch):
-            train_batch = UsageTrackingDict(postprocessed_batch)
-            train_batch.set_get_interceptor(convert_to_non_tf_type)
-            return train_batch
+        def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+            # TODO: (sven): Keep for a while to ensure backward compatibility.
+            if not isinstance(postprocessed_batch, SampleBatch):
+                postprocessed_batch = SampleBatch(postprocessed_batch)
+            postprocessed_batch.set_get_interceptor(_convert_to_tf)
+            return postprocessed_batch
 
         @classmethod
         def with_tracing(cls):

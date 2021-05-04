@@ -80,6 +80,10 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+  virtual void PopUtilWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -253,6 +257,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// and pop them out.
   void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
+  void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -338,11 +345,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
+  /// \param runtime_env The runtime environment for the started worker process.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      std::vector<std::string> dynamic_options = {},
+      const std::vector<std::string> &dynamic_options = {},
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -380,6 +389,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
+    // States for io workers used for python util functions.
+    IOWorkerState util_io_worker_state;
     // States for io workers used for spilling objects.
     IOWorkerState spill_io_worker_state;
     // States for io workers used for restoring objects.
@@ -395,11 +406,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task with dynamic options by the pid of the pending
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
+    /// A map for looking up tasks with existing dedicated worker processes (processes
+    /// with a specially installed environment) so the processes can be reused.
+    std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -479,7 +493,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
-  /// worker types (SPILL_WORKER and RESTORE_WORKER).
+  /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).

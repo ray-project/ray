@@ -45,6 +45,7 @@ if not os.path.exists(TRAINED_MODEL_PATH):
 
 
 # __doc_define_servable_begin__
+@serve.deployment(route_prefix="/mnist")
 class TFMnistModel:
     def __init__(self, model_path):
         import tensorflow as tf
@@ -71,9 +72,8 @@ class TFMnistModel:
 
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
-client = serve.start()
-client.create_backend("tf:v1", TFMnistModel, TRAINED_MODEL_PATH)
-client.create_endpoint("tf_classifier", backend="tf:v1", route="/mnist")
+serve.start()
+TFMnistModel.deploy(TRAINED_MODEL_PATH)
 # __doc_deploy_end__
 
 # __doc_query_begin__

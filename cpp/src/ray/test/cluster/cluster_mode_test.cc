@@ -16,6 +16,11 @@ class Counter {
   int count;
 
   Counter(int init) { count = init; }
+
+  template <typename... Args>
+  static Counter *GenericFactoryCreate(Args... args) {
+    return FactoryCreate(args...);
+  }
   static Counter *FactoryCreate() { return new Counter(0); }
   static Counter *FactoryCreate(int init) { return new Counter(init); }
   static Counter *FactoryCreate(int init1, int init2) {
@@ -55,32 +60,33 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(1, task_result);
 
   /// common task with args
-  task_obj = Ray::Task(Plus1, 5).Remote();
+  task_obj = Ray::Task(Plus1).Remote(5);
   task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
   /// actor task without args
-  ActorHandle<Counter> actor1 = Ray::Actor(Counter::FactoryCreate).Remote();
+  ActorHandle<Counter> actor1 = Ray::Actor(Counter::GenericFactoryCreate<>).Remote();
   auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
   int actor_task_result1 = *(Ray::Get(actor_object1));
   EXPECT_EQ(1, actor_task_result1);
 
   /// actor task with args
-  ActorHandle<Counter> actor2 = Ray::Actor(Counter::FactoryCreate, 1).Remote();
-  auto actor_object2 = actor2.Task(&Counter::Add, 5).Remote();
+  ActorHandle<Counter> actor2 = Ray::Actor(Counter::GenericFactoryCreate<int>).Remote(1);
+  auto actor_object2 = actor2.Task(&Counter::Add).Remote(5);
   int actor_task_result2 = *(Ray::Get(actor_object2));
   EXPECT_EQ(6, actor_task_result2);
 
   /// actor task with args which pass by reference
-  ActorHandle<Counter> actor3 = Ray::Actor(Counter::FactoryCreate, 6, 0).Remote();
-  auto actor_object3 = actor3.Task(&Counter::Add, actor_object2).Remote();
+  ActorHandle<Counter> actor3 =
+      Ray::Actor(Counter::GenericFactoryCreate<int, int>).Remote(6, 0);
+  auto actor_object3 = actor3.Task(&Counter::Add).Remote(actor_object2);
   int actor_task_result3 = *(Ray::Get(actor_object3));
   EXPECT_EQ(12, actor_task_result3);
 
   /// general function remote call（args passed by value）
   auto r0 = Ray::Task(Return1).Remote();
-  auto r1 = Ray::Task(Plus1, 30).Remote();
-  auto r2 = Ray::Task(Plus, 3, 22).Remote();
+  auto r1 = Ray::Task(Plus1).Remote(30);
+  auto r2 = Ray::Task(Plus).Remote(3, 22);
 
   int result1 = *(Ray::Get(r1));
   int result0 = *(Ray::Get(r0));
@@ -91,9 +97,9 @@ TEST(RayClusterModeTest, FullTest) {
 
   /// general function remote call（args passed by reference）
   auto r3 = Ray::Task(Return1).Remote();
-  auto r4 = Ray::Task(Plus1, r3).Remote();
-  auto r5 = Ray::Task(Plus, r4, r3).Remote();
-  auto r6 = Ray::Task(Plus, r4, 10).Remote();
+  auto r4 = Ray::Task(Plus1).Remote(r3);
+  auto r5 = Ray::Task(Plus).Remote(r4, r3);
+  auto r6 = Ray::Task(Plus).Remote(r4, 10);
 
   int result5 = *(Ray::Get(r5));
   int result4 = *(Ray::Get(r4));
@@ -106,11 +112,11 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result6, 12);
 
   /// create actor and actor function remote call with args passed by value
-  ActorHandle<Counter> actor4 = Ray::Actor(Counter::FactoryCreate, 10).Remote();
-  auto r7 = actor4.Task(&Counter::Add, 5).Remote();
-  auto r8 = actor4.Task(&Counter::Add, 1).Remote();
-  auto r9 = actor4.Task(&Counter::Add, 3).Remote();
-  auto r10 = actor4.Task(&Counter::Add, 8).Remote();
+  ActorHandle<Counter> actor4 = Ray::Actor(Counter::GenericFactoryCreate<int>).Remote(10);
+  auto r7 = actor4.Task(&Counter::Add).Remote(5);
+  auto r8 = actor4.Task(&Counter::Add).Remote(1);
+  auto r9 = actor4.Task(&Counter::Add).Remote(3);
+  auto r10 = actor4.Task(&Counter::Add).Remote(8);
 
   int result7 = *(Ray::Get(r7));
   int result8 = *(Ray::Get(r8));
@@ -122,14 +128,15 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result10, 27);
 
   /// create actor and task function remote call with args passed by reference
-  ActorHandle<Counter> actor5 = Ray::Actor(Counter::FactoryCreate, r10, 0).Remote();
+  ActorHandle<Counter> actor5 =
+      Ray::Actor(Counter::GenericFactoryCreate<int, int>).Remote(r10, 0);
 
-  auto r11 = actor5.Task(&Counter::Add, r0).Remote();
-  auto r12 = actor5.Task(&Counter::Add, r11).Remote();
-  auto r13 = actor5.Task(&Counter::Add, r10).Remote();
-  auto r14 = actor5.Task(&Counter::Add, r13).Remote();
-  auto r15 = Ray::Task(Plus, r0, r11).Remote();
-  auto r16 = Ray::Task(Plus1, r15).Remote();
+  auto r11 = actor5.Task(&Counter::Add).Remote(r0);
+  auto r12 = actor5.Task(&Counter::Add).Remote(r11);
+  auto r13 = actor5.Task(&Counter::Add).Remote(r10);
+  auto r14 = actor5.Task(&Counter::Add).Remote(r13);
+  auto r15 = Ray::Task(Plus).Remote(r0, r11);
+  auto r16 = Ray::Task(Plus1).Remote(r15);
 
   int result12 = *(Ray::Get(r12));
   int result14 = *(Ray::Get(r14));

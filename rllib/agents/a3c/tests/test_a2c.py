@@ -18,14 +18,14 @@ class TestA2C(unittest.TestCase):
 
     def test_a2c_compilation(self):
         """Test whether an A2CTrainer can be built with both frameworks."""
-        config = a3c.DEFAULT_CONFIG.copy()
+        config = a3c.a2c.A2C_DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["num_envs_per_worker"] = 2
 
         num_iterations = 1
 
         # Test against all frameworks.
-        for fw in framework_iterator(config):
+        for _ in framework_iterator(config):
             for env in ["PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):

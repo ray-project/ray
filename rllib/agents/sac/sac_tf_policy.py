@@ -290,10 +290,12 @@ def sac_actor_critic_loss(
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+        q_t = model.get_q_values(
+            model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
-                model_out_t, train_batch[SampleBatch.ACTIONS])
+                model_out_t,
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
 
         # Q-values for current policy in given current state.
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
@@ -323,7 +325,7 @@ def sac_actor_critic_loss(
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
     q_t_selected_target = tf.stop_gradient(
-        train_batch[SampleBatch.REWARDS] +
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped).
@@ -688,4 +690,4 @@ SACTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False)
+)

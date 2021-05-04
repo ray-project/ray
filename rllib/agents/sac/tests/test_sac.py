@@ -1,3 +1,4 @@
+import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
@@ -74,6 +75,10 @@ class TestSAC(unittest.TestCase):
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
+        # If we use default buffer size (1e6), the buffer will take up
+        # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
+        # available system memory (8.34816 GB).
+        config["buffer_size"] = 40000
         num_iterations = 1
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
@@ -111,6 +116,31 @@ class TestSAC(unittest.TestCase):
                     print(results)
                 check_compute_single_action(trainer)
                 trainer.stop()
+
+    def test_sac_fake_multi_gpu_learning(self):
+        """Test whether SACTrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(sac.DEFAULT_CONFIG)
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        config["clip_actions"] = False
+        config["initial_alpha"] = 0.001
+        env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
+        config["env_config"] = {"config": {"repeat_delay": 0}}
+
+        for _ in framework_iterator(config, frameworks="torch"):
+            trainer = sac.SACTrainer(config=config, env=env)
+            num_iterations = 50
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(f"R={results['episode_reward_mean']}")
+                if results["episode_reward_mean"] > 30.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                f"SAC multi-GPU (with fake-GPUs) did not learn {env}!"
+            trainer.stop()
 
     def test_sac_loss_function(self):
         """Tests SAC loss function results across all frameworks."""
@@ -280,7 +310,7 @@ class TestSAC(unittest.TestCase):
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
                 c, a, e, t = policy.critic_loss, policy.actor_loss, \
-                    policy.alpha_loss, policy.td_error
+                    policy.alpha_loss, policy.model.td_error
 
                 # Test actor gradients.
                 policy.actor_optim.zero_grad()
@@ -396,9 +426,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.1)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -413,12 +443,12 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.05)
+                                rtol=0.1)
                         else:
-                            check(tf_var, torch_var, rtol=0.05)
+                            check(tf_var, torch_var, rtol=0.1)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -426,7 +456,7 @@ class TestSAC(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.random.random(size=(batch_size, )),
-        }
+        })
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
                          sess):

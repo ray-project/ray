@@ -129,19 +129,20 @@ class OverrideDefaultResourceRequest:
                 } for _ in range(cf["num_workers"])
             ] + ([
                 {
-                    # Evaluation workers (+1 b/c of the additional local
-                    # worker)
+                    # Evaluation (remote) workers.
+                    # Note: The local eval worker is located on the driver CPU.
                     "CPU": eval_config.get("num_cpus_per_worker",
                                            cf["num_cpus_per_worker"]),
                     "GPU": eval_config.get("num_gpus_per_worker",
                                            cf["num_gpus_per_worker"]),
-                } for _ in range(cf["evaluation_num_workers"] + 1)
+                } for _ in range(cf["evaluation_num_workers"])
             ] if cf["evaluation_interval"] else []),
             strategy=config.get("placement_strategy", "PACK"))
 
 
 def make_learner_thread(local_worker, config):
-    if config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1:
+    if not config["simple_optimizer"] and (
+            config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1):
         logger.info(
             "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
                 config["num_gpus"], config["num_data_loader_buffers"]))
