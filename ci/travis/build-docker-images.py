@@ -103,7 +103,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-runtime-ubuntu18.04"
+                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
@@ -225,10 +225,6 @@ def _get_docker_creds() -> Tuple[str, str]:
 # For non-release builds, push "nightly" & "sha"
 # For release builds, push "nightly" & "latest" & "x.x.x"
 def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
-    if merge_build:
-        username, password = _get_docker_creds()
-        DOCKER_CLIENT.api.login(username=username, password=password)
-
     def docker_push(image, tag):
         # Do not tag release builds because they are no longer up to
         # date after the branch cut.
@@ -395,13 +391,18 @@ if __name__ == "__main__":
     if build_type in {HUMAN, MERGE, BUILDKITE
                       } or _check_if_docker_files_modified():
         DOCKER_CLIENT = docker.from_env()
+        is_merge = build_type == MERGE
+        if is_merge:
+            # We do this here because we want to be authenticated for
+            # Docker pulls as well as pushes (to avoid rate-limits).
+            username, password = _get_docker_creds()
+            DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels()
         base_images_built = build_or_pull_base_images(args.base)
         build_ray()
         build_ray_ml()
 
         if build_type in {MERGE, PR}:  # Skipping push on buildkite
-            is_merge = build_type == MERGE
             valid_branch = _valid_branch()
             if (not valid_branch) and is_merge:
                 print(f"Invalid Branch found: {_get_branch()}")

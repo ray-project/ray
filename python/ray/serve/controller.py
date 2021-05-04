@@ -278,14 +278,6 @@ class ServeController:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            http_methods = ALL_HTTP_METHODS
-        else:
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
-
         python_methods = []
         if inspect.isclass(replica_config.backend_def):
             for method_name, _ in inspect.getmembers(
@@ -302,9 +294,10 @@ class ServeController:
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
             endpoint_info = EndpointInfo(
-                http_methods,
+                ALL_HTTP_METHODS,
                 route=route_prefix,
-                python_methods=python_methods)
+                python_methods=python_methods,
+                legacy=False)
             self.endpoint_state.update_endpoint(name, endpoint_info,
                                                 TrafficPolicy({
                                                     name: 1.0

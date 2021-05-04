@@ -264,11 +264,13 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        torch.mean(train_batch[PRIO_WEIGHTS] * nn.MSELoss()(q_t_selected,q_t_selected_target))
+        torch.mean(train_batch[PRIO_WEIGHTS] * nn.MSELoss()(
+            q_t_selected, q_t_selected_target))
     ]
     if policy.config["twin_q"]:
         critic_loss.append(
-            torch.mean(train_batch[PRIO_WEIGHTS] * nn.MSELoss()(twin_q_t_selected,q_t_selected_target)))
+            torch.mean(train_batch[PRIO_WEIGHTS] * nn.MSELoss()(
+                twin_q_t_selected, q_t_selected_target)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -315,7 +317,8 @@ def actor_critic_loss(
     policy.target_entropy = model.target_entropy
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.alpha_loss] + [policy.actor_loss] + policy.critic_loss)
+    return tuple([policy.alpha_loss] + [policy.actor_loss] +
+                 policy.critic_loss)
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -396,7 +399,8 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
         #eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
-    return tuple([policy.alpha_optim] + [policy.actor_optim] + policy.critic_optims)
+    return tuple([policy.alpha_optim] + [policy.actor_optim] +
+                 policy.critic_optims)
 
 
 class ComputeTDErrorMixin:

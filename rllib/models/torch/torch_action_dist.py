@@ -272,8 +272,10 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
     def sample_logp(self):
         z = self.dist.rsample()
         actions = self._squash(z)
-        return actions, torch.sum(self.dist.log_prob(z) - torch.log(
-            1 - actions * actions + SMALL_NUMBER), dim=-1)
+        return actions, torch.sum(
+            self.dist.log_prob(z) -
+            torch.log(1 - actions * actions + SMALL_NUMBER),
+            dim=-1)
 
     @override(TorchDistributionWrapper)
     def entropy(self) -> TensorType:

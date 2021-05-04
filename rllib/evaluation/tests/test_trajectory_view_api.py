@@ -26,10 +26,10 @@ class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
         assert train_batch.count == 201
-        assert sum(train_batch.seq_lens) == 201
+        assert sum(train_batch["seq_lens"]) == 201
         for k, v in train_batch.items():
             if k == "state_in_0":
-                assert len(v) == len(train_batch.seq_lens)
+                assert len(v) == len(train_batch["seq_lens"])
             else:
                 assert len(v) == 201
         current = None

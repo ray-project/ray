@@ -1,22 +1,16 @@
 import inspect
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
-from pydantic.dataclasses import dataclass
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
-
-
-@dataclass
-class BackendMetadata:
-    is_asgi_app: bool = False
-    path_prefix: Optional[str] = None
-    autoscaling_config: Optional[Dict[str, Any]] = None
 
 
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
@@ -35,7 +29,6 @@ class BackendConfig(BaseModel):
             for shutdown. Defaults to 20s.
     """
 
-    internal_metadata: BackendMetadata = BackendMetadata()
     num_replicas: PositiveInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
@@ -62,7 +55,6 @@ class BackendConfig(BaseModel):
 class ReplicaConfig:
     def __init__(self, backend_def, *init_args, ray_actor_options=None):
         self.backend_def = backend_def
-        self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
         self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}

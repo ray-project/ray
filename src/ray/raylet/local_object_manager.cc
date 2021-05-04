@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/raylet/local_object_manager.h"
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
@@ -253,15 +254,21 @@ void LocalObjectManager::SpillObjectsInternal(
                 num_active_workers_ -= 1;
               }
               io_worker_pool_.PushSpillWorker(io_worker);
-              if (!status.ok()) {
-                for (const auto &object_id : objects_to_spill) {
-                  auto it = objects_pending_spill_.find(object_id);
-                  RAY_CHECK(it != objects_pending_spill_.end());
-                  pinned_objects_size_ += it->second.first->GetSize();
-                  pinned_objects_.emplace(object_id, std::move(it->second));
-                  objects_pending_spill_.erase(it);
-                }
+              size_t num_objects_spilled = status.ok() ? r.spilled_objects_url_size() : 0;
+              // Object spilling is always done in the order of the request.
+              // For example, if an object succeeded, it'll guarentee that all objects
+              // before this will succeed.
+              RAY_CHECK(num_objects_spilled <= objects_to_spill.size());
+              for (size_t i = num_objects_spilled; i != objects_to_spill.size(); ++i) {
+                const auto &object_id = objects_to_spill[i];
+                auto it = objects_pending_spill_.find(object_id);
+                RAY_CHECK(it != objects_pending_spill_.end());
+                pinned_objects_size_ += it->second.first->GetSize();
+                pinned_objects_.emplace(object_id, std::move(it->second));
+                objects_pending_spill_.erase(it);
+              }
 
+              if (!status.ok()) {
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
                 if (callback) {
@@ -317,7 +324,8 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  for (size_t i = 0; i < object_ids.size(); ++i) {
+  for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
+       ++i) {
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled at " << object_url;

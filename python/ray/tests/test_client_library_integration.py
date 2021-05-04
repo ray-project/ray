@@ -22,5 +22,23 @@ def test_rllib_integration(ray_start_regular_shared):
         rock_paper_scissors_multiagent.main()
 
 
+@pytest.mark.asyncio
+async def test_serve_handle(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        from ray import serve
+        _explicitly_enable_client_mode()
+        serve.start(detached=True)
+
+        def hello(request):
+            return "hello"
+
+        serve.create_backend("my_backend", hello, config={"num_replicas": 1})
+        serve.create_endpoint(
+            "my_endpoint", backend="my_backend", route="/hello")
+        handle = serve.get_handle("my_endpoint")
+        assert ray.get(handle.remote()) == "hello"
+        assert await handle.remote() == "hello"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

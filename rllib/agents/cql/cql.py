@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Type, List
 from ray.rllib.offline.shuffled_input import ShuffledInput
 
+from ray.actor import ActorHandle
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
@@ -21,8 +22,6 @@ from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import TrainerConfigDict
-
-
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -57,6 +56,7 @@ def validate_config(config: TrainerConfigDict):
     if config["framework"] == "tf":
         raise ValueError("Tensorflow CQL not implemented yet!")
 
+
 replay_buffer = None
 
 
@@ -64,7 +64,7 @@ class NoOpReplayBuffer:
     def __init__(self,
                  *,
                  local_buffer: LocalReplayBuffer = None,
-                 actors: List["ActorHandle"] = None):
+                 actors: List[ActorHandle] = None):
         return
 
     def __call__(self, batch):
@@ -154,6 +154,7 @@ def execution_plan(workers, config):
 
     return StandardMetricsReporting(train_op, workers, config)
 
+
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
@@ -165,6 +166,7 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]
     return weights
+
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     if config["framework"] == "torch":
@@ -191,7 +193,7 @@ def after_init(trainer):
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
     else:
-        print("Error here?, otherwise buffer would be empty!")#TODO
+        print("Error here?, otherwise buffer would be empty!")  #TODO
 
 
 CQLTrainer = SACTrainer.with_updates(

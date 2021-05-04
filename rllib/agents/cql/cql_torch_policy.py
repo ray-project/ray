@@ -151,7 +151,8 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # compute RHS of bellman equation
     q_t_target = (
-        rewards + (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
+        rewards +
+        (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
 
     # Compute the TD-error (potentially clipped), for priority replay buffer
     base_td_error = torch.abs(q_t_selected - q_t_target)
@@ -245,7 +246,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     if use_lagrange:
         return tuple([policy.actor_loss] + policy.critic_loss +
                      [policy.alpha_loss] + [policy.alpha_prime_loss])
-    return tuple([policy.alpha_loss] + [policy.actor_loss] + policy.critic_loss)
+    return tuple([policy.alpha_loss] + [policy.actor_loss] +
+                 policy.critic_loss)
 
 
 def cql_stats(policy: Policy,

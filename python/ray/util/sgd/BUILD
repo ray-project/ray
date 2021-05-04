@@ -27,6 +27,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_2",
+    size = "large",
+    srcs = ["tests/test_torch_2.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
     name = "test_torch_failure",
     size = "large",
     srcs = ["tests/test_torch_failure.py"],
