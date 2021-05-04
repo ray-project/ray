@@ -269,6 +269,7 @@ class Torch_LSTMWrapper(nn.Module):
 
         self.action_space = action_space
         self.max_seq_len = max_seq_len
+        self.time_major = _time_major
 
         # Guess the number of outputs for the wrapped model by performing
         # a dummy forward pass. This will output a tensor that will serve as
