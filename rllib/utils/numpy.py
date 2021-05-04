@@ -13,7 +13,7 @@ LARGE_INTEGER = 100000000
 # Min and Max outputs (clipped) from an NN-output layer interpreted as the
 # log(x) of some x (e.g. a stddev of a normal
 # distribution).
-MIN_LOG_NN_OUTPUT = -20
+MIN_LOG_NN_OUTPUT = -5
 MAX_LOG_NN_OUTPUT = 2
 
 
