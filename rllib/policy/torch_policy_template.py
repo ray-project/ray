@@ -1,5 +1,6 @@
 import gym
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
@@ -13,6 +14,9 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 torch, _ = try_import_torch()
 

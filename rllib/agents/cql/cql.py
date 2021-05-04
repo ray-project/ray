@@ -3,6 +3,7 @@
 import numpy as np
 from typing import Optional, Type, List
 
+from ray.actor import ActorHandle
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
@@ -63,7 +64,7 @@ class NoOpReplayBuffer:
     def __init__(self,
                  *,
                  local_buffer: LocalReplayBuffer = None,
-                 actors: List["ActorHandle"] = None):
+                 actors: List[ActorHandle] = None):
         return
 
     def __call__(self, batch):

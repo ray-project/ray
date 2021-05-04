@@ -11,6 +11,7 @@ from ray import serve
 
 
 # __doc_define_servable_begin__
+@serve.deployment(route_prefix="/cartpole-ppo")
 class ServePPOModel:
     def __init__(self, checkpoint_path) -> None:
         self.trainer = ppo.PPOTrainer(
@@ -54,8 +55,7 @@ checkpoint_path = train_ppo_model()
 ray.init(num_cpus=8)
 # __doc_deploy_begin__
 serve.start()
-serve.create_backend("ppo", ServePPOModel, checkpoint_path)
-serve.create_endpoint("ppo-endpoint", backend="ppo", route="/cartpole-ppo")
+ServePPOModel.deploy(checkpoint_path)
 # __doc_deploy_end__
 
 # __doc_query_begin__

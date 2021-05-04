@@ -121,7 +121,7 @@ def _dir_travel(
     e = _get_gitignore(path)
     if e is not None:
         excludes.append(e)
-    skip = any([e(path) for e in excludes])
+    skip = any(e(path) for e in excludes)
     if not skip:
         handler(path)
         if path.is_dir():
@@ -391,9 +391,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         job_config (JobConfig): The job config.
     """
     # For now, we only support local directory and packages
-    working_dir_uri = job_config.runtime_env.get("working_dir_uri")
-    if working_dir_uri is not None:
-        job_config.runtime_env["uris"] = [working_dir_uri]
+    uris = job_config.runtime_env.get("uris")
+    if uris is not None:
         return
     working_dir = job_config.runtime_env.get("working_dir")
     py_modules = job_config.runtime_env.get("py_modules")
