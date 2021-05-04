@@ -2,6 +2,7 @@
 """
 from typing import Optional, Type, List
 
+from ray.actor import ActorHandle
 from ray.rllib.agents.sac.sac import SACTrainer, \
     DEFAULT_CONFIG as SAC_CONFIG
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
@@ -64,7 +65,7 @@ class NoOpReplayBuffer:
     def __init__(self,
                  *,
                  local_buffer: LocalReplayBuffer = None,
-                 actors: List["ActorHandle"] = None):
+                 actors: List[ActorHandle] = None):
         return
 
     def __call__(self, batch):

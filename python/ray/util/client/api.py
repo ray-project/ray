@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from ray.util.client.common import ClientStub
     from ray.util.client.common import ClientActorHandle
     from ray.util.client.common import ClientObjectRef
+    from ray.core.generated.ray_client_pb2 import DataResponse
 
 logger = logging.getLogger(__name__)
 
