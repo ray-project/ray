@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import MultiAgentEpisode  #noqa
 
 jax, _ = try_import_jax()
 torch, _ = try_import_torch()
@@ -38,7 +38,7 @@ def build_policy_class(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                MultiAgentEpisode]
+                "MultiAgentEpisode"]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
