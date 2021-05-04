@@ -256,7 +256,7 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
-        # Unsquash values (from [low,high] to [-inf,inf])
+        # Unsquash values (from [low,high] to ]-inf,inf[)
         unsquashed_values = self._unsquash(x)
         # Get log prob of unsquashed values from our Normal.
         log_prob_gaussian = self.dist.log_prob(unsquashed_values)

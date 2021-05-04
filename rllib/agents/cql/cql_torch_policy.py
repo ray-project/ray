@@ -36,8 +36,6 @@ def policy_actions_repeat(model, action_dist, obs, num_repeat=1):
         obs.shape[0] * num_repeat, obs.shape[1])
     policy_dist = action_dist(model.get_policy_output(obs_temp), model)
     actions, logp_ = policy_dist.sample_logp()
-    #actions = policy_dist.sample()
-    #log_p = policy_dist.logp(actions)
     logp = logp_.unsqueeze(-1)
     return actions, logp.view(obs.shape[0], num_repeat, 1)
 
@@ -253,7 +251,7 @@ def cql_loss(policy: Policy, model: ModelV2,
 def cql_stats(policy: Policy,
               train_batch: SampleBatch) -> Dict[str, TensorType]:
     sac_dict = stats(policy, train_batch)
-    #sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
+    # sac_dict["cql_loss"] = torch.mean(torch.stack(policy.cql_loss))
     if policy.config["lagrangian"]:
         sac_dict["log_alpha_prime_value"] = policy.log_alpha_prime_value
         sac_dict["alpha_prime_value"] = policy.alpha_prime_value
