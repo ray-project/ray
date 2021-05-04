@@ -123,6 +123,12 @@ COMMON_CONFIG: TrainerConfigDict = {
     "env": None,
     # Arguments to pass to the env creator.
     "env_config": {},
+    # A callable taking the last train results as arg and returning either:
+    # True: For advancing to the next task (e.g. curriculum level).
+    # False: For the env to remain in the current task.
+    # Any: For the particular task to set the env to.
+    #TODO: fn should also take the env itself as arg.
+    "env_task_fn": None,
     # If True, try to render the environment on the local worker or on worker
     # 1 (if num_workers > 0). For vectorized envs, this usually means that only
     # the first sub-environment will be rendered.
@@ -1321,12 +1327,13 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state:
+        print("Trainer.__setstate__")
+        if "worker" in state and hasattr(self, "workers"):
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        if "optimizer" in state:
+        if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
 
     @staticmethod

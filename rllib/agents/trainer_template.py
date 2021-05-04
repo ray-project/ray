@@ -163,6 +163,7 @@ def build_trainer(
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
             # self._iteration will be 0.
+            print()
             evaluate_this_iter = self.config["evaluation_interval"] and \
                                  (self._iteration + 1) % \
                                  self.config["evaluation_interval"] == 0
@@ -186,6 +187,19 @@ def build_trainer(
                     assert isinstance(evaluation_metrics, dict), \
                         "_evaluate() needs to return a dict."
                     res.update(evaluation_metrics)
+
+            # Check `env_task_fn` for possible update of the env's task.
+            #if self.config["env_task_fn"] is not None:
+            #    assert callable(self.config["env_task_fn"])
+
+            #    def fn(env, env_context):
+            #        new_task = self.config["env_task_fn"](res, env, env_context)
+            #        cur_task = env.get_task()
+            #        if cur_task != new_task:
+            #            env.set_task(new_task)
+
+            #    self.workers.foreach_env_with_context(fn)
+
             return res
 
         @override(Trainer)
