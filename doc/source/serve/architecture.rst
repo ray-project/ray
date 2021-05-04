@@ -19,8 +19,8 @@ There are three kinds of actors that are created to make up a Serve instance:
 
 - Controller: A global actor unique to each Serve instance that manages
   the control plane. The Controller is responsible for creating, updating, and
-  destroying other actors. Serve API calls like :mod:`create_backend <ray.serve.api.create_backend>`,
-  :mod:`create_endpoint <ray.serve.api.create_endpoint>` make remote calls to the Controller.
+  destroying other actors. Serve API calls like creating or getting a deployment
+  make remote calls to the Controller.
 - Router: There is one router per node. Each router is a `Uvicorn <https://www.uvicorn.org/>`_ HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.
@@ -35,10 +35,8 @@ Lifetime of a Request
 When an HTTP request is sent to the router, the follow things happen:
 
 - The HTTP request is received and parsed.
-- The correct endpoint associated with the HTTP url path is looked up.
-- One or more backends is selected to handle the request given the :ref:`traffic
-  splitting <serve-split-traffic>` and :ref:`shadow testing <serve-shadow-testing>` rules. The requests for each backend
-  are placed on a queue.
+- The correct deployment associated with the HTTP url path is looked up. The
+  request is placed on a queue.
 - For each request in a backend queue, an available replica is looked up
   and the request is sent to it. If there are no available replicas (there
   are more than ``max_concurrent_queries`` requests outstanding), the request
