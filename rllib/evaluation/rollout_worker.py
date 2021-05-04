@@ -1092,7 +1092,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def stop(self) -> None:
-        if self.env:
+        if self.env is not None:
             self.async_env.stop()
 
     @DeveloperAPI
