@@ -125,12 +125,13 @@ def validate_config(config: TrainerConfigDict) -> None:
     # Check for mismatches between `train_batch_size` and
     # `rollout_fragment_length` and auto-adjust `rollout_fragment_length`
     # if necessary.
+    num_workers = config["num_workers"] or 1
     calculated_min_rollout_size = \
-        (config["num_workers"] or 1) * config["num_envs_per_worker"] * \
+        num_workers * config["num_envs_per_worker"] * \
         config["rollout_fragment_length"]
     if config["train_batch_size"] % calculated_min_rollout_size != 0:
         new_rollout_fragment_length = config["train_batch_size"] / (
-            config["num_workers"] * config["num_envs_per_worker"])
+            num_workers * config["num_envs_per_worker"])
         logger.warning(
             "`train_batch_size` ({}) cannot be achieved with your other "
             "settings (num_workers={} num_envs_per_worker={} "
