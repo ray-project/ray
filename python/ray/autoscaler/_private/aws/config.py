@@ -5,7 +5,7 @@ import itertools
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import logging
 
 import boto3
@@ -94,7 +94,7 @@ def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
 
-def log_to_cli(config):
+def log_to_cli(config: dict) -> None:
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
@@ -118,11 +118,11 @@ def log_to_cli(config):
                 prev_node_config = node_config
             return True
 
-        def print_info(resource_string,
-                       key,
-                       src_key,
-                       allowed_tags=None,
-                       list_value=False):
+        def print_info(resource_string: str,
+                       key: str,
+                       src_key: str,
+                       allowed_tags: Optional[List[str]] = None,
+                       list_value: bool = False) -> None:
             if allowed_tags is None:
                 allowed_tags = ["default"]
 
