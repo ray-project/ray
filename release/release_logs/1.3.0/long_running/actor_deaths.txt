@@ -1,4 +1,0 @@
-Iteration 51324:
-  - Iteration time: 1.2689878940582275.
-  - Absolute time: 1618567834.596641.
-  - Total elapsed time: 92552.05317473412.

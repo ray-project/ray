@@ -1,4 +1,0 @@
-Iteration 8690:
-  - Iteration time: 8.528946161270142.
-  - Absolute time: 1618389634.2582119.
-  - Total elapsed time: 83090.15009188652.

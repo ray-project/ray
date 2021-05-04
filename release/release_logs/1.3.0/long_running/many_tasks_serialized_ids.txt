@@ -1,4 +1,0 @@
-Iteration 10794:
-  - Iteration time: 11.788084268569946.
-  - Absolute time: 1618567837.8568783.
-  - Total elapsed time: 92550.66517519951.

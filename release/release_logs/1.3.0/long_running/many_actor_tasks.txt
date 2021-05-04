@@ -1,4 +1,0 @@
-Iteration 49396:
-  - Iteration time: 1.4845945835113525.
-  - Absolute time: 1618389847.8900738.
-  - Total elapsed time: 83303.43591570854.
