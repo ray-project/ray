@@ -79,7 +79,8 @@ void GrpcBasedResourceBroadcaster::HandleNodeRemoved(const rpc::GcsNodeInfo &nod
   }
 }
 
-std::string GrpcBasedResourceBroadcaster::DebugString() const {
+std::string GrpcBasedResourceBroadcaster::DebugString() {
+  absl::MutexLock guard(&mutex_);
   std::ostringstream stream;
   stream << "GrpcBasedResourceBroadcaster: {Tracked nodes: " << nodes_.size()
          << ", Nodes skipped in last broadcast: " << num_skipped_nodes_;

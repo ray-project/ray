@@ -41,7 +41,7 @@ class GrpcBasedResourceBroadcaster {
   /// Event handler when a node leaves the cluster.
   void HandleNodeRemoved(const rpc::GcsNodeInfo &node_info) LOCKS_EXCLUDED(mutex_);
 
-  std::string DebugString() const;
+  std::string DebugString();
 
  private:
   // An asio service which does the broadcasting work.
@@ -67,8 +67,8 @@ class GrpcBasedResourceBroadcaster {
   absl::Mutex mutex_;
   /// The set of nodes and their addresses which are subscribed to resource usage changes.
   std::unordered_map<NodeID, rpc::Address> nodes_ GUARDED_BY(mutex_);
-  /// The number of inflight resource usage updates per node. After being sent, a request
-  /// is inflight if its reply has not been received and it has not timed out.
+  /// Whether the node currently has an inflight request already. An inflight request is
+  /// one that has been sent, with no reply, error, or timeout.
   std::unordered_map<NodeID, bool> inflight_updates_ GUARDED_BY(mutex_);
 
   /// The number of nodes skipped in the latest broadcast round. This is useful for
