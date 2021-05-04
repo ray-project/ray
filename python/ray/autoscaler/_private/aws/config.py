@@ -106,7 +106,18 @@ def log_to_cli(config: dict) -> None:
 
     with cli_logger.group("{} config", provider_name):
 
-        def same_everywhere(key):
+        def same_everywhere(key: str) -> bool:
+            """Check if the value for given key is the same in all available
+               node type configs
+
+            Args:
+                key: A key that may be present in the available node configs,
+                    e.g "KeyName", "SubnetIds", ImageId"
+
+            Returns:
+                True if the corresponding value for the given key is the same
+                in all available node type configs, False otherwise
+            """
             prev_node_config = None
             for node_type in config["available_node_types"].values():
                 node_config = node_type["node_config"]
