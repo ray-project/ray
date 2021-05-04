@@ -1,5 +1,6 @@
 import gym
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, \
+    TYPE_CHECKING, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
@@ -16,8 +17,8 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
-# if TYPE_CHECKING:
-#    from ray.rllib.evaluation import MultiAgentEpisode
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 jax, _ = try_import_jax()
 torch, _ = try_import_torch()
@@ -37,7 +38,7 @@ def build_policy_class(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+                MultiAgentEpisode]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
