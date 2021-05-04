@@ -190,9 +190,9 @@ def after_init(trainer):
             f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
         raise ValueError(
-            "Unknown offline input! config['input'] must either be list of offline "
-            "files (json) or a D4RL-specific InputReader specifier (e.g. "
-            "'d4rl.hopper-medium-v0').")
+            "Unknown offline input! config['input'] must either be list of "
+            "offline files (json) or a D4RL-specific InputReader specifier "
+            "(e.g. 'd4rl.hopper-medium-v0').")
 
 
 CQLTrainer = SACTrainer.with_updates(
