@@ -132,7 +132,8 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         imitation_loss = torch.mean(-action_dist.logp(
             torch.from_numpy(batch["actions"]).to(policy_loss[0].device)))
         self.imitation_loss_metric = imitation_loss.item()
-        self.policy_loss_metric = np.mean([l.item() for l in policy_loss])
+        self.policy_loss_metric = np.mean(
+            [loss.item() for loss in policy_loss])
 
         # Add the imitation loss to each already calculated policy loss term.
         # Alternatively (if custom loss has its own optimizer):
