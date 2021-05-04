@@ -29,21 +29,21 @@ CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
         # You should override this to point to an offline dataset.
         "input": "sampler",
-        # Offline RL does not need IS estimators
+        # Offline RL does not need IS estimators.
         "input_evaluation": [],
-        # Number of iterations with Behavior Cloning Pretraining
+        # Number of iterations with Behavior Cloning Pretraining.
         "bc_iters": 20000,
-        # CQL Loss Temperature
+        # CQL Loss Temperature.
         "temperature": 1.0,
-        # Num Actions to sample for CQL Loss
+        # Num Actions to sample for CQL Loss.
         "num_actions": 10,
-        # Whether to use the Langrangian for Alpha Prime (in CQL Loss)
+        # Whether to use the Lagrangian for Alpha Prime (in CQL Loss).
         "lagrangian": False,
-        # Lagrangian Threshold
+        # Lagrangian Threshold.
         "lagrangian_thresh": 5.0,
-        # Min Q Weight multiplier
+        # Min Q Weight multiplier.
         "min_q_weight": 5.0,
-        # Replay Buffer should be size of offline dataset
+        # Replay Buffer should be size of offline dataset.
         "buffer_size": int(1e6),
     })
 # __sphinx_doc_end__
@@ -98,8 +98,8 @@ def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     # NoReplayBuffer ensures that no online data is added
-    # The Dataset is added to the Replay Buffer in  after_init()
-    # method below the execution plan
+    # The Dataset is added to the Replay Buffer in after_init()
+    # method below the execution plan.
     store_op = rollouts.for_each(
         NoOpReplayBuffer(local_buffer=local_replay_buffer))
 
@@ -144,11 +144,12 @@ def execution_plan(workers, config):
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2). Only return the output
-    # of (2) since training metrics are not available until (2) runs.
+    # Alternate deterministically between (1) and (2).
     train_op = Concurrently(
         [store_op, replay_op],
         mode="round_robin",
+        # Only return the output
+        # of (2) since training metrics are not available until (2) runs.
         output_indexes=[1],
         round_robin_weights=calculate_rr_weights(config))
 
@@ -177,12 +178,18 @@ def after_init(trainer):
     # Add the entire dataset to Replay Buffer (global variable)
     global replay_buffer
     reader = trainer.workers.local_worker().input_reader
+
+    # For d4rl, add the D4RLReaders' dataset to the buffer.
     if "d4rl" in trainer.config["input"]:
         dataset = reader.dataset
         replay_buffer.add_batch(dataset)
     # For a list of files, add each file's entire content to the buffer.
     elif isinstance(reader, ShuffledInput):
+        num_batches = 0
+        total_timesteps = 0
         for batch in reader.child.read_all_files():
+            num_batches += 1
+            total_timesteps += len(batch)
             # Add NEXT_OBS if not available. This is slightly hacked
             # as for the very last time step, we will use next-obs=zeros
             # and therefore force-set DONE=True to avoid this missing
@@ -192,8 +199,10 @@ def after_init(trainer):
                     np.concatenate([batch[SampleBatch.OBS][1:], np.zeros_like(batch[SampleBatch.OBS][0:1])])
                 batch[SampleBatch.DONES][-1] = True
             replay_buffer.add_batch(batch)
+        print(f"Loaded {num_batches} batches ({total_timesteps} ts) into replay buffer, which has capacity {replay_buffer.buffer_size}.")
     else:
-        print("Error here?, otherwise buffer would be empty!")  #TODO
+        raise ValueError("`input` config for CQL must be D4RL environment "
+                         "specifier or list of offline files!")
 
 
 CQLTrainer = SACTrainer.with_updates(
