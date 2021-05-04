@@ -448,7 +448,7 @@ class TestSAC(unittest.TestCase):
                             check(tf_var, torch_var, rtol=0.1)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
-        return {
+        return SampleBatch({
             SampleBatch.CUR_OBS: np.random.random(size=obs_size),
             SampleBatch.ACTIONS: actions,
             SampleBatch.REWARDS: np.random.random(size=(batch_size, )),
@@ -456,7 +456,7 @@ class TestSAC(unittest.TestCase):
                 [True, False], size=(batch_size, )),
             SampleBatch.NEXT_OBS: np.random.random(size=obs_size),
             "weights": np.random.random(size=(batch_size, )),
-        }
+        })
 
     def _sac_loss_helper(self, train_batch, weights, ks, log_alpha, fw, gamma,
                          sess):

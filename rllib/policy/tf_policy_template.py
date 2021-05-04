@@ -1,5 +1,6 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,6 +15,9 @@ from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 
@@ -214,11 +218,16 @@ def build_tf_policy(
                                          config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
+
                 if extra_action_out_fn is None:
-                    policy._extra_action_fetches = {}
+                    extra_action_fetches = {}
                 else:
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
+                    extra_action_fetches = extra_action_out_fn(policy)
+
+                if hasattr(policy, "_extra_action_fetches"):
+                    policy._extra_action_fetches.update(extra_action_fetches)
+                else:
+                    policy._extra_action_fetches = extra_action_fetches
 
             DynamicTFPolicy.__init__(
                 self,

@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+import collections
 import inspect
 import os
 import time
@@ -10,18 +11,22 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
 from warnings import warn
 from weakref import WeakValueDictionary
 
+from starlette.requests import Request
+
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, BackendMetadata, HTTPOptions,
-                              ReplicaConfig)
+from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
-                             get_random_letters, logger,
-                             make_fastapi_class_based_view)
+from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view,
+                                 make_startup_shutdown_hooks)
+from ray.serve.utils import (ensure_serialization_context, format_actor_name,
+                             get_current_node_resource_key, get_random_letters,
+                             logger)
 
 import ray
 
@@ -332,15 +337,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata()
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -380,15 +381,11 @@ class Client:
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
-        metadata = BackendMetadata(is_asgi_app=replica_config.is_asgi_app)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj({
-                **config, "internal_metadata": metadata
-            })
+            backend_config = BackendConfig.parse_obj(config)
         elif isinstance(config, BackendConfig):
-            backend_config = config.copy(
-                update={"internal_metadata": metadata})
+            backend_config = config
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
@@ -669,6 +666,8 @@ def start(
 def connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
@@ -721,6 +720,8 @@ def create_endpoint(endpoint_name: str,
                     methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     Args:
         endpoint_name (str): A name to associate to with the endpoint.
         backend (str, required): The backend that will serve requests to
@@ -742,6 +743,8 @@ def create_endpoint(endpoint_name: str,
 def delete_endpoint(endpoint: str) -> None:
     """Delete the given endpoint.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     Does not delete any associated backends.
     """
     return _get_global_client().delete_endpoint(endpoint, _internal=True)
@@ -749,6 +752,8 @@ def delete_endpoint(endpoint: str) -> None:
 
 def list_endpoints() -> Dict[str, Dict[str, Any]]:
     """Returns a dictionary of all registered endpoints.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
@@ -760,6 +765,8 @@ def update_backend_config(
         backend_tag: str,
         config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Keys not specified in the passed will be left unchanged.
 
@@ -784,6 +791,8 @@ def update_backend_config(
 def get_backend_config(backend_tag: str) -> BackendConfig:
     """Get the backend configuration for a backend tag.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     Args:
         backend_tag(str): A registered backend.
     """
@@ -797,6 +806,8 @@ def create_backend(
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         backend_tag (str): a unique tag assign to identify this backend.
@@ -834,6 +845,8 @@ def create_backend(
 def list_backends() -> Dict[str, BackendConfig]:
     """Returns a dictionary of all registered backends.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     Dictionary maps backend tags to backend config objects.
     """
     return _get_global_client().list_backends(_internal=True)
@@ -841,6 +854,8 @@ def list_backends() -> Dict[str, BackendConfig]:
 
 def delete_backend(backend_tag: str, force: bool = False) -> None:
     """Delete the given backend.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The backend must not currently be used by any endpoints.
 
@@ -856,6 +871,8 @@ def delete_backend(backend_tag: str, force: bool = False) -> None:
 def set_traffic(endpoint_name: str,
                 traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Example:
 
@@ -876,6 +893,8 @@ def set_traffic(endpoint_name: str,
 def shadow_traffic(endpoint_name: str, backend_tag: str,
                    proportion: float) -> None:
     """Shadow traffic from an endpoint to a backend.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The specified proportion of requests will be duplicated and sent to the
     backend. Responses of the duplicated traffic will be ignored.
@@ -899,6 +918,8 @@ def get_handle(endpoint_name: str,
                _internal_use_serve_request: Optional[bool] = True
                ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         endpoint_name (str): A registered service endpoint.
@@ -941,7 +962,7 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
-def ingress(app: Union["FastAPI", "APIRouter"], ):
+def ingress(app: Union["FastAPI", "APIRouter"]):
     """Mark a FastAPI application ingress for Serve.
 
     Args:
@@ -961,17 +982,48 @@ def ingress(app: Union["FastAPI", "APIRouter"], ):
         if not inspect.isclass(cls):
             raise ValueError("@serve.ingress must be used with a class.")
 
-        cls._serve_asgi_app = app
+        if issubclass(cls, collections.abc.Callable):
+            raise ValueError(
+                "Class passed to @serve.ingress may not have __call__ method.")
+
         # Sometimes there are decorators on the methods. We want to fix
         # the fast api routes here.
         make_fastapi_class_based_view(app, cls)
 
-        return cls
+        # Free the state of the app so subsequent modification won't affect
+        # this ingress deployment. We don't use copy.copy here to avoid
+        # recursion issue.
+        ensure_serialization_context()
+        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+
+        startup_hook, shutdown_hook = make_startup_shutdown_hooks(frozen_app)
+
+        class FastAPIWrapper(cls):
+            async def __init__(self, *args, **kwargs):
+                # TODO(edoakes): should the startup_hook run before or after
+                # the constructor?
+                await startup_hook()
+                super().__init__(*args, **kwargs)
+
+            async def __call__(self, request: Request):
+                sender = ASGIHTTPSender()
+                await frozen_app(
+                    request.scope,
+                    request._receive,
+                    sender,
+                )
+                return sender.build_starlette_response()
+
+            def __del__(self):
+                asyncio.get_event_loop().run_until_complete(shutdown_hook())
+
+        FastAPIWrapper.__name__ = cls.__name__
+        return FastAPIWrapper
 
     return decorator
 
 
-class ServeDeployment:
+class Deployment:
     def __init__(self,
                  backend_def: Callable,
                  name: str,
@@ -981,7 +1033,7 @@ class ServeDeployment:
                  route_prefix: Optional[str] = None,
                  ray_actor_options: Optional[Dict] = None,
                  _internal=False) -> None:
-        """Construct a ServeDeployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
+        """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
 
         Deployments should be created, retrieved, and updated using
         `@serve.deployment`, `serve.get_deployment`, and `Deployment.options`,
@@ -990,7 +1042,7 @@ class ServeDeployment:
 
         if not _internal:
             raise RuntimeError(
-                "The ServeDeployment constructor should not be called "
+                "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead.")
         if not callable(backend_def):
             raise TypeError(
@@ -1077,7 +1129,7 @@ class ServeDeployment:
             ray_actor_options: Optional[Dict] = None,
             user_config: Optional[Any] = None,
             max_concurrent_queries: Optional[int] = None,
-    ) -> "ServeDeployment":
+    ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
         Only those options passed in will be updated, all others will remain
@@ -1112,7 +1164,7 @@ class ServeDeployment:
         if ray_actor_options is None:
             ray_actor_options = self.ray_actor_options
 
-        return ServeDeployment(
+        return Deployment(
             backend_def,
             name,
             new_config,
@@ -1138,13 +1190,16 @@ class ServeDeployment:
             route_prefix = f"/{self.name}"
         else:
             route_prefix = self.route_prefix
-        return (f"ServeDeployment(name={self.name},"
+        return (f"Deployment(name={self.name},"
                 f"version={self.version},"
                 f"route_prefix={route_prefix})")
 
+    def __repr__(self):
+        return str(self)
+
 
 @overload
-def deployment(backend_def: Callable) -> ServeDeployment:
+def deployment(backend_def: Callable) -> Deployment:
     pass
 
 
@@ -1156,7 +1211,7 @@ def deployment(name: Optional[str] = None,
                ray_actor_options: Optional[Dict] = None,
                user_config: Optional[Any] = None,
                max_concurrent_queries: Optional[int] = None
-               ) -> Callable[[Callable], ServeDeployment]:
+               ) -> Callable[[Callable], Deployment]:
     pass
 
 
@@ -1170,7 +1225,7 @@ def deployment(
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-) -> Callable[[Callable], ServeDeployment]:
+) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
     Args:
@@ -1201,15 +1256,19 @@ def deployment(
             called if user_config is not None.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this backend without receiving a
-            response. Defaults to None (no maximum).
+            response. Defaults to 100.
 
     Example:
+
     >>> @serve.deployment(name="deployment1", version="v1")
         class MyDeployment:
             pass
 
     >>> MyDeployment.deploy(*init_args)
     >>> MyDeployment.options(num_replicas=2, init_args=init_args).deploy()
+
+    Returns:
+        Deployment
     """
 
     config = BackendConfig()
@@ -1223,7 +1282,7 @@ def deployment(
         config.max_concurrent_queries = max_concurrent_queries
 
     def decorator(_backend_def):
-        return ServeDeployment(
+        return Deployment(
             _backend_def,
             name if name is not None else _backend_def.__name__,
             config,
@@ -1239,7 +1298,7 @@ def deployment(
     return decorator(_backend_def) if callable(_backend_def) else decorator
 
 
-def get_deployment(name: str) -> ServeDeployment:
+def get_deployment(name: str) -> Deployment:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
@@ -1247,7 +1306,7 @@ def get_deployment(name: str) -> ServeDeployment:
         deployed.
 
     Returns:
-        ServeDeployment
+        Deployment
     """
     try:
         backend_info, route_prefix = _get_global_client().get_deployment_info(
@@ -1255,7 +1314,7 @@ def get_deployment(name: str) -> ServeDeployment:
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
-    return ServeDeployment(
+    return Deployment(
         backend_info.replica_config.backend_def,
         name,
         backend_info.backend_config,
@@ -1267,16 +1326,16 @@ def get_deployment(name: str) -> ServeDeployment:
     )
 
 
-def list_deployments() -> Dict[str, ServeDeployment]:
+def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
-    Dictionary maps deployment name to ServeDeployment objects.
+    Dictionary maps deployment name to Deployment objects.
     """
     infos = _get_global_client().list_deployments(_internal=True)
 
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
-        deployments[name] = ServeDeployment(
+        deployments[name] = Deployment(
             backend_info.replica_config.backend_def,
             name,
             backend_info.backend_config,

@@ -55,11 +55,13 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
+              const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
               const std::unordered_map<std::string, std::string>
                   &override_environment_variables = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
+        runtime_env(runtime_env),
         override_environment_variables(override_environment_variables) {}
 
   /// The name of this task.
@@ -68,6 +70,8 @@ struct TaskOptions {
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  // Runtime Env used by this task.  Propagated to child actors and tasks.
+  ray::RuntimeEnv runtime_env;
   /// Environment variables to update for this task.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
   /// Propagated to child actors and/or tasks.
@@ -85,6 +89,7 @@ struct ActorCreationOptions {
       std::string &name, bool is_asyncio,
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
+      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {})
       : max_restarts(max_restarts),
@@ -98,6 +103,7 @@ struct ActorCreationOptions {
         is_asyncio(is_asyncio),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
+        runtime_env(runtime_env),
         override_environment_variables(override_environment_variables){};
 
   /// Maximum number of times that the actor should be restarted if it dies
@@ -133,6 +139,8 @@ struct ActorCreationOptions {
   /// When true, the child task will always scheduled on the same placement group
   /// specified in the PlacementOptions.
   bool placement_group_capture_child_tasks = true;
+  // Runtime Env used by this actor.  Propagated to child actors and tasks.
+  ray::RuntimeEnv runtime_env;
   /// Environment variables to update for this actor.  Maps a variable name to its
   /// value.  Can override existing environment variables and introduce new ones.
   /// Propagated to child actors and/or tasks.

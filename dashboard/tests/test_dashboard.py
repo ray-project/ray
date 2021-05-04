@@ -5,6 +5,7 @@ import json
 import time
 import logging
 import asyncio
+import ipaddress
 import subprocess
 import collections
 
@@ -154,6 +155,24 @@ def test_basic(ray_start_with_dashboard):
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
     agent_ports = client.get(key)
     assert agent_ports is not None
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard", [{
+        "dashboard_host": "127.0.0.1"
+    }, {
+        "dashboard_host": "0.0.0.0"
+    }, {
+        "dashboard_host": "::"
+    }],
+    indirect=True)
+def test_dashboard_address(ray_start_with_dashboard):
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_ip = webui_url.split(":")[0]
+    assert not ipaddress.ip_address(webui_ip).is_unspecified
+    assert webui_ip in [
+        "127.0.0.1", ray_start_with_dashboard["node_ip_address"]
+    ]
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
@@ -632,7 +651,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     p = subprocess.Popen(dashboard_cmd)
     p.wait(5)
 
-    dashboard_cmd.append(f"--port-retries=10")
+    dashboard_cmd.append("--port-retries=10")
     subprocess.Popen(dashboard_cmd)
 
     timeout_seconds = 10
