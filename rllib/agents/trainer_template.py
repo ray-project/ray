@@ -228,6 +228,9 @@ def build_trainer(
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 
+        def __repr__(self):
+            return self._name
+
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls

@@ -1389,3 +1389,6 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    def __repr__(self):
+        return self._name
