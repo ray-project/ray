@@ -607,6 +607,27 @@ print(ray.get([run.remote()])[0])
         os.chdir(old_dir)
 
 
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_init(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        with open("hello", "w") as f:
+            f.write("world")
+        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
+        ray.init(job_config=job_config)
+
+        @ray.remote
+        class Test:
+            def test(self):
+                with open("hello") as f:
+                    return f.read()
+
+        t = Test.remote()
+        assert ray.get(t.test.remote()) == "world"
+        os.chdir(old_dir)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-sv", __file__]))
