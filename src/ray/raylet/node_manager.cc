@@ -109,7 +109,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   std::stringstream buffer;
   const auto owner_worker_id =
       WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
   buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
          << owner_worker_id << " / " << owner_node_id;
   return buffer.str();
@@ -816,8 +816,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     auto &worker = pair.second;
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    const auto owner_node_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
@@ -1673,10 +1672,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
-
-  if (cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker)) {
-    worker->MarkBlocked();
-  }
+  cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -1691,9 +1687,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    if (cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker)) {
-      worker->MarkUnblocked();
-    }
+    cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }

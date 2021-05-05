@@ -7,7 +7,8 @@ import os
 import time
 import threading
 import tree  # pip install dm_tree
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 import ray
 from ray.rllib.models.modelv2 import ModelV2
@@ -25,6 +26,9 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 torch, nn = try_import_torch()
 
@@ -136,26 +140,27 @@ class TorchPolicy(Policy):
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
             self.model_gpu_towers = [
-                model if config["num_gpus"] == 0 else copy.deepcopy(model)
+                model if i == 0 else copy.deepcopy(model)
                 for i in range(config["num_gpus"] or 1)
             ]
+            self.model = model
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
-            self.device = torch.device("cuda")
+            gpu_ids = ray.get_gpu_ids()
             self.devices = [
-                torch.device("cuda:{}".format(id_))
-                for i, id_ in enumerate(ray.get_gpu_ids())
-                if i < config["num_gpus"]
+                torch.device("cuda:{}".format(i))
+                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
             ]
-            self.model_gpu_towers = nn.parallel.replicate.replicate(
-                model, [
-                    id_ for i, id_ in enumerate(ray.get_gpu_ids())
-                    if i < config["num_gpus"]
-                ])
-
-        # Move model to device.
-        self.model = model.to(self.device)
+            self.device = self.devices[0]
+            ids = [
+                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
+            self.model_gpu_towers = []
+            for i, _ in enumerate(ids):
+                model_copy = copy.deepcopy(model)
+                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+            self.model = self.model_gpu_towers[0]
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -476,8 +481,6 @@ class TorchPolicy(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
-        else:
-            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
@@ -500,7 +503,7 @@ class TorchPolicy(Policy):
                 len_ -= shard_len
                 start += shard_len
 
-        # Copy weights of main model to all towers.
+            # Copy weights of main model to all towers.
             state_dict = self.model.state_dict()
             for tower in self.model_gpu_towers:
                 tower.load_state_dict(state_dict)
@@ -516,7 +519,9 @@ class TorchPolicy(Policy):
                 if tower_outputs[0][0][i] is not None:
                     all_grads.append(
                         torch.mean(
-                            torch.stack([t[0][i] for t in tower_outputs]),
+                            torch.stack([
+                                t[0][i].to(self.device) for t in tower_outputs
+                            ]),
                             dim=0))
                 else:
                     all_grads.append(None)
@@ -709,12 +714,13 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
+        seq_lens = self._dummy_batch["seq_lens"]
+
         state_ins = []
         i = 0
         while "state_in_{}".format(i) in self._dummy_batch:
             state_ins.append(self._dummy_batch["state_in_{}".format(i)])
             i += 1
-        seq_lens = self._dummy_batch["seq_lens"]
         dummy_inputs = {
             k: self._dummy_batch[k]
             for k in self._dummy_batch.keys() if k != "is_training"
@@ -797,8 +803,7 @@ class TorchPolicy(Policy):
                                     param.grad is not None:
                                 param.grad.data.zero_()
                         # Recompute gradients of loss over all variables.
-                        loss_out[opt_idx].backward(
-                            retain_graph=(opt_idx < len(self._optimizers) - 1))
+                        loss_out[opt_idx].backward(retain_graph=True)
                         grad_info.update(
                             self.extra_grad_process(opt, loss_out[opt_idx]))
 
@@ -865,7 +870,7 @@ class TorchPolicy(Policy):
         for shard_idx in range(len(sample_batches)):
             output = results[shard_idx]
             if isinstance(output, Exception):
-                output.reraise()
+                raise output
             outputs.append(results[shard_idx])
         return outputs
 
@@ -878,20 +883,22 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = lr
+        self._lr_schedule = None
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
+            self.cur_lr = lr
         else:
-            self.lr_schedule = PiecewiseSchedule(
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = self._lr_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for opt in self._optimizers:
-            for p in opt.param_groups:
-                p["lr"] = self.cur_lr
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
+                for p in opt.param_groups:
+                    p["lr"] = self.cur_lr
 
 
 @DeveloperAPI

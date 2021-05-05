@@ -7,9 +7,12 @@ import threading
 import _thread
 
 import ray.util.client.server.server as ray_client_server
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._private.client_mode_hook import _explicitly_enable_client_mode
+from ray._private.client_mode_hook import client_mode_should_convert
+from ray._private.client_mode_hook import enable_client_mode
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -179,6 +182,8 @@ def test_wait(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+        SignalActor = create_remote_signal_actor(ray)
+        signaler = SignalActor.remote()
 
         @ray.remote
         def plus2(x):
@@ -219,6 +224,18 @@ def test_remote_functions(ray_start_regular_shared):
         assert [] == res[1]
         all_vals = ray.get(res[0])
         assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
+
+        # Timeout 0 on ray.wait leads to immediate return
+        # (not indefinite wait for first return as with timeout None):
+        unready_ref = signaler.wait.remote()
+        res = ray.wait([unready_ref], timeout=0)
+        # Not ready.
+        assert res[0] == [] and len(res[1]) == 1
+        ray.get(signaler.send.remote())
+        ready_ref = signaler.wait.remote()
+        # Ready.
+        res = ray.wait([ready_ref], timeout=10)
+        assert len(res[0]) == 1 and res[1] == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -523,16 +540,16 @@ def test_client_gpu_ids(call_ray_stop_only):
     import ray
     ray.init(num_cpus=2)
 
-    _explicitly_enable_client_mode()
-    # No client connection.
-    with pytest.raises(Exception) as e:
-        ray.get_gpu_ids()
-    assert str(e.value) == "Ray Client is not connected."\
-        " Please connect by calling `ray.connect`."
+    with enable_client_mode():
+        # No client connection.
+        with pytest.raises(Exception) as e:
+            ray.get_gpu_ids()
+        assert str(e.value) == "Ray Client is not connected."\
+            " Please connect by calling `ray.connect`."
 
-    with ray_start_client_server():
-        # Now have a client connection.
-        assert ray.get_gpu_ids() == []
+        with ray_start_client_server():
+            # Now have a client connection.
+            assert ray.get_gpu_ids() == []
 
 
 def test_client_serialize_addon(call_ray_stop_only):
@@ -546,6 +563,20 @@ def test_client_serialize_addon(call_ray_stop_only):
 
     with ray_start_client_server() as ray:
         assert ray.get(ray.put(User(name="ray"))).name == "ray"
+
+
+@pytest.mark.parametrize("connect_to_client", [False, True])
+def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+    import ray
+    with connect_to_client_or_not(connect_to_client):
+        if connect_to_client:
+            # Client mode is on.
+            assert client_mode_should_convert() is True
+            # We're connected to Ray client.
+            assert ray.util.client.ray.is_connected() is True
+        else:
+            assert client_mode_should_convert() is False
+            assert ray.util.client.ray.is_connected() is False
 
 
 if __name__ == "__main__":

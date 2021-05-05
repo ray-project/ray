@@ -9,6 +9,8 @@ import signal
 import time
 import traceback
 import json
+from multiprocessing.synchronize import Event
+from typing import Optional
 
 import grpc
 
@@ -89,7 +91,8 @@ class Monitor:
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -112,10 +115,14 @@ class Monitor:
         worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
+        # Can be used to signal graceful exit from monitor loop.
+        self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 
@@ -172,6 +179,8 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                break
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
@@ -263,7 +272,7 @@ class Monitor:
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+            self.redis_address, password=self.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
         push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)

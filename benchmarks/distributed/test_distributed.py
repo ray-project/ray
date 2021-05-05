@@ -82,7 +82,7 @@ def test_max_running_tasks():
     # There are some relevant magic numbers in this check. 10k tasks each
     # require 1/4 cpus. Therefore, ideally 2.5k cpus will be used.
     err_str = f"Only {max_cpus - min_cpus_available}/{max_cpus} cpus used."
-    assert max_cpus - min_cpus_available > 2000, err_str
+    assert max_cpus - min_cpus_available > 1900, err_str
 
     for _ in trange(
             MAX_RUNNING_TASKS_IN_CLUSTER,

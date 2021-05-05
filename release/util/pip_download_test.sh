@@ -44,16 +44,7 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    pip install redis==3.3.2
-    pip install msgpack==1.0.0
-    pip install aioredis
-    pip install colorful
-    pip install prometheus-client==0.7.1
-    pip install opencensus
-    pip install gpustat
-    pip install ray
-    pip uninstall -y ray
-    pip install --index-url https://test.pypi.org/simple/ ray
+    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
 
     failed=false
     printf "\n\n\n"
