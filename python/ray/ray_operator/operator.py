@@ -244,8 +244,7 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         if spec_changed or retry_required:
             ray_cluster.set_config(cluster_config)
             ray_cluster.create_or_update()
-
-        cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
+            cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
 
     elif event_type == "DELETED":
         ray_cluster = ray_clusters[cluster_identifier]

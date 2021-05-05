@@ -268,7 +268,7 @@ def _set_status(cluster_name: str, cluster_namespace: str,
             name=cluster_name)
     status = cluster_cr.get("status", {})
     autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
-    if status == STATUS_AUTOSCALING_EXCEPTION:
+    if phase == STATUS_AUTOSCALING_EXCEPTION:
         autoscaler_retries += 1
     cluster_cr["status"] = {"phase": phase,
                             AUTOSCALER_RETRIES_FIELD: autoscaler_retries}
