@@ -28,6 +28,25 @@ auth:
 # If you do so, make sure to also set "KeyName" in the head and worker node
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
+available_node_types:
+    gpu_2_32:
+        min_workers: 3
+        max_workers: 3
+        resources: {"CPU": 32, "GPU": 2}
+        node_config:
+            InstanceType: g3.8xlarge
+            ImageId: ami-0a2363a9cff180a64
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs: 
+                      VolumeSize: 150
+            TagSpecifications:
+                - ResourceType: "instance"
+                  Tags:
+                    - Key: anyscale-user
+                      Value: '{{env["ANYSCALE_USER"]}}'
+                    - Key: anyscale-expiration
+                      Value: '{{env["ANSYCALE_EXPIRATION"]}}'
 
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
@@ -53,6 +72,12 @@ worker_nodes:
 
 
 file_mounts: {}
+
+setup_commands:
+    - pip install -U {{env["RAY_WHEEL"]}}
+    - pip install 'ray[rllib]'
+    - pip install torch torchvision
+    - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip install -U git+https://github.com/horovod/horovod.git
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

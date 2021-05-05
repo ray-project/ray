@@ -22,6 +22,9 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
+from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
+                                             _tracing_actor_method_invocation,
+                                             _inject_tracing_into_class)
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +134,7 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @_tracing_actor_method_invocation
     def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
@@ -219,6 +223,7 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
+            method = inspect.unwrap(method)
             is_bound = (is_class_method(method)
                         or is_static_method(modified_class, method_name))
 
@@ -477,6 +482,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @_tracing_actor_creation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -1023,6 +1029,7 @@ def modify_class(cls):
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries):
     Class = modify_class(cls)
+    _inject_tracing_into_class(Class)
 
     if max_restarts is None:
         max_restarts = 0

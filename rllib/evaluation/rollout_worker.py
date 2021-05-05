@@ -48,6 +48,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")

@@ -11,6 +11,7 @@ import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -1139,7 +1140,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def collect_metrics(self,
-                        selected_workers: List["ActorHandle"] = None) -> dict:
+                        selected_workers: List[ActorHandle] = None) -> dict:
         """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().

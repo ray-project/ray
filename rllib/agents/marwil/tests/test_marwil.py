@@ -27,7 +27,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_compilation_and_learning_from_offline_file(self):
         """Test whether a MARWILTrainer can be built with all frameworks.
 
-        And learns from a historic-data file.
+        Learns from a historic-data file.
         To generate this data, first run:
         $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \

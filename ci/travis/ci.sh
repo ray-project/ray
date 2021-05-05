@@ -176,7 +176,8 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_operator_mock
+      -python/ray/tests:test_k8s_operator_unit_tests
+      -python/ray/tests:test_tracing  # tracing not enabled on windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
