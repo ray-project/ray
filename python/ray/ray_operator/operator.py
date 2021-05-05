@@ -24,7 +24,6 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
-
 # Queue to process cluster status updates.
 cluster_status_q = mp.Queue()  # type: mp.Queue[Tuple[str, str, str]]
 
@@ -75,12 +74,12 @@ class RayCluster():
     def get_num_retries(self) -> int:
         return self._num_retries
 
-    def do_in_subprocess(self, f: Callable[[], None]) -> None:
+    def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
-            name=self.subprocess_name, target=f, daemon=True)
+            name=self.subprocess_name, target=f, args=args, daemon=True)
         self.subprocess.start()
 
     def clean_up_subprocess(self):
@@ -89,12 +88,12 @@ class RayCluster():
             self.subprocess.join()
             self.monitor_stop_event.clear()
 
-    def create_or_update(self) -> None:
-        self.do_in_subprocess(self._create_or_update)
+    def create_or_update(self, restart_ray: bool = False) -> None:
+        self.do_in_subprocess(self._create_or_update, args=(restart_ray, ))
 
-    def _create_or_update(self) -> None:
+    def _create_or_update(self, restart_ray: bool = False) -> None:
         try:
-            self.start_head()
+            self.start_head(restart_ray=restart_ray)
             self.start_monitor()
         except Exception:
             # Report failed autoscaler status to trigger cluster restart.
@@ -102,13 +101,15 @@ class RayCluster():
                                   STATUS_AUTOSCALING_EXCEPTION))
             raise
 
-    def start_head(self) -> None:
+    def start_head(self, restart_ray: bool = False) -> None:
         self.write_config()
+        # Don't restart Ray on head unless recovering from failure.
+        no_restart = not restart_ray
         self.config = commands.create_or_update_cluster(
             self.config_path,
             override_min_workers=None,
             override_max_workers=None,
-            no_restart=False,
+            no_restart=no_restart,
             restart_only=False,
             yes=True,
             no_config_cache=True,
@@ -230,21 +231,27 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         status = cluster_cr.get("status", {})
         autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
 
-        # Update if there's been a change to the spec, or if we're attempting
-        # recovery from autoscaler failure.
+        # True if there's been a chamge to the spec of the custom resource,
+        # triggering an increment of metadata.generation.
         spec_changed = current_generation > ray_cluster.get_generation()
-        retry_required = autoscaler_retries > ray_cluster.get_num_retries()
-        if retry_required:
+        # True if monitor has failed, triggering an increment of
+        # status.autoscalerRetries:
+        ray_restart_required = (autoscaler_retries >
+                                ray_cluster.get_num_retries())
+        if ray_restart_required:
             logger.error(f"{log_prefix}: Failed, restarting cluster.")
             ray_cluster.set_num_retries(autoscaler_retries)
         if spec_changed:
             logger.info(f"{log_prefix}: Updating cluster.")
             ray_cluster.set_generation(current_generation)
 
-        if spec_changed or retry_required:
+        # Update if there's been a change to the spec or if we're attempting
+        # recovery from autoscaler failure.
+        if spec_changed or ray_restart_required:
             ray_cluster.set_config(cluster_config)
-            ray_cluster.create_or_update()
-            cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
+            ray_cluster.create_or_update(restart_ray=ray_restart_required)
+            cluster_status_q.put((cluster_name, cluster_namespace,
+                                  STATUS_RUNNING))
 
     elif event_type == "DELETED":
         ray_cluster = ray_clusters[cluster_identifier]

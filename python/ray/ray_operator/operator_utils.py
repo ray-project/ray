@@ -257,8 +257,7 @@ def set_status(cluster_name: str, cluster_namespace: str, status: str) -> None:
     _set_status(cluster_name, cluster_namespace, status)
 
 
-def _set_status(cluster_name: str, cluster_namespace: str,
-                phase: str) -> None:
+def _set_status(cluster_name: str, cluster_namespace: str, phase: str) -> None:
     cluster_cr = custom_objects_api()\
         .get_namespaced_custom_object(
             namespace=cluster_namespace,
@@ -270,8 +269,10 @@ def _set_status(cluster_name: str, cluster_namespace: str,
     autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
     if phase == STATUS_AUTOSCALING_EXCEPTION:
         autoscaler_retries += 1
-    cluster_cr["status"] = {"phase": phase,
-                            AUTOSCALER_RETRIES_FIELD: autoscaler_retries}
+    cluster_cr["status"] = {
+        "phase": phase,
+        AUTOSCALER_RETRIES_FIELD: autoscaler_retries
+    }
     custom_objects_api()\
         .patch_namespaced_custom_object_status(namespace=cluster_namespace,
                                                group=RAY_API_GROUP,
