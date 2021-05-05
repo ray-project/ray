@@ -291,7 +291,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     const auto &uris = runtime_env_manager_.GetReferences(job_id.Hex());
     auto actor_id_hex = actor->GetActorID().Hex();
     for (const auto &uri : uris) {
-      runtime_env_manager_.AddUriReference(actor_id_hex, uri);
+      runtime_env_manager_.AddURIReference(actor_id_hex, uri);
     }
   }
 
