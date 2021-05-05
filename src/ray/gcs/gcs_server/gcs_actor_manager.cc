@@ -461,7 +461,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
   } else {
-    runtime_env_manager_.RemoveUriReference(actor->GetActorID().Hex());
+    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
   }
 
   // Remove actor from `named_actors_` if its name is not empty.

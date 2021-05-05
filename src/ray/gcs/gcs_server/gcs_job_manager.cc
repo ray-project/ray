@@ -63,7 +63,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                          job_table_data->SerializeAsString(), nullptr));
-      runtime_env_manager_.RemoveUriReference(job_id.Hex());
+      runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
