@@ -7,6 +7,8 @@ from ray._raylet import (
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+# Sum is used for CythonCount because it allows incrementing by positive
+# values that are different from one.
 
 logger = logging.getLogger(__name__)
 
