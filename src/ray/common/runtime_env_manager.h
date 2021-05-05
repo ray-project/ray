@@ -24,42 +24,42 @@ namespace ray {
 ///    2) local node, where runtime env is fetched
 /// We only track the job and detached actor for runtime env. In summary,
 /// runtime env will be cleaned up when there is no job or detached actor is
-/// using it. The resouce is tracked in uri level. User need to provider
+/// using it. The resouce is tracked in URI level. User need to provider
 /// a delete handler.
 class RuntimeEnvManager {
  public:
   using DeleteFunc = std::function<void(const std::string &, std::function<void(bool)>)>;
   explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
 
-  /// Increase the reference of uri by job_id and runtime_env.
+  /// Increase the reference of URI by job_id and runtime_env.
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
   /// \param[in] runtime_env The runtime env used by the id.
   void AddURIReference(const std::string &hex_id, const rpc::RuntimeEnv &runtime_env);
 
-  /// Increase the reference of uri by uri and runtime_env.
+  /// Increase the reference of URI by URI and runtime_env.
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
-  /// \param[in] uri The uri referenced by the id.
+  /// \param[in] uri The URI referenced by the id.
   void AddURIReference(const std::string &hex_id, const std::string &uri);
 
-  /// Get the reference of uris by id.
+  /// Get the reference of URIs by id.
   ///
   /// \param[in] hex_id The id of to look.
-  /// \return The uris referenced by the id.
+  /// \return The URIs referenced by the id.
   const std::vector<std::string> &GetReferences(const std::string &hex_id) const;
 
-  /// Decrease the reference of uri by job_id
+  /// Decrease the reference of URI by job_id
   /// \param[in] hex_id The id of the runtime env.
   void RemoveURIReference(const std::string &hex_id);
 
  private:
   DeleteFunc deleter_;
-  /// Reference counting of a uri.
+  /// Reference counting of a URI.
   std::unordered_map<std::string, int64_t> uri_reference_;
-  /// A map between hex_id and uri.
+  /// A map between hex_id and URI.
   std::unordered_map<std::string, std::vector<std::string>> id_to_uris_;
-  /// A set of unused uris
+  /// A set of unused URIs
   std::unordered_set<std::string> unused_uris_;
 };
 }  // namespace ray
