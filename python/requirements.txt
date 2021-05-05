@@ -55,6 +55,7 @@ gym
 gym-minigrid
 kubernetes
 lxml
+modin
 moto
 mypy
 networkx
@@ -62,6 +63,8 @@ numba
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
+opentelemetry-api==1.0.0rc1
+opentelemetry-sdk==1.0.0rc1
 pexpect
 Pillow; platform_system != "Windows"
 pygments
@@ -81,3 +84,5 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
+# pyarrow v4.0.0 doesn't work in macOS
+pyarrow==3.0.0

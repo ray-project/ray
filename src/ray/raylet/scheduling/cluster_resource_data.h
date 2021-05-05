@@ -147,6 +147,8 @@ class TaskResourceInstances {
       return {};
     }
   };
+  /// Clear only the CPU instances field.
+  void ClearCPUInstances();
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
