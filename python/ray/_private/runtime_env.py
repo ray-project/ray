@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import json
 
 from filelock import FileLock
 from pathlib import Path
@@ -90,6 +91,13 @@ class RuntimeEnvDict:
             override_environment_variables.update(
                 RAY_RUNTIME_ENV_FILES=self.working_dir)
         return override_environment_variables
+
+    def serialize(self) -> str:
+        attributes_dict = {
+            k: v
+            for k, v in vars(self).items() if v is not None
+        }
+        return json.dumps(attributes_dict)
 
 
 class Protocol(Enum):

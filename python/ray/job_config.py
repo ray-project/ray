@@ -68,6 +68,7 @@ class JobConfig:
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
         job_config.runtime_env.CopyFrom(self._get_proto_runtime())
+        job_config.serialized_runtime_env = self.get_serialized_runtime_env()
         return job_config
 
     def get_runtime_env_uris(self):
@@ -76,10 +77,12 @@ class JobConfig:
             return self.runtime_env.get("uris")
         return []
 
+    def get_serialized_runtime_env(self) -> str:
+        """Return the JSON-serialized parsed runtime env dict"""
+        return self._parsed_runtime_env.serialize()
+
     def _get_proto_runtime(self):
         from ray.core.generated.common_pb2 import RuntimeEnv
         runtime_env = RuntimeEnv()
         runtime_env.uris[:] = self.get_runtime_env_uris()
-        runtime_env.conda_env_name = (self._parsed_runtime_env.conda_env_name
-                                      or "")
         return runtime_env

@@ -1,14 +1,15 @@
 import os
 import argparse
+import json
 
 from ray._private.conda import get_conda_activate_commands
-
+from ray._private.runtime_env import RuntimeEnvDict
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
-    "--conda-env-name",
+    "--serialized-runtime-env",
     type=str,
-    help="the name of an existing conda env to activate")
+    help="the serialized parsed runtime env dict")
 
 
 def setup(input_args):
@@ -17,9 +18,16 @@ def setup(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-
-    if args.conda_env_name:
-        commands += get_conda_activate_commands(args.conda_env_name)
+    import sys
+    print(
+        " serialized runtime env:  ",
+        args.serialized_runtime_env,
+        file=sys.stderr)
+    runtime_env: RuntimeEnvDict = json.loads(args.serialized_runtime_env
+                                             or "{}")
+    print("  runtime env:  ", runtime_env, file=sys.stderr)
+    if runtime_env.get("conda_env_name"):
+        commands += get_conda_activate_commands(runtime_env["conda_env_name"])
 
     commands += [" ".join(["exec python"] + remaining_args)]
     command_separator = " && "
