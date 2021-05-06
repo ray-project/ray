@@ -294,13 +294,14 @@ def do_test_release_resource(object_spilling_config, expect_released):
     def f(dep):
         while True:
             try:
-                ray.get(dep[0], timeout=0.001)
+                ray.get(dep[0], timeout=0.01)
             except ray.exceptions.GetTimeoutError:
                 pass
 
     done = f.remote([plasma_obj])  # noqa
+    time.sleep(2)
     canary = sneaky_task_tries_to_steal_released_resources.remote()
-    ready, _ = ray.wait([canary], timeout=2)
+    ready, _ = ray.wait([canary], timeout=5)
     if expect_released:
         assert ready
     else:
