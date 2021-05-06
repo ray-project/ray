@@ -82,7 +82,7 @@ class TorchParametricActionsModel(DQNTorchModel):
             model_config, name + "_action_embed")
 
     def forward(self, input_dict, state, seq_lens):
-        # Extract the available act ions tensor from the observation.
+        # Extract the available actions tensor from the observation.
         avail_actions = input_dict["obs"]["avail_actions"]
         action_mask = input_dict["obs"]["action_mask"]
 

@@ -522,7 +522,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
     resources_data.set_should_global_gc(true);
-    resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
 
@@ -1463,6 +1462,15 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
+}
+
+void NodeManager::HandleUpdateResourceUsage(
+    const rpc::UpdateResourceUsageRequest &request, rpc::UpdateResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  ResourceUsageBatchData batch;
+  batch.ParseFromString(request.serialized_resource_usage_batch());
+  ResourceUsageBatchReceived(batch);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestResourceReport(

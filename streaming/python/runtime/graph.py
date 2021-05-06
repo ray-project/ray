@@ -145,11 +145,11 @@ class ExecutionVertexContext:
             if execution_vertex.execution_vertex_id == execution_vertex_id:
                 return execution_vertex.worker_actor
         raise Exception(
-            "Vertex %s does not exist!".format(execution_vertex_id))
+            "Vertex {} does not exist!".format(execution_vertex_id))
 
     def get_target_actor_by_execution_vertex_id(self, execution_vertex_id):
         for execution_vertex in self.downstream_execution_vertices:
             if execution_vertex.execution_vertex_id == execution_vertex_id:
                 return execution_vertex.worker_actor
         raise Exception(
-            "Vertex %s does not exist!".format(execution_vertex_id))
+            "Vertex {} does not exist!".format(execution_vertex_id))

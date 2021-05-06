@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/rpc/client_call.h"
@@ -44,6 +45,7 @@ struct GcsServerConfig {
   bool enable_sharding_conn = true;
   std::string node_ip_address;
   bool pull_based_resource_reporting;
+  bool grpc_based_resource_broadcast;
 };
 
 class GcsNodeManager;
@@ -121,6 +123,9 @@ class GcsServer {
   /// Initialize resource report polling.
   void InitResourceReportPolling(const GcsInitData &gcs_init_data);
 
+  /// Initialize resource report broadcasting.
+  void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
+
   /// Install event listeners.
   void InstallEventListeners();
 
@@ -190,6 +195,8 @@ class GcsServer {
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   /// Resource report poller.
   std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
+  /// Resource report broadcaster.
+  std::unique_ptr<GrpcBasedResourceBroadcaster> grpc_based_resource_broadcaster_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.
