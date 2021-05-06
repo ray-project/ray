@@ -1215,8 +1215,13 @@ void NodeManager::DisconnectClient(
         // TODO(rkn): Define this constant somewhere else.
         std::string type = "worker_died";
         std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
-                      << ".";
+        error_message
+            << "A worker died or was killed while executing task by an unexepcted system "
+               "error. To troubleshoot the problem, check out a worker log. Task id: "
+            << task_id << " Worker id: " << worker->WorkerId()
+            << " Node id: " << self_node_id_
+            << " Worker IP address: " << worker->IpAddress()
+            << " Worker port: " << worker->Port();
         auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
                                                         current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
