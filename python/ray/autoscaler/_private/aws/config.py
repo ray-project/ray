@@ -94,7 +94,7 @@ def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
 
-def log_to_cli(config: Dict) -> None:
+def log_to_cli(config: Dict[str, Any]) -> None:
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
@@ -217,7 +217,7 @@ def bootstrap_aws(config):
     return config
 
 
-def _check_legacy_fields(config):
+def _check_legacy_fields(config: Dict[str, Any]) -> None:
     # log warning if non-empty head_node field
     if "head_node" in config and config["head_node"]:
         cli_logger.warning(
