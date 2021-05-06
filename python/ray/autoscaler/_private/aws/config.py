@@ -106,29 +106,6 @@ def log_to_cli(config: dict) -> None:
 
     with cli_logger.group("{} config", provider_name):
 
-        def same_everywhere(key: str) -> bool:
-            """Check if the value for given key is the same in all available
-               node type configs
-
-            Args:
-                key: A key that may be present in the available node configs,
-                    e.g "KeyName", "SubnetIds", ImageId"
-
-            Returns:
-                True if the corresponding value for the given key is the same
-                in all available node type configs, False otherwise
-            """
-            prev_node_config = None
-            for node_type in config["available_node_types"].values():
-                node_config = node_type["node_config"]
-                if prev_node_config is not None:
-                    curr_value = node_config.get(key)
-                    prev_value = prev_node_config.get(key)
-                    if prev_value != curr_value:
-                        return False
-                prev_node_config = node_config
-            return True
-
         def print_info(resource_string: str,
                        key: str,
                        src_key: str,
@@ -138,33 +115,36 @@ def log_to_cli(config: dict) -> None:
                 allowed_tags = ["default"]
 
             node_tags = {}
-            for node_type_key in config["available_node_types"]:
+
+            # set of configurations corresponding to `key`
+            unique_settings = set()
+
+            for node_type_key, node_type in config[
+                    "available_node_types"].items():
                 node_tags[node_type_key] = {}
                 tag = _log_info[src_key][node_type_key]
                 if tag in allowed_tags:
                     node_tags[node_type_key][tag] = True
+                setting = node_type["node_config"].get(key)
+
+                if list_value:
+                    unique_settings.add(tuple(setting))
+                else:
+                    unique_settings.add(setting)
 
             head_value_str = head_node_config[key]
             if list_value:
                 head_value_str = cli_logger.render_list(head_value_str)
 
-            if same_everywhere(key):
+            if len(unique_settings) == 1:
+                # all node types are configured the same, condense
+                # log output
                 cli_logger.labeled_value(
                     resource_string + " (all available node types)",
                     "{}",
                     head_value_str,
                     _tags=node_tags[config["head_node_type"]])
             else:
-                for node_type_key, node_type in config[
-                        "available_node_types"].items():
-                    if node_type_key == head_node_type:
-                        continue
-                    node_config = node_type["node_config"]
-                    node_value_str = node_config[key]
-                    if list_value:
-                        workers_value_str = cli_logger.render_list(
-                            node_value_str)
-
                 # do head node type first
                 cli_logger.labeled_value(
                     resource_string + f" ({head_node_type})",
@@ -177,6 +157,10 @@ def log_to_cli(config: dict) -> None:
                         "available_node_types"].items():
                     if node_type_key == head_node_type:
                         continue
+                    workers_value_str = node_type["node_config"][key]
+                    if list_value:
+                        workers_value_str = cli_logger.render_list(
+                            workers_value_str)
                     cli_logger.labeled_value(
                         resource_string + f" ({node_type_key})",
                         "{}",
@@ -541,7 +525,8 @@ def _configure_security_group(config):
         return config  # have user-defined groups
     head_node_type = config["head_node_type"]
     if config["head_node_type"] in node_types_to_configure:
-        # configure head node security group last
+        # configure head node security group last for determinism
+        # in tests
         node_types_to_configure.remove(head_node_type)
         node_types_to_configure.append(head_node_type)
     security_groups = _upsert_security_groups(config, node_types_to_configure)
