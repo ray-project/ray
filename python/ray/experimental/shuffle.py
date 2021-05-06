@@ -303,6 +303,7 @@ def main():
     print()
     print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
+    return delta
 
 
 if __name__ == "__main__":

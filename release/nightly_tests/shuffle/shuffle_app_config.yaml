@@ -1,0 +1,9 @@
+base_image: "anyscale/ray:nightly-cpu"
+env_vars: {}
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds: []
