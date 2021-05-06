@@ -1729,7 +1729,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
-                      "",   /* serialized_runtime_env */
+                      "{}", /* serialized_runtime_env */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

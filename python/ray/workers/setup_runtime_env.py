@@ -18,14 +18,8 @@ def setup(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    import sys
-    print(
-        " serialized runtime env:  ",
-        args.serialized_runtime_env,
-        file=sys.stderr)
     runtime_env: RuntimeEnvDict = json.loads(args.serialized_runtime_env
                                              or "{}")
-    print("  runtime env:  ", runtime_env, file=sys.stderr)
     if runtime_env.get("conda_env_name"):
         commands += get_conda_activate_commands(runtime_env["conda_env_name"])
 

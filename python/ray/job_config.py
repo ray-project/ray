@@ -31,7 +31,7 @@ class JobConfig:
             self.worker_env = worker_env
         import ray._private.runtime_env as runtime_support
         if runtime_env:
-            # Remove working_dir rom the dict here, since that needs to be
+            # Remove working_dir from the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
             without_dir = dict(runtime_env)
             if "working_dir" in without_dir:

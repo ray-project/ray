@@ -707,7 +707,7 @@ class ActorClass:
                     override_environment_variables))
             serialized_runtime_env = parsed_runtime_env.serialize()
         else:
-            serialized_runtime_env = ""
+            serialized_runtime_env = "{}"
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

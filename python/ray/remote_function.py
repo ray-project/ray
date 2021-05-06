@@ -276,7 +276,7 @@ class RemoteFunction:
                     override_environment_variables))
             serialized_runtime_env = parsed_runtime_env.serialize()
         else:
-            serialized_runtime_env = ""
+            serialized_runtime_env = "{}"
 
         def invocation(args, kwargs):
             if self._is_cross_language:

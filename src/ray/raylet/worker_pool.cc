@@ -837,7 +837,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      !(task_spec.SerializedRuntimeEnv() == "")) {
+      !(task_spec.SerializedRuntimeEnv() == "{}")) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options, or any task with environment variable overrides, or
     // any task with a specified RuntimeEnv.
