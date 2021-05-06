@@ -66,9 +66,10 @@ void instrumented_io_context::post(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::io_context::post([handler = std::move(handler), stats_handle]() mutable {
-    RecordExecution(handler, std::move(stats_handle));
-  });
+  boost::asio::io_context::post(
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+        RecordExecution(handler, std::move(stats_handle));
+      });
 }
 
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string &name,
