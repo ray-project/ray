@@ -1737,6 +1737,8 @@ cdef class CoreWorker:
                                       or "{}")
         incoming_runtime_env_dict = json.loads(serialized_runtime_env or "{}")
         runtime_env_dict.update(incoming_runtime_env_dict)
+        if all(val is None for val in runtime_env_dict.values()):
+            runtime_env_dict = {}
         new_serialized_env = json.dumps(runtime_env_dict)
         if new_serialized_env == "{}":
             new_serialized_env = self.get_job_config().serialized_runtime_env
