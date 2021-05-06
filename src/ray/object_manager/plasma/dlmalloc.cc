@@ -63,6 +63,10 @@ int fake_munmap(void *, int64_t);
 #undef DEBUG
 #endif
 
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
