@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
@@ -107,7 +108,12 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // MAP_POPULATE can be used to pre-populate the page tables for this memory region
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
-  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, *fd, 0);
+  auto flags = MAP_SHARED;
+  if (RayConfig::instance().preallocate_plasma_memory()) {
+    RAY_LOG(INFO) << "Preallocating all plasma memory using MAP_POPULATE.";
+    flags |= MAP_POPULATE;
+  }
+  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, *fd, 0);
   if (*pointer == MAP_FAILED) {
     RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
     if (errno == ENOMEM && plasma_config->hugepages_enabled) {
