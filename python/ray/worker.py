@@ -30,6 +30,7 @@ import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env
 import ray._private.import_thread as import_thread
+from ray.util.tracing.tracing_helper import import_from_string
 import ray
 import setproctitle
 import ray.state
@@ -508,7 +509,8 @@ def init(
         _temp_dir=None,
         _lru_evict=False,
         _metrics_export_port=None,
-        _system_config=None):
+        _system_config=None,
+        _tracing_startup_hook=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
 
@@ -601,6 +603,12 @@ def init(
             development, and the API is subject to change.
         _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
+        _tracing_startup_hook (str): If provided, turns on and sets up tracing
+        for Ray. Must be the name of a function that takes no arguments and
+        sets up a Tracer Provider, Remote Span Processors, and
+        (optional) additional instruments. See more at
+        docs.ray.io/tracing.html. It is currently under active development,
+        and the API is subject to change.
 
     Returns:
         Address information about the started processes.
@@ -702,11 +710,19 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            start_initial_python_workers_for_first_job=True,
+            # We need to disable it if runtime env is not set.
+            # Uploading happens after core worker is created. And we should
+            # prevent default worker being created before uploading.
+            # TODO (yic): Have a separate connection to gcs client when
+            # removal redis is done. The uploading should happen before this
+            # one.
+            start_initial_python_workers_for_first_job=(
+                job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port)
+            metrics_export_port=_metrics_export_port,
+            tracing_startup_hook=_tracing_startup_hook)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -758,7 +774,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
-        runtime_env.rewrite_working_dir_uri(job_config)
+        runtime_env.rewrite_runtime_env_uris(job_config)
 
     connect(
         _global_node,
@@ -1311,6 +1327,15 @@ def connect(node,
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
 
+    # Setup tracing here
+    if _internal_kv_get("tracing_startup_hook"):
+        ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
+        if not getattr(ray, "__traced__", False):
+            _setup_tracing = import_from_string(
+                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+            _setup_tracing()
+            ray.__traced__ = True
+
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
@@ -1596,10 +1621,11 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @client_mode_hook
 def get_actor(name):
-    """Get a handle to a detached actor.
+    """Get a handle to a named actor.
 
-    Gets a handle to a detached actor with the given name. The actor must
-    have been created with Actor.options(name="name").remote().
+    Gets a handle to an actor with the given name. The actor must
+    have been created with Actor.options(name="name").remote(). This
+    works for both detached & non-detached actors.
 
     Returns:
         ActorHandle to the actor.

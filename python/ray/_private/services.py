@@ -1394,6 +1394,7 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        tracing_startup_hook: Tracing startup hook.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         max_bytes (int): Log rotation parameter. Corresponding to

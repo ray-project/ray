@@ -441,7 +441,7 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
         pkg_uri = runtime_env.Protocol.PIN_GCS.value + "://" + pkg_name
         runtime_env.create_project_package(working_dir, [], [], tmp_file.name)
         runtime_env.push_package(pkg_uri, tmp_file.name)
-        runtime_env = f"""{{ "working_dir_uri": "{pkg_uri}" }}"""
+        runtime_env = f"""{{ "uris": ["{pkg_uri}"] }}"""
         # Execute the following cmd in driver with runtime_env
         execute_statement = "print(sum(ray.get([run_test.remote()] * 1000)))"
     script = driver_script.format(**locals())
@@ -559,7 +559,8 @@ sleep(600)
     script = driver_script.format(**locals())
     proc = run_string_as_driver_nonblocking(script, env)
     sleep(5)
-    runtime_env = f"""{{  "working_dir": test_module.__path__[0] }}"""
+    runtime_env = f"""
+{{  "working_dir": test_module.__path__[0] }}"""  # noqa: F541
     # Execute the following cmd in the second one which should
     # fail
     execute_statement = "print('OK')"
@@ -603,6 +604,27 @@ print(ray.get([run.remote()])[0])
 """
         out = run_string_as_driver(script, env)
         print(out)
+        os.chdir(old_dir)
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_init(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        with open("hello", "w") as f:
+            f.write("world")
+        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
+        ray.init(job_config=job_config)
+
+        @ray.remote
+        class Test:
+            def test(self):
+                with open("hello") as f:
+                    return f.read()
+
+        t = Test.remote()
+        assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
 
 

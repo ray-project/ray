@@ -532,6 +532,12 @@ py_test(
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 py_test(
+    name = "test_r2d2",
+    tags = ["agents_dir"],
+    size = "large",
+    srcs = ["agents/dqn/tests/test_r2d2.py"]
+)
+py_test(
     name = "test_simple_q",
     tags = ["agents_dir"],
     size = "medium",
@@ -1262,7 +1268,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils", "flaky"],
+    tags = ["utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1330,10 +1336,30 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_checkpoint_restore",
+    name = "tests/test_checkpoint_restore_pg",
+    main = "tests/test_checkpoint_restore.py",
     tags = ["tests_dir", "tests_dir_C"],
-    size = "enormous",
-    srcs = ["tests/test_checkpoint_restore.py"]
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["tests_dir", "tests_dir_C"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos",
+    main = "tests/test_checkpoint_restore.py",
+    tags = ["tests_dir", "tests_dir_C"],
+    size = "large",
+    srcs = ["tests/test_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
 )
 
 py_test(
@@ -1434,7 +1460,7 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I", "flaky"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )
@@ -1703,7 +1729,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )

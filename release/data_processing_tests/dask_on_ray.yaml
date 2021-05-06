@@ -120,13 +120,17 @@ rsync_filter:
 # is setup.
 initialization_commands: []
 
+file_mounts: {
+    "~/data_processing_tests": "."
+}
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # - sudo apt install -y iotop
     # - sudo apt install -y gdb
     # - sudo apt install -y linux-tools-common
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
+    - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl"
     - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 165536" >> /etc/security/limits.conf; echo "* hard nofile 165536" >> /etc/security/limits.conf;'
     - pip install tqdm
     - pip install -U dask

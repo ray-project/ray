@@ -22,10 +22,10 @@ def main():
     ray.init(address="auto")
 
     num_samples = 200
-    results_per_second = 1
+    results_per_second = 0.01
     trial_length_s = 300
 
-    max_runtime = 500
+    max_runtime = 1000
 
     timed_tune_run(
         name="result network overhead",
