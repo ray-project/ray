@@ -190,7 +190,6 @@ def create_or_update_cluster(
         cli_logger.abort(
             "Provided cluster configuration file ({}) does not exist",
             cf.bold(config_file))
-        raise
     except yaml.parser.ParserError as e:
         handle_yaml_error(e)
         raise
@@ -211,8 +210,6 @@ def create_or_update_cluster(
                 k for k in _NODE_PROVIDERS.keys()
                 if _NODE_PROVIDERS[k] is not None
             ]))
-        raise NotImplementedError("Unsupported provider {}".format(
-            config["provider"]))
 
     printed_overrides = False
 
@@ -644,9 +641,8 @@ def get_or_create_head_node(config: Dict[str, Any],
             with cli_logger.group("Fetching the new head node"):
                 while True:
                     if time.time() - start > 50:
-                        cli_logger.abort(
-                            "Head node fetch timed out.")  # todo: msg
-                        raise RuntimeError("Failed to create head node.")
+                        cli_logger.abort("Head node fetch timed out. "
+                                         "Failed to create head node.")
                     nodes = provider.non_terminated_nodes(head_node_tags)
                     if len(nodes) == 1:
                         head_node = nodes[0]
