@@ -295,14 +295,13 @@ def do_test_release_resource(object_spilling_config, expect_released):
     def f(dep):
         while True:
             try:
-                ray.get(dep[0], timeout=0.01)
+                ray.get(dep[0], timeout=0.001)
             except ray.exceptions.GetTimeoutError:
                 pass
 
     done = f.remote([plasma_obj])  # noqa
-    time.sleep(2)
     canary = sneaky_task_tries_to_steal_released_resources.remote()
-    ready, _ = ray.wait([canary], timeout=5)
+    ready, _ = ray.wait([canary], timeout=2)
     if expect_released:
         assert ready
     else:
@@ -314,12 +313,6 @@ def do_test_release_resource(object_spilling_config, expect_released):
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
     do_test_release_resource(object_spilling_config, expect_released=False)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
-    do_test_release_resource(object_spilling_config, expect_released=True)
 
 
 @pytest.mark.skipif(
