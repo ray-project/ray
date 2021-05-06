@@ -114,6 +114,9 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // when mmapping the files. Only supported on Linux.
   auto flags = MAP_SHARED;
   if (RayConfig::instance().preallocate_plasma_memory()) {
+    if (!MAP_POPULATE) {
+      RAY_LOG(FATAL) << "MAP_POPULATE is not supported on this platform.";
+    }
     RAY_LOG(INFO) << "Preallocating all plasma memory using MAP_POPULATE.";
     flags |= MAP_POPULATE;
   }
