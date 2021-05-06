@@ -172,6 +172,7 @@ def test_wait(ray_start_regular_shared):
             ray.wait(["blabla"])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         SignalActor = create_remote_signal_actor(ray)
