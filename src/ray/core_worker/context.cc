@@ -184,6 +184,9 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set serialized_runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
     serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
