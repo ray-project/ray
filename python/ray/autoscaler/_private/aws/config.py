@@ -94,7 +94,7 @@ def _arn_to_name(arn):
     return arn.split(":")[-1].split("/")[-1]
 
 
-def log_to_cli(config: dict) -> None:
+def log_to_cli(config: Dict) -> None:
     provider_name = _PROVIDER_PRETTY_NAMES.get("aws", None)
 
     cli_logger.doassert(provider_name is not None,
