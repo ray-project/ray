@@ -47,6 +47,9 @@ spec:
         imagePullPolicy: Always
         image: rayproject/ray:nightly
         command: ["ray-operator"]
+        env:
+        - name: AUTOSCALER_MAX_NUM_FAILURES
+          value: "999999"
         resources:
           requests:
             cpu: 1
