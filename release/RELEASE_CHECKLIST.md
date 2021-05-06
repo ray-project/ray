@@ -65,9 +65,9 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 	- [ ] dask on ray test
 - [ ] Tune tests
     - [ ] test_bookkeeping_overhead
-    - [x] test_result_throughput_cluster (ignore final time)
-    - [x] test_result_throughput_single_node (ignore final time)
-    - [x] test_network_overhead (ignore final time)
+    - [ ] test_result_throughput_cluster
+    - [ ] test_result_throughput_single_node
+    - [ ] test_network_overhead
     - [ ] test_long_running_large_checkpoints
     - [ ] test_xgboost_sweep
     - [ ] test_durable_trainable
