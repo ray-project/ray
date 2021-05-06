@@ -14,4 +14,4 @@
 
   smoke_test:
     cluster:
-      compute_template: shuffle/shuffle_compute_smoke.yaml
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet
