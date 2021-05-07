@@ -2079,7 +2079,7 @@ py_test(
     tags = ["examples", "examples_D"],
     size = "small",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--stop-iters=1", "--framework=tf"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf"]
 )
 
 py_test(
@@ -2087,7 +2087,7 @@ py_test(
     tags = ["examples", "examples_D"],
     size = "small",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--stop-iters=1", "--framework=tf2"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf2"]
 )
 
 py_test(
@@ -2095,7 +2095,7 @@ py_test(
     tags = ["examples", "examples_D"],
     size = "small",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--stop-iters=1", "--framework=torch"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch"]
 )
 
 py_test(
