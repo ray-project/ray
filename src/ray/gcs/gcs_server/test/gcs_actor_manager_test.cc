@@ -878,6 +878,49 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
   gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id);
 }
 
+TEST_F(GcsActorManagerTest, TestRayNamespace) {
+  auto job_id_1 = JobID::FromInt(1);
+  auto job_id_2 = JobID::FromInt(20);
+  auto job_id_3 = JobID::FromInt(3);
+  std::string second_namespace = "another_namespace";
+  job_namespace_table_[job_id_2] = second_namespace;
+
+  auto request1 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
+                                                  /*detached=*/true, /*name=*/"actor");
+  {
+    // Create an actor in the empty namespace
+    Status status = gcs_actor_manager_->RegisterActor(
+        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
+              request1.task_spec().actor_creation_task_spec().actor_id());
+  }
+
+  auto request2 = Mocker::GenRegisterActorRequest(job_id_2, /*max_restarts=*/0,
+                                                  /*detached=*/true, /*name=*/"actor");
+  {  // Create a second actor of the same name. Its job id belongs to a different
+     // namespace though.
+    Status status = gcs_actor_manager_->RegisterActor(
+        request2, [](std::shared_ptr<gcs::GcsActor> actor) {});
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", second_namespace).Binary(),
+              request2.task_spec().actor_creation_task_spec().actor_id());
+    // The actors may have the same name, but their ids are different.
+    ASSERT_NE(gcs_actor_manager_->GetActorIDByName("actor", second_namespace).Binary(),
+              request1.task_spec().actor_creation_task_spec().actor_id());
+  }
+
+  auto request3 = Mocker::GenRegisterActorRequest(job_id_3, /*max_restarts=*/0,
+                                                  /*detached=*/true, /*name=*/"actor");
+  {  // Actors from different jobs, in the same namespace should still collide.
+    Status status = gcs_actor_manager_->RegisterActor(
+        request3, [](std::shared_ptr<gcs::GcsActor> actor) {});
+    ASSERT_TRUE(status.IsInvalid());
+    ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
+              request1.task_spec().actor_creation_task_spec().actor_id());
+  }
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
