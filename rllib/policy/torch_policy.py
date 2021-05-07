@@ -473,12 +473,15 @@ class TorchPolicy(Policy):
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
         # For multi-GPU, split the batch into n slices (n=#GPUs).
-        from ray.rllib.utils.sgd import minibatches
-        batches = list(
-            minibatches(
-                postprocessed_batch,
-                len(postprocessed_batch) // len(self.devices),
-                shuffle=False))
+        if len(self.devices) == 1:
+            batches = [postprocessed_batch]
+        else:
+            from ray.rllib.utils.sgd import minibatches
+            batches = list(
+                minibatches(
+                    postprocessed_batch,
+                    len(postprocessed_batch) // len(self.devices),
+                    shuffle=False))
 
         if not isinstance(postprocessed_batch, SampleBatch) or \
                 not postprocessed_batch.zero_padded:
