@@ -575,8 +575,18 @@ class BackendState:
 
         return new_goal_id, existing_goal_id
 
-    def deploy_backend(self, backend_tag: BackendTag,
-                       backend_info: BackendInfo) -> Optional[GoalId]:
+    def deploy_backend(self, backend_tag: BackendTag, backend_info: BackendInfo
+                       ) -> Tuple[Optional[GoalId], bool]:
+        """Deploy the backend.
+
+        If the backend already exists with the same version, this is a no-op
+        and returns the GoalId corresponding to the existing update if there
+        is one.
+
+        Returns:
+            GoalId, bool: The GoalId for the client to wait for and whether or
+            not the backend is being updated.
+        """
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
@@ -587,13 +597,12 @@ class BackendState:
                 if (existing_info.backend_config == backend_info.backend_config
                         and existing_info.replica_config ==
                         backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None)
+                    return self._backend_goals.get(backend_tag, None), False
             # New codepath: treat version as ground truth for implementation.
-            else:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and backend_info.version is not None
-                        and existing_info.version == backend_info.version):
-                    return self._backend_goals.get(backend_tag, None)
+            elif (existing_info.backend_config == backend_info.backend_config
+                  and backend_info.version is not None
+                  and existing_info.version == backend_info.version):
+                return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:
             self._replicas[backend_tag] = ReplicaStateContainer()
@@ -609,7 +618,7 @@ class BackendState:
 
         if existing_goal_id is not None:
             self._goal_manager.complete_goal(existing_goal_id)
-        return new_goal_id
+        return new_goal_id, True
 
     def delete_backend(self, backend_tag: BackendTag,
                        force_kill: bool = False) -> Optional[GoalId]:

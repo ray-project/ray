@@ -272,9 +272,10 @@ class ServeController:
                     ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
 
-    async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, version: Optional[str],
-                     route_prefix: Optional[str]) -> Optional[GoalId]:
+    async def deploy(
+            self, name: str, backend_config: BackendConfig,
+            replica_config: ReplicaConfig, version: Optional[str],
+            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -292,7 +293,8 @@ class ServeController:
                 backend_config=backend_config,
                 replica_config=replica_config)
 
-            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            goal_id, updating = self.backend_state.deploy_backend(
+                name, backend_info)
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
@@ -302,7 +304,7 @@ class ServeController:
                                                 TrafficPolicy({
                                                     name: 1.0
                                                 }))
-            return goal_id
+            return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
