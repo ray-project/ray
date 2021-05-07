@@ -30,6 +30,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_pub_sub_(std::move(gcs_pub_sub)) {}
 
+  void Initialize(const GcsInitData &gcs_init_data);
+
   void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
 
@@ -48,7 +50,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
-  std::string GetNamespace(const JobID &job_id) const;
+  std::string GetRayNamespace(const JobID &job_id) const;
 
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
@@ -58,7 +60,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
   /// A cached mapping from job id to namespace.
-  std::unordered_map<JobID, std::string> namespaces_;
+  std::unordered_map<JobID, std::string> ray_namespaces_;
 
   void ClearJobInfos(const JobID &job_id);
 };

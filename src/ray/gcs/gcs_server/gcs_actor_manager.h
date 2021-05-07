@@ -97,7 +97,7 @@ class GcsActor {
   /// Get the name of this actor.
   std::string GetName() const;
   /// Get the namespace of this actor.
-  std::string GetNamespace() const;
+  std::string GetRayNamespace() const;
   /// Get the task specification of this actor.
   TaskSpecification GetCreationTaskSpecification() const;
 
@@ -170,7 +170,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::string(const JobID &)> get_namespace,
+      std::function<std::string(const JobID &)> get_ray_namespace,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -451,7 +451,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
-  std::function<std::string(const JobID &)> get_namespace_;
+  std::function<std::string(const JobID &)> get_ray_namespace_;
 
   // Debug info.
   enum CountType {
