@@ -292,7 +292,8 @@ class SampleBatch(dict):
         return slices
 
     @PublicAPI
-    def slice(self, start: int, end: int) -> "SampleBatch":
+    def slice(self, start: int, end: int, state_start=None,
+              state_end=None) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
@@ -318,30 +319,41 @@ class SampleBatch(dict):
                     k: v[start:end]
                     for k, v in self.items() if k != "seq_lens"
                 }
-            # Fix state_in_x data.
-            count = 0
-            state_start = None
-            seq_lens = None
-            for i, seq_len in enumerate(self["seq_lens"]):
-                count += seq_len
-                if count >= end:
-                    state_idx = 0
+            if state_start is not None:
+                assert state_end is not None
+                state_idx = 0
+                state_key = "state_in_{}".format(state_idx)
+                while state_key in self:
+                    data[state_key] = self[state_key][state_start:state_end]
+                    state_idx += 1
                     state_key = "state_in_{}".format(state_idx)
-                    if state_start is None:
-                        state_start = i
-                    while state_key in self:
-                        data[state_key] = self[state_key][state_start:i + 1]
-                        state_idx += 1
+                seq_lens = list(self["seq_lens"][state_start:state_end])
+            else:
+                # Fix state_in_x data.
+                count = 0
+                state_start = None
+                seq_lens = None
+                for i, seq_len in enumerate(self["seq_lens"]):
+                    count += seq_len
+                    if count >= end:
+                        state_idx = 0
                         state_key = "state_in_{}".format(state_idx)
-                    seq_lens = list(self["seq_lens"][state_start:i]) + [
-                        seq_len - (count - end)
-                    ]
-                    if start < 0:
-                        seq_lens[0] += -start
-                    assert sum(seq_lens) == (end - start)
-                    break
-                elif state_start is None and count > start:
-                    state_start = i
+                        if state_start is None:
+                            state_start = i
+                        while state_key in self:
+                            data[state_key] = self[state_key][state_start:i +
+                                                              1]
+                            state_idx += 1
+                            state_key = "state_in_{}".format(state_idx)
+                        seq_lens = list(self["seq_lens"][state_start:i]) + [
+                            seq_len - (count - end)
+                        ]
+                        if start < 0:
+                            seq_lens[0] += -start
+                        assert sum(seq_lens) == (end - start)
+                        break
+                    elif state_start is None and count > start:
+                        state_start = i
 
             return SampleBatch(
                 data,
@@ -377,8 +389,13 @@ class SampleBatch(dict):
             assert k is not None
             size = k
 
-        slices = self._get_slice_indices(size)
-        timeslices = [self.slice(i, j) for i, j in slices]
+        slices, state_slices = self._get_slice_indices(size)
+        if len(state_slices) == 0:
+            timeslices = [self.slice(i, j) for i, j in slices]
+        else:
+            timeslices = [
+                self.slice(i, j, si, sj) for (i, j), (si, sj) in slices
+            ]
         return timeslices
 
     def zero_pad(self, max_seq_len: int, exclude_states: bool = True):
@@ -547,33 +564,45 @@ class SampleBatch(dict):
         return "SampleBatch({})".format(list(self.keys()))
 
     def _get_slice_indices(self, slice_size):
-        i = 0
         data_slices = []
+        data_slices_states = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             assert np.all(self["seq_lens"] < slice_size), \
                 "ERROR: `slice_size` must be larger than the max. seq-len " \
                 "in the batch!"
             start_pos = 0
             current_slize_size = 0
+            actual_slice_idx = 0
+            start_idx = 0
             idx = 0
             while idx < len(self["seq_lens"]):
                 seq_len = self["seq_lens"][idx]
                 current_slize_size += seq_len
+                actual_slice_idx += seq_len if not self.zero_padded else \
+                    self.max_seq_len
                 # Complete minibatch -> Append to data_slices.
                 if current_slize_size >= slice_size:
-                    data_slices.append((start_pos, start_pos + slice_size))
-                    start_pos += slice_size
-                    if current_slize_size > slice_size:
-                        overhead = current_slize_size - slice_size
-                        start_pos -= (seq_len - overhead)
-                        idx -= 1
+                    if not self.zero_padded:
+                        data_slices.append((start_pos, start_pos + slice_size))
+                        start_pos += slice_size
+                        if current_slize_size > slice_size:
+                            overhead = current_slize_size - slice_size
+                            start_pos -= (seq_len - overhead)
+                            idx -= 1
+                    else:
+                        data_slices.append((start_pos, actual_slice_idx))
+                        start_pos = actual_slice_idx
+
+                    data_slices_states.append((start_idx, idx + 1))
                     current_slize_size = 0
+                    start_idx = idx + 1
                 idx += 1
         else:
+            i = 0
             while i < self.count:
                 data_slices.append((i, i + slice_size))
                 i += slice_size
-        return data_slices
+        return data_slices, data_slices_states
 
     # TODO: deprecate
     @property

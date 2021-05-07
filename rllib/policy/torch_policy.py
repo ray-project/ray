@@ -477,7 +477,7 @@ class TorchPolicy(Policy):
         batches = list(
             minibatches(
                 postprocessed_batch,
-                int(len(postprocessed_batch) / len(self.devices)),
+                len(postprocessed_batch) // len(self.devices),
                 shuffle=False))
 
         if not isinstance(postprocessed_batch, SampleBatch) or \
