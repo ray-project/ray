@@ -29,13 +29,21 @@ cluster_status_q = mp.Queue()  # type: mp.Queue[Tuple[str, str, str]]
 
 
 class RayCluster():
+    """Manages an autoscaling Ray cluster.
+
+    Attributes:
+        config: Autoscaling configuration dict.
+        subprocess: The subprocess used to create, update, and monitor the
+        Ray cluster.
+    """
+
     def __init__(self, config: Dict[str, Any]):
         self.set_config(config)
         self.name = self.config["cluster_name"]
         self.namespace = self.config["provider"]["namespace"]
 
         # Make directory for configs of clusters in the namespace,
-        # if the director doesn't exist already.
+        # if the directory doesn't exist already.
         namespace_dir = operator_utils.namespace_dir(self.namespace)
         if not os.path.isdir(namespace_dir):
             os.mkdir(namespace_dir)
@@ -51,6 +59,7 @@ class RayCluster():
         # autoscaler failure.
         self._num_retries = 0
 
+        # Monitor subprocess
         self.subprocess = None  # type: Optional[mp.Process]
         # Monitor logs for this cluster will be prefixed by the monitor
         # subprocess name:
@@ -59,36 +68,16 @@ class RayCluster():
 
         self.setup_logging()
 
-    def set_config(self, config: Dict[str, Any]) -> None:
-        self.config = config
-
-    def set_generation(self, generation: int) -> None:
-        self._generation = generation
-
-    def set_num_retries(self, num_retries: int) -> None:
-        self._num_retries = num_retries
-
-    def get_generation(self) -> int:
-        return self._generation
-
-    def get_num_retries(self) -> int:
-        return self._num_retries
-
-    def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
-        # First stop the subprocess if it's alive
-        self.clean_up_subprocess()
-        # Reinstantiate process with f as target and start.
-        self.subprocess = mp.Process(
-            name=self.subprocess_name, target=f, args=args, daemon=True)
-        self.subprocess.start()
-
-    def clean_up_subprocess(self):
-        if self.subprocess and self.subprocess.is_alive():
-            self.monitor_stop_event.set()
-            self.subprocess.join()
-            self.monitor_stop_event.clear()
-
     def create_or_update(self, restart_ray: bool = False) -> None:
+        """ Create/update the Ray Cluster and run the monitoring loop, all in a
+        subprocess.
+
+        The main function of the Operator is managing the
+        subprocesses started by this method.
+
+        Args:
+            restart_ray: If True, restarts Ray to recover from failure.
+        """
         self.do_in_subprocess(self._create_or_update, args=(restart_ray, ))
 
     def _create_or_update(self, restart_ray: bool = False) -> None:
@@ -99,12 +88,16 @@ class RayCluster():
             # Report failed autoscaler status to trigger cluster restart.
             cluster_status_q.put((self.name, self.namespace,
                                   STATUS_AUTOSCALING_EXCEPTION))
+            # `status_handling_loop` will increment the
+            # `status.AutoscalerRetries` of the CR. A restart will trigger
+            # at the subsequent "MODIFIED" event.
             raise
 
     def start_head(self, restart_ray: bool = False) -> None:
         self.write_config()
         # Don't restart Ray on head unless recovering from failure.
         no_restart = not restart_ray
+        # Create or update cluster head and record config side effects.
         self.config = commands.create_or_update_cluster(
             self.config_path,
             override_min_workers=None,
@@ -114,9 +107,11 @@ class RayCluster():
             yes=True,
             no_config_cache=True,
             no_monitor_on_head=True)
+        # Write the resulting config for use by the autoscaling monitor:
         self.write_config()
 
     def start_monitor(self) -> None:
+        """Runs the autoscaling monitor."""
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
         port = operator_utils.infer_head_port(self.config)
         redis_address = services.address(ray_head_pod_ip, port)
@@ -128,7 +123,33 @@ class RayCluster():
             stop_event=self.monitor_stop_event)
         self.mtr.run()
 
+    def do_in_subprocess(self, f: Callable[[], None], args: Tuple) -> None:
+        # First stop the subprocess if it's alive
+        self.clean_up_subprocess()
+        # Reinstantiate process with f as target and start.
+        self.subprocess = mp.Process(
+            name=self.subprocess_name, target=f, args=args, daemon=True)
+        self.subprocess.start()
+
+    def clean_up_subprocess(self):
+        """
+        Clean up the monitor process.
+
+        Executed when CR for this cluster is "DELETED".
+        Executed when Autoscaling monitor is restarted.
+        """
+        if self.subprocess and self.subprocess.is_alive():
+            # Triggers graceful stop of the monitor loop.
+            self.monitor_stop_event.set()
+            self.subprocess.join()
+            # Clears the event for subsequent runs of the monitor.
+            self.monitor_stop_event.clear()
+
     def clean_up(self) -> None:
+        """Executed when the CR for this cluster is "DELETED".
+
+        The key thing is to end the monitoring subprocess.
+        """
         self.clean_up_subprocess()
         self.clean_up_logging()
         self.delete_config()
@@ -150,12 +171,28 @@ class RayCluster():
     def clean_up_logging(self) -> None:
         operator_utils.root_logger.removeHandler(self.handler)
 
+    def set_config(self, config: Dict[str, Any]) -> None:
+        self.config = config
+
     def write_config(self) -> None:
+        """Write config to disk for use by the autoscaling monitor."""
         with open(self.config_path, "w") as file:
             yaml.dump(self.config, file)
 
     def delete_config(self) -> None:
         os.remove(self.config_path)
+
+    def set_generation(self, generation: int) -> None:
+        self._generation = generation
+
+    def set_num_retries(self, num_retries: int) -> None:
+        self._num_retries = num_retries
+
+    def get_generation(self) -> int:
+        return self._generation
+
+    def get_num_retries(self) -> int:
+        return self._num_retries
 
 
 # Maps ray cluster (name, namespace) pairs to RayCluster python objects.
@@ -232,7 +269,7 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         autoscaler_retries = status.get(AUTOSCALER_RETRIES_FIELD, 0)
 
         # True if there's been a chamge to the spec of the custom resource,
-        # triggering an increment of metadata.generation.
+        # triggering an increment of metadata.generation:
         spec_changed = current_generation > ray_cluster.get_generation()
         # True if monitor has failed, triggering an increment of
         # status.autoscalerRetries:
@@ -249,6 +286,7 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         # recovery from autoscaler failure.
         if spec_changed or ray_restart_required:
             ray_cluster.set_config(cluster_config)
+            # Trigger Ray restart only if there's been a failure.
             ray_cluster.create_or_update(restart_ray=ray_restart_required)
             cluster_status_q.put((cluster_name, cluster_namespace,
                                   STATUS_RUNNING))
