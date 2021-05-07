@@ -1,4 +1,5 @@
 import os
+import sys
 
 import ray
 
@@ -6,8 +7,9 @@ import numpy as np
 import pytest
 
 from ray.cluster_utils import Cluster
-from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
-                            get_error_message, Semaphore)
+import ray.ray_constants as ray_constants
+from ray.test_utils import (SignalActor, init_error_pubsub, get_error_message)
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
