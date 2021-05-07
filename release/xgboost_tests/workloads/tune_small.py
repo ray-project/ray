@@ -11,6 +11,7 @@ run in parallel.
 """
 from collections import Counter
 import json
+import os
 import time
 
 import ray
@@ -65,7 +66,9 @@ if __name__ == "__main__":
         "time_taken": taken,
         "trial_states": dict(Counter([trial.status for trial in analysis.trials]))
     }
-    with open("/tmp/tune_small.json", "wt") as f:
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/tune_small.json")
+    with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
     print("PASSED.")
