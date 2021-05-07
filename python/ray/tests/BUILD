@@ -161,6 +161,16 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_failure_3.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "flaky"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_placement_group.py",
     "test_runtime_env.py",
     "test_runtime_env_complicated.py"
