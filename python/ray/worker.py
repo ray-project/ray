@@ -66,6 +66,7 @@ RESTORE_WORKER_MODE = 4
 UTIL_WORKER_MODE = 5
 
 ERROR_KEY_PREFIX = b"Error:"
+FILTER_LOGS_BY_JOB = True
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -936,8 +937,9 @@ def print_logs(redis_client, threads_stopped, job_id):
             data = json.loads(ray._private.utils.decode(msg["data"]))
 
             # Don't show logs from other drivers.
-            if data["job"] and ray._private.utils.binary_to_hex(
-                    job_id.binary()) != data["job"]:
+            if (FILTER_LOGS_BY_JOB and data["job"]
+                    and ray._private.utils.binary_to_hex(
+                        job_id.binary()) != data["job"]):
                 continue
             data["localhost"] = localhost
             global_worker_stdstream_dispatcher.emit(data)
