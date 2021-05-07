@@ -64,10 +64,11 @@ if __name__ == "__main__":
 
     result = {
         "time_taken": taken,
-        "trial_states": dict(Counter([trial.status for trial in analysis.trials]))
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials]))
     }
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/tune_small.json")
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/tune_small.json")
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 

@@ -9,7 +9,7 @@
 
   run:
     timeout: 600
-    script: workloads/tune_small.py
+    script: python workloads/tune_small.py
 
 #  artifacts:
 #    output: ~/kf-dev/output.csv
