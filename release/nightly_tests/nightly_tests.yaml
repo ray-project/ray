@@ -9,8 +9,7 @@
 
   run:
     timeout: 600
-    script: shuffle/shuffle_10gb.py
-    results: /tmp/shuffle_10gb.json
+    script: python shuffle/shuffle_10gb.py
 
   smoke_test:
     cluster:
