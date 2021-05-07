@@ -18,7 +18,7 @@ spec:
     additionalPrinterColumns:
       - name: status
         type: string
-        description: Running, Error, or AutoscalingExceptionRecovery
+        description: Updating, Running, Error, or AutoscalingExceptionRecovery
         jsonPath: .status.phase
       - name: restarts
         type: integer
@@ -38,7 +38,7 @@ spec:
             type: object
             properties:
               phase:
-                description: Running, Error, or AutoscalingExceptionRecovery
+                description: Updating, Running, Error, or AutoscalingExceptionRecovery
                 type: string
               autoscalerRetries:
                 description: Number of Ray cluster restarts triggered by autoscaler failure.

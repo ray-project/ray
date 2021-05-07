@@ -24,6 +24,7 @@ RAYCLUSTER_PLURAL = "rayclusters"
 STATUS_AUTOSCALING_EXCEPTION = "AutoscalingExceptionRecovery"
 STATUS_ERROR = "Error"
 STATUS_RUNNING = "Running"
+STATUS_UPDATING = "Running"
 AUTOSCALER_RETRIES_FIELD = "autoscalerRetries"
 
 MAX_STATUS_RETRIES = 3

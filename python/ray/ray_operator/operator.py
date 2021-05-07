@@ -20,6 +20,7 @@ from ray.ray_operator.operator_utils import AUTOSCALER_RETRIES_FIELD
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
 from ray.ray_operator.operator_utils import STATUS_ERROR
 from ray.ray_operator.operator_utils import STATUS_RUNNING
+from ray.ray_operator.operator_utils import STATUS_UPDATING
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
@@ -223,9 +224,9 @@ def handle_event(event_type, cluster_cr, cluster_name, cluster_namespace):
     try:
         cluster_action(event_type, cluster_cr, cluster_name, cluster_namespace)
     except Exception:
+        log_prefix = ",".join(cluster_name, cluster_namespace)
         if event_type in ["ADDED", "MODIFIED"]:
-            logger.exception(
-                f"Error while updating RayCluster {cluster_name}.")
+            logger.exception(f"{log_prefix}: Error while updating RayCluster.")
             cluster_status_q.put((cluster_name, cluster_namespace,
                                   STATUS_ERROR))
         elif event_type == "DELETED":
@@ -238,7 +239,6 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
                    cluster_name: str, cluster_namespace: str) -> None:
 
     cluster_config = operator_utils.cr_to_config(cluster_cr)
-    cluster_name = cluster_config["cluster_name"]
     cluster_identifier = (cluster_name, cluster_namespace)
     log_prefix = ",".join(cluster_identifier)
 
@@ -246,7 +246,8 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         operator_utils.check_redis_password_not_specified(
             cluster_config, cluster_identifier)
 
-        cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
+        cluster_status_q.put((cluster_name, cluster_namespace,
+                              STATUS_UPDATING))
 
         ray_cluster = RayCluster(cluster_config)
 
@@ -258,6 +259,8 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         ray_cluster.create_or_update()
 
         ray_clusters[cluster_identifier] = ray_cluster
+
+        cluster_status_q.put((cluster_name, cluster_namespace, STATUS_RUNNING))
 
     elif event_type == "MODIFIED":
         ray_cluster = ray_clusters[cluster_identifier]
@@ -285,6 +288,8 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         # Update if there's been a change to the spec or if we're attempting
         # recovery from autoscaler failure.
         if spec_changed or ray_restart_required:
+            cluster_status_q.put((cluster_name, cluster_namespace,
+                                  STATUS_UPDATING))
             ray_cluster.set_config(cluster_config)
             # Trigger Ray restart only if there's been a failure.
             ray_cluster.create_or_update(restart_ray=ray_restart_required)
@@ -300,7 +305,11 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
 def status_handling_loop():
     while True:
         cluster_name, cluster_namespace, phase = cluster_status_q.get()
-        operator_utils.set_status(cluster_name, cluster_namespace, phase)
+        try:
+            operator_utils.set_status(cluster_name, cluster_namespace, phase)
+        except Exception:
+            log_prefix = ",".join(cluster_name, cluster_namespace)
+            logger.exception(f"{log_prefix}: Error setting RayCluster status.")
 
 
 def main() -> None:
