@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
@@ -168,7 +169,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   GcsActorManager(
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -453,6 +454,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
 
+  RuntimeEnvManager &runtime_env_manager_;
   // Debug info.
   enum CountType {
     REGISTER_ACTOR_REQUEST = 0,

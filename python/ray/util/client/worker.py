@@ -34,7 +34,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
+from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -84,17 +84,13 @@ class Worker:
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
 
-        grpc_options = [
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=grpc_options)
+                conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=grpc_options)
+                conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -464,7 +460,7 @@ class Worker:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
-                runtime_env.rewrite_working_dir_uri(job_config)
+                runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
                 init_resp = self.data_client.Init(init_req)

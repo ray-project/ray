@@ -140,7 +140,7 @@ logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 # measure this timing.
 def stage4():
     num_tasks = int(ray.cluster_resources()["GPU"])
-    logger.info(f"Scheduling many tasks for spillback.")
+    logger.info("Scheduling many tasks for spillback.")
 
     @ray.remote(num_gpus=1)
     def func(t):

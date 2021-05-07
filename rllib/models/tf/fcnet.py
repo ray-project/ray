@@ -1,17 +1,18 @@
 import numpy as np
 import gym
-from typing import Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence
 
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
 
 tf1, tf, tfv = try_import_tf()
 
 
+# TODO: (sven) obsolete this class once we only support native keras models.
 class FullyConnectedNetwork(TFModelV2):
     """Generic fully connected network implemented in ModelV2 API."""
 
@@ -138,7 +139,7 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
             self,
             input_space: gym.spaces.Space,
             action_space: gym.spaces.Space,
-            num_outputs: int,
+            num_outputs: Optional[int] = None,
             *,
             name: str = "",
             fcnet_hiddens: Optional[Sequence[int]] = (),
@@ -209,10 +210,6 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
                     name="fc_out",
                     activation=None,
                     kernel_initializer=normc_initializer(0.01))(last_layer)
-            # Adjust num_outputs to be the number of nodes in the last layer.
-            else:
-                self.num_outputs = (
-                    [int(np.product(input_space.shape))] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std and logits_out is not None:
@@ -249,9 +246,8 @@ class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
             inputs, [(logits_out
                       if logits_out is not None else last_layer), value_out])
 
-    def call(self, input_dict: Dict[str, TensorType]) -> \
-            Tuple[TensorType, List[TensorType], TensorType]:
-        model_out, value_out = self.base_model(input_dict["obs"])
-        return model_out, [], {
-            SampleBatch.VF_PREDS: tf.reshape(value_out, [-1])
-        }
+    def call(self, input_dict: SampleBatch) -> \
+            (TensorType, List[TensorType], Dict[str, TensorType]):
+        model_out, value_out = self.base_model(input_dict[SampleBatch.OBS])
+        extra_outs = {SampleBatch.VF_PREDS: tf.reshape(value_out, [-1])}
+        return model_out, [], extra_outs

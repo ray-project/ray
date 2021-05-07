@@ -82,15 +82,18 @@ def test_backend_worker_memory_growth(serve_instance):
     gc_unreachable_objects.deploy()
     handle = gc_unreachable_objects.get_handle()
 
+    # We are checking that there's constant number of object in gc.
+    known_num_objects = ray.get(handle.remote())
+
     for _ in range(10):
         result = requests.get("http://127.0.0.1:8000/model")
         assert result.status_code == 200
         num_unreachable_objects = result.json()
-        assert num_unreachable_objects == 0
+        assert num_unreachable_objects == known_num_objects
 
     for _ in range(10):
         num_unreachable_objects = ray.get(handle.remote())
-        assert num_unreachable_objects == 0
+        assert num_unreachable_objects == known_num_objects
 
 
 def test_ref_in_handle_input(serve_instance):

@@ -475,6 +475,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
 
+  void HandleUpdateResourceUsage(const rpc::UpdateResourceUsageRequest &request,
+                                 rpc::UpdateResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `RequestResourceReport` request.
   void HandleRequestResourceReport(const rpc::RequestResourceReportRequest &request,
                                    rpc::RequestResourceReportReply *reply,

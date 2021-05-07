@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -26,9 +27,11 @@ namespace gcs {
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
   explicit GcsJobManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                         RuntimeEnvManager &runtime_env_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+        gcs_pub_sub_(std::move(gcs_pub_sub)),
+        runtime_env_manager_(runtime_env_manager) {}
 
   void Initialize(const GcsInitData &gcs_init_data);
 
@@ -62,6 +65,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
   /// A cached mapping from job id to namespace.
   std::unordered_map<JobID, std::string> ray_namespaces_;
 
+  ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);
 };
 
