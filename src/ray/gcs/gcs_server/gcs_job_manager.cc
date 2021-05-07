@@ -21,7 +21,7 @@ namespace gcs {
 
 void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   for (auto &pair : gcs_init_data.Jobs()) {
-    const auto &job_id = pair.first ;
+    const auto &job_id = pair.first;
     const auto &job_table_data = pair.second;
     const auto &ray_namespace = job_table_data.config().ray_namespace();
     ray_namespaces_[job_id] = ray_namespace;

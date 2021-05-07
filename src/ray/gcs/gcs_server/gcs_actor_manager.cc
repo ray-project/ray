@@ -72,7 +72,9 @@ bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
 
 std::string GcsActor::GetName() const { return actor_table_data_.name(); }
 
-std::string GcsActor::GetRayNamespace() const { return actor_table_data_.ray_namespace(); }
+std::string GcsActor::GetRayNamespace() const {
+  return actor_table_data_.ray_namespace();
+}
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   const auto &task_spec = actor_table_data_.task_spec();
@@ -267,7 +269,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+  auto actor =
+      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
@@ -384,7 +387,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Remove the actor from the unresolved actor map.
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor = std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+  auto actor =
+      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   RemoveUnresolvedActor(actor);
 

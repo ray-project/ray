@@ -103,7 +103,7 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
         mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_mgr_,
         [](const ActorID &actor_id) {},
-        [this](const JobID &job_id) {return job_namespace_table_[job_id];},
+        [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
         [this](const rpc::Address &addr) { return worker_client_; }));
 
     for (int i = 1; i <= 10; i++) {
