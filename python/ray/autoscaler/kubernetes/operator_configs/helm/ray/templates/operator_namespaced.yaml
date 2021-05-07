@@ -1,4 +1,4 @@
-{{- if .Values.namespacedOperator and not .Values.noOperator }}
+{{- if and (.Values.namespacedOperator) (not .Values.noOperator) }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -44,7 +44,7 @@ spec:
       containers:
       - name: ray
         imagePullPolicy: Always
-        image: {{- .Values.operatorImage }}
+        image: {{ .Values.operatorImage }}
         command: ["ray-operator"]
         env:
         - name: RAY_OPERATOR_POD_NAMESPACE
