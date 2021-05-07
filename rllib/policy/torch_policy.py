@@ -28,7 +28,7 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
 
 torch, nn = try_import_torch()
 
