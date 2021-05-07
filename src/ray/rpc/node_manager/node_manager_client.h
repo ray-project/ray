@@ -70,6 +70,9 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
+  /// Update cluster resource usage.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, UpdateResourceUsage, grpc_client_, )
+
   /// Request a resource report.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_, )
 

@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.utils import try_import_tf
+    _, tf, _ = try_import_tf()
+    from gym.envs.classic_control.rendering import SimpleImageViewer
 
 logger = logging.getLogger(__name__)
 

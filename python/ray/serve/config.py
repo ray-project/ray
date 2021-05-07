@@ -10,6 +10,8 @@ from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
+
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.

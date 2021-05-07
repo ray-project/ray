@@ -27,6 +27,25 @@ from typing import Union
 # Currently, this is 2GiB, the max for a signed int.
 GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
 
+# 30 seconds because ELB timeout is 60 seconds
+GRPC_KEEPALIVE_TIME_MS = 1000 * 30
+
+# 20 seconds (gRPC) default
+GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 20
+
+GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
+    ("grpc.keepalive_permit_without_calls", 1),
+    # Send an infinite number of pings
+    ("grpc.max_pings_without_data", 0),
+    ("grpc.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    # Allow many strikes
+    ("grpc.max_ping_strikes", 0)
+]
+
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 

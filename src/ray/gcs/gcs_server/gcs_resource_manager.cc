@@ -21,14 +21,17 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage) {
-  periodical_runner_.RunFnPeriodically(
-      [this] { SendBatchedResourceUsage(); },
-      RayConfig::instance().raylet_report_resources_period_milliseconds(),
-      "GcsResourceManager.deadline_timer.send_batched_resource_usage");
+      gcs_table_storage_(gcs_table_storage),
+      redis_broadcast_enabled_(redis_broadcast_enabled) {
+  if (redis_broadcast_enabled_) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { SendBatchedResourceUsage(); },
+        RayConfig::instance().raylet_report_resources_period_milliseconds(),
+        "GcsResourceManager.deadline_timer.send_batched_resource_usage");
+  }
 }
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -78,6 +81,8 @@ void GcsResourceManager::HandleUpdateResources(
     auto on_done = [this, node_id, changed_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
+      // TODO (Alex): We need to move this into ResourceBatchData. It's currently a
+      // message-reodering nightmare.
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
@@ -181,6 +186,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
       resources_data->resource_load_changed()) {
+    absl::MutexLock guard(&resource_buffer_mutex_);
     resources_buffer_[node_id] = *resources_data;
   }
 }
@@ -327,7 +333,10 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
-  resources_buffer_.erase(node_id);
+  {
+    absl::MutexLock guard(&resource_buffer_mutex_);
+    resources_buffer_.erase(node_id);
+  }
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
 }
@@ -357,14 +366,25 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
   return true;
 }
 
+void GcsResourceManager::GetResourceUsageBatchForBroadcast(
+    rpc::ResourceUsageBatchData &buffer) {
+  absl::MutexLock guard(&resource_buffer_mutex_);
+  GetResourceUsageBatchForBroadcast_Locked(buffer);
+}
+
+void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
+    rpc::ResourceUsageBatchData &buffer) {
+  for (auto &resources : resources_buffer_) {
+    buffer.add_batch()->Swap(&resources.second);
+  }
+}
+
 void GcsResourceManager::SendBatchedResourceUsage() {
+  absl::MutexLock guard(&resource_buffer_mutex_);
   if (!resources_buffer_.empty()) {
     auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
-    for (auto &resources : resources_buffer_) {
-      batch->add_batch()->Swap(&resources.second);
-    }
+    GetResourceUsageBatchForBroadcast_Locked(*batch);
     stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
-
     RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
                                        batch->SerializeAsString(), nullptr));
     resources_buffer_.clear();
