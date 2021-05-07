@@ -159,3 +159,7 @@ static Gauge PendingPlacementGroups(
 static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
                                          "Outbound heartbeat payload size", "kb",
                                          {10, 50, 100, 1000, 10000, 100000});
+
+static Histogram GcsUpdateResourceUsageTime(
+    "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
+    "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});

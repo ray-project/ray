@@ -2,6 +2,7 @@ import logging
 import multiprocessing as mp
 import os
 import time
+import threading
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -18,6 +19,9 @@ from ray.ray_operator import operator_utils
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
+
+# Queue to process cluster status updates.
+cluster_status_q = mp.Queue()  # type: mp.Queue[Tuple[str, str, str]]
 
 
 class RayCluster():
@@ -43,6 +47,7 @@ class RayCluster():
         # Monitor logs for this cluster will be prefixed by the monitor
         # subprocess name:
         self.subprocess_name = ",".join([self.name, self.namespace])
+        self.monitor_stop_event = mp.Event()
 
         self.setup_logging()
 
@@ -55,29 +60,30 @@ class RayCluster():
     def get_generation(self) -> int:
         return self._generation
 
-    def do_in_subprocess(self,
-                         f: Callable[[], None],
-                         wait_to_finish: bool = False) -> None:
+    def do_in_subprocess(self, f: Callable[[], None]) -> None:
         # First stop the subprocess if it's alive
         self.clean_up_subprocess()
         # Reinstantiate process with f as target and start.
         self.subprocess = mp.Process(
             name=self.subprocess_name, target=f, daemon=True)
         self.subprocess.start()
-        if wait_to_finish:
-            self.subprocess.join()
 
     def clean_up_subprocess(self):
         if self.subprocess and self.subprocess.is_alive():
-            self.subprocess.terminate()
+            self.monitor_stop_event.set()
             self.subprocess.join()
+            self.monitor_stop_event.clear()
 
     def create_or_update(self) -> None:
         self.do_in_subprocess(self._create_or_update)
 
     def _create_or_update(self) -> None:
-        self.start_head()
-        self.start_monitor()
+        try:
+            self.start_head()
+            self.start_monitor()
+        except Exception:
+            cluster_status_q.put((self.name, self.namespace, "Error"))
+            raise
 
     def start_head(self) -> None:
         self.write_config()
@@ -94,14 +100,14 @@ class RayCluster():
 
     def start_monitor(self) -> None:
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
-        # TODO: Add support for user-specified redis port and password
-        redis_address = services.address(ray_head_pod_ip,
-                                         ray_constants.DEFAULT_PORT)
+        port = operator_utils.infer_head_port(self.config)
+        redis_address = services.address(ray_head_pod_ip, port)
         self.mtr = monitor.Monitor(
             redis_address=redis_address,
             autoscaling_config=self.config_path,
             redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
-            prefix_cluster_info=True)
+            prefix_cluster_info=True,
+            stop_event=self.monitor_stop_event)
         self.mtr.run()
 
     def clean_up(self) -> None:
@@ -163,8 +169,7 @@ def handle_event(event_type, cluster_cr, cluster_name, cluster_namespace):
         cluster_action(event_type, cluster_cr, cluster_name, cluster_namespace)
     except Exception:
         logger.exception(f"Error while updating RayCluster {cluster_name}.")
-        operator_utils.set_status(cluster_cr, cluster_name, cluster_namespace,
-                                  "Error")
+        cluster_status_q.put((cluster_name, cluster_namespace, "Error"))
 
 
 def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
@@ -175,9 +180,10 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
     cluster_identifier = (cluster_name, cluster_namespace)
 
     if event_type == "ADDED":
+        operator_utils.check_redis_password_not_specified(
+            cluster_config, cluster_identifier)
 
-        operator_utils.set_status(cluster_cr, cluster_name, cluster_namespace,
-                                  "Running")
+        cluster_status_q.put((cluster_name, cluster_namespace, "Running"))
 
         ray_cluster = RayCluster(cluster_config)
 
@@ -205,12 +211,23 @@ def cluster_action(event_type: str, cluster_cr: Dict[str, Any],
         del ray_clusters[cluster_identifier]
 
 
+def status_handling_loop():
+    while True:
+        cluster_name, cluster_namespace, status = cluster_status_q.get()
+        operator_utils.set_status(cluster_name, cluster_namespace, status)
+
+
 def main() -> None:
+    # Run status-handling loop.
+    status_handler = threading.Thread(target=status_handling_loop, daemon=True)
+    status_handler.start()
+
     # Make directory for Ray cluster configs
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
+
     while True:
-        # This outer loop wait for creation of a RayCluster CRD if it hasn't
+        # This outer loop waits for creation of a RayCluster CRD if it hasn't
         # already been created.
         try:
             # Enter main event loop.

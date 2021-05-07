@@ -64,6 +64,14 @@ ray.cancel
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_actor-ref:
+
+
+ray.get_actor
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.get_actor
+
 .. _ray-get_gpu_ids-ref:
 
 ray.get_gpu_ids

@@ -306,7 +306,6 @@ def move_file(target_dir, filename):
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
-        print("Copying {} to {}.".format(source, destination))
         if sys.platform == "win32":
             # Does not preserve file mode (needed to avoid read-only bit)
             shutil.copyfile(source, destination, follow_symlinks=True)
