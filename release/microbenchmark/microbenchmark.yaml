@@ -9,4 +9,4 @@
 
   run:
     timeout: 600
-    script: OMP_NUM_THREADS=64 ray microbenchmark
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py

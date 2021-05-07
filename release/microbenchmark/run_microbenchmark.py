@@ -14,16 +14,13 @@ if __name__ == "__main__":
     from ray.ray_perf import main
     results = main() or []
 
-    print("RESULTS", results)
-
     result_dict = {
         f"{to_dict_key(v[0])}": (v[1], v[2])
         for v in results if v is not None
     }
 
-    print("RESULTS", result_dict)
-
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/microbenchmark.json")
+
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
