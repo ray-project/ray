@@ -2075,6 +2075,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/deterministic_training_tf",
+    tags = ["examples", "examples_D"],
+    size = "small",
+    srcs = ["examples/deterministic_training.py"],
+    args = ["--stop-iters=1", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/deterministic_training_tf2",
+    tags = ["examples", "examples_D"],
+    size = "small",
+    srcs = ["examples/deterministic_training.py"],
+    args = ["--stop-iters=1", "--framework=tf2"]
+)
+
+py_test(
+    name = "examples/deterministic_training_torch",
+    tags = ["examples", "examples_D"],
+    size = "small",
+    srcs = ["examples/deterministic_training.py"],
+    args = ["--stop-iters=1", "--framework=torch"]
+)
+
+py_test(
     name = "examples/eager_execution",
     tags = ["examples", "examples_E"],
     size = "small",
