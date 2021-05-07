@@ -548,7 +548,7 @@ class Trainer(Trainable):
             cls, config: PartialTrainerConfigDict) -> \
             Union[Resources, PlacementGroupFactory]:
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(None, cf)
+        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 
@@ -679,7 +679,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        self._validate_config(self, self.config)
+        self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -712,7 +712,8 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(self, evaluation_config)
+                self._validate_config(
+                    evaluation_config, trainer_obj_or_none=self)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -1139,8 +1140,8 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(trainer_obj_or_none,
-                         config: PartialTrainerConfigDict):
+    def _validate_config(config: PartialTrainerConfigDict,
+                         trainer_obj_or_none: Optional["Trainer"] = None):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
