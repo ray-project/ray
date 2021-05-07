@@ -155,7 +155,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 
@@ -165,7 +165,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
+  tags = ["exclusive"],
   deps = ["//:ray_lib"],
 )
 
