@@ -496,7 +496,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.env.seed(seed)
 
             # Torch.
-            if torch and policy_config["framework"] == "torch":
+            if torch and policy_config.get("framework") == "torch":
                 torch.manual_seed(seed)
                 # See https://github.com/pytorch/pytorch/issues/47672.
                 cuda_version = torch.version.cuda
@@ -509,10 +509,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 # This is only for Convolution no problem.
                 torch.backends.cudnn.deterministic = True
             # Tf2.x.
-            elif tf and policy_config["framework"] == "tf2":
+            elif tf and policy_config.get("framework") == "tf2":
                 tf.random.set_seed(seed)
             # Tf-eager.
-            elif tf1 and policy_config["framework"] == "tfe":
+            elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
         if _has_tensorflow_graph(policy_dict) and not (
