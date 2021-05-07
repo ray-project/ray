@@ -211,6 +211,7 @@ class ProgressReporterTest(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
 
     def mock_trial(self, status, i):
         mock = MagicMock()
@@ -409,6 +410,7 @@ class ProgressReporterTest(unittest.TestCase):
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
+            os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "100"
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 assert EXPECTED_END_TO_END_START in output

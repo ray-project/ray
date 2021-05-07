@@ -27,12 +27,13 @@ def conda_envs():
     def create_tf_env(tf_version: str):
 
         subprocess.run([
-            "conda", "create", "-n", f"tf-{tf_version}", f"--clone",
+            "conda", "create", "-n", f"tf-{tf_version}", "--clone",
             current_conda_env, "-y"
         ])
         commands = [
             init_cmd, f"conda activate tf-{tf_version}",
-            f"pip install tensorflow=={tf_version}", "conda deactivate"
+            f"python -m pip install tensorflow=={tf_version}",
+            "conda deactivate"
         ]
         command_separator = " && "
         command_str = command_separator.join(commands)

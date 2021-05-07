@@ -29,10 +29,10 @@ _ = Actor.remote()
     # Wait for actor to be created
     wait_for_num_actors(1)
 
-    actor_table = ray.actors()
+    actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.
@@ -40,7 +40,7 @@ _ = Actor.remote()
     p.wait()
 
     def actor_finish():
-        actor_table = ray.actors()
+        actor_table = ray.state.actors()
         if (len(actor_table) == 0):
             return True
         else:
@@ -75,10 +75,10 @@ ray.get(_.value.remote())
     # Wait for actor to be created
     wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
 
-    actor_table = ray.actors()
+    actor_table = ray.state.actors()
     assert len(actor_table) == 1
 
-    job_table = ray.jobs()
+    job_table = ray.state.jobs()
     assert len(job_table) == 2  # dash
 
     # Kill the driver process.

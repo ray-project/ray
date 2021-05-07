@@ -38,8 +38,8 @@ def server_actor_ref_count(server, n):
     [{
         "num_nodes": 1,
         "do_init": False,
-        # This test uses ray.objects(), which only works with the GCS-based
-        # object directory
+        # This test uses ray.state.objects(), which only works with the
+        # GCS-based object directory
         "_system_config": {
             "ownership_based_object_directory_enabled": False
         },
@@ -59,7 +59,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
 
         # One put, one function -- the function result thing1 is
         # in a different category, according to the raylet.
-        assert len(real_ray.objects()) == 2
+        assert len(real_ray.state.objects()) == 2
         # But we're maintaining the reference
         assert server_object_ref_count(server, 3)()
         # And can get the data
@@ -75,7 +75,7 @@ def test_delete_refs_on_disconnect(ray_start_cluster):
         real_ray.init(address=cluster.address)
 
         def test_cond():
-            return len(real_ray.objects()) == 0
+            return len(real_ray.state.objects()) == 0
 
         wait_for_condition(test_cond, timeout=5)
 
@@ -127,7 +127,7 @@ def test_delete_actor_on_disconnect(ray_start_cluster):
 
         def test_cond():
             alive_actors = [
-                v for v in real_ray.actors().values()
+                v for v in real_ray.state.actors().values()
                 if v["State"] != ActorTableData.DEAD
             ]
             return len(alive_actors) == 0

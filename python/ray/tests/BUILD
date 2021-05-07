@@ -114,7 +114,7 @@ py_test_module_list(
     "test_dask_scheduler.py",
     "test_debug_tools.py",
     "test_job.py",
-    "test_k8s_operator_mock.py",
+    "test_k8s_operator_unit_tests.py",
     "test_kv.py",
     "test_memstat.py",
     "test_metrics_agent.py",
@@ -129,6 +129,7 @@ py_test_module_list(
     "test_shuffle.py",
     "test_tempfile.py",
     "test_unhandled_error.py",
+    "test_top_level_api.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -195,6 +196,15 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+# TODO: use py_test(env = ...) in the build file with bazel 4.0
+py_test(
+  name = "test_tracing",
+  size = "small",
+  srcs = SRCS + ["test_tracing.py"],
+  tags = ["exclusive"],
+  deps = ["//:ray_lib"]
+)
+
 py_test(
     name = "test_pydantic_serialization",
     size = "small",
@@ -212,6 +222,7 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
+    "test_asyncio.py"
   ],
   size = "medium",
   extra_srcs = SRCS,

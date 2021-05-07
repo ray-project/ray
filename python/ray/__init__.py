@@ -1,64 +1,73 @@
-import os
 import logging
-from os.path import dirname
-import platform
-import sys
 
 logger = logging.getLogger(__name__)
 
-# MUST add pickle5 to the import path because it will be imported by some
-# raylet modules.
 
-if "pickle5" in sys.modules:
-    import pkg_resources
-    try:
-        version_info = pkg_resources.require("pickle5")
-        version = tuple(int(n) for n in version_info[0].version.split("."))
-        if version < (0, 0, 10):
-            raise ImportError("You are using an old version of pickle5 "
-                              "that leaks memory, please run "
-                              "'pip install pickle5 -U' to upgrade")
-    except pkg_resources.DistributionNotFound:
-        logger.warning("You are using the 'pickle5' module, but "
-                       "the exact version is unknown (possibly carried as "
-                       "an internal component by another module). Please "
-                       "make sure you are using pickle5 >= 0.0.10 because "
-                       "previous versions may leak memory.")
+def _configure_system():
+    import os
+    import platform
+    import sys
+    """Wraps system configuration to avoid 'leaking' variables into ray."""
 
-if "OMP_NUM_THREADS" not in os.environ:
-    logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-                 "degradation with many workers (issue #6998). You can "
-                 "override this by explicitly setting OMP_NUM_THREADS.")
-    os.environ["OMP_NUM_THREADS"] = "1"
+    # MUST add pickle5 to the import path because it will be imported by some
+    # raylet modules.
+    if "pickle5" in sys.modules:
+        import pkg_resources
+        try:
+            version_info = pkg_resources.require("pickle5")
+            version = tuple(int(n) for n in version_info[0].version.split("."))
+            if version < (0, 0, 10):
+                raise ImportError("You are using an old version of pickle5 "
+                                  "that leaks memory, please run "
+                                  "'pip install pickle5 -U' to upgrade")
+        except pkg_resources.DistributionNotFound:
+            logger.warning("You are using the 'pickle5' module, but "
+                           "the exact version is unknown (possibly carried as "
+                           "an internal component by another module). Please "
+                           "make sure you are using pickle5 >= 0.0.10 because "
+                           "previous versions may leak memory.")
 
-# Add the directory containing pickle5 to the Python path so that we find the
-# pickle5 version packaged with ray and not a pre-existing pickle5.
-pickle5_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
-sys.path.insert(0, pickle5_path)
+    if "OMP_NUM_THREADS" not in os.environ:
+        logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                     "degradation with many workers (issue #6998). You can "
+                     "override this by explicitly setting OMP_NUM_THREADS.")
+        os.environ["OMP_NUM_THREADS"] = "1"
 
-# Importing psutil & setproctitle. Must be before ray._raylet is initialized.
-thirdparty_files = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
-sys.path.insert(0, thirdparty_files)
+    # Add the directory containing pickle5 to the Python path so that we find
+    # the pickle5 version packaged with ray and not a pre-existing pickle5.
+    pickle5_path = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
+    sys.path.insert(0, pickle5_path)
 
-if sys.platform == "win32":
-    import ray._private.compat  # noqa: E402
-    ray._private.compat.patch_redis_empty_recv()
+    # Importing psutil & setproctitle. Must be before ray._raylet is
+    # initialized.
+    thirdparty_files = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
+    sys.path.insert(0, thirdparty_files)
 
-if (platform.system() == "Linux"
-        and "Microsoft".lower() in platform.release().lower()):
-    import ray._private.compat  # noqa: E402
-    ray._private.compat.patch_psutil()
+    if sys.platform == "win32":
+        import ray._private.compat  # noqa: E402
+        ray._private.compat.patch_redis_empty_recv()
 
-# Expose ray ABI symbols which may be dependent by other shared
-# libraries such as _streaming.so. See BUILD.bazel:_raylet
-python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
-so_path = os.path.join(dirname(__file__), "_raylet" + python_shared_lib_suffix)
-if os.path.exists(so_path):
-    import ctypes
-    from ctypes import CDLL
-    CDLL(so_path, ctypes.RTLD_GLOBAL)
+    if (platform.system() == "Linux"
+            and "Microsoft".lower() in platform.release().lower()):
+        import ray._private.compat  # noqa: E402
+        ray._private.compat.patch_psutil()
+
+    # Expose ray ABI symbols which may be dependent by other shared
+    # libraries such as _streaming.so. See BUILD.bazel:_raylet
+    python_shared_lib_suffix = ".so" if sys.platform != "win32" else ".pyd"
+    so_path = os.path.join(
+        os.path.dirname(__file__), "_raylet" + python_shared_lib_suffix)
+    if os.path.exists(so_path):
+        import ctypes
+        from ctypes import CDLL
+        CDLL(so_path, ctypes.RTLD_GLOBAL)
+
+
+_configure_system()
+# Delete configuration function.
+del _configure_system
 
 import ray._raylet  # noqa: E402
 
@@ -69,16 +78,13 @@ from ray._raylet import (  # noqa: E402
 
 _config = _Config()
 
-from ray.profiling import profile  # noqa: E402
 from ray.state import (  # noqa: E402
-    jobs, nodes, actors, objects, timeline, object_transfer_timeline,
-    cluster_resources, available_resources,
+    nodes, timeline, cluster_resources, available_resources,
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
     UTIL_WORKER_MODE, SPILL_WORKER_MODE, cancel, get, get_actor, get_gpu_ids,
-    get_resource_ids, get_dashboard_url, init, is_initialized, put, kill,
-    remote, shutdown, show_in_dashboard, wait,
+    init, is_initialized, put, kill, remote, shutdown, wait,
 )
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -98,28 +104,21 @@ __all__ = [
     "_config",
     "get_runtime_context",
     "actor",
-    "actors",
     "available_resources",
     "cancel",
     "cluster_resources",
     "get",
     "get_actor",
     "get_gpu_ids",
-    "get_resource_ids",
-    "get_dashboard_url",
     "init",
     "internal",
     "is_initialized",
     "java_actor_class",
     "java_function",
-    "jobs",
     "kill",
     "Language",
     "method",
     "nodes",
-    "objects",
-    "object_transfer_timeline",
-    "profile",
     "put",
     "remote",
     "shutdown",
@@ -146,3 +145,6 @@ __all__ += [
     "UniqueID",
     "PlacementGroupID",
 ]
+
+# Remove modules from top-level ray
+del logging

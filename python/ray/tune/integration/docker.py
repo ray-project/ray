@@ -5,7 +5,7 @@ from ray import services
 from ray.autoscaler.sdk import rsync, configure_logging
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
-from ray.tune.utils import env_integer
+from ray.ray_constants import env_integer
 
 
 class DockerSyncer(NodeSyncer):
