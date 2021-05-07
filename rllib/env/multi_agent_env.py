@@ -82,7 +82,6 @@ class MultiAgentEnv:
         # By default, do nothing.
         pass
 
-
 # yapf: disable
 # __grouping_doc_begin__
     @PublicAPI

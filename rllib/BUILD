@@ -1276,7 +1276,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils", "flaky"],
+    tags = ["utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1461,7 +1461,7 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I", "flaky"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )

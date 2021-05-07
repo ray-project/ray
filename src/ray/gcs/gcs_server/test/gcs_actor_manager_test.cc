@@ -95,12 +95,13 @@ class GcsActorManagerTest : public ::testing::Test {
     }));
     promise.get_future().get();
     worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
-
+    runtime_env_mgr_ =
+        std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_actor_manager_.reset(new gcs::GcsActorManager(
-        mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_,
+        mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_mgr_,
         [](const ActorID &actor_id) {},
         [this](const rpc::Address &addr) { return worker_client_; }));
   }
@@ -185,7 +186,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
-
+  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
 };
 
