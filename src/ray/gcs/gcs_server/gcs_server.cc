@@ -87,7 +87,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitRuntimeEnvManager();
 
   // Init gcs job manager.
-  InitGcsJobManager();
+  InitGcsJobManager(gcs_init_data);
 
   // Init gcs placement group manager.
   InitGcsPlacementGroupManager(gcs_init_data);
@@ -207,10 +207,11 @@ void GcsServer::InitGcsResourceScheduler() {
       std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
 }
 
-void GcsServer::InitGcsJobManager() {
+void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
                                                      *runtime_env_manager_);
+  gcs_job_manager_->Initialize(gcs_init_data);
   // Register service.
   job_info_service_ =
       std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
