@@ -21,7 +21,7 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)

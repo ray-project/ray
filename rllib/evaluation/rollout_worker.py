@@ -47,9 +47,8 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.observation_function import \
-        ObservationFunction  # noqa
-    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
+    from ray.rllib.evaluation.observation_function import ObservationFunction
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")

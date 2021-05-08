@@ -22,7 +22,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 logger = logging.getLogger(__name__)
 

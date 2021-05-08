@@ -164,10 +164,9 @@ def build_trainer(
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
             # self._iteration will be 0.
-            print()
-            evaluate_this_iter = self.config["evaluation_interval"] and \
-                                 (self._iteration + 1) % \
-                                 self.config["evaluation_interval"] == 0
+            evaluate_this_iter = \
+                self.config["evaluation_interval"] and \
+                (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
             # No evaluation necessary.
             if not evaluate_this_iter:
