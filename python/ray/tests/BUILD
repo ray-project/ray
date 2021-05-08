@@ -66,6 +66,7 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
+    "test_namespace.py",
     "test_object_spilling.py",
     "test_output.py",
     "test_reconstruction.py",
