@@ -2,8 +2,6 @@ import subprocess
 import time
 import os
 import json
-import os
-
 
 if __name__ == "__main__":
     start = time.time()
