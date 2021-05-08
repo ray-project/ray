@@ -83,6 +83,8 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "workers" not in summary
             assert "actors" not in summary
             assert "viewData" not in summary["raylet"]
+            assert "objectStoreAvailableMemory" in summary["raylet"]
+            assert "objectStoreUsedMemory" in summary["raylet"]
             break
         except Exception as ex:
             last_ex = ex
