@@ -152,18 +152,9 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_2.py",
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
     "test_failure_3.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive"],
   deps = ["//:ray_lib"],
