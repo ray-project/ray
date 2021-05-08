@@ -47,7 +47,9 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.observation_function import ObservationFunction
+    from ray.rllib.evaluation.observation_function import \
+        ObservationFunction  # noqa
+    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
@@ -966,7 +968,8 @@ class RolloutWorker(ParallelIteratorWorker):
             return [func(e) for e in envs]
 
     @DeveloperAPI
-    def foreach_env_with_context(self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
+    def foreach_env_with_context(
+            self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
         """Apply the given function to each underlying env instance."""
 
         if self.async_env is None:

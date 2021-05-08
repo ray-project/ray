@@ -1268,7 +1268,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils", "flaky"],
+    tags = ["utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1460,7 +1460,7 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I", "flaky"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )
@@ -1729,7 +1729,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1864,6 +1864,15 @@ py_test(
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
     args = ["--framework=torch"],
+)
+
+py_test(
+    name = "examples/curriculum_learning",
+    main = "examples/curriculum_learning.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/curriculum_learning.py"],
+    args = ["--as-test", "--stop-reward=1000.0"]
 )
 
 py_test(

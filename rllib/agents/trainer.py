@@ -11,6 +11,7 @@ import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -123,11 +124,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     "env": None,
     # Arguments to pass to the env creator.
     "env_config": {},
-    # A callable taking the last train results as arg and returning either:
-    # True: For advancing to the next task (e.g. curriculum level).
-    # False: For the env to remain in the current task.
-    # Any: For the particular task to set the env to.
-    #TODO: fn should also take the env itself as arg.
+    # A callable taking the last train results, the base env and the env
+    # context as args and returning a new task to set the env to.
+    # The env must be a `TaskSettableEnv` sub-class for this to work.
+    # See `examples/curriculum_learning.py` for an example.
     "env_task_fn": None,
     # If True, try to render the environment on the local worker or on worker
     # 1 (if num_workers > 0). For vectorized envs, this usually means that only
@@ -1104,7 +1104,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def collect_metrics(self,
-                        selected_workers: List["ActorHandle"] = None) -> dict:
+                        selected_workers: List[ActorHandle] = None) -> dict:
         """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().

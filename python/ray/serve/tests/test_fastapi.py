@@ -312,6 +312,27 @@ def test_fastapi_features(serve_instance):
     assert resp.headers["access-control-allow-origin"] == "*", resp.headers
 
 
+def test_fast_api_mounted_app(serve_instance):
+    app = FastAPI()
+    subapp = FastAPI()
+
+    @subapp.get("/hi")
+    def hi():
+        return "world"
+
+    app.mount("/mounted", subapp)
+
+    @serve.deployment(route_prefix="/api")
+    @serve.ingress(app)
+    class A:
+        pass
+
+    A.deploy()
+
+    assert requests.get(
+        "http://localhost:8000/api/mounted/hi").json() == "world"
+
+
 def test_fastapi_duplicate_routes(serve_instance):
     app = FastAPI()
 

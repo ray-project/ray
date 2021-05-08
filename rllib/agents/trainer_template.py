@@ -1,4 +1,5 @@
 import concurrent.futures
+from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -189,16 +190,17 @@ def build_trainer(
                     res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.
-            #if self.config["env_task_fn"] is not None:
-            #    assert callable(self.config["env_task_fn"])
+            if self.config["env_task_fn"] is not None:
+                assert callable(self.config["env_task_fn"])
 
-            #    def fn(env, env_context):
-            #        new_task = self.config["env_task_fn"](res, env, env_context)
-            #        cur_task = env.get_task()
-            #        if cur_task != new_task:
-            #            env.set_task(new_task)
+                def fn(env, env_context, task_fn):
+                    new_task = task_fn(res, env, env_context)
+                    cur_task = env.get_task()
+                    if cur_task != new_task:
+                        env.set_task(new_task)
 
-            #    self.workers.foreach_env_with_context(fn)
+                fn = partial(fn, task_fn=self.config["env_task_fn"])
+                self.workers.foreach_env_with_context(fn)
 
             return res
 

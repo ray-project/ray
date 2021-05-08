@@ -101,6 +101,13 @@ class KubernetesScaleTest(unittest.TestCase):
             example_cluster_config2 = copy.deepcopy(example_cluster_config)
             example_cluster_config2["spec"]["podTypes"][1]["minWorkers"] = 1
 
+            # Test overriding default client port.
+            example_cluster_config["spec"]["headServicePorts"] = [{
+                "name": "client",
+                "port": 10002,
+                "targetPort": 10001
+            }]
+
             yaml.dump(example_cluster_config, example_cluster_file)
             yaml.dump(example_cluster_config2, example_cluster_file2)
             yaml.dump_all(operator_config, operator_file)
@@ -156,7 +163,7 @@ class KubernetesScaleTest(unittest.TestCase):
 
             # Test scale up and scale down after task submission.
             command = f"kubectl -n {NAMESPACE}"\
-                " port-forward service/example-cluster-ray-head 10001:10001"
+                " port-forward service/example-cluster-ray-head 10002:10002"
             command = command.split()
             print(">>>Port-forwarding head service.")
             self.proc = subprocess.Popen(command)
@@ -165,7 +172,7 @@ class KubernetesScaleTest(unittest.TestCase):
                 # established.
                 time.sleep(10)
                 # Check that job submission works
-                submit_scaling_job(client_port="10001", num_tasks=15)
+                submit_scaling_job(client_port="10002", num_tasks=15)
                 # Clean up
                 self.proc.kill()
             except Exception:

@@ -184,17 +184,6 @@ def is_nan_or_inf(value):
     return np.isnan(value) or np.isinf(value)
 
 
-def env_integer(key, default):
-    # TODO(rliaw): move into ray.constants
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-        raise ValueError(f"Found {key} in environment, but value must "
-                         f"be an integer. Got: {value}.")
-    return default
-
-
 def merge_dicts(d1, d2):
     """
     Args:

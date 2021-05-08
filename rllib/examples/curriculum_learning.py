@@ -11,11 +11,12 @@ This example shows:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 import argparse
+import numpy as np
 import os
 
 import ray
 from ray import tune
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.apis.task_settable_env import TaskSettableEnv, TaskType
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.examples.env.curriculum_capable_env import CurriculumCapableEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -29,27 +30,44 @@ parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=0.1)
+parser.add_argument("--stop-timesteps", type=int, default=200000)
+parser.add_argument("--stop-reward", type=float, default=10000.0)
 
 
-def curriculum_fn(train_results: dict,
-                  base_env: BaseEnv,
-                  env_ctx: EnvContext):
-    #TODO: docstring.
-    # Our env supports tasks 1 to 10.
-    # Default: task 1
-    # If mean episode rewards are above 10.0 -> Move to task 2.
-    # etc..
-    new_task = (train_results["episode_reward_mean"] // 10) + 1
+def curriculum_fn(train_results: dict, task_settable_env: TaskSettableEnv,
+                  env_ctx: EnvContext) -> TaskType:
+    """Function returning a possibly new task to set `task_settable_env` to.
 
-    #TODO
+    Args:
+        train_results (dict): The train results returned by Trainer.train().
+        task_settable_env (TaskSettableEnv): A single TaskSettableEnv object
+            used inside any worker and at any vector position. Use `env_ctx`
+            to get the worker_index, vector_index, and num_workers.
+        env_ctx (EnvContext): The env context object (i.e. env's config dict
+            plus properties worker_index, vector_index and num_workers) used
+            to setup the `task_settable_env`.
+
+    Returns:
+        TaskType: The task to set the env to. This may be the same as the
+            current one.
+    """
+    # Our env supports tasks 1 (default) to 5.
+    # With each task, rewards get scaled up by a factor of 10, such that:
+    # Level 1: Expect rewards between 0.0 and 1.0.
+    # Level 2: Expect rewards between 1.0 and 10.0, etc..
+    # We will thus raise the level/task each time we hit a new power of 10.0
+    new_task = int(np.log10(train_results["episode_reward_mean"]) + 2.1)
+    # Clamp between valit values, just in case:
+    new_task = max(min(new_task, 5), 1)
+    print(f"Worker #{env_ctx.worker_index} vec-idx={env_ctx.vector_index}"
+          f"\nR={train_results['episode_reward_mean']}"
+          f"\nSeting env to task={new_task}")
     return new_task
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)#TODO
+    ray.init()
 
     # Can also register the env creator function explicitly with:
     # register_env(
@@ -58,12 +76,13 @@ if __name__ == "__main__":
     config = {
         "env": CurriculumCapableEnv,  # or "curriculum_env" if registered above
         "env_config": {
-            "corridor_length": 5,
+            "start_level": 1,
         },
+        "num_workers": 2,  # parallelism
+        "num_envs_per_worker": 5,
         "env_task_fn": curriculum_fn,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "num_workers": 2,  # parallelism
         "framework": "torch" if args.torch else "tf",
     }
 
@@ -73,12 +92,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    from ray.rllib.agents.ppo import PPOTrainer
-    trainer = PPOTrainer(config=config)
-    trainer.train()
-    results = trainer.workers.foreach_env_with_context(lambda env, ctx: ctx.worker_index)
-    print(results)
-    results = tune.run(args.run, config=config, stop=stop)
+    results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

@@ -8,11 +8,16 @@ import yaml
 
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
+from ray.ray_constants import DEFAULT_PORT
 from ray.ray_operator.operator import RayCluster
 from ray.ray_operator.operator_utils import cr_to_config
+from ray.ray_operator.operator_utils import check_redis_password_not_specified
+from ray.ray_operator.operator_utils import get_head_service
+from ray.ray_operator.operator_utils import infer_head_port
 from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.providers import _get_default_config
 """
 Tests that, when the K8s operator launches a cluster, no files are mounted onto
 the head node.
@@ -158,6 +163,81 @@ class OperatorTest(unittest.TestCase):
             cluster2 = RayCluster(config2)
             with pytest.raises(ValueError):
                 cluster2.start_head()
+
+    def test_operator_redis_password(self):
+        cluster_identifier = ("name", "namespace")
+        stop_cmd = "ray stop"
+        start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
+            " --dashboard-host 0.0.0.0 --redis-password 1234567"
+        cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
+        exception_message = "name,namespace:The Ray Kubernetes Operator does"\
+                            " not support setting a custom Redis password in"\
+                            " Ray start commands."
+        with pytest.raises(ValueError, match=exception_message):
+            check_redis_password_not_specified(cluster_config,
+                                               cluster_identifier)
+        start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
+            " --dashboard-host 0.0.0.0"
+        cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
+        check_redis_password_not_specified(cluster_config, cluster_identifier)
+
+    def test_operator_infer_port(self):
+        stop_cmd = "ray stop"
+        start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
+            " --dashboard-host 0.0.0.0 --port 1234567"
+        cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
+        assert infer_head_port(cluster_config) == "1234567"
+        # Use equals sign.
+        start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
+            " --dashboard-host 0.0.0.0 --port=1234567"
+        cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
+        assert infer_head_port(cluster_config) == "1234567"
+        # Don't specify port
+        start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
+            " --dashboard-host 0.0.0.0"
+        cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
+        assert infer_head_port(cluster_config) == str(DEFAULT_PORT)
+
+    def test_operator_configure_ports(self):
+        cluster_name = "test-cluster"
+        cluster_owner_reference = {}
+        head_service_ports = [{
+            "name": "test-port",
+            "port": 123,
+            "targetPort": 456
+        }, {
+            "name": "client",
+            "port": 555,
+            "targetPort": 666
+        }]
+        head_service = get_head_service(cluster_name, cluster_owner_reference,
+                                        head_service_ports)
+        expected_ports = [{
+            "name": "client",
+            "port": 555,
+            "targetPort": 666
+        }, {
+            "name": "dashboard",
+            "protocol": "TCP",
+            "port": 8265,
+            "targetPort": 8265
+        }, {
+            "name": "ray-serve",
+            "protocol": "TCP",
+            "port": 8000,
+            "targetPort": 8000
+        }, {
+            "name": "test-port",
+            "port": 123,
+            "targetPort": 456
+        }]
+        assert head_service["spec"]["ports"] == expected_ports
+
+        head_service = get_head_service(cluster_name, cluster_owner_reference,
+                                        None)
+        assert head_service["spec"]["ports"] == _get_default_config({
+            "type": "kubernetes"
+        })["provider"]["services"][0]["spec"]["ports"]
 
 
 if __name__ == "__main__":

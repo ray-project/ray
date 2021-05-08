@@ -3,7 +3,7 @@ import gym
 import logging
 import numpy as np
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 import ray.experimental.tf_utils
@@ -19,6 +19,9 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)

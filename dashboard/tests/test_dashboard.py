@@ -651,7 +651,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     p = subprocess.Popen(dashboard_cmd)
     p.wait(5)
 
-    dashboard_cmd.append(f"--port-retries=10")
+    dashboard_cmd.append("--port-retries=10")
     subprocess.Popen(dashboard_cmd)
 
     timeout_seconds = 10

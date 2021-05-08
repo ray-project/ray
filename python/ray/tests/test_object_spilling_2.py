@@ -316,12 +316,6 @@ def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_release_during_plasma_fetch(object_spilling_config, shutdown_only):
-    do_test_release_resource(object_spilling_config, expect_released=True)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.timeout(30)
 def test_spill_objects_on_object_transfer(object_spilling_config,
                                           ray_start_cluster):
