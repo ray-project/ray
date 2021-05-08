@@ -41,6 +41,7 @@ const columns = [
   "IP",
   "CPU Usage",
   "Memory",
+  "Object Store Memory",
   "Disk(root)",
   "Sent",
   "Received",
@@ -69,7 +70,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   }
 
   const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
-  const { nodeId, state } = raylet;
+  const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } = raylet;
 
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
@@ -109,6 +110,18 @@ export const NodeCard = (props: { node: NodeDetail }) => {
             <PercentageBar num={Number(mem[0] - mem[1])} total={mem[0]}>
               {memoryConverter(mem[0] - mem[1])}/{memoryConverter(mem[0])}(
               {mem[2]}%)
+            </PercentageBar>
+          </Grid>
+        )}
+        {raylet && (
+          <Grid item xs>
+            Object Store Memory
+            <PercentageBar
+              num={objectStoreUsedMemory}
+              total={objectStoreAvailableMemory}
+            >
+              {memoryConverter(objectStoreUsedMemory)}/
+              {memoryConverter(objectStoreAvailableMemory)}
             </PercentageBar>
           </Grid>
         )}
@@ -298,6 +311,19 @@ const Nodes = () => {
                             {memoryConverter(mem[0] - mem[1])}/
                             {memoryConverter(mem[0])}({mem[2]}%)
                           </PercentageBar>
+                        </TableCell>
+                        <TableCell>
+                          {
+                            raylet && (
+                              <PercentageBar
+                                num={raylet.objectStoreUsedMemory}
+                                total={raylet.objectStoreAvailableMemory}
+                              >
+                                {memoryConverter(raylet.objectStoreUsedMemory)}/
+                                {memoryConverter(raylet.objectStoreAvailableMemory)}
+                              </PercentageBar>
+                            )
+                          }
                         </TableCell>
                         <TableCell>
                           {disk && disk["/"] && (
