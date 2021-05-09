@@ -14,13 +14,21 @@
 
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 
+#include <boost/regex.hpp>
 #include <utility>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
+
+bool is_uuid(const std::string &str) {
+  static const boost::regex e(
+      "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}");
+  return regex_match(str, e);  // note: case sensitive now
+}
 
 NodeID GcsActor::GetNodeID() const {
   const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
@@ -275,6 +283,23 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());
     if (it == actors_in_namespace.end()) {
+      if (is_uuid(actor->GetRayNamespace()) && actor->IsDetached()) {
+        std::ostringstream stream;
+        stream
+            << "It looks like you're creating a detached actor in an anonymous "
+               "namespace. In order to access this actor in the future, you will need to "
+               "explicitely connect to this namespace with ray.init(namespace=\""
+            << actor->GetRayNamespace() << "\", ...)";
+
+        auto error_data_ptr =
+            gcs::CreateErrorTableData("detached_actor_anonymous_namespace", stream.str(),
+                                      absl::GetCurrentTimeNanos(), job_id);
+
+        RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
+                                           error_data_ptr->SerializeAsString(), nullptr));
+      }
+
       actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {
       std::stringstream stream;

@@ -498,6 +498,7 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
+        namespace=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -783,6 +784,7 @@ def init(
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
+        namespace=namespace,
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1124,6 +1126,7 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
+            namespace=None,
             job_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1232,6 +1235,7 @@ def connect(node,
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
+    job_config.set_ray_namespace(namespace)
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
