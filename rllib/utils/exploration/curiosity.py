@@ -290,7 +290,7 @@ class Curiosity(Exploration):
                     dist_inputs, self.model, self.action_space.nvec)
             # Neg log(p); p=probability of observed action given the inverse-NN
             # predicted action distribution.
-            inverse_loss = -action_dist.logp(actions)
+            inverse_loss = -action_dist.logp(tf.convert_to_tensor(actions))
             inverse_loss = tf.reduce_mean(inverse_loss)
 
             # Calculate the ICM loss.
