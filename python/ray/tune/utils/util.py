@@ -248,7 +248,8 @@ def deep_update(original,
 
 
 def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
+    """Flatten dict."""
+    dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
         raise ValueError(
