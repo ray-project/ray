@@ -2,7 +2,7 @@ import os
 import importlib
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray.job_config import JobConfig
@@ -27,6 +27,7 @@ class ClientBuilder:
     """
     Builder for a Ray Client connection.
     """
+
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self.job_config = JobConfig()
@@ -56,14 +57,27 @@ class _LocalClientBuilder(ClientBuilder):
     pass
 
 
+def _split_address(address: str) -> Tuple[str, str]:
+    """
+    Splits address by "://" into a module string and an inner_address.
+    NOTE: inner_address may contain "://"
+    """
+    module_start_idx = address.find("://")
+    module_string = address[0:module_start_idx]
+    inner_address_start_idx = module_start_idx + len("://")
+    inner_address = address[inner_address_start_idx:]
+    return (module_string, inner_address)
+
+
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address is None or address == "local":
         return _LocalClientBuilder(address)
     elif address.find("://") == -1:
         return ClientBuilder(address)
     else:
-        module = importlib.import_module(address.split("://")[0])
-        return module.ClientBuilder(address)
+        module_string, inner_address = _split_address(address)
+        module = importlib.import_module(module_string)
+        return module.ClientBuilder(inner_address)
 
 
 def client(address: Optional[str] = None) -> ClientBuilder:
