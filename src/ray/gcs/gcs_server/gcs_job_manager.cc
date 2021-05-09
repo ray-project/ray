@@ -131,7 +131,7 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
 
 std::string GcsJobManager::GetRayNamespace(const JobID &job_id) const {
   auto it = ray_namespaces_.find(job_id);
-  RAY_CHECK(it != ray_namespaces_.end());
+  RAY_CHECK(it != ray_namespaces_.end()) << "Couldn't find job with id: " << job_id;
   return it->second;
 }
 
