@@ -19,7 +19,7 @@ lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
 matplotlib==3.4.2; python_version >= '3.7'
 mlflow==1.16.0
-mxnet==1.7.0.post1
+mxnet==1.8.0.post0
 nevergrad==0.4.2.post5
 optuna==2.6.0
 pytest-remotedata==0.3.2
