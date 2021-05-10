@@ -93,7 +93,10 @@ class RuntimeEnvDict:
         return override_environment_variables
 
     def serialize(self) -> str:
-        return json.dumps(vars(self))
+        runtime_env_dict = vars(self)
+        if all(val is None for val in runtime_env_dict.values()):
+            runtime_env_dict = {}
+        return json.dumps(runtime_env_dict)
 
 
 class Protocol(Enum):
