@@ -2,32 +2,56 @@ import logging
 import json
 
 from aliyunsdkcore import client
-from aliyunsdkcore.acs_exception.exceptions import ClientException, ServerException
-from aliyunsdkecs.request.v20140526.AddTagsRequest import AddTagsRequest
-from aliyunsdkecs.request.v20140526.CreateInstanceRequest import CreateInstanceRequest
-from aliyunsdkecs.request.v20140526.DeleteInstanceRequest import DeleteInstanceRequest
-from aliyunsdkecs.request.v20140526.DeleteInstancesRequest import DeleteInstancesRequest
-from aliyunsdkecs.request.v20140526.StartInstanceRequest import StartInstanceRequest
-from aliyunsdkecs.request.v20140526.StopInstanceRequest import StopInstanceRequest
-from aliyunsdkecs.request.v20140526.StopInstancesRequest import StopInstancesRequest
-from aliyunsdkecs.request.v20140526.DescribeInstancesRequest import DescribeInstancesRequest
-from aliyunsdkecs.request.v20140526.TagResourcesRequest import TagResourcesRequest
-from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest import AllocatePublicIpAddressRequest
-from aliyunsdkecs.request.v20140526.AttachKeyPairRequest import AttachKeyPairRequest
-from aliyunsdkecs.request.v20140526.ImportKeyPairRequest import ImportKeyPairRequest
-from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest import DescribeKeyPairsRequest
-from aliyunsdkecs.request.v20140526.CreateKeyPairRequest import CreateKeyPairRequest
-from aliyunsdkecs.request.v20140526.RunInstancesRequest import RunInstancesRequest
-from aliyunsdkecs.request.v20140526.CreateSecurityGroupRequest import CreateSecurityGroupRequest
-from aliyunsdkecs.request.v20140526.DeleteKeyPairsRequest import DeleteKeyPairsRequest
-from aliyunsdkecs.request.v20140526.AuthorizeSecurityGroupRequest import AuthorizeSecurityGroupRequest
-from aliyunsdkecs.request.v20140526.DescribeSecurityGroupsRequest import DescribeSecurityGroupsRequest
-from aliyunsdkecs.request.v20140526.CreateVSwitchRequest import CreateVSwitchRequest
-from aliyunsdkecs.request.v20140526.CreateVpcRequest import CreateVpcRequest
-from aliyunsdkecs.request.v20140526.DescribeZonesRequest import DescribeZonesRequest
-from aliyunsdkecs.request.v20140526.DescribeVpcsRequest import DescribeVpcsRequest
-from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest import DescribeVSwitchesRequest
-from aliyunsdkecs.request.v20140526.RebootInstanceRequest import RebootInstanceRequest
+from aliyunsdkcore.acs_exception.exceptions \
+    import ClientException, ServerException
+from aliyunsdkecs.request.v20140526.CreateInstanceRequest \
+    import CreateInstanceRequest
+from aliyunsdkecs.request.v20140526.DeleteInstanceRequest \
+    import DeleteInstanceRequest
+from aliyunsdkecs.request.v20140526.DeleteInstancesRequest \
+    import DeleteInstancesRequest
+from aliyunsdkecs.request.v20140526.StartInstanceRequest \
+    import StartInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstanceRequest \
+    import StopInstanceRequest
+from aliyunsdkecs.request.v20140526.StopInstancesRequest \
+    import StopInstancesRequest
+from aliyunsdkecs.request.v20140526.DescribeInstancesRequest \
+    import DescribeInstancesRequest
+from aliyunsdkecs.request.v20140526.TagResourcesRequest \
+    import TagResourcesRequest
+from aliyunsdkecs.request.v20140526.AllocatePublicIpAddressRequest \
+    import AllocatePublicIpAddressRequest
+from aliyunsdkecs.request.v20140526.AttachKeyPairRequest \
+    import AttachKeyPairRequest
+from aliyunsdkecs.request.v20140526.ImportKeyPairRequest \
+    import ImportKeyPairRequest
+from aliyunsdkecs.request.v20140526.DescribeKeyPairsRequest \
+    import DescribeKeyPairsRequest
+from aliyunsdkecs.request.v20140526.CreateKeyPairRequest \
+    import CreateKeyPairRequest
+from aliyunsdkecs.request.v20140526.RunInstancesRequest \
+    import RunInstancesRequest
+from aliyunsdkecs.request.v20140526.CreateSecurityGroupRequest \
+    import CreateSecurityGroupRequest
+from aliyunsdkecs.request.v20140526.DeleteKeyPairsRequest \
+    import DeleteKeyPairsRequest
+from aliyunsdkecs.request.v20140526.AuthorizeSecurityGroupRequest \
+    import AuthorizeSecurityGroupRequest
+from aliyunsdkecs.request.v20140526.DescribeSecurityGroupsRequest \
+    import DescribeSecurityGroupsRequest
+from aliyunsdkecs.request.v20140526.CreateVSwitchRequest \
+    import CreateVSwitchRequest
+from aliyunsdkecs.request.v20140526.CreateVpcRequest \
+    import CreateVpcRequest
+from aliyunsdkecs.request.v20140526.DescribeZonesRequest \
+    import DescribeZonesRequest
+from aliyunsdkecs.request.v20140526.DescribeVpcsRequest \
+    import DescribeVpcsRequest
+from aliyunsdkecs.request.v20140526.DescribeVSwitchesRequest \
+    import DescribeVSwitchesRequest
+from aliyunsdkecs.request.v20140526.RebootInstanceRequest \
+    import RebootInstanceRequest
 
 
 class AcsClient:
@@ -51,18 +75,16 @@ class AcsClient:
             return instance_list
         return None
 
-    def create_instance(
-        self,
-        instance_type,
-        image_id,
-        tags,
-        optimized='optimized',
-        instance_charge_type='PostPaid',
-        spot_strategy='SpotWithPriceLimit',
-        internet_charge_type='PayByTraffic',
-        internet_max_bandwidth_out=5,
-        key_pair_name='admin_id_rsa'
-    ):
+    def create_instance(self,
+                        instance_type,
+                        image_id,
+                        tags,
+                        optimized='optimized',
+                        instance_charge_type='PostPaid',
+                        spot_strategy='SpotWithPriceLimit',
+                        internet_charge_type='PayByTraffic',
+                        internet_max_bandwidth_out=5,
+                        key_pair_name='admin_id_rsa'):
         request = CreateInstanceRequest()
         request.set_InstanceType(instance_type)
         request.set_ImageId(image_id)
@@ -77,25 +99,26 @@ class AcsClient:
         response = self._send_request(request)
         if response is not None:
             instance_id = response.get('InstanceId')
-            logging.info("instance %s created task submit successfully.", instance_id)
+            logging.info("instance %s created task submit successfully.",
+                         instance_id)
             return instance_id
         logging.error("instance created failed.")
         return None
 
     def run_instances(
-        self,
-        instance_type,
-        image_id,
-        tags,
-        security_group_id,
-        vswitch_id,
-        key_pair_name,
-        amount=1,
-        optimized='optimized',
-        instance_charge_type='PostPaid',
-        spot_strategy='SpotWithPriceLimit',
-        internet_charge_type='PayByTraffic',
-        internet_max_bandwidth_out=1,
+            self,
+            instance_type,
+            image_id,
+            tags,
+            security_group_id,
+            vswitch_id,
+            key_pair_name,
+            amount=1,
+            optimized='optimized',
+            instance_charge_type='PostPaid',
+            spot_strategy='SpotWithPriceLimit',
+            internet_charge_type='PayByTraffic',
+            internet_max_bandwidth_out=1,
     ):
         request = RunInstancesRequest()
         request.set_InstanceType(instance_type)
@@ -135,12 +158,14 @@ class AcsClient:
             request.set_Tags(tags)
         response = self._send_request(request)
         if response is not None:
-            security_groups = response.get('SecurityGroups').get('SecurityGroup')
+            security_groups = response.get('SecurityGroups').get(
+                'SecurityGroup')
             return security_groups
         logging.error("describe security group failed.")
         return None
 
-    def authorize_security_group(self, ip_protocol, port_range, security_group_id, source_cidr_ip):
+    def authorize_security_group(self, ip_protocol, port_range,
+                                 security_group_id, source_cidr_ip):
         request = AuthorizeSecurityGroupRequest()
         request.set_IpProtocol(ip_protocol)
         request.set_PortRange(port_range)
@@ -241,7 +266,8 @@ class AcsClient:
         request.set_KeyPairName(key_pair_name)
         response = self._send_request(request)
         if response is not None:
-            logging.info("Create Key Pair %s Successfully", response.get('KeyPairId'))
+            logging.info("Create Key Pair %s Successfully",
+                         response.get('KeyPairId'))
             return response
         else:
             logging.error("Create Key Pair Failed")
