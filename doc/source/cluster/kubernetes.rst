@@ -1,6 +1,5 @@
-***********************
 Deploying on Kubernetes
-***********************
+=======================
 
 .. _ray-k8s-deploy:
 
@@ -117,6 +116,8 @@ Then open a new shell and try out a sample program:
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
 The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
+The program for three Ray nodes to connect and then tests object transfer
+between the nodes.
 
 .. note::
 
@@ -129,7 +130,7 @@ The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connec
 
 Using Ray Client to connect from within the Kubernetes cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can connect to your Ray cluster from another pod in the same Kubernetes cluster.
+You can also connect to your Ray cluster from another pod in the same Kubernetes cluster.
 
 For example, you can submit a Ray application to run on the Kubernetes cluster as a `Kubernetes
 Job`_. The Job will run a single pod running the Ray driver program to
@@ -140,6 +141,11 @@ The following command submits a Job which executes an `example Ray program`_.
 .. code-block:: yaml
 
   $ kubectl -n ray create -f https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/job-example.yaml
+
+The program executed by the job uses the name of the Ray cluster's head Service to connect:
+``ray.util.connect("example-cluster-ray-head:10001")``.
+The program waits for three Ray nodes to connect and then tests object transfer
+between the nodes.
 
 To view the output of the Job, first find the name of the pod that ran it,
 then fetch its logs:
@@ -173,6 +179,29 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 
 Note that this command `does not delete` the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
+
+Next steps
+----------
+For further details and advanced configuration, see
+
+- :ref:`Ray Operator and Helm Chart Configuration<k8s-advanced>`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
