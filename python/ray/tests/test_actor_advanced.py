@@ -617,7 +617,7 @@ def test_named_but_not_detached(ray_start_regular):
 
     driver_script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 @ray.remote
 class NotDetached:
@@ -685,7 +685,7 @@ def test_detached_actor(ray_start_regular):
     create_actor_name = "DetachedActor"
     driver_script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 existing_actor = ray.get_actor("{}")
 assert ray.get(existing_actor.ping.remote()) == "pong"
@@ -762,7 +762,7 @@ def test_detached_actor_cleanup(ray_start_regular):
     driver_script = """
 import ray
 import time
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 @ray.remote
 class DetachedActor:

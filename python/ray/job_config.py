@@ -73,8 +73,10 @@ class JobConfig:
         if self._cached_pb is None:
             self._cached_pb = ray.gcs_utils.JobConfig()
             # TODO (alex): should the default here be a uuid?
-            self._cached_pb.ray_namespace = self.ray_namespace or str(
-                uuid.uuid4())
+            if self.ray_namespace is None:
+                self._cached_pb.ray_namespace = str(uuid.uuid4())
+            else:
+                self._cached_pb.ray_namespace = self.ray_namespace
             for key in self.worker_env:
                 self._cached_pb.worker_env[key] = self.worker_env[key]
             self._cached_pb.num_java_workers_per_process = (

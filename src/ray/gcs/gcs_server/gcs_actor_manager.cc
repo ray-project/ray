@@ -288,7 +288,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         stream
             << "It looks like you're creating a detached actor in an anonymous "
                "namespace. In order to access this actor in the future, you will need to "
-               "explicitely connect to this namespace with ray.init(namespace=\""
+               "explicitly connect to this namespace with ray.init(namespace=\""
             << actor->GetRayNamespace() << "\", ...)";
 
         auto error_data_ptr =

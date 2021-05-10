@@ -69,14 +69,10 @@ ray.get(actor.ping.remote())
     detached_actor = ray.get_actor("Pinger")
     assert ray.get(detached_actor.ping.remote()) == "pong from other job"
 
-    try:
+    with pytest.raises(
+            ValueError, match="Actor name cannot be an empty string"):
         probe = Actor.options(name="Pinger", lifetime="detached").remote()
         ray.get(probe.ping.remote())
-    except ValueError:
-        pass
-    else:
-        assert False, "We were allowed to create multiple actors with the "\
-                      "the name, in the same namespace"
 
 
 def test_default_namespace(shutdown_only):
