@@ -4,10 +4,85 @@ Deploying on Kubernetes
 
 .. _ray-k8s-deploy:
 
-Introduction
-============
+Overview
+--------
 You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
-The Ray Autoscaler spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
+The :ref:`Ray Autoscaler<ray-cluster-overview>` spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
+
+The Ray Kubernetes Operator
+---------------------------
+Deployments of Ray on Kubernetes are managed by the ``Ray Kubernetes Operator``.
+The Ray Operator follows the standard Kubernetes `operator pattern`_: the main players are
+
+  - A `Custom Resource`_ called a ``RayCluster``, which describes the desired state of the Ray cluster.
+  - A `Custom Controller`_, the ``Ray Operator``, which processes ``RayCluster`` resources and manages the Ray cluster.
+
+Under the hood, the Operator uses the `Ray Autoscaler<ray-cluster-overview>` to launch and scale your Ray cluster.
+
+Installing the Ray Operator with Helm
+-------------------------------------
+Ray provides a `Helm`_ chart to simplify deployment of the Ray Operator and Ray clusters.
+
+Currently, the `Ray Helm chart`_ is available on the the master branch of the Ray GitHub repo.
+The chart will be published to a public Helm repo as part of an upcoming official Ray release.
+
+Preparation
+~~~~~~~~~~~
+
+- Configure `kubectl`_ to access your Kubernetes cluster.
+- Install `Helm 3`_
+- Download the `Ray Helm chart`_.
+
+To run the default example in this document, make sure your Kubernetes cluster can accomodate
+additional resource requests of 4 CPU and 2.5Gi memory.
+
+Installation
+~~~~~~~~~~~~
+
+You can install a small Ray cluster with a single ``helm`` command.
+
+The default configuration consists of a Ray head pod and two worker pods,
+with scaling allowed up to three workers.
+
+.. code-block:: shell
+
+  # Navigate to the directory containing the chart, e.g.
+  $ cd ray/deploy/charts
+
+  # Install a small Ray cluster with default configuration,
+  # in a new namespace called "ray". Let's name the Helm release "example-cluster".
+  $ helm -n ray install example-cluster --create-namespace ./ray
+
+You can view the installed resources as follows.
+
+.. code-block:: shell
+
+  # The custom resource representing the state of the Ray cluster.
+  $ kubectl -n get rayclusters
+
+  # The Ray head node and two Ray worker nodes.
+  $ kubectl -n ray get pods
+
+  # A service exposing the Ray head node.
+  $ kubectl -n ray get service
+
+  # The operator deployment.
+  # By default, the deployment is launched in namespace "default".
+  $ kubectl get deployments
+
+  # The single pod of the operator deployment.
+  $ kubectl get pods
+
+  # The `Custom Resource Definition`_ defining a RayCluster.
+  $ kubectl get CRD
+
+
+To view autoscaling logs, run a ``kubectl logs`` command on the Operator pod from above.
+
+.. code-block:: shell
+
+  # The last 100 lines of logs.
+  $ kubectl logs ray-operator-xxxx | tail -n 100
 
 Quick Guide
 -----------
@@ -25,6 +100,16 @@ You can find more information at the following links:
 - :ref:`GPU usage with Kubernetes<k8s-gpus>`
 - :ref:`Using Ray Tune on your Kubernetes cluster<tune-kubernetes>`
 - :ref:`How to manually set up a non-autoscaling Ray cluster on Kubernetes<ray-k8s-static>`
+
+The Ray Kubernetes operator works by managing a user-submitted `Kubernetes Custom Resource`_ (CR) called a ``RayCluster``.
+A RayCluster custom resource describes the desired state of the Ray cluster.
+[All the key words in this section]
+Operator manages CRD.
+For convenient deployment of the Ray Operator and CRDs ``Helm`` Chart.
+
+The Ray Helm chart is currently available. Accessible from the Ray repository.
+Helm repository in .
+
 
 .. _k8s-overview:
 
@@ -62,9 +147,6 @@ Using the Kubernetes Operator does not require a local installation of Ray - all
 Further reading
 ---------------
 
-Read :ref:`here<k8s-comparison>` for more details on the comparison between the Operator and Cluster Launcher.
-Note that it is also possible to manually deploy a :ref:`non-autoscaling Ray cluster <ray-k8s-static>` on Kubernetes.
-
 .. note::
 
   The configuration ``yaml`` files used in this document are provided in the `Ray repository`_
@@ -76,47 +158,6 @@ Note that it is also possible to manually deploy a :ref:`non-autoscaling Ray clu
 
 
 .. _`Ray repository`: https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes
-
-.. _k8s-cluster-launcher:
-
-Managing Clusters with the Ray Cluster Launcher
-===============================================
-
-This section briefly explains how to use the Ray Cluster Launcher to launch a Ray cluster on your existing Kubernetes cluster.
-
-First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
-
-Once you have ``kubectl`` configured locally to access the remote cluster, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker node pods, with all pods requiring 1 CPU and 0.5GiB of memory.
-
-Test that it works by running the following commands from your local machine:
-
-.. _cluster-launcher-commands:
-
-.. code-block:: bash
-
-    # Create or update the cluster. When the command finishes, it will print
-    # out the command that can be used to get a remote shell into the head node.
-    $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
-
-    # List the pods running in the cluster. You shoud only see one head node
-    # until you start running an application, at which point worker nodes
-    # should be started. Don't forget to include the Ray namespace in your
-    # 'kubectl' commands ('ray' by default).
-    $ kubectl -n ray get pods
-
-    # Get a remote screen on the head node.
-    $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
-    $ # Try running a Ray program with 'ray.init(address="auto")'.
-
-    # View monitor logs
-    $ ray monitor ray/python/ray/autoscaler/kubernetes/example-full.yaml
-
-    # Tear down the cluster
-    $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
-
-* Learn about :ref:`running Ray programs on Kubernetes <ray-k8s-run>`
-
-.. _k8s-operator:
 
 Managing clusters with the Ray Kubernetes Operator
 ==================================================
@@ -136,6 +177,13 @@ in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
 
    1. The Ray Kubernetes Operator is still experimental. For the yaml files in the examples below, we recommend using the latest master version of Ray.
    2. The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command :bash:`kubectl version`.
+
+
+Installing the Operator
+-----------------------
+For this example, let's install...
+``helm -n ray install example-cluster --create-namespace ./ray``
+
 
 Starting the Operator
 ---------------------
@@ -363,81 +411,19 @@ Finally, we delete the operator:
 
          $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_cluster_scoped.yaml
 
-If you like, you can delete the RayCluster customer resource definition.
-(Using the operator again will then require reapplying the CRD.)
-
-.. code-block:: shell
-
- $ kubectl delete crd rayclusters.cluster.ray.io
- # OR
- $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
-
 
 .. _ray-k8s-interact:
 
 Interacting with a Ray Cluster
 ==============================
 :ref:`Ray Client <ray-client>` allows you to connect to your Ray cluster on Kubernetes and execute Ray programs.
-The Ray Client server runs the Ray head node, by default on port 10001.
+The Ray Client server runs on the Ray head node, on port 10001.
 
 :ref:`Ray Dashboard <ray-dashboard>` gives visibility into the state of your cluster.
-By default, the dashboard uses port 8265 on the Ray head node.
+The dashboard uses port 8265 on the Ray head node.
 
-.. _k8s-service:
-
-Configuring a head node service
--------------------------------
-To use Ray Client and Ray Dashboard,
-you can connect via a `Kubernetes Service`_ targeting the relevant ports on the head node:
-
-.. _svc-example:
-
-.. code-block:: yaml
-
-    apiVersion: v1
-    kind: Service
-    metadata:
-        name: example-cluster-ray-head
-    spec:
-        # This selector must match the head node pod's selector.
-        selector:
-            component: example-cluster-ray-head
-        ports:
-            - name: client
-              protocol: TCP
-              port: 10001
-              targetPort: 10001
-            - name: dashboard
-              protocol: TCP
-              port: 8265
-              targetPort: 8265
-
-
-The head node pod's ``metadata`` should have a ``label`` matching the service's ``selector`` field:
-
-.. code-block:: yaml
-
-    apiVersion: v1
-    kind: Pod
-    metadata:
-      # Automatically generates a name for the pod with this prefix.
-      generateName: example-cluster-ray-head-
-      # Must match the head node service selector above if a head node
-      # service is required.
-      labels:
-          component: example-cluster-ray-head
-
-- The Ray Kubernetes Operator automatically configures a default service exposing ports 10001 and 8265 \
-  on the head node pod. The Operator also adds the relevant label to the head node pod's configuration. \
-  If this default service does not suit your use case, you can modify the service or create a new one, \
-  for example by using the tools ``kubectl edit``, ``kubectl create``, or ``kubectl apply``.
-
-- The Ray Cluster launcher does not automatically configure a service targeting the head node. A \
-  head node service can be specified in the cluster launching config's ``provider.services`` field. The example cluster lauching \
-  config `example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ includes \
-  the :ref:`above <svc-example>` service configuration as an example.
-
-After launching a Ray cluster with either the Operator or Cluster Launcher, you can view the configured service:
+The Ray Operator automatically configures a `Kubernetes Service`_ targeting the relevant ports on the head node.
+After launching a Ray cluster, you can view the configured service:
 
 .. code-block:: shell
 
@@ -450,17 +436,12 @@ After launching a Ray cluster with either the Operator or Cluster Launcher, you 
 
 Running Ray Programs
 --------------------
-Given a running Ray cluster and a :ref:`Service <k8s-service>` exposing the Ray Client server's port on the head pod,
-we can now run Ray programs on our cluster.
 
-In the following examples, we assume that we have a running Ray cluster with one head node and
-two worker nodes. This can be achieved in one of two ways:
+Ray Client can be used to submit Ray programs
+- from :ref:`within <_ray-k8s-in>` your Kubernetes cluster
+- from :ref:`outside <_ray-k8s-out>` the Kubernetes cluster (e.g. on your local machine)
 
-- Using the :ref:`Operator <k8s-operator>` with the example resource `ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
-- Using :ref:`Cluster Launcher <k8s-cluster-launcher>`. Modify the example file `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
-  by setting the field ``available_node_types.worker_node.min_workers``
-  to 2 and then run ``ray up`` with the modified config.
-
+.. _ray-k8s-in:
 
 Using Ray Client to connect from within the Kubernetes cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -477,10 +458,7 @@ The following command submits a Job which executes an `example Ray program`_.
   $ kubectl -n ray create -f ray/doc/kubernetes/job-example.yaml
 
 The program executed by the Job waits for three Ray nodes to connect and then tests object transfer
-between the nodes. Note that the program uses the environment variables
-``EXAMPLE_CLUSTER_RAY_HEAD_SERVICE_HOST`` and ``EXAMPLE_CLUSTER_RAY_HEAD_SERVICE_PORT_CLIENT``
-to access Ray Client. These `environment variables`_ are set by Kubernetes based on
-the service we are using to expose the Ray head node.
+between the nodes.
 
 To view the output of the Job, first find the name of the pod that ran it,
 then fetch its logs:
@@ -518,9 +496,9 @@ the following:
   example-cluster-ray-worker-4c7cn   1/1     Running   0          11m
   example-cluster-ray-worker-zvglb   1/1     Running   0          11m
 
-.. _`environment variables`: https://kubernetes.io/docs/concepts/services-networking/service/#environment-variables
 .. _`example Ray program`: https://github.com/ray-project/ray/blob/master/doc/kubernetes/example_scripts/job_example.py
 
+.. _ray-k8s-out:
 
 Using Ray Client to connect from outside the Kubernetes cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -560,37 +538,6 @@ The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connec
 
   Connecting with Ray client currently also requires matching Ray versions. In particular, to connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
 
-Running the program on the head node
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It is also possible to execute a Ray program on the Ray head node.
-(Replace the pod name with the name of your head pod
-- you can find it by running ``kubectl -n ray get pods``.)
-
-.. code-block:: shell
-
- # Copy the test script onto the head node.
- $ kubectl -n ray cp ray/doc/kubernetes/example_scripts/run_on_head.py example-cluster-ray-head-p9mfh:/home/ray
-
- # Run the example program on the head node.
- $ kubectl -n ray exec example-cluster-ray-head-p9mfh -- python /home/ray/run_on_head.py
- # You should see repeated output for 10 iterations and then 'Success!'
-
-
-
-Alternatively, you can run tasks interactively on the cluster by connecting a remote
-shell to one of the pods.
-
-.. code-block:: shell
-
-  # Get a remote shell to the head node.
-  $ kubectl -n ray exec -it example-cluster-ray-head-5455bb66c9-7l6xj -- bash
-
-  # Run the example program on the head node.
-  root@ray-head-6f566446c-5rdmb:/# python /home/ray/run_on_head.py
-  # You should see repeated output for 10 iterations and then 'Success!'
-
-
-The program in this example uses ``ray.init(address="auto")`` to connect to the Ray cluster.
 
 Accessing the Dashboard
 -----------------------
@@ -606,49 +553,9 @@ After running the above command locally, the Dashboard will be accessible at ``h
 You can also monitor the state of the cluster with ``kubectl logs`` when using the :ref:`Operator <operator-logs>` or with ``ray monitor`` when using
 the :ref:`Ray Cluster Launcher <cluster-launcher-commands>`.
 
+.. note::
 
-.. _k8s-comparison:
-
-Cluster Launcher vs Operator
-============================
-
-We compare the Ray Cluster Launcher and Ray Kubernetes Operator as methods of managing an autoscaling Ray cluster.
-
-
-Comparison of use cases
------------------------
-
-- The Cluster Launcher is convenient for development and experimentation. Using the Cluster Launcher requires a local installation of Ray. The Ray CLI then provides a convenient interface for interacting with a Ray cluster.
-
-- The Operator is geared towards production use cases. It does not require installing Ray locally - all interactions with your Ray cluster are mediated by Kubernetes.
-
-
-Comparison of architectures
----------------------------
-
-- With the Cluster Launcher, the user launches a Ray cluster from their local environment by invoking ``ray up``. This provisions a pod for the Ray head node, which then runs the `autoscaling process <https://github.com/ray-project/ray/blob/master/python/ray/monitor.py>`__.
-
--  The `Operator <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator.py>`__ centralizes cluster launching and autoscaling in the `Operator pod <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml>`__. \
-   The user creates a `Kubernetes Custom Resource`_ describing the intended state of the Ray cluster. \
-   The Operator then detects the resource, launches a Ray cluster, and runs the autoscaling process in the operator pod. \
-   The Operator can manage multiple Ray clusters by running an autoscaling process for each Ray cluster.
-
-Comparison of configuration options
------------------------------------
-
-The configuration options for the two methods are completely analogous - compare sample configurations for the `Cluster Launcher <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__
-and for the `Operator <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__.
-With a few exceptions, the fields of the RayCluster resource managed by the Operator are camelCase versions of the corresponding snake_case Cluster Launcher fields.
-In fact, the Operator `internally <https://github.com/ray-project/ray/blob/master/python/ray/ray_operator/operator_utils.py>`__ converts
-RayCluster resources to Cluster Launching configs.
-
-A summary of the configuration differences:
-
-- The Cluster Launching field ``available_node_types`` for specifiying the types of pods available for autoscaling is renamed to ``podTypes`` in the Operator's RayCluster configuration.
-- The Cluster Launching field ``resources`` for specifying custom Ray resources provided by a node type is renamed to ``rayResources`` in the Operator's RayCluster configuration.
-- The ``provider`` field in the Cluster Launching config has no analogue in the Operator's RayCluster configuration. (The Operator fills this field internally.)
--  * When using the Cluster Launcher, ``head_ray_start_commands`` should include the argument ``--autoscaling-config=~/ray_bootstrap_config.yaml``; this is important for the configuration of the head node's autoscaler.
-   * On the other hand, the Operator's ``headRayStartCommands`` should include a ``--no-monitor`` flag to prevent the autoscaling/monitoring process from running on the head node.
+  ``helm uninstall`` will not delete the RayCluster CRD. If you wish to delete the CRD, first make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
 
 Questions or Issues?
 --------------------
@@ -659,7 +566,7 @@ Questions or Issues?
 
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
 .. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
-.. _`Kubernetes Operator`: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
+.. _`operator pattern`: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
 .. _`Kubernetes Custom Resource`: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
 .. _`Kubernetes Custom Resource Definition`: https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/
 .. _`annotation`: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/#attaching-metadata-to-objects
@@ -667,3 +574,7 @@ Questions or Issues?
 .. _`minikube`: https://minikube.sigs.k8s.io/docs/start/
 .. _`namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+.. _`Ray Helm chart`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
+.. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
+.. _`Helm 3`: https://helm.sh/
+.. _`Helm`: https://helm.sh/
