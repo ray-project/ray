@@ -710,7 +710,14 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            start_initial_python_workers_for_first_job=True,
+            # We need to disable it if runtime env is not set.
+            # Uploading happens after core worker is created. And we should
+            # prevent default worker being created before uploading.
+            # TODO (yic): Have a separate connection to gcs client when
+            # removal redis is done. The uploading should happen before this
+            # one.
+            start_initial_python_workers_for_first_job=(
+                job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1614,10 +1621,11 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @client_mode_hook
 def get_actor(name):
-    """Get a handle to a detached actor.
+    """Get a handle to a named actor.
 
-    Gets a handle to a detached actor with the given name. The actor must
-    have been created with Actor.options(name="name").remote().
+    Gets a handle to an actor with the given name. The actor must
+    have been created with Actor.options(name="name").remote(). This
+    works for both detached & non-detached actors.
 
     Returns:
         ActorHandle to the actor.

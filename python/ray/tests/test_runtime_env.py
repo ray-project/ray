@@ -8,6 +8,7 @@ from pathlib import Path
 import ray
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
+import ray.experimental.internal_kv as kv
 from time import sleep
 driver_script = """
 from time import sleep
@@ -257,6 +258,7 @@ def test_single_node(ray_start_cluster_head, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -272,6 +274,7 @@ def test_two_node(two_node_cluster, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -307,6 +310,7 @@ print(sum([int(v) for v in vals]))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -448,6 +452,9 @@ def test_two_node_uri(two_node_cluster, working_dir, client_mode):
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    # pinned uri will not be deleted
+    print(list(kv._internal_kv_list("")))
+    assert len(kv._internal_kv_list("pingcs://")) == 1
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -465,6 +472,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -482,6 +490,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     out = run_string_as_driver(script, env)
     assert out.strip().split()[-1] == "1000"
     # It's a detached actors, so it should still be there
+    assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(PKG_DIR).iterdir())) == 2
     pkg_dir = [f for f in Path(PKG_DIR).glob("*") if f.is_dir()][0]
     import sys
@@ -492,6 +501,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
     from time import sleep
     sleep(5)
     assert len(list(Path(PKG_DIR).iterdir())) == 1
+    assert len(kv._internal_kv_list("gcs://")) == 0
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
@@ -604,6 +614,27 @@ print(ray.get([run.remote()])[0])
 """
         out = run_string_as_driver(script, env)
         print(out)
+        os.chdir(old_dir)
+
+
+@unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
+def test_init(shutdown_only):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        old_dir = os.getcwd()
+        os.chdir(tmp_dir)
+        with open("hello", "w") as f:
+            f.write("world")
+        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
+        ray.init(job_config=job_config)
+
+        @ray.remote
+        class Test:
+            def test(self):
+                with open("hello") as f:
+                    return f.read()
+
+        t = Test.remote()
+        assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
 
 

@@ -447,7 +447,7 @@ def debug(address):
 @click.option(
     "--worker-setup-hook",
     hidden=True,
-    default=None,
+    default=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
     type=str,
     help="Module path to the Python function that will be used to set up the "
     "environment for the worker process.")

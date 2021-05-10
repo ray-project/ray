@@ -399,12 +399,12 @@ class AWSNodeProvider(NodeProvider):
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
-                    # todo: err msg
                     cli_logger.abort(
-                        "Failed to launch instances. Max attempts exceeded.")
-                    raise exc
+                        "Failed to launch instances. Max attempts exceeded.",
+                        exc=exc,
+                    )
                 else:
-                    cli_logger.print(
+                    cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
         return created_nodes_dict

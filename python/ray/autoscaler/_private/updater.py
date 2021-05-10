@@ -120,7 +120,6 @@ class NodeUpdater:
                    "Either do not pass `--redirect-command-output` "
                    "or also pass in `--use-normal-shells`.")
             cli_logger.abort(msg)
-            raise click.ClickException(msg)
 
         try:
             with LogTimer(self.log_prefix +
