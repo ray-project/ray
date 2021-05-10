@@ -679,7 +679,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        Trainer._validate_config(self.config)
+        self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -712,7 +712,8 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(evaluation_config)
+                self._validate_config(
+                    evaluation_config, trainer_obj_or_none=self)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -1139,7 +1140,8 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: PartialTrainerConfigDict):
+    def _validate_config(config: PartialTrainerConfigDict,
+                         trainer_obj_or_none: Optional["Trainer"] = None):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1173,8 +1175,24 @@ class Trainer(Trainable):
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
         # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = \
-                framework != "tf" or len(config["multiagent"]["policies"]) > 0
+            # Non-TF: Must use simple optimizer.
+            if framework != "tf":
+                config["simple_optimizer"] = True
+            # TF + Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies).
+            elif len(config["multiagent"]["policies"]) > 0:
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                default_policy_cls = None if trainer_obj_or_none is None else \
+                    getattr(trainer_obj_or_none, "_policy_class", None)
+                if any((p[0] or default_policy_cls) is None or not issubclass(
+                        p[0] or default_policy_cls, DynamicTFPolicy)
+                       for p in config["multiagent"]["policies"].values()):
+                    config["simple_optimizer"] = True
+                else:
+                    config["simple_optimizer"] = False
+            else:
+                config["simple_optimizer"] = False
+
         # User manually set simple-optimizer to False -> Error if not tf.
         elif simple_optim_setting is False:
             if framework in ["tfe", "tf2", "torch"]:
