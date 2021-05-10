@@ -4,7 +4,6 @@ namespace ray {
 namespace gcs {
 
 GcsResourceReportPoller::GcsResourceReportPoller(
-    std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     std::function<void(const rpc::ResourcesData &)> handle_resource_report,
     std::function<int64_t(void)> get_current_time_milli,
@@ -15,7 +14,6 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     : ticker_(polling_service_),
       max_concurrent_pulls_(RayConfig::instance().gcs_max_concurrent_resource_pulls()),
       inflight_pulls_(0),
-      gcs_resource_manager_(gcs_resource_manager),
       raylet_client_pool_(raylet_client_pool),
       handle_resource_report_(handle_resource_report),
       get_current_time_milli_(get_current_time_milli),

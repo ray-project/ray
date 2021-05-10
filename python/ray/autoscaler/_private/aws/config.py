@@ -337,11 +337,7 @@ def _configure_key_pair(config):
             "No matching local key file for any of the key pairs in this "
             "account with ids from 0..{}. "
             "Consider deleting some unused keys pairs from your account.",
-            key_name)  # todo: err msg
-        raise ValueError(
-            "No matching local key file for any of the key pairs in this "
-            "account with ids from 0..{}. ".format(key_name) +
-            "Consider deleting some unused keys pairs from your account.")
+            key_name)
 
     cli_logger.doassert(
         os.path.exists(key_path), "Private key file " + cf.bold("{}") +
@@ -391,13 +387,8 @@ def _configure_subnet(config):
             "and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
-            "the `provider` config.")  # todo: err msg
-        raise Exception(
-            "No usable subnets found, try manually creating an instance in "
-            "your specified region to populate the list of subnets "
-            "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch unless you set 'use_internal_ips': True in "
-            "the 'provider' config.")
+            "the `provider` config.")
+
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(",")
         subnets = [s for s in subnets if s.availability_zone in azs]
@@ -407,13 +398,7 @@ def _configure_subnet(config):
                 "Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
                 "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"])  # todo: err msg
-            raise Exception(
-                "No usable subnets matching availability zone {} "
-                "found. Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again.".
-                format(config["provider"]["availability_zone"]))
+                config["provider"]["availability_zone"])
 
     # Use subnets in only one VPC, so that _configure_security_groups only
     # needs to create a security group in this one VPC. Otherwise, we'd need

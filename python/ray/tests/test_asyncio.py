@@ -249,14 +249,11 @@ def test_async_callback(ray_start_regular_shared):
 
 
 def test_async_function_errored(ray_start_regular_shared):
-    @ray.remote
-    async def f():
-        pass
-
-    ref = f.remote()
-
     with pytest.raises(ValueError):
-        ray.get(ref)
+
+        @ray.remote
+        async def f():
+            pass
 
 
 @pytest.mark.asyncio

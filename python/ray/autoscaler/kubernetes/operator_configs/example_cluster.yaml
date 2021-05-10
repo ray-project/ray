@@ -14,6 +14,18 @@ spec:
   idleTimeoutMinutes: 5
   # Specify the pod type for the ray head node (as configured below).
   headPodType: head-node
+  # Optionally, configure ports for the Ray head service.
+  # The ports specified below are the defaults.
+  headServicePorts:
+    - name: client
+      port: 10001
+      targetPort: 10001
+    - name: dashboard
+      port: 8265
+      targetPort: 8265
+    - name: ray-serve
+      port: 8000
+      targetPort: 8000
   # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
   - name: head-node
