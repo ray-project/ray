@@ -1,7 +1,7 @@
 """Note: Keep in sync with changes to VTraceTFPolicy."""
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import ValueNetworkMixin
+from ray.rllib.policy.torch_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing

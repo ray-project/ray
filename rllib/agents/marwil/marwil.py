@@ -77,6 +77,8 @@ def execution_plan(workers, config):
 def validate_config(config):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for MARWIL!")
+    if config["use_gae"] and not config["use_critic"]:
+        raise ValueError("GAE can not be used without a critic")
 
 
 MARWILTrainer = build_trainer(

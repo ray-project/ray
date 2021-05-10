@@ -56,6 +56,8 @@ def validate_config(config):
         raise ValueError("`entropy_coeff` must be >= 0.0!")
     if config["num_workers"] <= 0 and config["sample_async"]:
         raise ValueError("`num_workers` for A3C must be >= 1!")
+    if config["use_gae"] and not config["use_critic"]:
+        raise ValueError("GAE can not be used without a critic")
 
 
 def execution_plan(workers, config):

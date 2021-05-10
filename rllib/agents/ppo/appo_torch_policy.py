@@ -15,8 +15,7 @@ from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
 from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model, \
     postprocess_trajectory
-from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin, \
-    KLCoeffMixin
+from ray.rllib.agents.ppo.ppo_torch_policy import KLCoeffMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
@@ -24,7 +23,7 @@ from ray.rllib.models.torch.torch_action_dist import \
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import LearningRateSchedule
+from ray.rllib.policy.torch_policy import LearningRateSchedule, ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance,\
     global_norm, sequence_mask

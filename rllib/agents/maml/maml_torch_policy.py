@@ -4,10 +4,10 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.policy.torch_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
-from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
-    ValueNetworkMixin
+from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches
 from ray.rllib.utils.torch_ops import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 

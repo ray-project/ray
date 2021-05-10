@@ -15,7 +15,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule
+    LearningRateSchedule, ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     explained_variance, sequence_mask
@@ -192,41 +192,6 @@ class KLCoeffMixin:
             self.kl_coeff *= 0.5
         # Return the current KL value.
         return self.kl_coeff
-
-
-class ValueNetworkMixin:
-    """Assigns the `_value()` method to the PPOPolicy.
-
-    This way, Policy can call `_value()` to get the current VF estimate on a
-    single(!) observation (as done in `postprocess_trajectory_fn`).
-    Note: When doing this, an actual forward pass is being performed.
-    This is different from only calling `model.value_function()`, where
-    the result of the most recent forward pass is being used to return an
-    already calculated tensor.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        # When doing GAE, we need the value function estimate on the
-        # observation.
-        if config["use_gae"]:
-            # Input dict is provided to us automatically via the Model's
-            # requirements. It's a single-timestep (last one in trajectory)
-            # input_dict.
-
-            def value(**input_dict):
-                input_dict = SampleBatch(input_dict)
-                input_dict = self._lazy_tensor_dict(input_dict)
-                model_out, _ = self.model(input_dict)
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0].item()
-
-        # When not doing GAE, we do not require the value function's output.
-        else:
-
-            def value(*args, **kwargs):
-                return 0.0
-
-        self._value = value
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,

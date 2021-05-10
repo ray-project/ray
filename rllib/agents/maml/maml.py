@@ -234,6 +234,8 @@ def validate_config(config):
     if config["create_env_on_driver"] is False:
         raise ValueError("Must have an actual Env created on the driver "
                          "(local) worker! Set `create_env_on_driver` to True.")
+    if config["use_gae"] and not config["use_critic"]:
+        raise ValueError("GAE can not be used without a critic")
 
 
 MAMLTrainer = build_trainer(

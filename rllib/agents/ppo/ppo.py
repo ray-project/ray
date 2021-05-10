@@ -139,6 +139,9 @@ def validate_config(config: TrainerConfigDict) -> None:
             "by the multi-GPU optimizer. Consider setting "
             "simple_optimizer=True if this doesn't work for you.")
 
+    if config["use_gae"] and not config["use_critic"]:
+        raise ValueError("GAE can not be used without a critic")
+
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.

@@ -12,7 +12,6 @@ https://docs.ray.io/en/master/rllib-algorithms.html#appo
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.impala.impala import validate_config
 from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.ppo.ppo import UpdateKL
 from ray.rllib.agents import impala
@@ -143,6 +142,13 @@ def initialize_target(trainer: Trainer) -> None:
     """
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
+
+
+def validate_config(config):
+    impala.impala.validate_config(config)
+
+    if config["use_gae"] and not config["use_critic"]:
+        raise ValueError("GAE can not be used without a critic")
 
 
 # Build a child class of `Trainer`, based on ImpalaTrainer's setup.

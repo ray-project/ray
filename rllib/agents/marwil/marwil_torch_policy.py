@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
+from ray.rllib.policy.torch_policy import ValueNetworkMixin
 from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
