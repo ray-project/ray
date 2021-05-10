@@ -85,7 +85,7 @@ Becoming a Reviewer
 -------------------
 
 We identify reviewers from active contributors. Reviewers are individuals who
-not only actively contribute to the project and are also willing
+not only actively contribute to the project but are also willing
 to participate in the code review of new contributions.
 A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
 There is currently no formal process, but active contributors to Tune will be
