@@ -13,8 +13,13 @@ To learn about deploying Ray on an existing Kubernetes cluster, refer to the gui
 
 .. _ref-cloud-setup:
 
+<<<<<<< HEAD
 Ray with cloud providers
 ------------------------
+=======
+AWS/GCP/Azure/Aliyun
+--------------------
+>>>>>>> update
 
 .. toctree::
     :hidden:
@@ -145,6 +150,27 @@ Ray with cloud providers
 
             # Tear down the cluster
             $ ray down ray/python/ray/autoscaler/staroid/example-full.yaml
+
+    .. group-tab:: Aliyun
+
+        First, you need to configure your aliyun account. You need to set access key and access key secret in yaml config file.
+
+        Once above done, you should be ready to launch your cluster. The provided `ray/python/ray/autoscaler/aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ cluster config file will create a small cluster with an ecs.n4.large head node (on-demand) configured to autoscale up to two ecs.n4.2xlarge.
+
+        Test that it works by running the following commands from your local machine:
+
+        .. code-block:: bash
+
+            # Create or update the cluster. When the command finishes, it will print
+            # out the command that can be used to SSH into the cluster head node.
+            $ ray up ray/python/ray/autoscaler/aliyun/example-full.yaml
+
+            # Get a remote screen on the head node.
+            $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
+            $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+            # Tear down the cluster.
+            $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
 
     .. group-tab:: Custom
 
