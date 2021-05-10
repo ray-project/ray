@@ -28,6 +28,7 @@ def test_api_functions():
         "available_resources",
         "java_function",
         "java_actor_class",
+        "client",
     ]
 
     OTHER_ALLOWED_FUNCTIONS = [
