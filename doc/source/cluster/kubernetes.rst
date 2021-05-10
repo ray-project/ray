@@ -68,21 +68,114 @@ You can view the installed resources as follows.
 
   # The operator deployment.
   # By default, the deployment is launched in namespace "default".
-  $ kubectl get deployments
+  $ kubectl get deployment ray-operator
 
   # The single pod of the operator deployment.
-  $ kubectl get pods
+  $ kubectl get pod -l cluster.ray.io/component=operator
 
   # The `Custom Resource Definition`_ defining a RayCluster.
-  $ kubectl get CRD
+  $ kubectl get crd rayclusters.cluster.ray.io
 
+Monitoring and observability
+----------------------------
 
-To view autoscaling logs, run a ``kubectl logs`` command on the Operator pod from above.
+To view autoscaling logs, run a ``kubectl logs`` command on the operator pod:
 
 .. code-block:: shell
 
   # The last 100 lines of logs.
-  $ kubectl logs ray-operator-xxxx | tail -n 100
+  $ kubectl logs $(kubectl get pod -l cluster.ray.io/component=operator) | tail -n 100
+
+The :ref:`Ray dashboard <ray-dashboard>`_ can be accessed on the Ray head node at port 8265.
+
+.. code-block:: shell
+
+  # Forward the relevant port from the service exposing the Ray head.
+  $ kubectl -n ray port-forward service/example-cluster-ray-head 8265:8265
+
+  # The dashboard can now be viewed in a browser at http://localhost:8265
+
+Running Ray programs with Ray Client
+------------------------------------
+
+:ref:`Ray Client <ray-client>` can be used to execute Ray programs
+on your Ray cluster. The Ray Client server runs on the Ray head node, on port 10001.
+
+Using Ray Client to connect from outside the Kubernetes cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+One way to connect to the Ray cluster from outside your Kubernetes cluster
+is to forward Ray Client server port:
+
+.. code-block:: shell
+
+  $ kubectl -n ray port-forward service/example-cluster-ray-head 10001:10001
+
+Then open a new shell and try out a sample program:
+
+.. code-block:: shell
+
+  $ python ray/doc/kubernetes/example_scripts/run_local_example.py
+
+The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
+
+.. note::
+
+  Connecting with Ray client requires using the matching minor versions of Python (for example 3.7)
+  on the server and client end -- that is on the Ray head node and in the environment where
+  ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
+  The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray/tags?page=1&ordering=last_updated&name=1.3.0>`_.
+
+  Connecting with Ray client currently also requires matching Ray versions. In particular, to connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
+
+Using Ray Client to connect from within the Kubernetes cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+You can connect to your Ray cluster from another pod in the same Kubernetes cluster.
+
+For example, you can submit a Ray application to run on the Kubernetes cluster as a `Kubernetes
+Job`_. The Job will run a single pod running the Ray driver program to
+completion, then terminate the pod but allow you to access the logs.
+
+The following command submits a Job which executes an `example Ray program`_.
+
+.. code-block:: yaml
+
+  $ kubectl -n ray create -f https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/job-example.yaml
+
+To view the output of the Job, first find the name of the pod that ran it,
+then fetch its logs:
+
+.. code-block:: shell
+
+  $ kubectl -n ray get pods
+  NAME                               READY   STATUS    RESTARTS   AGE
+  example-cluster-ray-head-rpqfb     1/1     Running   0          11m
+  example-cluster-ray-worker-4c7cn   1/1     Running   0          11m
+  example-cluster-ray-worker-zvglb   1/1     Running   0          11m
+  ray-test-job-8x2pm-77lb5           1/1     Running   0          8s
+
+  # Fetch the logs. You should see repeated output for 10 iterations and then
+  # 'Success!'
+  $ kubectl -n ray logs ray-test-job-8x2pm-77lb5
+
+  # Cleanup
+  $ kubectl -n ray delete job ray-test-job
+- from :ref:`outside<ray-k8s-out>` the Kubernetes cluster (e.g. on your local machine)
+- from :ref:`within <ray-k8s-in>` your Kubernetes cluster
+
+Cleanup
+-------
+
+To remove a Ray Helm release and the associated API resources, use `helm uninstall`_.
+
+.. code-block:: shell
+
+  $ helm uninstall example-cluster
+
+Note that this command `does not delete` the RayCluster CRD. If you wish to delete the CRD,
+make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
+
+
+
 
 Quick Guide
 -----------
@@ -578,3 +671,5 @@ Questions or Issues?
 .. _`kubectl`: https://kubernetes.io/docs/tasks/tools/
 .. _`Helm 3`: https://helm.sh/
 .. _`Helm`: https://helm.sh/
+.. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
+.. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
