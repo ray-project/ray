@@ -66,12 +66,12 @@ class MultiAgentEnv:
         number of agents in the env can vary over time.
 
         Returns:
-            obs (dict): New observations for each ready agent.
-            rewards (dict): Reward values for each ready agent. If the
-                episode is just started, the value will be None.
-            dones (dict): Done values for each ready agent. The special key
+            Tuple[dict, dict, dict, dict]: Tuple with 1) new observations for
+                each ready agent, 2) reward values for each ready agent. If
+                the episode is just started, the value will be None.
+                3) Done values for each ready agent. The special key
                 "__all__" (required) is used to indicate env termination.
-            infos (dict): Optional info values for each agent id.
+                4) Optional info values for each agent id.
         """
         raise NotImplementedError
 
