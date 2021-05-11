@@ -40,7 +40,7 @@ def _get_or_create_security_group(config):
         vpc_id=config["provider"]["vpc_id"])
     if security_groups is not None and len(security_groups) > 0:
         config["provider"]["security_group_id"] = security_groups[0][
-            'SecurityGroupId']
+            "SecurityGroupId"]
         return config
 
     security_group_id = cli.create_security_group(
@@ -60,7 +60,7 @@ def _get_or_create_vpc(config):
     cli = _client(config)
     vpcs = cli.describe_vpcs()
     if vpcs is not None and len(vpcs) > 0:
-        config["provider"]["vpc_id"] = vpcs[0].get('VpcId')
+        config["provider"]["vpc_id"] = vpcs[0].get("VpcId")
         return
 
     vpc_id = cli.create_vpc()
@@ -72,7 +72,7 @@ def _get_or_create_vswitch(config):
     cli = _client(config)
     vswitches = cli.describe_v_switches(vpc_id=config["provider"]["vpc_id"])
     if vswitches is not None and len(vswitches) > 0:
-        config["provider"]["v_switch_id"] = vswitches[0].get('VSwitchId')
+        config["provider"]["v_switch_id"] = vswitches[0].get("VSwitchId")
         return
 
     v_switch_id = cli.create_v_switch(
@@ -86,30 +86,30 @@ def _get_or_create_vswitch(config):
 
 def _get_or_import_key_pair(config):
     cli = _client(config)
-    key_name = config['provider']['key_name']
+    key_name = config["provider"]["key_name"]
 
     keypairs = cli.describe_key_pairs(key_pair_name=key_name)
-    key_path = os.path.expanduser('~/.ssh/{}'.format(key_name))
+    key_path = os.path.expanduser("~/.ssh/{}".format(key_name))
     if keypairs is not None and len(keypairs) == 1:
-        if 'ssh_private_key' not in config['auth']:
-            config['auth']['ssh_private_key'] = key_path
+        if "ssh_private_key" not in config["auth"]:
+            config["auth"]["ssh_private_key"] = key_path
             config["head_node"]["KeyName"] = key_name
             config["worker_nodes"]["KeyName"] = key_name
         return
 
-    if 'ssh_public_key' in config['auth']:
+    if "ssh_public_key" in config["auth"]:
         with open(os.path.expanduser(
-                config['auth'].get('ssh_public_key'))) as f:
-            public_key = f.readline().strip('\n')
+                config["auth"].get("ssh_public_key"))) as f:
+            public_key = f.readline().strip("\n")
             cli.import_key_pair(
                 key_pair_name=key_name, public_key_body=public_key)
             return
     else:
         resp = cli.create_key_pair(key_pair_name=key_name)
         if resp is not None:
-            with open(key_path, 'w+') as f:
-                f.write(resp.get('PrivateKeyBody'))
+            with open(key_path, "w+") as f:
+                f.write(resp.get("PrivateKeyBody"))
             os.chmod(key_path, stat.S_IRUSR)
-            config['auth']['ssh_private_key'] = key_path
+            config["auth"]["ssh_private_key"] = key_path
             config["head_node"]["KeyName"] = key_name
             config["worker_nodes"]["KeyName"] = key_name

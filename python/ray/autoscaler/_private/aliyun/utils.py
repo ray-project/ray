@@ -71,7 +71,7 @@ class AcsClient:
             request.set_InstanceIds(instance_ids)
         response = self._send_request(request)
         if response is not None:
-            instance_list = response.get('Instances').get('Instance')
+            instance_list = response.get("Instances").get("Instance")
             return instance_list
         return None
 
@@ -79,12 +79,13 @@ class AcsClient:
                         instance_type,
                         image_id,
                         tags,
-                        optimized='optimized',
-                        instance_charge_type='PostPaid',
-                        spot_strategy='SpotWithPriceLimit',
-                        internet_charge_type='PayByTraffic',
+                        key_pair_name,
+                        optimized="optimized",
+                        instance_charge_type="PostPaid",
+                        spot_strategy="SpotWithPriceLimit",
+                        internet_charge_type="PayByTraffic",
                         internet_max_bandwidth_out=5,
-                        key_pair_name='admin_id_rsa'):
+    ):
         request = CreateInstanceRequest()
         request.set_InstanceType(instance_type)
         request.set_ImageId(image_id)
@@ -98,7 +99,7 @@ class AcsClient:
 
         response = self._send_request(request)
         if response is not None:
-            instance_id = response.get('InstanceId')
+            instance_id = response.get("InstanceId")
             logging.info("instance %s created task submit successfully.",
                          instance_id)
             return instance_id
@@ -114,10 +115,10 @@ class AcsClient:
             vswitch_id,
             key_pair_name,
             amount=1,
-            optimized='optimized',
-            instance_charge_type='PostPaid',
-            spot_strategy='SpotWithPriceLimit',
-            internet_charge_type='PayByTraffic',
+            optimized="optimized",
+            instance_charge_type="PostPaid",
+            spot_strategy="SpotWithPriceLimit",
+            internet_charge_type="PayByTraffic",
             internet_max_bandwidth_out=1,
     ):
         request = RunInstancesRequest()
@@ -136,7 +137,7 @@ class AcsClient:
 
         response = self._send_request(request)
         if response is not None:
-            instance_ids = response.get('InstanceIdSets').get('InstanceIdSet')
+            instance_ids = response.get("InstanceIdSets").get("InstanceIdSet")
             return instance_ids
         logging.error("instance created failed.")
         return None
@@ -146,7 +147,7 @@ class AcsClient:
         request.set_VpcId(vpc_id)
         response = self._send_request(request)
         if response is not None:
-            security_group_id = response.get('SecurityGroupId')
+            security_group_id = response.get("SecurityGroupId")
             return security_group_id
         return None
 
@@ -158,8 +159,8 @@ class AcsClient:
             request.set_Tags(tags)
         response = self._send_request(request)
         if response is not None:
-            security_groups = response.get('SecurityGroups').get(
-                'SecurityGroup')
+            security_groups = response.get("SecurityGroups").get(
+                "SecurityGroup")
             return security_groups
         logging.error("describe security group failed.")
         return None
@@ -180,7 +181,7 @@ class AcsClient:
         request.set_CidrBlock(cidr_block)
         response = self._send_request(request)
         if response is not None:
-            return response.get('VSwitchId')
+            return response.get("VSwitchId")
         else:
             logging.error("create_v_switch vpc_id %s failed.", vpc_id)
         return None
@@ -189,17 +190,17 @@ class AcsClient:
         request = CreateVpcRequest()
         response = self._send_request(request)
         if response is not None:
-            return response.get('VpcId')
+            return response.get("VpcId")
         return None
 
     def describe_vpcs(self):
         request = DescribeVpcsRequest()
         response = self._send_request(request)
         if response is not None:
-            return response.get('Vpcs').get('Vpc')
+            return response.get("Vpcs").get("Vpc")
         return None
 
-    def tag_resource(self, resource_ids, tags, resource_type='instance'):
+    def tag_resource(self, resource_ids, tags, resource_type="instance"):
         request = TagResourcesRequest()
         request.set_Tags(tags)
         request.set_ResourceType(resource_type)
@@ -227,13 +228,13 @@ class AcsClient:
         logging.info("Stop %s command submit successfully.", instance_id)
         self._send_request(request)
 
-    def stop_instances(self, instance_ids, stopped_mode='StopCharging'):
+    def stop_instances(self, instance_ids, stopped_mode="StopCharging"):
         request = StopInstancesRequest()
         request.set_InstanceIds(instance_ids)
         request.set_StoppedMode(stopped_mode)
         response = self._send_request(request)
         if response is not None:
-            return response.get('InstanceResponses').get('InstanceResponse')
+            return response.get("InstanceResponses").get("InstanceResponse")
         logging.error("stop_instances failed")
         return None
 
@@ -259,7 +260,7 @@ class AcsClient:
         request.set_InstanceId(instance_id)
         response = self._send_request(request)
         if response is not None:
-            return response.get('IpAddress')
+            return response.get("IpAddress")
 
     def create_key_pair(self, key_pair_name):
         request = CreateKeyPairRequest()
@@ -267,7 +268,7 @@ class AcsClient:
         response = self._send_request(request)
         if response is not None:
             logging.info("Create Key Pair %s Successfully",
-                         response.get('KeyPairId'))
+                         response.get("KeyPairId"))
             return response
         else:
             logging.error("Create Key Pair Failed")
@@ -290,7 +291,7 @@ class AcsClient:
             request.set_KeyPairName(key_pair_name)
         response = self._send_request(request)
         if response is not None:
-            return response.get('KeyPairs').get('KeyPair')
+            return response.get("KeyPairs").get("KeyPair")
         else:
             return None
 
@@ -298,8 +299,7 @@ class AcsClient:
         request = DescribeZonesRequest()
         response = self._send_request(request)
         if response is not None:
-            # print('describe zones: %s' % response)
-            return response.get('Zones').get('Zone')
+            return response.get("Zones").get("Zone")
         return None
 
     def attach_key_pair(self, instance_ids, key_pair_name):
@@ -308,7 +308,7 @@ class AcsClient:
         request.set_KeyPairName(key_pair_name)
         response = self._send_request(request)
         if response is not None:
-            return response.get('Results').get('Result')
+            return response.get("Results").get("Result")
         else:
             logging.error("instance %s attach_key_pair failed.", instance_ids)
             return None
@@ -319,14 +319,14 @@ class AcsClient:
             request.set_VpcId(vpc_id)
         response = self._send_request(request)
         if response is not None:
-            return response.get('VSwitches').get('VSwitch')
+            return response.get("VSwitches").get("VSwitch")
         else:
             logging.error("Describe VSwitches Failed.")
             return None
 
     def _send_request(self, request):
         """send open api"""
-        request.set_accept_format('json')
+        request.set_accept_format("json")
         try:
             response_str = self.cli.do_action_with_exception(request)
             response_detail = json.loads(response_str)
