@@ -559,9 +559,9 @@ def start(
 
     By default, the instance will be scoped to the lifetime of the returned
     Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until client.shutdown() is called and clients
-    to it can be connected using serve.connect(). This is only relevant if
-    connecting to a long-running Ray cluster (e.g., with address="auto").
+    instance will instead persist until serve.shutdown() is called. This is
+    only relevant if connecting to a long-running Ray cluster (e.g., with
+    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this
@@ -1110,7 +1110,17 @@ class Deployment:
 
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
-        """Get a ServeHandle to this deployment."""
+        """Get a ServeHandle to this deployment to invoke it from Python.
+
+        Args:
+            sync (bool): If true, then Serve will return a ServeHandle that
+                works everywhere. Otherwise, Serve will return an
+                asyncio-optimized ServeHandle that's only usable in an asyncio
+                loop.
+
+        Returns:
+            ServeHandle
+        """
         return _get_global_client().get_handle(
             self.name,
             missing_ok=True,
@@ -1299,7 +1309,15 @@ def deployment(
 
 
 def get_deployment(name: str) -> Deployment:
-    """Retrieve RayServeHandle for service endpoint to invoke it from Python.
+    """Dynamically fetch a handle to a Deployment object.
+
+    This can be used to update and redeploy a deployment without access to
+    the original definition.
+
+    Example:
+
+    >>> MyDeployment = serve.get_deployment("name")
+    >>> MyDeployment.options(num_replicas=10).deploy()
 
     Args:
         name(str): name of the deployment. This must have already been
