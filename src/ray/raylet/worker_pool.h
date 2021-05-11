@@ -121,6 +121,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
   /// \param get_time A callback to get the current time.
+  /// \param worker_process_in_container Whether start worker in individual container.
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
@@ -129,7 +130,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             const std::function<double()> get_time);
+             const std::function<double()> get_time,
+             bool worker_process_in_container);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();

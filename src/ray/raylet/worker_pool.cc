@@ -311,7 +311,7 @@ Process WorkerPool::StartWorkerProcess(
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
   Process proc;
-  if () {
+  if (worker_process_in_container_) {
     proc = StartContainerProcess(worker_command_args, env, worker_resource);
   } else {
     proc = StartProcess(worker_command_args, env);
@@ -403,32 +403,24 @@ Process WorkerPool::StartContainerProcess(
   std::vector<std::string> my_new_vec;
   std::error_code ec;
   std::vector<const char *> argv;
-  argv.push_back("sudo");
   argv.push_back("podman");
   argv.push_back("run");
-  argv.push_back("--log-level=debug");
   argv.push_back("-u");
   argv.push_back("admin");
   argv.push_back("-d");
   argv.push_back("-v");
-  argv.push_back("/home/admin/logs:/home/admin/logs");
-  argv.push_back("-v");
-  argv.push_back("/home/admin/ray-pack:/home/admin/ray-pack");
-  // argv.push_back("-v");
-  // std::string temp_dir = temp_dir_ + ":" + temp_dir_;
-  // argv.push_back(temp_dir.c_str());
+  std::string temp_dir = temp_dir_ + ":" + temp_dir_;
+  argv.push_back(temp_dir.c_str());
   argv.push_back("--cgroup-manager=cgroupfs");
   argv.push_back("--security-opt=seccomp=unconfined");
   argv.push_back("--network=host");
   argv.push_back("--pid=host");
-  std::stringstream cid_file_path;
-  cid_file_path << "/tmp/container/ray/";
-  auto worker_id = WorkerID::FromRandom();
-  cid_file_path << worker_id;
-  cid_file_path << ".txt";
-  std::string cid_file = cid_file_path.str();
-  std::string cid_arg = "--cidfile=" + cid_file;
-  argv.push_back(cid_arg.c_str());
+  std::stringstream container_pid_file_path;
+  container_pid_file_path << "/tmp/ray/container/";
+  container_pid_file_path << WorkerID::FromRandom();
+  container_pid_file_path << ".txt";
+  std::string pid_file_arg = "--pidfile=" + container_pid_file_path.str();
+  argv.push_back(pid_file_arg.c_str());
   if (!worker_resource.IsEmpty()) {
     const FractionalResourceQuantity cpu_quantity =
         worker_resource.GetResource(kCPU_ResourceLabel);
@@ -451,7 +443,7 @@ Process WorkerPool::StartContainerProcess(
   }
   argv.push_back("--entrypoint");
   argv.push_back(worker_command_args[0].c_str());
-  // TODO image name
+  // TODO get image name from runtime_env
   argv.push_back("ray");
   for (std::vector<std::string>::size_type i = 1; i < worker_command_args.size(); i++) {
     argv.push_back(worker_command_args[i].c_str());
@@ -488,22 +480,17 @@ Process WorkerPool::StartContainerProcess(
                    << error << ": " << error.message();
   }
   if (exitCode != 0) {
-    RAY_LOG(FATAL) << "Container start failed ";
+    RAY_LOG(FATAL) << "Container start failed with exitCode: " << exitCode;
   }
-  std::ifstream cidFile(cid_file, std::ios_base::in);
-  if (cidFile.good()) {
-    std::string line;
-    std::getline(cidFile, line);
-    std::string pidfile_path =
-        "/run/containers/storage/overlay-containers/" + line + "/userdata/pidfile";
-    std::ifstream pidfile(pidfile_path, std::ios_base::in);
-    RAY_CHECK(pidfile.good());
+  std::ifstream pid_file(container_pid_file_path, std::ios_base::in);
+  if (pid_file.good()) {
     pid_t pid = -1;
-    pidfile >> pid;
+    pid_file >> pid;
     RAY_CHECK(pid != -1);
     return Process::FromPid(pid);
+  } else {
+    RAY_LOG(FATAL) << "Failed to read container pidfile: " << container_pid_file_path;
   }
-  return child;
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
