@@ -61,16 +61,38 @@ RAY_REMOTE(RAY_FUNC(OverloadFunc));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
 
+class DummyObject {
+ public:
+  int count;
+
+  MSGPACK_DEFINE(count);
+  DummyObject() = default;
+  DummyObject(int init) {
+    std::cout << "construct DummyObject\n";
+    count = init;
+  }
+
+  int Add(int x, int y) { return x + y; }
+
+  ~DummyObject() { std::cout << "destruct DummyObject\n"; }
+
+  static DummyObject *FactoryCreate(int init) { return new DummyObject(init); }
+};
+RAY_REMOTE(DummyObject::FactoryCreate);
+RAY_REMOTE(&DummyObject::Add);
+
+RAY_REMOTE(PlusOne);
+RAY_REMOTE(PlusTwo, VoidFuncNoArgs, VoidFuncWithArgs, ExceptionFunc);
+
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(r);
 
   /// Duplicate register
-  bool r1 = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
-  EXPECT_FALSE(r1);
-
-  bool r2 = FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne);
-  EXPECT_FALSE(r2);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
+               RayException);
+  EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
+               RayException);
 }
 
 TEST(RayApiTest, NormalTask) {
@@ -133,20 +155,7 @@ TEST(RayApiTest, NotExistFunction) {
   EXPECT_THROW(Ray::Task(NotRegisteredFunc), RayException);
 }
 
-TEST(RayApiTest, ArgumentsNotMatch) {
-  /// Arguments number is not match.
-  auto r = Ray::Task(PlusOne).Remote();
-  EXPECT_THROW(r.Get(), RayException);
-
-  auto r1 = Ray::Task(PlusOne).Remote(1, 2);
-  EXPECT_THROW(r1.Get(), RayException);
-
-  auto r2 = Ray::Task(ExceptionFunc).Remote();
-  EXPECT_THROW(r2.Get(), RayException);
-
-  auto r3 = Ray::Task(ExceptionFunc).Remote(1, 2);
-  EXPECT_THROW(r3.Get(), RayException);
-
+TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = Ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), RayException);

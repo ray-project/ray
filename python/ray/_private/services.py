@@ -35,6 +35,7 @@ RUN_RAYLET_PROFILER = False
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
+AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
 REDIS_MODULE = os.path.join(
@@ -114,20 +115,19 @@ def address(ip_address, port):
     return ip_address + ":" + str(port)
 
 
-def new_port(lower_bound=10000, upper_bound=65535, blacklist=None):
-    if not blacklist:
-        blacklist = set()
+def new_port(lower_bound=10000, upper_bound=65535, denylist=None):
+    if not denylist:
+        denylist = set()
     port = random.randint(lower_bound, upper_bound)
     retry = 0
-    while port in blacklist:
+    while port in denylist:
         if retry > 100:
             break
         port = random.randint(lower_bound, upper_bound)
         retry += 1
     if retry > 100:
-        raise ValueError(
-            "Failed to find a new port from the range "
-            f"{lower_bound}-{upper_bound}. Blacklist: {blacklist}")
+        raise ValueError("Failed to find a new port from the range "
+                         f"{lower_bound}-{upper_bound}. Denylist: {denylist}")
     return port
 
 
@@ -802,7 +802,7 @@ def start_redis(node_ip_address,
                 redirect_worker_output=False,
                 password=None,
                 fate_share=None,
-                port_blacklist=None):
+                port_denylist=None):
     """Start the Redis global state store.
 
     Args:
@@ -824,7 +824,7 @@ def start_redis(node_ip_address,
             to this value when they start up.
         password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        port_blacklist (set): A set of blacklist ports that shouldn't
+        port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
 
     Returns:
@@ -870,7 +870,7 @@ def start_redis(node_ip_address,
         stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file,
         fate_share=fate_share,
-        port_blacklist=port_blacklist)
+        port_denylist=port_denylist)
     processes.append(p)
     redis_address = address(node_ip_address, port)
 
@@ -900,7 +900,7 @@ def start_redis(node_ip_address,
     redis_shards = []
     # If Redis shard ports are not provided, start the port range of the
     # other Redis shards at a high, random port.
-    last_shard_port = new_port(blacklist=port_blacklist) - 1
+    last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
         redis_executable = REDIS_EXECUTABLE
@@ -925,7 +925,7 @@ def start_redis(node_ip_address,
             stdout_file=redis_stdout_file,
             stderr_file=redis_stderr_file,
             fate_share=fate_share,
-            port_blacklist=port_blacklist)
+            port_denylist=port_denylist)
         processes.append(p)
 
         shard_address = address(node_ip_address, redis_shard_port)
@@ -947,7 +947,7 @@ def _start_redis_instance(executable,
                           password=None,
                           redis_max_memory=None,
                           fate_share=None,
-                          port_blacklist=None):
+                          port_denylist=None):
     """Start a single Redis server.
 
     Notes:
@@ -973,7 +973,7 @@ def _start_redis_instance(executable,
         redis_max_memory: The max amount of memory (in bytes) to allow redis
             to use, or None for no limit. Once the limit is exceeded, redis
             will start LRU eviction of entries.
-        port_blacklist (set): A set of blacklist ports that shouldn't
+        port_denylist (set): A set of denylist ports that shouldn't
             be used when allocating a new port.
 
     Returns:
@@ -1012,7 +1012,7 @@ def _start_redis_instance(executable,
         # did not exit within 0.1 seconds).
         if process_info.process.poll() is None:
             break
-        port = new_port(blacklist=port_blacklist)
+        port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
         raise RuntimeError("Couldn't start Redis. "
@@ -1329,6 +1329,8 @@ def start_raylet(redis_address,
                  raylet_name,
                  plasma_store_name,
                  worker_path,
+                 setup_worker_path,
+                 worker_setup_hook,
                  temp_dir,
                  session_dir,
                  resource_dir,
@@ -1366,6 +1368,10 @@ def start_raylet(redis_address,
              to.
         worker_path (str): The path of the Python file that new worker
             processes will execute.
+        setup_worker_path (str): The path of the Python file that will run
+            worker_setup_hook to set up the environment for the worker process.
+        worker_setup_hook (str): The module path to a Python function that will
+            be imported and run to set up the environment for the worker.
         temp_dir (str): The path of the temporary directory Ray will use.
         session_dir (str): The path of this session.
         resource_dir(str): The path of resource of this session .
@@ -1388,6 +1394,7 @@ def start_raylet(redis_address,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        tracing_startup_hook: Tracing startup hook.
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         max_bytes (int): Log rotation parameter. Corresponding to
@@ -1455,8 +1462,13 @@ def start_raylet(redis_address,
         cpp_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
+    # TODO(architkulkarni): Pipe in setup worker args separately instead of
+    # inserting them into start_worker_command and later erasing them if
+    # needed.
     start_worker_command = [
         sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1831,7 +1843,7 @@ def start_monitor(redis_address,
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "monitor.py")
+    monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
     command = [
         sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
         f"--redis-address={redis_address}",

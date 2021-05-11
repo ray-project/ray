@@ -807,7 +807,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
 * **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
-  to ``auto``, which will be updated to ``1000`` for random/grid search and ``1`` for any other search algorithms.
+  to ``auto``, which will be updated to ``max(16, cluster_cpus * 1.1)`` for random/grid search and ``1`` for any other search algorithms.
 * **TUNE_PLACEMENT_GROUP_AUTO_DISABLED**: Ray Tune automatically uses placement groups
   instead of the legacy resource requests. Setting this to 1 enables legacy placement.
 * **TUNE_PLACEMENT_GROUP_CLEANUP_DISABLED**: Ray Tune cleans up existing placement groups
@@ -818,6 +818,11 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_PLACEMENT_GROUP_PREFIX**: Prefix for placement groups created by Ray Tune. This prefix is used
   e.g. to identify placement groups that should be cleaned up on start/stop of the tuning run. This is
   initialized to a unique name at the start of the first run.
+* **TUNE_PLACEMENT_GROUP_RECON_INTERVAL**: How often to reconcile placement groups. Reconcilation is
+  used to make sure that the number of requested placement groups and pending/running trials are in sync.
+  In normal circumstances these shouldn't differ anyway, but reconcilation makes sure to capture cases when
+  placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
+  running a large number of short trials. Defaults to every ``5`` (seconds).
 * **TUNE_PLACEMENT_GROUP_WAIT_S**: Default time the trial executor waits for placement
   groups to be placed before continuing the tuning loop. Setting this to a float
   will block for that many seconds. This is mostly used for testing purposes. Defaults

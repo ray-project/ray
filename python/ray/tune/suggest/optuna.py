@@ -12,9 +12,11 @@ from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import optuna as ot
+    from optuna.trial import TrialState as OptunaTrialState
     from optuna.samplers import BaseSampler
 except ImportError:
     ot = None
+    OptunaTrialState = None
     BaseSampler = None
 
 from ray.tune.suggest import Searcher
@@ -69,6 +71,9 @@ class OptunaSearch(Searcher):
             configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
+        seed (int): Seed to initialize sampler with. This parameter is only
+            used when ``sampler=None``. In all other cases, the sampler
+            you pass should be initialized with the seed already.
 
     Tune automatically converts search spaces to Optuna's format:
 
@@ -116,7 +121,8 @@ class OptunaSearch(Searcher):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
-                 sampler: Optional[BaseSampler] = None):
+                 sampler: Optional[BaseSampler] = None,
+                 seed: Optional[int] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
         super(OptunaSearch, self).__init__(
@@ -149,7 +155,15 @@ class OptunaSearch(Searcher):
         self._points_to_evaluate = points_to_evaluate or []
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
-        self._sampler = sampler or ot.samplers.TPESampler()
+
+        if sampler and seed:
+            logger.warning(
+                "You passed an initialized sampler to `OptunaSearch`. The "
+                "`seed` parameter has to be passed to the sampler directly "
+                "and will be ignored.")
+
+        self._sampler = sampler or ot.samplers.TPESampler(seed=seed)
+
         assert isinstance(self._sampler, BaseSampler), \
             "You can only pass an instance of `optuna.samplers.BaseSampler` " \
             "as a sampler to `OptunaSearcher`."
@@ -241,8 +255,14 @@ class OptunaSearch(Searcher):
         ot_trial = self._ot_trials[trial_id]
 
         val = result.get(self.metric, None) if result else None
+        ot_trial_state = OptunaTrialState.COMPLETE
+        if val is None:
+            if error:
+                ot_trial_state = OptunaTrialState.FAIL
+            else:
+                ot_trial_state = OptunaTrialState.PRUNED
         try:
-            self._ot_study.tell(ot_trial, val)
+            self._ot_study.tell(ot_trial, val, state=ot_trial_state)
         except ValueError as exc:
             logger.warning(exc)  # E.g. if NaN was reported
 

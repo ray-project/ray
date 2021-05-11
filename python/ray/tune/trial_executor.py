@@ -278,7 +278,7 @@ class TrialExecutor:
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self, trial):
+    def cleanup(self, trial_runner):
         """Ensures that trials are cleaned up after stopping."""
         pass
 

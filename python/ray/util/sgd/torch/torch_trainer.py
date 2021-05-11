@@ -724,11 +724,10 @@ class BaseTorchTrainable(Trainable):
 
     def step(self):
         """Calls `self.trainer.train()` and `self.trainer.validate()` once."""
-        if self._is_overridden("_train"):
+        if self._implements_method("_train"):
             raise DeprecationWarning(
-                "Trainable._train is deprecated and will be "
-                "removed in "
-                "a future version of Ray. Override Trainable.step instead.")
+                "Trainable._train is deprecated and is now removed."
+                "Override Trainable.step instead.")
 
         train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/ownership_based_object_directory.h"
+
 #include "ray/stats/stats.h"
 
 namespace ray {
@@ -96,13 +97,12 @@ bool UpdateObjectLocations(const rpc::GetObjectLocationsOwnerReply &location_rep
   return is_updated;
 }
 
-rpc::Address GetOwnerAddressFromObjectInfo(
-    const object_manager::protocol::ObjectInfoT &object_info) {
+rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
   rpc::Address owner_address;
-  owner_address.set_raylet_id(object_info.owner_raylet_id);
+  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
   owner_address.set_ip_address(object_info.owner_ip_address);
   owner_address.set_port(object_info.owner_port);
-  owner_address.set_worker_id(object_info.owner_worker_id);
+  owner_address.set_worker_id(object_info.owner_worker_id.Binary());
   return owner_address;
 }
 
@@ -126,9 +126,8 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
+    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+  const WorkerID &worker_id = object_info.owner_worker_id;
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
@@ -138,7 +137,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
     return Status::OK();
   }
   rpc::AddObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(object_info.owner_worker_id);
+  request.set_intended_worker_id(object_info.owner_worker_id.Binary());
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
 
@@ -161,9 +160,8 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &node_id,
-    const object_manager::protocol::ObjectInfoT &object_info) {
-  WorkerID worker_id = WorkerID::FromBinary(object_info.owner_worker_id);
+    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+  const WorkerID &worker_id = object_info.owner_worker_id;
   rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
@@ -174,7 +172,7 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
   }
 
   rpc::RemoveObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(object_info.owner_worker_id);
+  request.set_intended_worker_id(worker_id.Binary());
   request.set_object_id(object_id.Binary());
   request.set_node_id(node_id.Binary());
 

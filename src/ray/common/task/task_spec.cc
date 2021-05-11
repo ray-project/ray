@@ -13,6 +13,24 @@ std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
+void RuntimeEnv::Update(RuntimeEnv runtime_env) {
+  if (runtime_env.conda_env_name != "") {
+    conda_env_name = runtime_env.conda_env_name;
+  }
+}
+
+rpc::RuntimeEnv RuntimeEnv::GetMessage() const {
+  rpc::RuntimeEnv message;
+  message.set_conda_env_name(conda_env_name);
+  return message;
+}
+
+RuntimeEnv RuntimeEnv::FromProto(rpc::RuntimeEnv message) {
+  return RuntimeEnv(message.conda_env_name());
+}
+
+bool RuntimeEnv::IsEmpty() const { return conda_env_name == ""; }
+
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
   absl::MutexLock lock(&mutex_);
@@ -53,24 +71,24 @@ bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
 }
 
 void TaskSpecification::ComputeResources() {
-  auto required_resources = MapFromProtobuf(message_->required_resources());
-  auto required_placement_resources =
-      MapFromProtobuf(message_->required_placement_resources());
-  if (required_placement_resources.empty()) {
-    required_placement_resources = required_resources;
-  }
+  auto &required_resources = message_->required_resources();
 
   if (required_resources.empty()) {
     // A static nil object is used here to avoid allocating the empty object every time.
     required_resources_ = ResourceSet::Nil();
   } else {
-    required_resources_.reset(new ResourceSet(required_resources));
+    required_resources_.reset(new ResourceSet(MapFromProtobuf(required_resources)));
   }
+
+  auto &required_placement_resources = message_->required_placement_resources().empty()
+                                           ? required_resources
+                                           : message_->required_placement_resources();
 
   if (required_placement_resources.empty()) {
     required_placement_resources_ = ResourceSet::Nil();
   } else {
-    required_placement_resources_.reset(new ResourceSet(required_placement_resources));
+    required_placement_resources_.reset(
+        new ResourceSet(MapFromProtobuf(required_placement_resources)));
   }
 
   if (!IsActorTask()) {
@@ -111,6 +129,9 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+ray::RuntimeEnv TaskSpecification::RuntimeEnv() const {
+  return ray::RuntimeEnv::FromProto(message_->runtime_env());
+}
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);
   return sched_cls_id_;
@@ -174,14 +195,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
+    bool add_dummy_dependency) const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
   }
-  if (IsActorTask()) {
+  if (add_dummy_dependency && IsActorTask()) {
     const auto &dummy_ref =
         GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
     dependencies.push_back(dummy_ref);
