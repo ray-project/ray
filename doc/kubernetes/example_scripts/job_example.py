@@ -1,9 +1,7 @@
 from collections import Counter
-import os
 import sys
 import time
 import ray
-
 """ This script is meant to be run from a pod in the same Kubernetes namespace
 as your Ray cluster.
 """

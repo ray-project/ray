@@ -18,16 +18,10 @@ To enable a workflow with multiple Ray Clusters, the Ray Helm chart includes two
 - ``clusterOnly``: Create a RayCluster custom resource without installing the Operator.
   (If the Operator has already been installed, a new Ray cluster will be launched.)
 
-The following workflow will install an operator in 
 
-.. code-block:: shell
 
-   # Start the operator. Install a Ray cluster in a new namespace.
-   helm -n ray install example-cluster --create-namespace ./ray
-
-   # Start another Ray cluster.
-   # The cluster will be managed by the operator created in the last command.
-   helm -n ray install example-cluster2 --set clusterOnly=true
+The following commands will install the Operator and two Ray Clusters using
+three separate Helm releases:
 
 .. code-block:: shell
 
@@ -40,6 +34,18 @@ The following workflow will install an operator in
   # Install another Ray cluster.
   helm -n ray install example-cluster2 --set clusterOnly=true
 
+Alternatively, the Operator and one of the Ray Clusters can be installed in the same Helm release:
+
+.. code-block:: shell
+
+   # Start the operator. Install a Ray cluster in a new namespace.
+   helm -n ray install example-cluster --create-namespace ./ray
+
+   # Start another Ray cluster.
+   # The cluster will be managed by the operator created in the last command.
+   helm -n ray install example-cluster2 --set clusterOnly=true
+
+
 The Operator pod outputs autoscaling logs for all of the Ray clusters it manages.
 Each line of output is prefixed by the string :code:`<cluster name>,<namespace>`.
 This string can be used to filter for a specific Ray cluster's logs:
@@ -49,7 +55,6 @@ This string can be used to filter for a specific Ray cluster's logs:
     # The last 100 lines of logging output for the cluster with name "example-cluster2" in namespace "ray":
     $ kubectl logs $(kubectl get pod -l cluster.ray.io/component=operator) | \
       grep example-cluster2,ray | tail -n 100
-
 
 Cluster-scoped vs. namespaced operators
 ---------------------------------------
@@ -93,7 +98,6 @@ To schedule Ray tasks and actors that use custom hardware resources, ``rayResour
   - Use ``nodeSelector`` to constrain workers of a podType to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator).
   - Signal availability of the hardware in with e.g. ``rayResources: {"custom_resource": 3}``.
   - Schedule a Ray task or Actor to use that resource with e.g. ``@ray.remote(resources={"custom_resource": 1})``.
-
 
 
 .. note::
