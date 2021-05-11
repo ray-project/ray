@@ -83,9 +83,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - ./dashboard/tests/run_ui_tests.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
+    # - ./dashboard/tests/run_ui_tests.sh
+    # - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
+    - for i in $(seq 0 100); do bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/test_router; done
 
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
