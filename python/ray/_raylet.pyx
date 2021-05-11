@@ -7,6 +7,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+import copy
 import gc
 import inspect
 import threading
@@ -1668,6 +1669,7 @@ cdef class CoreWorker:
                 .CurrentActorIsAsync())
 
     def get_current_runtime_env_dict(self):
+        # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
             self.current_runtime_env_dict = json.loads(
                 CCoreWorkerProcess.GetCoreWorker()
@@ -1739,16 +1741,23 @@ cdef class CoreWorker:
         set in the JobConfig.  Returns the JSON-serialized runtime env.
         """
 
-        result_dict = self.get_current_runtime_env_dict()
+        # Short-circuit in the common case.
+        if (runtime_env_dict == {}
+                and self.get_current_runtime_env_dict() == {}):
+            return self.get_job_config().serialized_runtime_env
+
+        result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
         result_dict.update(runtime_env_dict)
 
-        # TODO(architkulkarni) remove once workers are cached by runtime env.
+        # TODO(architkulkarni): remove once workers are cached by runtime env.
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 
         if result_dict == {}:
             return self.get_job_config().serialized_runtime_env
         else:
+            # TODO(architkulkarni): We should just use RuntimeEnvDict here
+            # so all the serialization and validation is done in one place
             return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,

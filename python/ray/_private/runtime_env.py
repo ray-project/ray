@@ -60,7 +60,9 @@ class RuntimeEnvDict:
     """
 
     def __init__(self, runtime_env_json: dict):
-        self._dict = {}  # Simple dictionary with all options validated
+        # Simple dictionary with all options validated. This will always
+        # contain all supported keys; values will be set to None if unspecified
+        self._dict = {}
         self._dict["conda"] = None
         if "conda" in runtime_env_json:
             conda = runtime_env_json["conda"]
@@ -69,7 +71,7 @@ class RuntimeEnvDict:
             elif isinstance(conda, dict):
                 # TODO(architkulkarni): add dynamic conda env installs
                 raise NotImplementedError
-            else:
+            elif conda is not None:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
         if "working_dir" in runtime_env_json:
@@ -103,6 +105,9 @@ class RuntimeEnvDict:
         return self._dict
 
     def serialize(self) -> str:
+        # Use sort_keys=True because we will use the output as a key to cache
+        # workers by, so we need the serialization to be independent of the
+        # dict order.
         return json.dumps(self._dict, sort_keys=True)
 
 
