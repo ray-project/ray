@@ -6,7 +6,7 @@ Deploying on Kubernetes
 Overview
 --------
 You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
-The :ref:`Ray Autoscaler<ray-cluster-overview>` spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes pod.
+The :ref:`Ray Autoscaler<ray-cluster-overview>` spins up and deletes Kubernetes pods according to resource demands of the Ray workload - each Ray node runs in its own Kubernetes `Pod`_.
 
 The Ray Kubernetes Operator
 ---------------------------
@@ -533,6 +533,8 @@ Finally, we delete the operator:
 
          $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator_cluster_scoped.yaml
 
+Do I need to delete the namespace too?
+
 
 .. _ray-k8s-interact:
 
@@ -702,3 +704,4 @@ Questions or Issues?
 .. _`Helm`: https://helm.sh/
 .. _`helm uninstall`: https://helm.sh/docs/helm/helm_uninstall/
 .. _`does not delete`: https://helm.sh/docs/chart_best_practices/custom_resource_definitions/
+.. _`Pod`: https://kubernetes.io/docs/concepts/workloads/pods/
