@@ -902,8 +902,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
   }
 
   // Send the owner information about any new borrowers.
-  std::unique_ptr<rpc::PubMessage> pub_message = absl::make_unique<rpc::PubMessage>();
-  pub_message->set_message_id(object_id.Binary());
+  auto pub_message = absl::make_unique<rpc::PubMessage>();
+  pub_message->set_key_id(object_id.Binary());
   pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL);
   auto *wait_for_ref_removed_message =
       pub_message->mutable_wait_for_ref_removed_message();

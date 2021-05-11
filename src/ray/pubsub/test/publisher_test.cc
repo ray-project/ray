@@ -48,7 +48,7 @@ class PublisherTest : public ::testing::Test {
     auto *wait_for_object_eviction_msg =
         pub_message.mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
-    pub_message.set_message_id(object_id.Binary());
+    pub_message.set_key_id(object_id.Binary());
     pub_message.set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
     return pub_message;
   }
@@ -74,7 +74,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexSingeNodeSingleObject) {
   SubscriptionIndex<ObjectID> subscription_index;
   subscription_index.AddEntry(oid.Binary(), node_id);
   const auto &subscribers_from_index =
-      subscription_index.GetSubscriberIdsByMessageId(oid.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid.Binary()).value().get();
   for (const auto &node_id : subscribers) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -96,7 +96,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
     subscription_index.AddEntry(oid.Binary(), node_id);
   }
   const auto &subscribers_from_index =
-      subscription_index.GetSubscriberIdsByMessageId(oid.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid.Binary()).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -114,14 +114,14 @@ TEST_F(PublisherTest, TestSubscriptionIndexMultiNodeSingleObject) {
     subscription_index.AddEntry(oid2.Binary(), node_id);
   }
   const auto &subscribers_from_index2 =
-      subscription_index.GetSubscriberIdsByMessageId(oid2.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid2.Binary()).value().get();
   for (const auto &node_id : subscribers_map_.at(oid2)) {
     ASSERT_TRUE(subscribers_from_index2.count(node_id) > 0);
   }
 
   // Make sure oid1 entries are not corrupted.
   const auto &subscribers_from_index3 =
-      subscription_index.GetSubscriberIdsByMessageId(oid.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid.Binary()).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index3.count(node_id) > 0);
   }
@@ -161,7 +161,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
     i++;
   }
   const auto &subscribers_from_index =
-      subscription_index.GetSubscriberIdsByMessageId(oid.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid.Binary()).value().get();
   for (const auto &node_id : subscribers_map_.at(oid)) {
     ASSERT_TRUE(subscribers_from_index.count(node_id) > 0);
   }
@@ -173,7 +173,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
     oid_subscribers.erase(current);
     subscription_index.EraseEntry(oid.Binary(), node_id);
   }
-  ASSERT_FALSE(subscription_index.HasMessageId(oid.Binary()));
+  ASSERT_FALSE(subscription_index.HasKeyId(oid.Binary()));
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
@@ -196,7 +196,7 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   subscription_index.EraseSubscriber(node_ids[0]);
   ASSERT_FALSE(subscription_index.HasSubscriber(node_ids[0]));
   const auto &subscribers_from_index =
-      subscription_index.GetSubscriberIdsByMessageId(oid.Binary()).value().get();
+      subscription_index.GetSubscriberIdsByKeyId(oid.Binary()).value().get();
   ASSERT_TRUE(subscribers_from_index.count(node_ids[0]) == 0);
 
   for (int i = 1; i < 6; i++) {

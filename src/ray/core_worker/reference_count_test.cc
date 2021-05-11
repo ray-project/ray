@@ -39,7 +39,7 @@ class ReferenceCountTest : public ::testing::Test {
     rpc::Address addr;
     publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
     subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
-    rc = std::make_unique<ReferenceCounter>(addr, publisher_, subscriber_);
+    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get());
   }
 
   virtual void TearDown() {}
@@ -55,7 +55,7 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
     rpc::Address addr;
     publisher_ = std::make_shared<mock_pubsub::MockPublisher>();
     subscriber_ = std::make_shared<mock_pubsub::MockSubscriber>();
-    rc = std::make_unique<ReferenceCounter>(addr, publisher_, subscriber_,
+    rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get(),
                                             /*distributed_ref_counting_enabled=*/true,
                                             /*lineage_pinning_enabled=*/true);
   }
@@ -105,14 +105,14 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   void Subscribe(
       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
-      const std::string &message_id_binary,
+      const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     // Due to the test env, there are times that the same mssage id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
-    if (!(directory_->HasMessageId(message_id_binary) &&
+    if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
-      directory_->AddEntry(message_id_binary, subscriber_id_);
+      directory_->AddEntry(key_id_binary, subscriber_id_);
     }
     const auto publisher_id = UniqueID::FromBinary(publisher_address.worker_id());
     const auto id = GenerateID(publisher_id, subscriber_id_);
@@ -128,14 +128,14 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
               .first;
     }
 
-    const auto oid = ObjectID::FromBinary(message_id_binary);
+    const auto oid = ObjectID::FromBinary(key_id_binary);
     callback_it->second.emplace(oid, subscription_callback);
     failure_callback_it->second.emplace(oid, subscription_failure_callback);
   }
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &message_id_binary) override {
+                   const std::string &key_id_binary) override {
     return true;
   }
 
@@ -164,15 +164,15 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   void RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::string &message_id_binary) {
+                            const std::string &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
   }
 
   void Publish(const rpc::ChannelType channel_type,
                std::unique_ptr<rpc::PubMessage> pub_message,
-               const std::string &message_id_binary) {
-    auto maybe_subscribers = directory_->GetSubscriberIdsByMessageId(message_id_binary);
-    const auto oid = ObjectID::FromBinary(message_id_binary);
+               const std::string &key_id_binary) {
+    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
+    const auto oid = ObjectID::FromBinary(key_id_binary);
     RAY_CHECK(maybe_subscribers.has_value());
     for (const auto &subscriber_id : maybe_subscribers.value().get()) {
       const auto id = GenerateID(publisher_id_, subscriber_id);
@@ -186,7 +186,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::string &message_id_binary) {
+                              const std::string &key_id_binary) {
     return true;
   }
 
@@ -215,7 +215,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
         subscriber_(std::make_shared<MockDistributedSubscriber>(
             &directory, &subscription_callback_map, &subscription_failure_callback_map,
             WorkerID::FromBinary(address_.worker_id()))),
-        rc_(rpc::WorkerAddress(address_), publisher_, subscriber_,
+        rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
             /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
@@ -579,8 +579,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
 
   auto publisher = std::make_shared<mock_pubsub::MockPublisher>();
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
-  auto rc = std::shared_ptr<ReferenceCounter>(
-      new ReferenceCounter(rpc::WorkerAddress(rpc::Address()), publisher, subscriber));
+  auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
+      rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
   CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.

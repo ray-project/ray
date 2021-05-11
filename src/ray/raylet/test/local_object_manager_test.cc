@@ -38,11 +38,11 @@ class MockSubscriber : public pubsub::SubscriberInterface {
  public:
   void Subscribe(
       const rpc::ChannelType channel_type, const rpc::Address &owner_address,
-      const std::string &message_id_binary,
+      const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(
-        std::make_pair(ObjectID::FromBinary(message_id_binary), subscription_callback));
+        std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
   }
 
   bool PublishObjectEviction() {
@@ -52,7 +52,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     auto object_id = callbacks.front().first;
     auto callback = callbacks.front().second;
     auto msg = rpc::PubMessage();
-    msg.set_message_id(object_id.Binary());
+    msg.set_key_id(object_id.Binary());
     msg.set_channel_type(channel_type_);
     auto *wait_for_object_eviction_msg = msg.mutable_wait_for_object_eviction_message();
     wait_for_object_eviction_msg->set_object_id(object_id.Binary());
@@ -63,7 +63,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
 
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
-                                 const std::string &message_id_binary));
+                                 const std::string &key_id_binary));
 
   bool CheckNoLeaks() const override { return true; }
 

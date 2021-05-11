@@ -26,14 +26,13 @@ class MockSubscriber : public pubsub::SubscriberInterface {
  public:
   MOCK_METHOD5(Subscribe,
                void(const rpc::ChannelType channel_type,
-                    const rpc::Address &owner_address,
-                    const std::string &message_id_binary,
+                    const rpc::Address &owner_address, const std::string &key_id_binary,
                     pubsub::SubscriptionCallback subscription_callback,
                     pubsub::SubscriptionFailureCallback subscription_failure_callback));
 
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
-                                 const std::string &message_id_binary));
+                                 const std::string &key_id_binary));
 
   bool CheckNoLeaks() const override { return true; };
 };
@@ -42,15 +41,15 @@ class MockPublisher : public pubsub::PublisherInterface {
  public:
   MOCK_METHOD3(RegisterSubscription, void(const rpc::ChannelType channel_type,
                                           const pubsub::SubscriberID &subscriber_id,
-                                          const std::string &message_id_binary));
+                                          const std::string &key_id_binary));
 
   MOCK_METHOD3(Publish, void(const rpc::ChannelType channel_type,
                              std::unique_ptr<rpc::PubMessage> pub_message,
-                             const std::string &message_id_binary));
+                             const std::string &key_id_binary));
 
   MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,
                                             const pubsub::SubscriberID &subscriber_id,
-                                            const std::string &message_id_binary));
+                                            const std::string &key_id_binary));
 };
 
 }  // namespace mock_pubsub

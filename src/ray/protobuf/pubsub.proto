@@ -25,7 +25,7 @@ enum ChannelType {
 
 message PubMessage {
   ChannelType channel_type = 1;
-  bytes message_id = 2;
+  bytes key_id = 2;
   oneof pub_message_oneof {
     WaitForObjectEvictionMessage wait_for_object_eviction_message = 3;
     WaitForRefRemovedMessage wait_for_ref_removed_message = 4;

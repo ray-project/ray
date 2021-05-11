@@ -40,7 +40,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     for (const auto &object_id : object_ids) {
       auto *new_pub_message = reply.add_pub_messages();
-      new_pub_message->set_message_id(object_id.Binary());
+      new_pub_message->set_key_id(object_id.Binary());
       new_pub_message->set_channel_type(channel_type);
     }
     callback(status, reply);
@@ -98,7 +98,7 @@ class SubscriberTest : public ::testing::Test {
 
 TEST_F(SubscriberTest, TestBasicSubscription) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
   auto failure_callback = []() {};
 
@@ -128,7 +128,7 @@ TEST_F(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions) {
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
   auto failure_callback = []() {};
 
@@ -158,7 +158,7 @@ TEST_F(SubscriberTest, TestMultiLongPollingWithTheSameSubscription) {
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
   auto failure_callback = []() {};
 
@@ -189,7 +189,7 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
   auto failure_callback = []() {};
 
@@ -214,7 +214,7 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
   auto failure_callback = []() {};
 
@@ -237,7 +237,7 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
 
 TEST_F(SubscriberTest, TestLongPollingFailure) {
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
-    object_subscribed_.emplace(ObjectID::FromBinary(msg.message_id()));
+    object_subscribed_.emplace(ObjectID::FromBinary(msg.key_id()));
   };
 
   const auto owner_addr = GenerateOwnerAddress();
@@ -266,7 +266,7 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
   const auto object_id = ObjectID::FromRandom();
   // Test unsubscription call inside the subscription callback doesn't break raylet.
   auto subscription_callback = [this, owner_addr](const rpc::PubMessage &msg) {
-    const auto object_id = ObjectID::FromBinary(msg.message_id());
+    const auto object_id = ObjectID::FromBinary(msg.key_id());
     subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
     object_subscribed_.emplace(object_id);
   };

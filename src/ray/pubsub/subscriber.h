@@ -38,12 +38,12 @@ using SubscriptionFailureCallback = std::function<void()>;
 ///////////////////////////////////////////////////////////////////////////////
 
 /// Subscription info stores metadata that is needed for subscription.
-template <typename MessageID>
+template <typename KeyIdType>
 struct SubscriptionInfo {
   SubscriptionInfo() {}
 
   // Message ID -> subscription_callback
-  absl::flat_hash_map<const MessageID,
+  absl::flat_hash_map<const KeyIdType,
                       std::pair<SubscriptionCallback, SubscriptionFailureCallback>>
       subscription_callback_map;
 };
@@ -64,7 +64,7 @@ class SubscribeChannelInterface {
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
   virtual void Subscribe(const rpc::Address &publisher_address,
-                         const std::string &message_id,
+                         const std::string &key_id_binary,
                          SubscriptionCallback subscription_callback,
                          SubscriptionFailureCallback subscription_failure_callback) = 0;
 
@@ -72,10 +72,10 @@ class SubscribeChannelInterface {
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
   ///
   /// \param publisher_address The publisher address that it will unsubscribe to.
-  /// \param message_id The message id to unsubscribe.
+  /// \param key_id The message id to unsubscribe.
   /// \return True if the publisher is unsubscribed.
   virtual bool Unsubscribe(const rpc::Address &publisher_address,
-                           const std::string &message_id) = 0;
+                           const std::string &key_id_binary) = 0;
 
   /// Handle the published message from the publisher_address.
   ///
@@ -100,18 +100,18 @@ class SubscribeChannelInterface {
   virtual bool CheckNoLeaks() const = 0;
 };
 
-template <typename MessageID>
+template <typename KeyIdType>
 class SubscriberChannel : public SubscribeChannelInterface {
  public:
   SubscriberChannel() {}
   ~SubscriberChannel() = default;
 
-  void Subscribe(const rpc::Address &publisher_address, const std::string &message_id,
+  void Subscribe(const rpc::Address &publisher_address, const std::string &key_id,
                  SubscriptionCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::Address &publisher_address,
-                   const std::string &message_id) override;
+                   const std::string &key_id) override;
 
   bool CheckNoLeaks() const override;
 
@@ -124,23 +124,21 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
 
-  virtual MessageID ParseMessageID(const rpc::PubMessage &msg) = 0;
-
  protected:
   rpc::ChannelType channel_type_;
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionCallback> GetSubscriptionCallback(
-      const rpc::Address &publisher_address, const MessageID &message_id) const;
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const;
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionFailureCallback> GetFailureCallback(
-      const rpc::Address &publisher_address, const MessageID &message_id) const;
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const;
 
   /// Mapping of the publisher ID -> subscription info.
-  absl::flat_hash_map<PublisherID, SubscriptionInfo<MessageID>> subscription_map_;
+  absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
 };
 
 /// The below defines the list of channel implementation.
@@ -151,10 +149,6 @@ class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
     channel_type_ = rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION;
   }
   ~WaitForObjectEvictionChannel() = default;
-
-  ObjectID ParseMessageID(const rpc::PubMessage &msg) override {
-    return ObjectID::FromBinary(msg.message_id());
-  }
 };
 
 class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
@@ -163,10 +157,6 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
     channel_type_ = rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL;
   }
   ~WaitForRefRemovedChannel() = default;
-
-  ObjectID ParseMessageID(const rpc::PubMessage &msg) override {
-    return ObjectID::FromBinary(msg.message_id());
-  }
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -180,14 +170,14 @@ class SubscriberInterface {
   ///
   /// \param channel_type The channel to subscribe to.
   /// \param publisher_address Address of the publisher to subscribe the object.
-  /// \param message_id_binary The message id to subscribe from the publisher.
+  /// \param key_id_binary The message id to subscribe from the publisher.
   /// \param subscription_callback A callback that is invoked whenever the given object
   /// information is published.
   /// \param subscription_failure_callback A callback that is
   /// invoked whenever the publisher is dead (or failed).
   virtual void Subscribe(const rpc::ChannelType channel_type,
                          const rpc::Address &publisher_address,
-                         const std::string &message_id_binary,
+                         const std::string &key_id_binary,
                          SubscriptionCallback subscription_callback,
                          SubscriptionFailureCallback subscription_failure_callback) = 0;
 
@@ -203,10 +193,10 @@ class SubscriberInterface {
   /// message ordering.
   /// \param channel_type The channel to unsubscribe to.
   /// \param publisher_address The publisher address that it will unsubscribe to.
-  /// \param message_id_binary The message id to unsubscribe.
+  /// \param key_id_binary The message id to unsubscribe.
   virtual bool Unsubscribe(const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
-                           const std::string &message_id_binary) = 0;
+                           const std::string &key_id_binary) = 0;
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   virtual bool CheckNoLeaks() const = 0;
@@ -253,14 +243,13 @@ class Subscriber : public SubscriberInterface {
   ~Subscriber() = default;
 
   void Subscribe(const rpc::ChannelType channel_type,
-                 const rpc::Address &publisher_address,
-                 const std::string &message_id_binary,
+                 const rpc::Address &publisher_address, const std::string &key_id_binary,
                  SubscriptionCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
-                   const std::string &message_id_binary) override;
+                   const std::string &key_id_binary) override;
 
   /// Return the Channel of the given channel type.
   std::shared_ptr<SubscribeChannelInterface> Channel(

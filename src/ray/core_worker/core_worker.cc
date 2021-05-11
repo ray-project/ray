@@ -454,12 +454,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
 
-  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
+  object_status_publisher_ = std::make_unique<pubsub::Publisher>(
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
-  object_status_subscriber_ = std::make_shared<pubsub::Subscriber>(
+  object_status_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
       /*subscriber_address=*/rpc_address_.ip_address(),
       /*subscriber_port=*/rpc_address_.port(),
@@ -467,8 +467,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   reference_counter_ = std::make_shared<ReferenceCounter>(
       rpc_address_,
-      /*object_status_publisher=*/object_status_publisher_,
-      /*object_status_subscriber=*/object_status_subscriber_,
+      /*object_status_publisher=*/object_status_publisher_.get(),
+      /*object_status_subscriber=*/object_status_subscriber_.get(),
       RayConfig::instance().distributed_ref_counting_enabled(),
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
@@ -2404,8 +2404,8 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
 
-    std::unique_ptr<rpc::PubMessage> pub_message = absl::make_unique<rpc::PubMessage>();
-    pub_message->set_message_id(object_id.Binary());
+    auto pub_message = std::make_unique<rpc::PubMessage>();
+    pub_message->set_key_id(object_id.Binary());
     pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
     pub_message->mutable_wait_for_object_eviction_message()->set_object_id(
         object_id.Binary());
@@ -2418,18 +2418,25 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  // Always register the subscription before we register the delete callback to avoid race
+  // condition.
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
+
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+    // If the object is already evicted (callback cannot be set), unregister the
+    // subscription.
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
+        object_id.Binary());
     std::ostringstream stream;
     stream << "Reference for object " << object_id << " has already been freed.";
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    object_status_publisher_->RegisterSubscription(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
-        object_id.Binary());
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
