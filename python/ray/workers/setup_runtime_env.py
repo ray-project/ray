@@ -20,8 +20,9 @@ def setup(input_args):
     commands = []
     runtime_env: RuntimeEnvDict = json.loads(args.serialized_runtime_env
                                              or "{}")
-    if runtime_env.get("conda_env_name"):
-        commands += get_conda_activate_commands(runtime_env["conda_env_name"])
+    if runtime_env.get("conda"):
+        if isinstance(runtime_env["conda"], str):
+            commands += get_conda_activate_commands(runtime_env["conda"])
 
     commands += [" ".join(["exec python"] + remaining_args)]
     command_separator = " && "

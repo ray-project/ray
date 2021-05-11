@@ -60,11 +60,12 @@ class RuntimeEnvDict:
     """
 
     def __init__(self, runtime_env_json: dict):
-        self.conda_env_name = None
+        self._dict = {}  # Simple dictionary with all options validated
+        self._dict["conda"] = None
         if "conda" in runtime_env_json:
             conda = runtime_env_json["conda"]
             if isinstance(conda, str):
-                self.conda_env_name = conda
+                self._dict["conda"] = conda
             elif isinstance(conda, dict):
                 # TODO(architkulkarni): add dynamic conda env installs
                 raise NotImplementedError
@@ -72,12 +73,18 @@ class RuntimeEnvDict:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
         if "working_dir" in runtime_env_json:
-            self.working_dir = runtime_env_json["working_dir"]
+            self._dict["working_dir"] = runtime_env_json["working_dir"]
         else:
-            self.working_dir = None
+            self._dict["working_dir"] = None
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support env_vars, docker
+
+        # TODO(architkulkarni) remove once workers are cached by runtime env.
+        # Currently the worker pool just checks for a nonempty runtime env
+        # and if so, starts a new worker process and calls the shim process.
+        if all(val is None for val in self._dict.values()):
+            self._dict = {}
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -87,16 +94,16 @@ class RuntimeEnvDict:
         """
         if override_environment_variables is None:
             override_environment_variables = {}
-        if self.working_dir:
+        if self._dict.get("working_dir"):
             override_environment_variables.update(
-                RAY_RUNTIME_ENV_FILES=self.working_dir)
+                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
         return override_environment_variables
 
+    def get_parsed_dict(self) -> dict:
+        return self._dict
+
     def serialize(self) -> str:
-        runtime_env_dict = vars(self)
-        if all(val is None for val in runtime_env_dict.values()):
-            runtime_env_dict = {}
-        return json.dumps(runtime_env_dict)
+        return json.dumps(self._dict, sort_keys=True)
 
 
 class Protocol(Enum):

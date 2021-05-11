@@ -274,9 +274,9 @@ class RemoteFunction:
             override_environment_variables = (
                 parsed_runtime_env.to_worker_env_vars(
                     override_environment_variables))
-            serialized_runtime_env = parsed_runtime_env.serialize()
+            runtime_env_dict = parsed_runtime_env.get_parsed_dict()
         else:
-            serialized_runtime_env = "{}"
+            runtime_env_dict = {}
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -303,7 +303,7 @@ class RemoteFunction:
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
                 worker.debugger_breakpoint,
-                serialized_runtime_env,
+                runtime_env_dict,
                 override_environment_variables=override_environment_variables
                 or dict())
             # Reset worker's debug context from the last "remote" command

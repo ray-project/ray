@@ -97,6 +97,7 @@ cdef class CoreWorker:
         object async_event_loop
         object plasma_event_handler
         object job_config
+        object current_runtime_env_dict
         c_bool is_local_mode
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,

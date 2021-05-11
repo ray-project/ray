@@ -1202,7 +1202,7 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    serialized_runtime_env,
+                    runtime_env_dict,
                     override_environment_variables
                     ):
         cdef:
@@ -1219,7 +1219,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
-                self.prepare_runtime_env(serialized_runtime_env)
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
@@ -1257,7 +1257,7 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
-                     serialized_runtime_env,
+                     runtime_env_dict,
                      override_environment_variables
                      ):
         cdef:
@@ -1276,7 +1276,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
-                self.prepare_runtime_env(serialized_runtime_env)
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
@@ -1667,9 +1667,14 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def current_serialized_runtime_env(self):
-        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                .GetCurrentSerializedRuntimeEnv())
+    def get_current_runtime_env_dict(self):
+        if self.current_runtime_env_dict is None:
+            self.current_runtime_env_dict = json.loads(
+                CCoreWorkerProcess.GetCoreWorker()
+                .GetWorkerContext()
+                .GetCurrentSerializedRuntimeEnv()
+            )
+        return self.current_runtime_env_dict
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
@@ -1727,22 +1732,24 @@ cdef class CoreWorker:
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 
-    def prepare_runtime_env(self, serialized_runtime_env: str) -> str:
+    def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
         """Update parent's runtime env with new env via a simple dict update.
 
         If the resulting runtime env is empty, fall back to the runtime env
-        set in the JobConfig.
+        set in the JobConfig.  Returns the JSON-serialized runtime env.
         """
-        runtime_env_dict = json.loads(self.current_serialized_runtime_env()
-                                      or "{}")
-        incoming_runtime_env_dict = json.loads(serialized_runtime_env or "{}")
-        runtime_env_dict.update(incoming_runtime_env_dict)
-        if all(val is None for val in runtime_env_dict.values()):
-            runtime_env_dict = {}
-        new_serialized_env = json.dumps(runtime_env_dict)
-        if new_serialized_env == "{}":
-            new_serialized_env = self.get_job_config().serialized_runtime_env
-        return new_serialized_env
+
+        result_dict = self.get_current_runtime_env_dict()
+        result_dict.update(runtime_env_dict)
+
+        # TODO(architkulkarni) remove once workers are cached by runtime env.
+        if all(val is None for val in result_dict.values()):
+            result_dict = {}
+
+        if result_dict == {}:
+            return self.get_job_config().serialized_runtime_env
+        else:
+            return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
