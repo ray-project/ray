@@ -70,7 +70,8 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   }
 
   const { raylet, hostname, ip, cpu, mem, networkSpeed, disk, logUrl } = node;
-  const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } = raylet;
+  const { nodeId, state, objectStoreUsedMemory, objectStoreAvailableMemory } =
+    raylet;
 
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
@@ -313,17 +314,17 @@ const Nodes = () => {
                           </PercentageBar>
                         </TableCell>
                         <TableCell>
-                          {
-                            raylet && (
-                              <PercentageBar
-                                num={raylet.objectStoreUsedMemory}
-                                total={raylet.objectStoreAvailableMemory}
-                              >
-                                {memoryConverter(raylet.objectStoreUsedMemory)}/
-                                {memoryConverter(raylet.objectStoreAvailableMemory)}
-                              </PercentageBar>
-                            )
-                          }
+                          {raylet && (
+                            <PercentageBar
+                              num={raylet.objectStoreUsedMemory}
+                              total={raylet.objectStoreAvailableMemory}
+                            >
+                              {memoryConverter(raylet.objectStoreUsedMemory)}/
+                              {memoryConverter(
+                                raylet.objectStoreAvailableMemory,
+                              )}
+                            </PercentageBar>
+                          )}
                         </TableCell>
                         <TableCell>
                           {disk && disk["/"] && (
