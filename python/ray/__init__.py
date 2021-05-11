@@ -64,6 +64,7 @@ def _configure_system():
         from ctypes import CDLL
         CDLL(so_path, ctypes.RTLD_GLOBAL)
 
+
 _configure_system()
 # Delete configuration function.
 del _configure_system
@@ -145,6 +146,7 @@ __all__ += [
     "PlacementGroupID",
 ]
 
+
 # Remove modules from top-level ray
 def _ray_user_setup_function():
     import os
@@ -155,8 +157,11 @@ def _ray_user_setup_function():
             m = __import__(module_name, globals(), locals(), [fn_name])
             getattr(m, fn_name)()
         except Exception as e:
-            logger.error(f"Failed to run user setup function: {user_setup_fn}. "
-                        f"Error message {e}")
+            logger.error(
+                f"Failed to run user setup function: {user_setup_fn}. "
+                f"Error message {e}")
+
+
 _ray_user_setup_function()
 
 del logging

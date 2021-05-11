@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message, run_string_as_driver)
+from ray.test_utils import (client_test_enabled, get_error_message,
+                            run_string_as_driver)
 
 import ray
 
@@ -185,8 +186,7 @@ print("local", ray._private.runtime_env.VAR)
 """
     out = run_string_as_driver(
         script,
-        {"RAY_USER_SETUP_FUNCTION": "ray.tests.test_basic._user_setup_func"}
-    )
+        {"RAY_USER_SETUP_FUNCTION": "ray.tests.test_basic._user_setup_func"})
     (remote_out, local_out) = out.strip().split("\n")[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
