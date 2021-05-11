@@ -198,7 +198,6 @@ All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. Th
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            "eager": False,
         },
     )
 
