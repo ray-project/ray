@@ -9,10 +9,8 @@ import secrets
 import uuid
 import traceback
 from abc import abstractmethod
-from typing import Union
+from typing import Union, Any
 
-import attr
-from attr.validators import instance_of
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import create_task
 from ray.new_dashboard.modules.job import job_consts
@@ -24,19 +22,18 @@ from ray.core.generated import agent_manager_pb2
 logger = logging.getLogger(__name__)
 
 
-@attr.s(kw_only=True, slots=True)
 class JobInfo(JobDescription):
     # TODO(fyrestone): We should use job id instead of unique id.
-    unique_id = attr.ib(type=str, validator=instance_of(str))
+    unique_id: str
     # The temp directory.
-    temp_dir = attr.ib(type=str, validator=instance_of(str))
+    temp_dir: str
     # The log directory.
-    log_dir = attr.ib(type=str, validator=instance_of(str))
+    log_dir: str
     # The driver process instance.
-    driver = attr.ib(
-        type=Union[None, asyncio.subprocess.Process], default=None)
+    driver: Union[None, asyncio.subprocess.Process]
 
-    def __attrs_post_init__(self):
+    def __init__(self, **data: Any):
+        super().__init__(**data)
         # Support json values for env.
         self.env = {
             k: v if isinstance(v, str) else json.dumps(v)
@@ -156,7 +153,7 @@ class DownloadPackage(JobProcessor):
             temp_dir=temp_dir, unique_id=unique_id)
         unpack_dir = job_consts.JOB_UNPACK_DIR.format(
             temp_dir=temp_dir, unique_id=unique_id)
-        url = self._job_info.runtimeEnv.workingDir
+        url = self._job_info.runtime_env.working_dir
         await self._download_package(self._http_session, url, filename)
         await self._unpack_package(filename, unpack_dir)
 
@@ -209,13 +206,13 @@ ray.shutdown()
         job_config_args = ", ".join(f"{key}={repr(value)}"
                                     for key, value in job_config_items.items()
                                     if value is not None)
-        driver_args = ", ".join([repr(x) for x in self._job_info.driverArgs])
+        driver_args = ", ".join([repr(x) for x in self._job_info.driver_args])
         driver_code = self._template.format(
             job_config_args=job_config_args,
             import_path=repr(job_package_dir),
             redis_address=repr(ip + ":" + str(port)),
             redis_password=repr(self._redis_password),
-            driver_entry=self._job_info.driverEntry,
+            driver_entry=self._job_info.driver_entry,
             driver_args=driver_args)
         with open(driver_entry_file, "w") as fp:
             fp.write(driver_code)
