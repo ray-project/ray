@@ -1345,7 +1345,6 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        print("Trainer.__setstate__")
         if "worker" in state and hasattr(self, "workers"):
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
