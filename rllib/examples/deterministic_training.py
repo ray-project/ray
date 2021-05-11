@@ -7,6 +7,8 @@ import os
 
 import ray
 from ray import tune
+from ray.rllib.examples.env.env_using_remote_actor import \
+    CartPoleWithRemoteParamServer, ParameterStorage
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check
 
@@ -25,13 +27,24 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
+    param_storage = ParameterStorage.options(name="param-server").remote()
+
     config = {
-        "env": "CartPole-v0",
+        "env": CartPoleWithRemoteParamServer,
+        "env_config": {
+            "param_server": "param-server",
+        },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,  # parallelism
         "framework": args.framework,
         "seed": args.seed,
+
+        # Simplify to run this example script faster.
+        "train_batch_size": 100,
+        "sgd_minibatch_size": 10,
+        "num_sgd_iter": 5,
+        "rollout_fragment_length": 50,
     }
 
     stop = {

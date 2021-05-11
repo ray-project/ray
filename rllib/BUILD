@@ -2078,7 +2078,7 @@ py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=tf"]
 )
@@ -2087,7 +2087,7 @@ py_test(
     name = "examples/deterministic_training_tf2",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=tf2"]
 )
@@ -2096,7 +2096,7 @@ py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/deterministic_training.py"],
     args = ["--as-test", "--stop-iters=1", "--framework=torch"]
 )
