@@ -1,0 +1,9 @@
+base_image: "anyscale/ray-ml:pinned-nightly"
+env_vars: {}
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds: []
