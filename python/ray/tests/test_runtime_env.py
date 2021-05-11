@@ -33,11 +33,13 @@ if not job_config.runtime_env:
 
 try:
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.util.connect("{address}", job_config=job_config)
+        ray.util.connect("{address}", job_config=job_config, namespace="")
     else:
         ray.init(address="{address}",
                  job_config=job_config,
-                 logging_level=logging.DEBUG)
+                 logging_level=logging.DEBUG,
+                 namespace=""
+)
 except ValueError:
     print("ValueError")
     sys.exit(0)
@@ -488,7 +490,7 @@ print(sum(ray.get([test_actor.one.remote()] * 1000)))
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "1000"
+    assert out.strip().split()[-1] == "1000", out
     # It's a detached actors, so it should still be there
     assert len(kv._internal_kv_list("gcs://")) == 1
     assert len(list(Path(PKG_DIR).iterdir())) == 2
@@ -595,7 +597,7 @@ def one():
         os.chdir(tmp_dir)
         cluster = Cluster()
         cluster.add_node(num_cpus=1)
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, namespace="")
         (address, env, PKG_DIR) = start_client_server(cluster, True)
         script = f"""
 import ray
@@ -625,7 +627,7 @@ def test_init(shutdown_only):
         with open("hello", "w") as f:
             f.write("world")
         job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
+        ray.init(job_config=job_config, namespace="")
 
         @ray.remote
         class Test:

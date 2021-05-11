@@ -56,12 +56,8 @@ ray.get(actor.ping.remote())
 
     assert actor_removed, "This is an anti-flakey test measure"
 
-    try:
+    with pytest.raises(ValueError, match="Failed to look up actor with name"):
         ray.get_actor("Pinger")
-    except ValueError:
-        pass
-    else:
-        assert False, "Something went wrong, the prob actor wasn't cleaned up."
 
     # Now make the actor in this namespace, from a different job.
     run_string_as_driver(driver_template.format(address, "namespace"))
@@ -69,10 +65,8 @@ ray.get(actor.ping.remote())
     detached_actor = ray.get_actor("Pinger")
     assert ray.get(detached_actor.ping.remote()) == "pong from other job"
 
-    with pytest.raises(
-            ValueError, match="Actor name cannot be an empty string"):
-        probe = Actor.options(name="Pinger", lifetime="detached").remote()
-        ray.get(probe.ping.remote())
+    with pytest.raises(ValueError, match="The name .* is already taken"):
+        Actor.options(name="Pinger", lifetime="detached").remote()
 
 
 def test_default_namespace(shutdown_only):
@@ -100,6 +94,35 @@ ray.get(actor.ping.remote())
     # placed in the same namespace, the second call will throw an exception.
     run_string_as_driver(driver_template.format(address))
     run_string_as_driver(driver_template.format(address))
+
+
+def test_namespace_in_job_config(shutdown_only):
+    # JobConfig isn't a public API, but we'll set it directly, instead of
+    # using the param in code paths like the ray client.
+    job_config = ray.job_config.JobConfig(ray_namespace="namespace")
+    info = ray.init(job_config=job_config)
+
+    address = info["redis_address"]
+
+    # First param of template is the namespace. Second is the redis address.
+    driver_template = """
+import ray
+
+ray.init(address="{}", namespace="namespace")
+
+@ray.remote
+class DetachedActor:
+    def ping(self):
+        return "pong from other job"
+
+actor = DetachedActor.options(name="Pinger", lifetime="detached").remote()
+ray.get(actor.ping.remote())
+    """
+
+    run_string_as_driver(driver_template.format(address))
+
+    act = ray.get_actor("Pinger")
+    assert ray.get(act.ping.remote()) == "pong from other job"
 
 
 def test_detached_warning(shutdown_only):
