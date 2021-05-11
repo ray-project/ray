@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Type
 
 import starlette.requests
 
