@@ -13,7 +13,7 @@ def env_integer(key, default):
         if val == "inf":
             return sys.maxsize
         else:
-            return int(os.environ[key])
+            return int(val)
     return default
 
 
