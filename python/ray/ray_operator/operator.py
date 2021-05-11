@@ -39,7 +39,7 @@ class RayCluster():
     """
 
     def __init__(self, config: Dict[str, Any]):
-        self.set_config(config)
+        self.config = config
         self.name = self.config["cluster_name"]
         self.namespace = self.config["provider"]["namespace"]
 
