@@ -78,14 +78,24 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
+        def other(self, msg: str):
+            return msg
+
     A.deploy()
 
+    # Test HTTP calls.
     resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
     resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
     resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
+
+    # Test handle calls.
+    handle = A.get_handle()
+    assert ray.get(handle.b.remote(41)) == 42
+    assert ray.get(handle.c.remote(41)) == 40
+    assert ray.get(handle.other.remote("world")) == "world"
 
 
 def test_make_fastapi_cbv_util():
