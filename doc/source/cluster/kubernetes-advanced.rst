@@ -72,32 +72,50 @@ This section discusses the `RayCluster` configuration options exposed in the Ray
 A :ref:`Ray cluster<ray-cluster-overview>` consists of a head node and a collection of worker nodes.
 When deploying Ray on Kubernetes, each Ray node runs in its own Kubernetes Pod.
 
-The ``PodTypes`` field of ``values.yaml`` represents the pod configurations available for use as nodes in the RayCluster.
-Each ``PodType`` has a ``name``, and ``headPodType`` identifies the name of the podType to use for the Ray head node.
+The ``podTypes`` field of ``values.yaml`` represents the pod configurations available for use as nodes in the Ray cluster.
+Each ``podType`` has a ``name``. The field ``headPodType`` identifies the name of the podType to use for the Ray head node.
 The rest of the podTypes are used as configuration for the Ray worker nodes.
 
 Each ``podType`` specifies ``minWorkers`` and ``maxWorkers`` fields.
 The autoscaler will try to maintain at least ``minWorkers`` workers of the podType in the cluster and can scale up to
 ``maxWorkers``, according to the needs of Ray workload. A common pattern is to specify ``minWorkers`` = ``maxWorkers`` = 0
 for the head ``podType`` to signal that the ``podType`` is to be used only for the head node.
+The fields ``minWorkers`` and ``maxWorkers`` can be adjusted without :ref:`restarting<k8s-restarts>` the cluster using `helm upgrade`_.
 
 The fields ``numCPU``, ``numGPU``, ``memory``, and ``nodeSelector`` determine the Kubernetes ``PodSpec`` to use for nodes
-of the ``podType``. Refer to `values.yaml`_ for more details on these fields.
+of the ``podType``. The ``image`` field determines the Ray image used by all nodes in the Ray cluster.
+Refer to `values.yaml`_ for more details.
+
+The ``rayResources`` field of each ``podType`` can be used to signal the presence of custom resources to Ray.
+To schedule Ray tasks and actors that use custom hardware resources, ``rayResources`` can be used in conjunction with
+``nodeSelector``:
+
+  - Use ``nodeSelector`` to constrain workers of a podType to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator).
+  - Signal availability of the hardware in with e.g. ``rayResources: {"custom_resource": 3}``.
+  - Schedule a Ray task or Actor to use that resource with e.g. ``@ray.remote(resources={"custom_resource": 1})``.
 
 
 
+.. note::
 
+  If your application could benefit from additional configuration options in the Ray Helm chart,
+  (e.g. exposing more PodSpec fields), please feel free to open a `feature request`_ on
+  the Ray GitHub or a `discussion thread`_ on the Ray forums.
 
-`minWorkers` specifies the minimum number of worker nodes, while `maxWorkers` constrains...
-A common use case `minWorkers`... Another possibility is to set `minWorkers`.
-These settings and others can be adjusted `helm upgrade`.
+  For complete configurability, it is also possible launch a Ray cluster :ref:`without the Helm chart<no helm>`,
+  or to modify the Helm chart.
 
-...
+.. note::
 
-The rest of the fields correspond to configuration details.
-For now -- ...
-Full configurability -- ...
-- The Ray maintainers greatly appreciate feedback..
+  There are a couple of things to keep in mind about the scheduling of Ray worker pods and Ray tasks/actors:
+
+  (1) The Ray Autoscaler executes scaling decisions by sending pod creation requests to the Kubernetes API server.
+  If your Kubernetes cluster cannot accomodate more worker pods of a given podType, requested pods will enter
+  a Pending state until the pod can be scheduled or a `timeout`_ period passes.
+
+  (2) If a Ray task requests more resources than available in any podType, the Ray task cannot be scheduled.
+
+.. _no-helm:
 
 Deploying without Helm
 ----------------------
@@ -119,6 +137,8 @@ take a look at.
 Ray Cluster Lifecycle
 ---------------------
 
+.. _k8s-restarts:
+
 Restart behavior
 ~~~~~~~~~~~~~~~~
 The Ray cluster will restart under the following circumstances:
@@ -132,7 +152,7 @@ Similarly, all workers of a given ``podType`` will be discarded if
 Status information
 ~~~~~~~~~~~~~~~~~~
 
-Running ``kubectl -n <namespace> get raycluster`` will show all Ray clusters in the namespace along with status info:
+Running ``kubectl -n <namespace> get raycluster`` will show all Ray clusters in the namespace, with some status information:
 
 .. code-block:: shell
 
@@ -144,7 +164,7 @@ The ``STATUS`` column reports the RayCluster's ``status.phase`` field. The follo
   - ``Running``: The Ray cluster's autoscaling process is running in a normal state.
   - ``AutoscalingExceptionRecovery`` The Ray cluster's autoscaling process has crashed. Ray processes will restart. This can happen
     if the Ray head node goes down.
-  - ``Error`` There was an unexpected error while updating the Ray cluster. The Ray maintainers would be grateful if you file an issue and include operator logs!
+  - ``Error`` There was an unexpected error while updating the Ray cluster. The Ray maintainers would be grateful if you file a `bug report`_ with operator logs!
 
 The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` field. This tracks the number of times the cluster has restarted due to an autoscaling error.
 
@@ -154,4 +174,7 @@ The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` fi
 .. _`cluster-scoped`: https://github.com/ray-project/ray/tree/master/deploy/components/operator_cluster_scoped.yaml
 .. _`example`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/
 .. _`values.yaml`: https://github.com/ray-project/ray/tree/master/deploy/charts/ray/values.yaml
-
+.. _`bug report`: https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2C+triage&template=bug_report.md&title=
+.. _`helm upgrade`: https://helm.sh/docs/helm/helm_upgrade/
+.. _`discussion thread`: https://discuss.ray.io/c/ray-clusters/ray-kubernetes/11
+.. _`timeout`: https://github.com/ray-project/ray/blob/b08b2c5103c634c680de31b237b2bfcceb9bc150/python/ray/autoscaler/_private/constants.py#L22
