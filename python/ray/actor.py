@@ -707,7 +707,7 @@ class ActorClass:
                     override_environment_variables))
             runtime_env_dict = parsed_runtime_env.get_parsed_dict()
         else:
-            runtime_env_dict = "{}"
+            runtime_env_dict = {}
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
