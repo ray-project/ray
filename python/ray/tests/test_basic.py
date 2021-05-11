@@ -167,19 +167,29 @@ def test_invalid_arguments(shutdown_only):
 
 def _user_setup_func():
     import ray._private.runtime_env as runtime_env
-    runtime_env.PKG_DIR = "hello world"
+    runtime_env.VAR = "hello world"
 
 
 def test_user_setup_function():
     script = """
 import ray
-print(ray._private.runtime_env.PKG_DIR)
+ray.init()
+@ray.remote
+def get_pkg_dir():
+    return ray._private.runtime_env.VAR
+
+print("remote", ray.get(get_pkg_dir.remote()))
+print("local", ray._private.runtime_env.VAR)
+
+
 """
     out = run_string_as_driver(
         script,
         {"RAY_USER_SETUP_FUNCTION": "ray.tests.test_basic._user_setup_func"}
     )
-    assert out == "hello world\n"
+    (remote_out, local_out) = out.strip().split("\n")[-2:]
+    assert remote_out == "remote hello world"
+    assert local_out == "local hello world"
 
 
 def test_put_get(shutdown_only):
