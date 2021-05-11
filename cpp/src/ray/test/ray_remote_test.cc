@@ -58,10 +58,7 @@ RAY_REMOTE(DummyObject::FactoryCreate);
 RAY_REMOTE(&DummyObject::Add);
 
 RAY_REMOTE(PlusOne);
-RAY_REMOTE(PlusTwo);
-RAY_REMOTE(VoidFuncNoArgs);
-RAY_REMOTE(VoidFuncWithArgs);
-RAY_REMOTE(ExceptionFunc);
+RAY_REMOTE(PlusTwo, VoidFuncNoArgs, VoidFuncWithArgs, ExceptionFunc);
 
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
