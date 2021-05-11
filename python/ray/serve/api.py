@@ -389,8 +389,15 @@ class Client:
         else:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
+        python_methods = []
+        if inspect.isclass(backend_def):
+            for method_name, _ in inspect.getmembers(backend_def,
+                                                     inspect.isfunction):
+                python_methods.append(method_name)
+
         goal_ref = self._controller.deploy.remote(
-            name, backend_config, replica_config, version, route_prefix)
+            name, backend_config, replica_config, python_methods, version,
+            route_prefix)
 
         if _blocking:
             self._wait_for_goal(goal_ref)
@@ -1315,7 +1322,7 @@ def get_deployment(name: str) -> Deployment:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
-        backend_info.replica_config.backend_def,
+        cloudpickle.loads(backend_info.replica_config.serialized_backend_def),
         name,
         backend_info.backend_config,
         version=backend_info.version,
@@ -1336,7 +1343,8 @@ def list_deployments() -> Dict[str, Deployment]:
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
-            backend_info.replica_config.backend_def,
+            cloudpickle.loads(
+                backend_info.replica_config.serialized_backend_def),
             name,
             backend_info.backend_config,
             version=backend_info.version,
