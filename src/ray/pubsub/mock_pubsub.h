@@ -33,8 +33,6 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
-
-  bool CheckNoLeaks() const override { return true; };
 };
 
 class MockPublisher : public pubsub::PublisherInterface {

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
 #include <boost/any.hpp>
 
 #include "absl/container/flat_hash_map.h"
@@ -198,9 +199,6 @@ class SubscriberInterface {
                            const rpc::Address &publisher_address,
                            const std::string &key_id_binary) = 0;
 
-  /// Testing only. Return true if there's no metadata remained in the private attribute.
-  virtual bool CheckNoLeaks() const = 0;
-
   virtual ~SubscriberInterface() {}
 };
 
@@ -255,9 +253,25 @@ class Subscriber : public SubscriberInterface {
   std::shared_ptr<SubscribeChannelInterface> Channel(
       const rpc::ChannelType channel_type) const;
 
-  bool CheckNoLeaks() const override;
-
  private:
+  ///
+  /// Testing fields
+  ///
+
+  FRIEND_TEST(SubscriberTest, TestBasicSubscription);
+  FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
+  FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
+  FRIEND_TEST(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject);
+  FRIEND_TEST(SubscriberTest, TestIgnoreBatchAfterUnsubscription);
+  FRIEND_TEST(SubscriberTest, TestLongPollingFailure);
+  FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
+  // Testing only. Check if there are leaks.
+  bool CheckNoLeaks() const;
+
+  ///
+  /// Private fields
+  ///
+
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.
   ///

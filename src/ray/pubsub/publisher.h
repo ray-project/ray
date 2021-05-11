@@ -64,7 +64,7 @@ class SubscriptionIndex {
   /// Returns true if object id or subscriber id exists in the index.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
-  /// Testing only. Return true if there's no metadata remained in the private attribute.
+  /// Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
  private:
@@ -110,7 +110,7 @@ class Subscriber {
   ///
   /// \param pub_message A message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
-  /// connection. False is used only for testing.
+  /// connection.
   void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
                     bool try_publish = true);
 
@@ -297,10 +297,27 @@ class Publisher : public PublisherInterface {
   /// having a timer per subscriber.
   void CheckDeadSubscribers();
 
+ private:
+  ///
+  /// Testing fields
+  ///
+
+  FRIEND_TEST(PublisherTest, TestBasicSingleSubscriber);
+  FRIEND_TEST(PublisherTest, TestNoConnectionWhenRegistered);
+  FRIEND_TEST(PublisherTest, TestMultiObjectsFromSingleNode);
+  FRIEND_TEST(PublisherTest, TestMultiObjectsFromMultiNodes);
+  FRIEND_TEST(PublisherTest, TestBatch);
+  FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionExisted);
+  FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);
+  FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
+  FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
- private:
+  ///
+  /// Private fields
+  ///
+
   bool UnregisterSubscriberInternal(const SubscriberID &subscriber_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

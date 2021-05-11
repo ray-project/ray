@@ -19,9 +19,6 @@
 
 namespace ray {
 
-using ::testing::_;
-using namespace pubsub;
-
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   void PubsubLongPolling(
@@ -53,6 +50,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
 };
 
+namespace pubsub {
+
 class SubscriberTest : public ::testing::Test {
  public:
   SubscriberTest()
@@ -67,8 +66,8 @@ class SubscriberTest : public ::testing::Test {
   void SetUp() {
     object_subscribed_.clear();
     object_failed_to_subscribe_.clear();
-    subscriber_ = std::shared_ptr<Subscriber>(
-        new Subscriber(self_node_id_, self_node_address_, self_node_port_, client_pool));
+    subscriber_ = std::make_shared<Subscriber>(self_node_id_, self_node_address_,
+                                               self_node_port_, client_pool);
   }
 
   const rpc::Address GenerateOwnerAddress(
@@ -287,6 +286,8 @@ TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
 }
 // TODO(sang): Need to add a network failure test once we support network failure
 // properly.
+
+}  // namespace pubsub
 
 }  // namespace ray
 

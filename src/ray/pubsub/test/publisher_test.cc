@@ -22,8 +22,8 @@
 
 namespace ray {
 
-using ::testing::_;
-using namespace pubsub;
+namespace pubsub {
+
 using namespace pub_internal;
 
 class PublisherTest : public ::testing::Test {
@@ -854,6 +854,8 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   ASSERT_EQ(long_polling_connection_replied, false);
   ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
+
+}  // namespace pubsub
 
 }  // namespace ray
 

@@ -88,7 +88,7 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
   const auto channel_type = pub_message.channel_type();
   const auto key_id = KeyIdType::FromBinary(pub_message.key_id());
   RAY_CHECK(channel_type == channel_type_);
-  RAY_LOG(DEBUG) << "Message id " << key_id << " information was published from "
+  RAY_LOG(DEBUG) << "key id " << key_id << " information was published from "
                  << publisher_id;
 
   auto maybe_subscription_callback = GetSubscriptionCallback(publisher_address, key_id);
@@ -276,7 +276,7 @@ bool Subscriber::CheckNoLeaks() const {
   return !leaks && publishers_connected_.size() == 0;
 }
 
-/// Per each message id, we need to define templates for these functions/classes here so
+/// Per each key id, we need to define templates for these functions/classes here so
 /// that symbols are discoverable.
 template class SubscriberChannel<ObjectID>;
 
