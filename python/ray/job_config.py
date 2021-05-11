@@ -21,6 +21,8 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
+        worker_container_image (string): The container image which
+            worker process run in.
     """
 
     def __init__(self,
@@ -31,7 +33,8 @@ class JobConfig:
                  runtime_env=None,
                  client_job=False,
                  metadata=None,
-                 ray_namespace=None):
+                 ray_namespace=None,
+                 worker_container_image=None):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -48,6 +51,7 @@ class JobConfig:
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
+        self.worker_container_image = worker_container_image or ""
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -97,6 +101,8 @@ class JobConfig:
             self._cached_pb.runtime_env.CopyFrom(self._get_proto_runtime())
             self._cached_pb.serialized_runtime_env = \
                 self.get_serialized_runtime_env()
+            self._cached_pb.worker_container_image = \
+                self.worker_container_image
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
         return self._cached_pb

@@ -295,6 +295,8 @@ message JobConfig {
   string serialized_runtime_env = 7;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 8;
+  // The worker container image.
+  string worker_container_image = 9;
 }
 
 message JobTableData {

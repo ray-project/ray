@@ -299,6 +299,9 @@ class Node:
         self._resource_dir = os.path.join(self._session_dir,
                                           "runtime_resources")
         try_to_create_directory(self._resource_dir)
+        # Create a directory to be used for container pidfile.
+        try_to_create_directory(
+            os.path.join(self._session_dir, "worker_container"))
         import ray._private.runtime_env as runtime_env
         runtime_env.PKG_DIR = self._resource_dir
 

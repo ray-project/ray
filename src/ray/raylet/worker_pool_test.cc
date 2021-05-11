@@ -78,9 +78,23 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {},
+            [this]() { return current_time_ms_; }, false, "", ""),
+        last_worker_process_() {
+    SetNodeManagerPort(1);
+  }
+
+  WorkerPoolMock(instrumented_io_context &io_service,
+                 const WorkerCommandMap &worker_commands,
+                 int num_initial_python_workers_for_first_job,
+                 bool worker_process_in_container_enabled)
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT,
+            num_initial_python_workers_for_first_job, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
+            {}, nullptr, worker_commands, []() {}, [this]() { return current_time_ms_; },
+            worker_process_in_container_enabled, "", ""),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -99,6 +113,14 @@ class WorkerPoolMock : public WorkerPool {
     last_worker_process_ = Process::FromPid(pid);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
     return last_worker_process_;
+  }
+
+  Process StartContainerProcess(const std::vector<std::string> &worker_command_args,
+                                const ProcessEnvironment &env,
+                                const ResourceSet &worker_resource,
+                                const std::string &worker_container_image) override {
+    container_worker_count_++;
+    return StartProcess(worker_command_args, env);
   }
 
   void WarnAboutSize() override {}
@@ -147,11 +169,14 @@ class WorkerPoolMock : public WorkerPool {
     return idle_of_all_languages_;
   }
 
+  int GetContainerWorkerCount() const { return container_worker_count_; }
+
  private:
   Process last_worker_process_;
   // The worker commands by process.
   std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
   double current_time_ms_ = 0;
+  int container_worker_count_ = 0;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -214,8 +239,12 @@ class WorkerPoolTest : public ::testing::Test {
     return driver;
   }
 
-  void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    worker_pool_ = std::make_unique<WorkerPoolMock>(io_service_, worker_commands);
+  void SetWorkerCommands(const WorkerCommandMap &worker_commands,
+                         int num_initial_python_workers_for_first_job = 0,
+                         bool worker_process_in_container_enabled = false) {
+    worker_pool_ = std::make_unique<WorkerPoolMock>(
+        io_service_, worker_commands, num_initial_python_workers_for_first_job,
+        worker_process_in_container_enabled);
     rpc::JobConfig job_config;
     job_config.set_num_java_workers_per_process(NUM_WORKERS_PER_PROCESS_JAVA);
     RegisterDriver(Language::PYTHON, JOB_ID, job_config);
@@ -272,7 +301,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {},
-    const TaskID &task_id = TaskID::Nil()) {
+    const TaskID &task_id = TaskID::Nil(), const ResourceSet &worker_resource = {}) {
   rpc::TaskSpec message;
   message.set_job_id(job_id.Binary());
   message.set_language(language);
@@ -288,6 +317,15 @@ static inline TaskSpecification ExampleTaskSpec(
     }
   } else {
     message.set_type(TaskType::NORMAL_TASK);
+  }
+  if (!worker_resource.IsEmpty()) {
+    google::protobuf::Map<std::string, double> *resource =
+        message.mutable_required_resources();
+    std::unordered_map<std::string, double> resource_map =
+        worker_resource.GetResourceMap();
+    for (auto iter = resource_map.begin(); iter != resource_map.end(); ++iter) {
+      resource->insert({iter->first, iter->second});
+    }
   }
   return TaskSpecification(std::move(message));
 }
@@ -1015,6 +1053,50 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   }
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
+}
+
+class ContainerWorkerPoolTest : public WorkerPoolTest {
+ public:
+  ContainerWorkerPoolTest() : WorkerPoolTest() {
+    RayConfig::instance().initialize("object_spilling_config,YQ==;max_io_workers," +
+                                     std::to_string(MAX_IO_WORKER_SIZE));
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}},
+                      2, true);
+  }
+};
+
+TEST_F(ContainerWorkerPoolTest, RegisterDriver) {
+  // ContainerWorkerPoolTest constructor will invoke PYTHON RegisterDriver.
+  std::vector<std::shared_ptr<WorkerInterface>> drivers =
+      worker_pool_->GetAllRegisteredDrivers();
+  ASSERT_EQ(drivers.size(), 1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+}
+
+TEST_F(ContainerWorkerPoolTest, StartWorkerWithContainer) {
+  auto task_id = TaskID::ForDriverTask(JOB_ID);
+  auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
+  std::unordered_map<std::string, FractionalResourceQuantity> resource_map = {
+      {"cpu", FractionalResourceQuantity(1.0)}};
+  TaskSpecification task_spec =
+      ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
+                      ResourceSet(resource_map));
+  rpc::JobConfig job_config = rpc::JobConfig();
+  job_config.set_num_java_workers_per_process(1);
+  job_config.set_worker_container_image("ray:latest");
+  worker_pool_->HandleJobStarted(JOB_ID, job_config);
+  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
+  ASSERT_EQ(worker_pool_->GetContainerWorkerCount(), 1);
+  std::unordered_map<std::string, FractionalResourceQuantity> resource_map1 = {
+      {"cpu", 2.0}};
+  TaskSpecification task_spec1 =
+      ExampleTaskSpec(ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, {}, task_id,
+                      ResourceSet(resource_map1));
+  ASSERT_EQ(worker_pool_->PopWorker(task_spec), nullptr);
+  ASSERT_EQ(worker_pool_->GetContainerWorkerCount(), 2);
+  worker_pool_->HandleJobFinished(JOB_ID);
 }
 
 }  // namespace raylet

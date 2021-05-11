@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
+
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -24,6 +25,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
+#include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -63,7 +65,9 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
-                       const std::function<double()> get_time)
+                       const std::function<double()> get_time,
+                       bool worker_process_in_container_enabled,
+                       const std::string &temp_dir, const std::string &session_dir)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -76,8 +80,16 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time) {
+      get_time_(get_time),
+      worker_process_in_container_enabled_(worker_process_in_container_enabled),
+      temp_dir_(temp_dir),
+      session_dir_(session_dir) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+#ifndef __linux__
+  // Currently worker_process_in_container_enabled only works on linux
+  RAY_CHECK(!worker_process_in_container_enabled_)
+      << "Option worker_process_in_container_enabled only works on linux.";
+#endif
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
@@ -85,7 +97,13 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
 #ifndef _WIN32
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
+
+  // When using container to start worker processes, we need to wait for
+  // container starting command to exit. The worker processes' parent process
+  // is OCI container runtime monitor.
+  if (!worker_process_in_container_enabled_) {
+    signal(SIGCHLD, SIG_IGN);
+  }
 #endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
@@ -149,7 +167,8 @@ Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     const std::vector<std::string> &dynamic_options,
     const std::string &serialized_runtime_env,
-    std::unordered_map<std::string, std::string> override_environment_variables) {
+    std::unordered_map<std::string, std::string> override_environment_variables,
+    const ResourceSet &worker_resource) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
@@ -296,7 +315,12 @@ Process WorkerPool::StartWorkerProcess(
       }
     }
 
-    WorkerCacheKey env = {override_environment_variables, serialized_runtime_env};
+    ResourceSet workerCacheKeyResource = worker_resource;
+    if (!worker_process_in_container_enabled_) {
+      workerCacheKeyResource = {};
+    }
+    WorkerCacheKey env = {override_environment_variables, serialized_runtime_env,
+                          workerCacheKeyResource};
     const std::string runtime_env_hash_str = std::to_string(env.IntHash());
     worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);
   }
@@ -311,7 +335,17 @@ Process WorkerPool::StartWorkerProcess(
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = Process();
+  if (job_config && worker_process_in_container_enabled_) {
+    std::string worker_container_image = job_config->worker_container_image();
+    RAY_CHECK(!worker_container_image.empty())
+        << "Worker_container_image should not be empty when enable "
+           "worker_process_in_container !";
+    proc = StartContainerProcess(worker_command_args, env, worker_resource,
+                                 worker_container_image);
+  } else {
+    proc = StartProcess(worker_command_args, env);
+  }
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
@@ -390,6 +424,107 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
     }
   }
   return child;
+}
+
+Process WorkerPool::StartContainerProcess(
+    const std::vector<std::string> &worker_command_args, const ProcessEnvironment &env,
+    const ResourceSet &worker_resource, const std::string &worker_container_image) {
+  // Launch the process to create the worker container.
+  std::vector<std::string> argv;
+  argv.emplace_back("podman");
+  argv.emplace_back("run");
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    argv.emplace_back("--log-level=debug");
+  } else {
+    argv.emplace_back("--rm");
+  }
+  // Currently worker process will write log to stderr before initializing
+  // logger, and the worker process' stdout/stderr has been redirected to raylet.err by
+  // default.
+  std::string stderr_file = ray::GetStderrFile();
+  if (!stderr_file.empty()) {
+    argv.emplace_back("--log-opt");
+    argv.emplace_back("path=" + stderr_file);
+  }
+  // TODO set uid for container, for example: -u admin
+  argv.emplace_back("-d");
+  argv.emplace_back("-v");
+  argv.emplace_back(temp_dir_ + ":" + temp_dir_);
+  argv.emplace_back("--cgroup-manager=cgroupfs");
+  // drop SYS_ADMIN capability
+  argv.emplace_back("--cap-drop");
+  argv.emplace_back("SYS_ADMIN");
+  argv.emplace_back("--network=host");
+  argv.emplace_back("--pid=host");
+  argv.emplace_back("--ipc=host");
+  auto pid_file_random = UniqueID::FromRandom();
+  std::string container_pid_file_path =
+      session_dir_ + "/worker_container/" + pid_file_random.Hex() + ".txt";
+  argv.emplace_back("--pidfile=" + container_pid_file_path);
+  if (!worker_resource.IsEmpty()) {
+    const FractionalResourceQuantity cpu_quantity =
+        worker_resource.GetResource(kCPU_ResourceLabel);
+    if (cpu_quantity.ToDouble() > 0) {
+      argv.emplace_back("--cpus=" + std::to_string(cpu_quantity.ToDouble()));
+    }
+    const FractionalResourceQuantity memory_quantity =
+        worker_resource.GetResource(kMemory_ResourceLabel);
+    if (memory_quantity.ToDouble() > 0) {
+      argv.emplace_back("--memory=" + std::to_string(memory_quantity.ToDouble()) + "b");
+    }
+  }
+  // inherite environment
+  argv.emplace_back("--env-host");
+  for (const auto &item : env) {
+    argv.emplace_back("--env");
+    argv.emplace_back(item.first + '=' + item.second);
+  }
+  argv.emplace_back("--env");
+  std::stringstream pid_env_str;
+  pid_env_str << "RAYLET_PID=";
+  pid_env_str << getpid();
+  argv.emplace_back(pid_env_str.str());
+  argv.emplace_back("--entrypoint");
+  argv.emplace_back(worker_command_args[0]);
+  argv.emplace_back(worker_container_image);
+  for (std::vector<std::string>::size_type i = 1; i < worker_command_args.size(); i++) {
+    argv.emplace_back(worker_command_args[i]);
+  }
+  if (RAY_LOG_ENABLED(DEBUG)) {
+    std::stringstream stream;
+    stream << "Starting worker process with command:";
+    for (const auto &arg : argv) {
+      stream << " " << arg;
+    }
+    RAY_LOG(DEBUG) << stream.str();
+  }
+  std::pair<Process, std::error_code> p = Process::Spawn(argv, false, std::string(), env);
+  std::error_code ec = p.second;
+  if (ec) {
+    // errorcode 24: Too many files. This is caused by ulimit.
+    if (ec.value() == 24) {
+      RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
+                     << "`ulimit -n <num_files>` then restart Ray.";
+    } else {
+      // The worker failed to start. This is a fatal error.
+      RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
+                     << ec.message();
+    }
+  }
+  // we need to wait for container started
+  Process proc = Process::FromPid(p.first.GetId());
+  int exit_code = proc.Wait();
+  if (exit_code != 0) {
+    RAY_LOG(FATAL) << "Failed to start container, exit code: " << exit_code;
+  }
+  std::ifstream pid_file(container_pid_file_path, std::ios_base::in);
+  if (!pid_file.good()) {
+    RAY_LOG(FATAL) << "Failed to read container pidfile: " << container_pid_file_path;
+  }
+  pid_t pid = -1;
+  pid_file >> pid;
+  RAY_CHECK(pid != -1);
+  return Process::FromPid(pid);
 }
 
 Status WorkerPool::GetNextFreePort(int *port) {
@@ -532,8 +667,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   // Invoke the `send_reply_callback` later to only finish driver
   // registration after all initial workers are registered to Raylet.
   bool delay_callback = false;
-  // If this is the first job.
-  if (first_job_.IsNil()) {
+  // If disable worker_process_in_container and this is the first job.
+  if (!worker_process_in_container_enabled_ && first_job_.IsNil()) {
     first_job_ = job_id;
     // If the number of Python workers we need to wait is positive.
     if (num_initial_python_workers_for_first_job_ > 0) {
@@ -856,7 +991,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options);
+                                task_spec.JobId(), dynamic_options, "{}", {},
+                                task_spec.GetRequiredResources());
       if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
@@ -866,8 +1002,14 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Find an available worker which is already assigned to this job and which has
     // the specified runtime env.
     // Try to pop the most recently pushed worker.
+    ResourceSet workerCacheKeyResource = task_spec.GetRequiredResources();
+    if (!worker_process_in_container_enabled_) {
+      // If not enable worker process in container, don't add ResourceSet into
+      // WorkerCacheKey. Otherwise there are a lot test will fail.
+      workerCacheKeyResource = {};
+    }
     const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                                task_spec.SerializedRuntimeEnv()};
+                                task_spec.SerializedRuntimeEnv(), workerCacheKeyResource};
     const int runtime_env_hash = env.IntHash();
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
@@ -902,7 +1044,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                 task_spec.JobId(), {}, /* dynamic_options */
                                 task_spec.SerializedRuntimeEnv(),
-                                task_spec.OverrideEnvironmentVariables());
+                                task_spec.OverrideEnvironmentVariables(),
+                                task_spec.GetRequiredResources());
     }
   }
 
@@ -1191,9 +1334,10 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 
 WorkerCacheKey::WorkerCacheKey(
     const std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string serialized_runtime_env)
+    const std::string serialized_runtime_env, const ResourceSet &worker_resource)
     : override_environment_variables(override_environment_variables),
-      serialized_runtime_env(serialized_runtime_env) {}
+      serialized_runtime_env(serialized_runtime_env),
+      worker_resource(worker_resource) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   return Hash() == k.Hash();
@@ -1201,7 +1345,8 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+         worker_resource.IsEmpty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -1223,6 +1368,7 @@ std::size_t WorkerCacheKey::Hash() const {
       }
 
       boost::hash_combine(hash_, serialized_runtime_env);
+      boost::hash_combine(hash_, worker_resource.ToString());
     }
   }
   return hash_;

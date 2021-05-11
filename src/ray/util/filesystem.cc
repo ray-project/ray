@@ -1,11 +1,17 @@
 #include "ray/util/filesystem.h"
 
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
 #include <Windows.h>
+#endif
+
+#ifdef __linux__
+#include <linux/limits.h>
 #endif
 
 namespace ray {
@@ -83,6 +89,24 @@ std::string GetUserTempDir() {
   }
   RAY_CHECK(!result.empty());
   return result;
+}
+
+std::string GetStderrFile() {
+#ifdef __linux__
+  struct stat st;
+  // On linux, fd #2 stands for STDERR.
+  // Check whether it is a file and get the real path.
+  if (!fstat(2, &st) && S_ISREG(st.st_mode)) {
+    char filepath[PATH_MAX + 1];
+    ssize_t len = ::readlink("/proc/self/fd/2", filepath, sizeof(filepath) - 1);
+    if (len != -1) {
+      filepath[len] = '\0';
+      return std::string(filepath);
+    }
+  }
+#endif
+  // Not implements on windows/macOs
+  return "";
 }
 
 }  // namespace ray

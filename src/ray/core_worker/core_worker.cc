@@ -914,7 +914,13 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  if (!IsParentProcessAlive()) {
+  if (const char *env_pid = std::getenv("RAYLET_PID")) {
+    pid_t pid = static_cast<pid_t>(std::atoi(env_pid));
+    if (!IsProcessAlive(pid)) {
+      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Pid: " << pid;
+      Shutdown();
+    }
+  } else if (!IsParentProcessAlive()) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }

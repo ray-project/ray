@@ -175,7 +175,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_placement_group.py",
-    "test_runtime_env.py"
+    "test_runtime_env.py",
+    "test_actor_in_container.py",
   ],
   size = "large",
   extra_srcs = SRCS,

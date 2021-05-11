@@ -47,6 +47,9 @@ std::string GetRayTempDir();
 /// \return The non-volatile temporary directory for the current user (often /tmp).
 std::string GetUserTempDir();
 
+/// \return The stderr reference file. return empty if stderr not redirect to file.
+std::string GetStderrFile();
+
 /// \return Whether or not the given character is a directory separator on this platform.
 static inline bool IsDirSep(char ch) {
   bool result = ch == GetDirSep();

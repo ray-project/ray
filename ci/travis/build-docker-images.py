@@ -128,7 +128,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
                 build_args["GPU"] = f"{py_name}{gpu}"
 
-            if image_name in ["ray", "ray-deps"]:
+            if image_name in ["ray", "ray-deps", "ray-nest-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
 
@@ -183,10 +183,14 @@ def copy_wheels(human_build):
         source = os.path.join(root_dir, ".whl", wheel)
         ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
         ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
+        ray_nest_container_dst = os.path.join(
+            root_dir, "docker/ray-nest-container/.whl/")
         os.makedirs(ray_dst, exist_ok=True)
         shutil.copy(source, ray_dst)
         os.makedirs(ray_dep_dst, exist_ok=True)
         shutil.copy(source, ray_dep_dst)
+        os.makedirs(ray_nest_container_dst, exist_ok=True)
+        shutil.copy(source, ray_nest_container_dst)
 
 
 def build_or_pull_base_images(rebuild_base_images: bool = True) -> List[str]:
@@ -234,6 +238,10 @@ def build_ray_ml():
         tag = img.split(":")[-1]
         DOCKER_CLIENT.api.tag(
             image=img, repository="rayproject/autoscaler", tag=tag)
+
+
+def build_ray_nest_container():
+    return _build_cpu_gpu_images("ray-nest-container")
 
 
 def _get_docker_creds() -> Tuple[str, str]:
@@ -391,12 +399,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to build base-deps & ray-deps")
     parser.add_argument("--no-build-base", dest="base", action="store_false")
+    parser.add_argument(
+        "--build-images",
+        choices=["ray", "ray_ml", "ray_nest_container"],
+        default=["ray", "ray_ml"],
+        nargs="*",
+        help="Which docker image to build. Must be in (ray, ray_ml, ray_nest_container)")
     parser.set_defaults(base=True)
 
     args = parser.parse_args()
     py_versions = args.py_versions
     py_versions = py_versions if isinstance(py_versions,
                                             list) else [py_versions]
+    build_images = args.build_images
+    build_images = build_images if isinstance(build_images,
+                                              list) else [build_images]
     for key in set(PY_MATRIX.keys()):
         if key[1:].upper() not in py_versions:
             PY_MATRIX.pop(key)
@@ -421,8 +438,12 @@ if __name__ == "__main__":
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
-        build_ray()
-        build_ray_ml()
+        if "ray" in build_images:
+            build_ray()
+        if "ray_ml" in build_images:
+            build_ray_ml()
+        if "ray_nest_container" in build_images:
+            build_ray_nest_container()
 
         if build_type in {MERGE, PR}:  # Skipping push on buildkite
             valid_branch = _valid_branch()

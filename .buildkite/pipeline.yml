@@ -157,6 +157,16 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
+- label: ":python: (Worker In Container)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --build-images ray_nest_container
+    - mkdir /ray-mount/containers
+    - docker save -o /ray-mount/containers/images.tar rayproject/ray-nest-container:nightly-py36-cpu
+    - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
+      rayproject/ray-nest-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]

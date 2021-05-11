@@ -102,6 +102,8 @@ pid_t GetParentPID();
 
 bool IsParentProcessAlive();
 
+bool IsProcessAlive(pid_t pid);
+
 }  // namespace ray
 
 // We only define operators required by the standard library (==, hash):
