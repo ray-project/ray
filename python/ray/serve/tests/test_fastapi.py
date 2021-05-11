@@ -1,7 +1,7 @@
+import sys
 import time
 from typing import Any, List, Optional
 import tempfile
-import sys
 
 import pytest
 import inspect
@@ -78,24 +78,14 @@ def test_class_based_view(serve_instance):
         def c(self, i: int):
             return i - self.val
 
-        def other(self, msg: str):
-            return msg
-
     A.deploy()
 
-    # Test HTTP calls.
     resp = requests.get("http://localhost:8000/f/calc/41")
     assert resp.json() == 42
     resp = requests.post("http://localhost:8000/f/calc/41")
     assert resp.json() == 40
     resp = requests.get("http://localhost:8000/f/other")
     assert resp.json() == "hello"
-
-    # Test handle calls.
-    handle = A.get_handle()
-    assert ray.get(handle.b.remote(41)) == 42
-    assert ray.get(handle.c.remote(41)) == 40
-    assert ray.get(handle.other.remote("world")) == "world"
 
 
 def test_make_fastapi_cbv_util():
@@ -331,6 +321,25 @@ def test_fast_api_mounted_app(serve_instance):
 
     assert requests.get(
         "http://localhost:8000/api/mounted/hi").json() == "world"
+
+
+def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
+    app = FastAPI()
+
+    @app.on_event("shutdown")
+    async def shutdown():
+        1 / 0
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        def f(self):
+            return 1
+
+    A.deploy()
+    # Without a proper fix, the actor won't be initialized correctly.
+    # Because it will crash on each startup.
+    assert ray.get(A.get_handle().f.remote()) == 1
 
 
 def test_fastapi_duplicate_routes(serve_instance):
