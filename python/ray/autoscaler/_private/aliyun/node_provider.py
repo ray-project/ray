@@ -72,17 +72,17 @@ class AliyunNodeProvider(NodeProvider):
         instances = self.acs.describe_instances(tags=tags)
         non_terminated_instance = []
         for instance in instances:
-            if instance.get('Status') == RUNNING or instance.get(
-                    'Status') == PENDING:
-                non_terminated_instance.append(instance.get('InstanceId'))
-                self.cached_nodes[instance.get('InstanceId')] = instance
+            if instance.get("Status") == RUNNING or instance.get(
+                    "Status") == PENDING:
+                non_terminated_instance.append(instance.get("InstanceId"))
+                self.cached_nodes[instance.get("InstanceId")] = instance
         return non_terminated_instance
 
     def is_running(self, node_id: str) -> bool:
         instances = self.acs.describe_instances(instance_ids=[node_id])
         if instances is not None:
             instance = instances[0]
-            return instance.get('Status') == "Running"
+            return instance.get("Status") == "Running"
         cli_logger.error("Invalid node id: %s", node_id)
         return False
 
@@ -91,7 +91,7 @@ class AliyunNodeProvider(NodeProvider):
         if instances is not None:
             assert len(instances) == 1
             instance = instances[0]
-            return instance.get('Status') == "Stopped"
+            return instance.get("Status") == "Stopped"
         cli_logger.error("Invalid node id: %s", node_id)
         return False
 
@@ -100,10 +100,10 @@ class AliyunNodeProvider(NodeProvider):
         if instances is not None:
             assert len(instances) == 1
             instance = instances[0]
-            if instance.get('Tags') is not None:
+            if instance.get("Tags") is not None:
                 node_tags = dict()
-                for tag in instance.get('Tags').get('Tag'):
-                    node_tags[tag.get('TagKey')] = tag.get('TagValue')
+                for tag in instance.get("Tags").get("Tag"):
+                    node_tags[tag.get("TagKey")] = tag.get("TagValue")
                 return node_tags
         return dict()
 
@@ -113,13 +113,13 @@ class AliyunNodeProvider(NodeProvider):
             if instances is not None:
                 assert len(instances)
                 instance = instances[0]
-                if instance.get('PublicIpAddress') is not None \
+                if instance.get("PublicIpAddress") is not None \
                     and instance.get(
-                        'PublicIpAddress').get('IpAddress') is not None:
-                    if len(instance.get('PublicIpAddress').get(
-                            'IpAddress')) > 0:
-                        return instance.get('PublicIpAddress').get(
-                            'IpAddress')[0]
+                        "PublicIpAddress").get("IpAddress") is not None:
+                    if len(instance.get("PublicIpAddress").get(
+                            "IpAddress")) > 0:
+                        return instance.get("PublicIpAddress").get(
+                            "IpAddress")[0]
             cli_logger.error(
                 "PublicIpAddress attribute is not exist. %s" % instance)
             time.sleep(STOPPING_NODE_DELAY)
@@ -130,13 +130,13 @@ class AliyunNodeProvider(NodeProvider):
             if instances is not None:
                 assert len(instances) == 1
                 instance = instances[0]
-                if instance.get('VpcAttributes') is not None and instance.get(
-                        'VpcAttributes').get(
-                            'PrivateIpAddress') is not None and len(
-                                instance.get('VpcAttributes').get(
-                                    'PrivateIpAddress').get('IpAddress')) > 0:
-                    return instance.get('VpcAttributes').get(
-                        'PrivateIpAddress').get('IpAddress')[0]
+                if instance.get("VpcAttributes") is not None and instance.get(
+                        "VpcAttributes").get(
+                            "PrivateIpAddress") is not None and len(
+                                instance.get("VpcAttributes").get(
+                                    "PrivateIpAddress").get("IpAddress")) > 0:
+                    return instance.get("VpcAttributes").get(
+                        "PrivateIpAddress").get("IpAddress")[0]
             cli_logger.error(
                 "InnerIpAddress attribute is not exist. %s" % instance)
             time.sleep(STOPPING_NODE_DELAY)
@@ -210,24 +210,23 @@ class AliyunNodeProvider(NodeProvider):
 
         reuse_nodes_candidate = self.acs.describe_instances(tags=filter_tags)
         reuse_node_ids = []
-        # reused_nodes_dict = {n.get('InstanceId'): n for n in reuse_nodes}
         if reuse_nodes_candidate:
             with cli_logger.group("Stopping instances to reuse"):
                 for node in reuse_nodes_candidate:
-                    node_id = node.get('InstanceId')
-                    status = node.get('Status')
+                    node_id = node.get("InstanceId")
+                    status = node.get("Status")
                     if status != STOPPING and status != STOPPED:
                         continue
                     if status == STOPPING:
                         while self.acs.describe_instances(
                                 instance_ids=[node_id])[0].get(
-                                    'Status') == STOPPING:
+                                    "Status") == STOPPING:
                             logging.info("wait for %s stop" % node_id)
                             time.sleep(STOPPING_NODE_DELAY)
-                    logger.info('reuse %s' % node_id)
+                    # logger.info("reuse %s" % node_id)
                     reuse_node_ids.append(node_id)
                     self.acs.start_instance(node_id)
-                    self.tag_cache[node_id] = node.get('Tags')
+                    self.tag_cache[node_id] = node.get("Tags")
                     self.set_node_tags(node_id, tags)
                     if len(reuse_node_ids) == count:
                         break
@@ -240,28 +239,27 @@ class AliyunNodeProvider(NodeProvider):
                 "Value": tags[TAG_RAY_NODE_STATUS]
             })
             instance_id_sets = self.acs.run_instances(
-                instance_type=node_config['InstanceType'],
-                image_id=node_config['ImageId'],
+                instance_type=node_config["InstanceType"],
+                image_id=node_config["ImageId"],
                 tags=filter_tags,
                 amount=count,
-                vswitch_id=self.provider_config['v_switch_id'],
-                security_group_id=self.provider_config['security_group_id'],
-                key_pair_name=self.provider_config['key_name'])
+                vswitch_id=self.provider_config["v_switch_id"],
+                security_group_id=self.provider_config["security_group_id"],
+                key_pair_name=self.provider_config["key_name"])
             instances = self.acs.describe_instances(
                 instance_ids=instance_id_sets)
 
             if instances is not None:
                 for instance in instances:
-                    # print(instance.get('Status'))
-                    created_nodes_dict[instance.get('InstanceId')] = instance
+                    created_nodes_dict[instance.get("InstanceId")] = instance
         return created_nodes_dict
 
     def terminate_node(self, node_id: str) -> None:
-        logger.info('terminate node: %s' % node_id)
+        logger.info("terminate node: %s" % node_id)
         self.acs.stop_instance(node_id)
 
     def terminate_nodes(self, node_ids: List[str]) -> None:
-        logger.info('terminate nodes: %s' % node_ids)
+        logger.info("terminate nodes: %s" % node_ids)
         self.acs.stop_instances(node_ids)
 
     def _get_node(self, node_id):
