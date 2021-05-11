@@ -278,7 +278,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
 )
 
 py_test(
