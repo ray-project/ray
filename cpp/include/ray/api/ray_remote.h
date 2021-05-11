@@ -35,7 +35,12 @@ inline static std::vector<absl::string_view> GetFunctionNames(absl::string_view 
       if (str[first] == ' ') {
         first++;
       }
-      output.emplace_back(str.substr(first, second - first));
+
+      auto name = str.substr(first, second - first);
+      if (name.back() == ' ') {
+        name.remove_suffix(1);
+      }
+      output.emplace_back(name);
     }
 
     if (second == absl::string_view::npos) break;
