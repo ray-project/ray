@@ -165,7 +165,6 @@ def num_services():
 
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
-        print("\n")
         # Validate terminate_node error handling
         provider = KubernetesNodeProvider({
             "namespace": NAMESPACE
@@ -226,7 +225,7 @@ class KubernetesOperatorTest(unittest.TestCase):
                 file.flush()
 
             # Start operator and two clusters
-            print(">>>Starting operator and two clusters.")
+            print("\n>>>Starting operator and two clusters.")
             for file in files:
                 cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
                 subprocess.check_call(cmd, shell=True)

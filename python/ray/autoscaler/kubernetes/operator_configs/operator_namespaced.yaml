@@ -51,7 +51,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: AUTOSCALER_MAX_NUM_FAILURES
-          value: "999999"
+          value: "inf"
         resources:
           requests:
             cpu: 1
