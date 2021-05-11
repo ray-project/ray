@@ -2,7 +2,7 @@ import asyncio
 import logging
 import traceback
 import inspect
-from typing import Union, Any, Callable, Type
+from typing import Any, Callable
 import time
 
 import starlette.responses
@@ -29,9 +29,7 @@ from ray.exceptions import RayTaskError
 logger = _get_logger()
 
 
-def create_backend_replica(
-        name: str,
-        serialized_backend_def: Union[Callable, Type[Callable], str]):
+def create_backend_replica(name: str, serialized_backend_def: bytes):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
