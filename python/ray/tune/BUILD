@@ -38,7 +38,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -46,7 +46,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster_searcher.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
