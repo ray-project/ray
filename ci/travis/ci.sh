@@ -140,6 +140,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
