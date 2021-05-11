@@ -175,9 +175,13 @@ To remove a Ray Helm release and the associated API resources, use `helm uninsta
 
 .. code-block:: shell
 
+  # Delete the Ray release.
   $ helm uninstall example-cluster
 
-Note that this command `does not delete` the RayCluster CRD. If you wish to delete the CRD,
+  # Optionally, delete the namespace created for our Ray release.
+  $ kubectl delete namespace ray
+
+Note that ``helm uninstall`` `does not delete`_ the RayCluster CRD. If you wish to delete the CRD,
 make sure all Ray Helm releases have been uninstalled, then run ``kubectl delete crd rayclusters.cluster.ray.io``.
 
 Next steps
