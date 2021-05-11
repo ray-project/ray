@@ -14,7 +14,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0  # --eager [--trace] for eager execution
+    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": True}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -151,7 +151,6 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -389,7 +388,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the policy
     >>> from ray.rllib.agents.ppo import PPOTrainer
-    >>> trainer = PPOTrainer(env="CartPole-v0", config={"eager": True, "num_workers": 0})
+    >>> trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
     >>> policy = trainer.get_policy()
     <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -444,7 +443,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
-    >>> trainer = DQNTrainer(env="CartPole-v0", config={"eager": True})
+    >>> trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
     >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
@@ -873,8 +872,8 @@ Eager Mode
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
-``"eager": True`` / ``"eager_tracing": True`` config options or using
-``rllib train --eager [--trace]``.
+``"framework": "tf2"`` / ``"eager_tracing": True`` config options or using
+``rllib train --config '{"framework": "tf2"}' [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
