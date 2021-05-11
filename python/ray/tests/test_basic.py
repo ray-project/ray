@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message)
+from ray.test_utils import (client_test_enabled, get_error_message, run_string_as_driver)
 
 import ray
 
@@ -163,6 +163,23 @@ def test_invalid_arguments(shutdown_only):
             @ray.remote(max_task_retries=opt)
             class A2:
                 x = 1
+
+
+def _user_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.PKG_DIR = "hello world"
+
+
+def test_user_setup_function():
+    script = """
+import ray
+print(ray._private.runtime_env.PKG_DIR)
+"""
+    out = run_string_as_driver(
+        script,
+        {"RAY_USER_SETUP_FUNCTION": "ray.tests.test_basic._user_setup_func"}
+    )
+    assert out == "hello world\n"
 
 
 def test_put_get(shutdown_only):
