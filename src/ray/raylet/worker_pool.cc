@@ -148,7 +148,8 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     const std::vector<std::string> &dynamic_options, const ray::RuntimeEnv &runtime_env,
-    std::unordered_map<std::string, std::string> override_environment_variables) {
+    std::unordered_map<std::string, std::string> override_environment_variables,
+    const ResourceSet &worker_resource) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
@@ -307,7 +308,7 @@ Process WorkerPool::StartWorkerProcess(
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = StartProcess(worker_command_args, env, worker_resource);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
@@ -865,7 +866,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       proc =
           StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                              task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
-                             task_spec.OverrideEnvironmentVariables());
+                             task_spec.OverrideEnvironmentVariables(),
+                             task_spec.GetRequiredResources());
       if (proc.IsValid()) {
         state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;

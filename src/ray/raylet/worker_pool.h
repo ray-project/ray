@@ -352,7 +352,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
       const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
-      std::unordered_map<std::string, std::string> override_environment_variables = {});
+      std::unordered_map<std::string, std::string> override_environment_variables = {},
+      const ResourceSet &worker_resource = ResourceSet());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
