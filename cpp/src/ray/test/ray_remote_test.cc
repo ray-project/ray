@@ -52,11 +52,6 @@ int OverloadFunc(int i, int j) {
   return i + j;
 }
 
-RAY_REMOTE(PlusOne);
-RAY_REMOTE(PlusTwo);
-RAY_REMOTE(VoidFuncNoArgs);
-RAY_REMOTE(VoidFuncWithArgs);
-RAY_REMOTE(ExceptionFunc);
 RAY_REMOTE(RAY_FUNC(OverloadFunc));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
 RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
