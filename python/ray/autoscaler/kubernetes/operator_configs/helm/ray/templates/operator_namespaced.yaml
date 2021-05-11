@@ -1,4 +1,4 @@
-{{- if and (.Values.namespacedOperator) (not .Values.noOperator) }}
+{{- if and (.Values.namespacedOperator) (not .Values.clusterOnly) }}
 ---
 apiVersion: v1
 kind: ServiceAccount

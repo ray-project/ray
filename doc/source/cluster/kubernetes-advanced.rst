@@ -6,6 +6,70 @@ Ray Operator Advanced Configuration
 This document covers configuration options for the Ray Helm chart.
 We recommend reading this :ref:`introductory guide<ray-k8s-deploy>` on the Helm chart first.
 
+Helm chart configuration
+------------------------
+This section discusses the `RayCluster` configuration options exposed in the Ray Helm chart's `values.yaml`_ file.
+
+Setting custom chart values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To configure Helm chart values, you can pass in a ``custom values.yaml`` and/or set individual fields.
+For example,
+
+.. code-block:: shell
+
+   # Pass in a custom values yaml.
+   $ helm install example-cluster -f custom_values.yaml ./ray
+   # or set custom values on the command line
+   $ helm install example-cluster --set image=rayproject/ray:1.2.0
+
+Refer the `Helm docs`_ for more information.
+
+Ray cluster configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~
+A :ref:`Ray cluster<ray-cluster-overview>` consists of a head node and a collection of worker nodes.
+When deploying Ray on Kubernetes, each Ray node runs in its own Kubernetes Pod.
+The ``podTypes`` field of ``values.yaml`` represents the pod configurations available for use as nodes in the Ray cluster.
+Each ``podType`` has a ``name``. The field ``headPodType`` identifies the name of the podType to use for the Ray head node.
+The rest of the podTypes are used as configuration for the Ray worker nodes.
+
+Each ``podType`` specifies ``minWorkers`` and ``maxWorkers`` fields.
+The autoscaler will try to maintain at least ``minWorkers`` workers of the ``podType`` and can scale up to
+``maxWorkers``, according to the resource demands of the Ray workload. A common pattern is to specify ``minWorkers`` = ``maxWorkers`` = 0
+for the head ``podType`` to signal that this ``podType`` is to be used only for the head node.
+The fields ``minWorkers`` and ``maxWorkers`` can be adjusted without :ref:`restarting<k8s-restarts>` the cluster using `helm upgrade`_.
+
+The fields ``numCPU``, ``numGPU``, ``memory``, and ``nodeSelector`` configure the Kubernetes ``PodSpec`` to use for nodes
+of the ``podType``. The ``image`` field determines the Ray container image used by all nodes in the Ray cluster.
+Refer to the comments in `values.yaml`_ for more details.
+
+The ``rayResources`` field of each ``podType`` can be used to signal the presence of custom resources to Ray.
+To schedule Ray tasks and actors that use custom hardware resources, ``rayResources`` can be used in conjunction with
+``nodeSelector``:
+
+  - Use ``nodeSelector`` to constrain workers of a ``podType`` to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator).
+  - Signal availability of the hardware for that ``podType`` with e.g. ``rayResources: {"custom_resource": 3}``.
+  - Schedule a Ray task or Actor to use that resource with e.g. ``@ray.remote(resources={"custom_resource": 1})``.
+
+
+.. note::
+
+  If your application could benefit from additional configuration options in the Ray Helm chart,
+  (e.g. exposing more PodSpec fields), please feel free to open a `feature request`_ on
+  the Ray GitHub or a `discussion thread`_ on the Ray forums.
+
+  For complete configurability, it is also possible launch a Ray cluster :ref:`without the Helm chart<no helm>`,
+  or to modify the Helm chart.
+
+.. note::
+
+  There are a couple of things to keep in mind about the scheduling of Ray worker pods and Ray tasks/actors:
+
+  (1) The Ray Autoscaler executes scaling decisions by sending pod creation requests to the Kubernetes API server.
+  If your Kubernetes cluster cannot accomodate more worker pods of a given podType, requested pods will enter
+  a Pending state until the pod can be scheduled or a `timeout`_ period passes.
+
+  (2) If a Ray task requests more resources than available in any podType, the Ray task cannot be scheduled.
+
 
 Running multiple Ray clusters
 -----------------------------
@@ -15,12 +79,10 @@ must be launched in a Helm release from the separate from the release used to la
 
 To enable a workflow with multiple Ray Clusters, the Ray Helm chart includes two flags:
 - ``operatorOnly``: Start the Operator without launching a Ray cluster.
-- ``clusterOnly``: Create a RayCluster custom resource without installing the Operator.
+- ``clusterOnly``: Create a RayCluster custom resource without installing the Operator.\
   (If the Operator has already been installed, a new Ray cluster will be launched.)
 
-
-
-The following commands will install the Operator and two Ray Clusters using
+The following commands will install the Operator and two Ray Clusters in
 three separate Helm releases:
 
 .. code-block:: shell
@@ -31,8 +93,11 @@ three separate Helm releases:
   # Install a Ray cluster in a new namespace.
   helm -n ray install example-cluster --set clusterOnly=true ./ray
 
-  # Install another Ray cluster.
-  helm -n ray install example-cluster2 --set clusterOnly=true
+  # Install a second Ray cluster. Launch the second cluster without any workers.
+  helm -n ray install example-cluster2 --set podTypes[1].minWorkers=0 --set clusterOnly=true
+
+  # Verify that both clusters are running.
+  kubectl -n ray get pods
 
 Alternatively, the Operator and one of the Ray Clusters can be installed in the same Helm release:
 
@@ -43,7 +108,7 @@ Alternatively, the Operator and one of the Ray Clusters can be installed in the 
 
    # Start another Ray cluster.
    # The cluster will be managed by the operator created in the last command.
-   helm -n ray install example-cluster2 --set clusterOnly=true
+   helm -n ray install example-cluster2 --set podTypes[1].minWorkers=0 --set clusterOnly=true
 
 
 The Operator pod outputs autoscaling logs for all of the Ray clusters it manages.
@@ -71,53 +136,6 @@ to your Helm install command.
 .. warning::
    Do not simultaneously run namespaced and cluster-scoped Ray Operators within one Kubernetes cluster, as this will lead to unintended effects.
 
-Helm chart configuration
-------------------------
-This section discusses the `RayCluster` configuration options exposed in the Ray Helm chart's `values.yaml`_ file.
-A :ref:`Ray cluster<ray-cluster-overview>` consists of a head node and a collection of worker nodes.
-When deploying Ray on Kubernetes, each Ray node runs in its own Kubernetes Pod.
-
-The ``podTypes`` field of ``values.yaml`` represents the pod configurations available for use as nodes in the Ray cluster.
-Each ``podType`` has a ``name``. The field ``headPodType`` identifies the name of the podType to use for the Ray head node.
-The rest of the podTypes are used as configuration for the Ray worker nodes.
-
-Each ``podType`` specifies ``minWorkers`` and ``maxWorkers`` fields.
-The autoscaler will try to maintain at least ``minWorkers`` workers of the podType in the cluster and can scale up to
-``maxWorkers``, according to the needs of Ray workload. A common pattern is to specify ``minWorkers`` = ``maxWorkers`` = 0
-for the head ``podType`` to signal that the ``podType`` is to be used only for the head node.
-The fields ``minWorkers`` and ``maxWorkers`` can be adjusted without :ref:`restarting<k8s-restarts>` the cluster using `helm upgrade`_.
-
-The fields ``numCPU``, ``numGPU``, ``memory``, and ``nodeSelector`` determine the Kubernetes ``PodSpec`` to use for nodes
-of the ``podType``. The ``image`` field determines the Ray image used by all nodes in the Ray cluster.
-Refer to `values.yaml`_ for more details.
-
-The ``rayResources`` field of each ``podType`` can be used to signal the presence of custom resources to Ray.
-To schedule Ray tasks and actors that use custom hardware resources, ``rayResources`` can be used in conjunction with
-``nodeSelector``:
-
-  - Use ``nodeSelector`` to constrain workers of a podType to run on a Kubernetes Node with specialized hardware (e.g. a particular GPU accelerator).
-  - Signal availability of the hardware in with e.g. ``rayResources: {"custom_resource": 3}``.
-  - Schedule a Ray task or Actor to use that resource with e.g. ``@ray.remote(resources={"custom_resource": 1})``.
-
-
-.. note::
-
-  If your application could benefit from additional configuration options in the Ray Helm chart,
-  (e.g. exposing more PodSpec fields), please feel free to open a `feature request`_ on
-  the Ray GitHub or a `discussion thread`_ on the Ray forums.
-
-  For complete configurability, it is also possible launch a Ray cluster :ref:`without the Helm chart<no helm>`,
-  or to modify the Helm chart.
-
-.. note::
-
-  There are a couple of things to keep in mind about the scheduling of Ray worker pods and Ray tasks/actors:
-
-  (1) The Ray Autoscaler executes scaling decisions by sending pod creation requests to the Kubernetes API server.
-  If your Kubernetes cluster cannot accomodate more worker pods of a given podType, requested pods will enter
-  a Pending state until the pod can be scheduled or a `timeout`_ period passes.
-
-  (2) If a Ray task requests more resources than available in any podType, the Ray task cannot be scheduled.
 
 .. _no-helm:
 
@@ -182,3 +200,4 @@ The ``RESTARTS`` column reports the RayCluster's ``status.autoscalerRetries`` fi
 .. _`helm upgrade`: https://helm.sh/docs/helm/helm_upgrade/
 .. _`discussion thread`: https://discuss.ray.io/c/ray-clusters/ray-kubernetes/11
 .. _`timeout`: https://github.com/ray-project/ray/blob/b08b2c5103c634c680de31b237b2bfcceb9bc150/python/ray/autoscaler/_private/constants.py#L22
+.. _`Helm docs`: https://helm.sh/docs/helm/helm_install/

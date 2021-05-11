@@ -1,4 +1,4 @@
-{{- if not .Values.noRayCluster }}
+{{- if not .Values.operatorOnly }}
 apiVersion: cluster.ray.io/v1
 kind: RayCluster
 metadata:
