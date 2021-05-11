@@ -609,6 +609,7 @@ def start(
             )
 
     # Initialize ray if needed.
+    ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
 
@@ -677,6 +678,7 @@ def connect() -> Client:
     """
 
     # Initialize ray if needed.
+    ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
 
