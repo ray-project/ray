@@ -101,14 +101,6 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
-/// Whether to re-populate plasma memory. This avoids memory allocation failures
-/// at runtime (SIGBUS errors creating new objects), however it will use more memory
-/// upfront and can slow down Ray startup.
-/// See also: https://github.com/ray-project/ray/issues/14182
-RAY_CONFIG(bool, preallocate_plasma_memory,
-           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
-               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
-
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
 /// many tasks to the same node.
