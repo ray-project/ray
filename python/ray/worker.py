@@ -764,6 +764,7 @@ def init(
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
+        job_id=None,
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
