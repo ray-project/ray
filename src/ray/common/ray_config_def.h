@@ -50,7 +50,7 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -100,6 +100,14 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Whether to re-populate plasma memory. This avoids memory allocation failures
+/// at runtime (SIGBUS errors creating new objects), however it will use more memory
+/// upfront and can slow down Ray startup.
+/// See also: https://github.com/ray-project/ray/issues/14182
+RAY_CONFIG(bool, preallocate_plasma_memory,
+           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
+               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
@@ -248,6 +256,8 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
+// Feature flag to use grpc instead of redis for resource broadcast.
+RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

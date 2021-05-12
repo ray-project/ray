@@ -83,6 +83,18 @@ def wait_for_job(job_pod):
     return success
 
 
+@retry_until_true
+def wait_for_status(cluster_name, status):
+    client = kubernetes.client.CustomObjectsApi()
+    cluster_cr = client.get_namespaced_custom_object(
+        namespace=NAMESPACE,
+        group="cluster.ray.io",
+        version="v1",
+        plural="rayclusters",
+        name=cluster_name)
+    return cluster_cr["status"]["phase"] == status
+
+
 def kubernetes_configs_directory():
     relative_path = "python/ray/autoscaler/kubernetes"
     return os.path.join(RAY_PATH, relative_path)
@@ -157,6 +169,12 @@ class KubernetesOperatorTest(unittest.TestCase):
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
 
+            # Use a custom Redis port for one of the clusters.
+            example_cluster_config["spec"]["headStartRayCommands"][1] += \
+                " --port 6400"
+            example_cluster_config["spec"]["workerStartRayCommands"][1] = \
+                " ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6400"
+
             # Dump to temporary files
             yaml.dump(example_cluster_config, example_cluster_file)
             yaml.dump(example_cluster2_config, example_cluster2_file)
@@ -186,6 +204,15 @@ class KubernetesOperatorTest(unittest.TestCase):
             # ray cluster example-cluster.)
             operator_pod = [pod for pod in pods() if "operator" in pod].pop()
             wait_for_logs(operator_pod)
+
+            print(">>>Confirming 'Running' status for second cluster.")
+            wait_for_status("example-cluster2", "Running")
+            print(">>>Deleting second cluster's head.")
+            head_pod = [pod for pod in pods() if "2-ray-head" in pod].pop()
+            cd = f"kubectl -n {NAMESPACE} delete pod {head_pod}"
+            subprocess.check_call(cd, shell=True)
+            print(">>>Waiting for 'Error' status to register.")
+            wait_for_status("example-cluster2", "Error")
 
             # Delete the second cluster
             print(">>>Deleting example-cluster2.")

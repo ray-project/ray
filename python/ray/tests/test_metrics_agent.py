@@ -11,7 +11,7 @@ import pytest
 import ray
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Count, Histogram, Gauge
+from ray.util.metrics import Counter, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
 # This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
@@ -63,16 +63,17 @@ def _setup_cluster_for_test(ray_start_cluster):
     worker_should_exit = SignalActor.remote()
 
     # Generate a metric in the driver.
-    counter = Count("test_driver_counter", description="desc")
+    counter = Counter("test_driver_counter", description="desc")
     counter.inc()
 
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
-        counter = Count("test_counter", description="desc")
+        counter = Counter("test_counter", description="desc")
         counter.inc()
         counter = ray.get(ray.put(counter))  # Test serialization.
         counter.inc()
+        counter.inc(2)
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
@@ -139,7 +140,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_counter_sample = [
             m for m in metric_samples if "test_counter" in m.name
         ][0]
-        assert test_counter_sample.value == 2.0
+        assert test_counter_sample.value == 4.0
 
         test_driver_counter_sample = [
             m for m in metric_samples if "test_driver_counter" in m.name
@@ -245,15 +246,16 @@ Unit test custom metrics.
 
 def test_basic_custom_metrics(metric_mock):
     # Make sure each of metric works as expected.
-    # -- Count --
-    count = Count("count", tag_keys=("a", ))
+    # -- Counter --
+    count = Counter("count", tag_keys=("a", ))
     with pytest.raises(TypeError):
         count.inc("hi")
     with pytest.raises(ValueError):
         count.inc(0)
+    with pytest.raises(ValueError):
         count.inc(-1)
     count._metric = metric_mock
-    count.record(1, {"a": "1"})
+    count.inc(1, {"a": "1"})
     metric_mock.record.assert_called_with(1, tags={"a": "1"})
 
     # -- Gauge --
@@ -267,7 +269,7 @@ def test_basic_custom_metrics(metric_mock):
         "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
     histogram._metric = metric_mock
     tags = {"a": "10", "b": "b"}
-    histogram.record(8, tags=tags)
+    histogram.observe(8, tags=tags)
     metric_mock.record.assert_called_with(8, tags=tags)
 
 
@@ -312,11 +314,11 @@ def test_custom_metrics_edge_cases(metric_mock):
 
     # Empty name is not allowed.
     with pytest.raises(ValueError):
-        Count("")
+        Counter("")
 
     # The tag keys must be a tuple type.
     with pytest.raises(TypeError):
-        Count("name", tag_keys=("a"))
+        Counter("name", tag_keys=("a"))
 
 
 def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
@@ -324,10 +326,10 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
 
     @ray.remote
     def override():
-        a = Count("num_count", description="")
-        b = Count("num_count", description="")
-        a.record(1)
-        b.record(1)
+        a = Counter("num_count", description="")
+        b = Counter("num_count", description="")
+        a.inc(1)
+        b.inc(1)
 
     ray.get(override.remote())
 
@@ -348,31 +350,31 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
 
 def test_custom_metrics_validation(ray_start_regular_shared):
     # Missing tag(s) from tag_keys.
-    metric = Count("name", tag_keys=("a", "b"))
+    metric = Counter("name", tag_keys=("a", "b"))
     metric.set_default_tags({"a": "1"})
 
-    metric.record(1.0, {"b": "2"})
-    metric.record(1.0, {"a": "1", "b": "2"})
+    metric.inc(1.0, {"b": "2"})
+    metric.inc(1.0, {"a": "1", "b": "2"})
 
     with pytest.raises(ValueError):
-        metric.record(1.0)
+        metric.inc(1.0)
 
     with pytest.raises(ValueError):
-        metric.record(1.0, {"a": "2"})
+        metric.inc(1.0, {"a": "2"})
 
     # Extra tag not in tag_keys.
-    metric = Count("name", tag_keys=("a", ))
+    metric = Counter("name", tag_keys=("a", ))
     with pytest.raises(ValueError):
-        metric.record(1.0, {"a": "1", "b": "2"})
+        metric.inc(1.0, {"a": "1", "b": "2"})
 
     # tag_keys must be tuple.
     with pytest.raises(TypeError):
-        Count("name", tag_keys="a")
+        Counter("name", tag_keys="a")
     # tag_keys must be strs.
     with pytest.raises(TypeError):
-        Count("name", tag_keys=(1, ))
+        Counter("name", tag_keys=(1, ))
 
-    metric = Count("name", tag_keys=("a", ))
+    metric = Counter("name", tag_keys=("a", ))
     # Set default tag that isn't in tag_keys.
     with pytest.raises(ValueError):
         metric.set_default_tags({"a": "1", "c": "2"})
@@ -381,7 +383,7 @@ def test_custom_metrics_validation(ray_start_regular_shared):
         metric.set_default_tags({"a": 1})
     # Tag value must be str.
     with pytest.raises(TypeError):
-        metric.record(1.0, {"a": 1})
+        metric.inc(1.0, {"a": 1})
 
 
 if __name__ == "__main__":

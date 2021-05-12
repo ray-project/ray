@@ -1268,7 +1268,7 @@ py_test(
 
 py_test(
     name = "test_curiosity",
-    tags = ["utils", "flaky"],
+    tags = ["utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_curiosity.py"]
 )
@@ -1460,7 +1460,7 @@ py_test(
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_I", "flaky"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )
@@ -1729,7 +1729,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -2244,6 +2244,14 @@ py_test(
     size = "medium",
     srcs = ["examples/partial_gpus.py"],
     args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
+    name = "examples/restore_1_of_n_agents_from_checkpoint",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
 )
 
 py_test(
