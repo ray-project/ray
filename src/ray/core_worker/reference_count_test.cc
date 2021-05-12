@@ -42,7 +42,11 @@ class ReferenceCountTest : public ::testing::Test {
     rc = std::make_unique<ReferenceCounter>(addr, publisher_.get(), subscriber_.get());
   }
 
-  virtual void TearDown() {}
+  virtual void TearDown() {
+    publisher_.reset();
+    subscriber_.reset();
+    rc.reset();
+  }
 
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
@@ -60,7 +64,11 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
                                             /*lineage_pinning_enabled=*/true);
   }
 
-  virtual void TearDown() {}
+  virtual void TearDown() {
+    publisher_.reset();
+    subscriber_.reset();
+    rc.reset();
+  }
 
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
