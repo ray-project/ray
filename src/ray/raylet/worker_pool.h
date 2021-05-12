@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
+#include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +39,66 @@ namespace raylet {
 
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
+
+/// \struct WorkerCacheKey
+///
+/// Struct used as a cache key for workers. The dynamic_options and
+/// override_environment_variables will be unified into runtime_env in the future.
+struct WorkerCacheKey {
+  TaskID task_id;
+  std::vector<std::string> dynamic_options;
+  std::unordered_map<std::string, std::string> override_environment_variables;
+  std::string serialized_runtime_env;
+  mutable std::size_t hash_ = 0;
+
+  bool operator==(const WorkerCacheKey &k) const {
+    return task_id == k.task_id && dynamic_options == k.dynamic_options &&
+           override_environment_variables == k.override_environment_variables &&
+           serialized_runtime_env == k.serialized_runtime_env;
+  }
+
+  std::size_t Hash() const {
+    // Cache the hash value.
+    if (!hash_) {
+      boost::hash_combine(hash_, std::hash<TaskID>()(task_id));
+
+      for (auto &str : dynamic_options) {
+        boost::hash_combine(hash_, str);
+      }
+
+      std::vector<std::pair<std::string, std::string>> elems(
+          override_environment_variables.begin(), override_environment_variables.end());
+      std::sort(elems.begin(), elems.end());
+      for (auto &pair : elems) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+
+      boost::hash_combine(hash_, serialized_runtime_env);
+    }
+    return hash_;
+  }
+};
+
+struct WorkerCacheKeyHasher {
+  std::size_t operator()(const WorkerCacheKey &k) const { return k.Hash(); }
+};
+
+/// TODO(archit):
+/// 1. Add runtime_env dict in the task_spec to the RuntimeEnv cache
+///    key below once it's implemented.
+/// 2. Make this compile by making the RuntimeEnv type hashable. This will
+///    include making the dicts passed in ordered (we should sort them in
+///    Python and pass them as tuples or something?).
+/// 3. Fix tests and add new ones to worker_pool_test.cc.
+/// 4. Eventually we should unify the two codepaths for when these options are
+///    and aren't set instead of having a "special" codepath for it.
+
+/// Tuple of (TaskID, DynamicWorkerOptions, OverrideEnvironmentVariables)
+/// that's used as a cache key for workers. DynamicWorkerOptions and
+/// OverrideEnvironmentVariables will be unified into RuntimeEnv in the future.
+using RuntimeEnv = std::tuple<TaskID, std::vector<std::string>,
+                              std::unordered_map<std::string, std::string>>;
 
 /// \class WorkerPoolInterface
 ///
@@ -414,6 +475,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map for looking up tasks with existing dedicated worker processes (processes
     /// with a specially installed environment) so the processes can be reused.
     std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
+    /// TODO(architkulkarni)
+    std::unordered_map<WorkerCacheKey, Process, WorkerCacheKeyHasher> envs_to_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

@@ -863,6 +863,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
+      // TODO(architkulkarni): Implement worker caching using WorkerCacheKey
+      WorkerCacheKey key = {task_spec.TaskId(), dynamic_options,
+                            task_spec.OverrideEnvironmentVariables(),
+                            task_spec.SerializedRuntimeEnv()};
+      state.envs_to_workers[key] = proc;
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
                                 task_spec.JobId(), dynamic_options,
                                 task_spec.SerializedRuntimeEnv(),
