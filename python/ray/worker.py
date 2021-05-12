@@ -1238,7 +1238,6 @@ def connect(node,
     if namespace is not None:
         # The namespace field of job config may have already been set in code
         # paths such as the client.
-        print("Explicitely setting the namespace field to ", namespace)
         job_config.set_ray_namespace(namespace)
 
     serialized_job_config = job_config.serialize()
