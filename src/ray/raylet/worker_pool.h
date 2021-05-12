@@ -131,7 +131,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
              const std::function<double()> get_time,
-             bool worker_process_in_container);
+             bool worker_process_in_container,
+             const std::string temp_dir);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -557,6 +558,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// A callback to get the current time.
   const std::function<double()> get_time_;
+
+  bool worker_process_in_container_;
+  const std::string temp_dir_;
 };
 
 }  // namespace raylet

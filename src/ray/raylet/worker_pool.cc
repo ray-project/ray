@@ -65,7 +65,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
                        const std::function<double()> get_time,
-                       bool worker_process_in_container)
+                       bool worker_process_in_container,
+                       const std::string temp_dir)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -78,7 +79,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time) worker_process_in_container_(worker_process_in_container) {
+      get_time_(get_time), worker_process_in_container_(worker_process_in_container,
+      temp_dir_(temp_dir)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -412,7 +414,8 @@ Process WorkerPool::StartContainerProcess(
   argv.push_back("--security-opt=seccomp=unconfined");
   argv.push_back("--network=host");
   argv.push_back("--pid=host");
-  std::string container_pid_file_path = "/tmp/ray/container/" + WorkerID::FromRandom().Hex() + ".txt";
+  auto pid_file_random = WorkerID::FromRandom();
+  std::string container_pid_file_path = "/tmp/ray/container/" + pid_file_random.Hex() + ".txt";
   std::string pid_file_arg = "--pidfile=" + container_pid_file_path;
   argv.push_back(pid_file_arg.c_str());
   if (!worker_resource.IsEmpty()) {
@@ -428,17 +431,16 @@ Process WorkerPool::StartContainerProcess(
                            "b");
     }
   }
-  ProcessEnvironment new_env;
-  for (char *const *e = environ; *e; ++e) {
-    RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
-    const char *key_end = strchr(*e, '=');
-    RAY_CHECK(key_end) << "environment variable value is absent: " << e;
-    new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
-  }
+//  ProcessEnvironment new_env;
+//  for (char *const *e = environ; *e; ++e) {
+//    RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+//    const char *key_end = strchr(*e, '=');
+//    RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+//    new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
+//    argv.push_back("--env");
+//    argv.push_back((item.first + '=' + item.second).c_str());
+//  }
   for (const auto &item : env) {
-    new_env[item.first] = item.second;
-  }
-  for (const auto &item : new_env) {
     argv.push_back("--env");
     argv.push_back((item.first + '=' + item.second).c_str());
   }
@@ -454,9 +456,7 @@ Process WorkerPool::StartContainerProcess(
     std::stringstream stream;
     stream << "Starting worker process with command:";
     for (const auto &arg : argv) {
-      if (arg != nullptr) {
-        stream << " " << arg;
-      }
+      stream << " " << arg;
     }
     RAY_LOG(DEBUG) << stream.str();
   }
@@ -473,7 +473,7 @@ Process WorkerPool::StartContainerProcess(
                      << ec.message();
     }
   }
-  std::ifstream pid_file(container_pid_file_path.str(), std::ios_base::in);
+  std::ifstream pid_file(container_pid_file_path, std::ios_base::in);
   if (pid_file.good()) {
     pid_t pid = -1;
     pid_file >> pid;
