@@ -34,12 +34,15 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
                 alpha, eps, i = 7, 0.4, worker_index - 1
                 num_workers_minus_1 = float(num_workers - 1) \
                     if num_workers > 1 else 1.0
+                constant_eps = eps**(1 + (i / num_workers_minus_1) * alpha)
+                print(f"epsilon for worker={worker_index} will be {constant_eps}")#TODO
                 epsilon_schedule = ConstantSchedule(
-                    eps**(1 + (i / num_workers_minus_1) * alpha),
+                    constant_eps,
                     framework=framework)
             # Local worker should have zero exploration so that eval
             # rollouts run properly.
             else:
+                print(f"worker=0 -> no epsilon exploration!")#TODO
                 epsilon_schedule = ConstantSchedule(0.0, framework=framework)
 
         super().__init__(
