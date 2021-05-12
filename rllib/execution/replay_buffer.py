@@ -239,6 +239,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
           transitions at the sampled idxes denoted by
           variable `idxes`.
         """
+        # Making sure we don't pass in e.g. a torch tensor.
+        assert isinstance(idxes[0], int), \
+            "ERROR: `idxes` is not a List of ints, but {}!".format(idxes)
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
