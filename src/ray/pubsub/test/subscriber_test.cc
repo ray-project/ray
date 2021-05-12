@@ -260,6 +260,30 @@ TEST_F(SubscriberTest, TestLongPollingFailure) {
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
 }
 
+TEST_F(SubscriberTest, TestUnsubscribeInSubscriptionCallback) {
+  const auto owner_addr = GenerateOwnerAddress();
+  const auto object_id = ObjectID::FromRandom();
+  // Test unsubscription call inside the subscription callback doesn't break raylet.
+  auto subscription_callback = [this, owner_addr](const rpc::PubMessage &msg) {
+    const auto object_id = ObjectID::FromBinary(msg.key_id());
+    subscriber_->Unsubscribe(channel, owner_addr, object_id.Binary());
+    object_subscribed_.emplace(object_id);
+  };
+  auto failure_callback = []() {
+    // This shouldn't be invoked in this test.
+    ASSERT_TRUE(false);
+  };
+
+  subscriber_->Subscribe(channel, owner_addr, object_id.Binary(), subscription_callback,
+                         failure_callback);
+  std::vector<ObjectID> objects_batched;
+  objects_batched.push_back(object_id);
+  ASSERT_TRUE(owner_client->ReplyLongPolling(channel, objects_batched));
+  // Since we unsubscribe the object in the subscription callback, there shouldn't be any
+  // long polling request in flight.
+  ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 0);
+  ASSERT_TRUE(subscriber_->CheckNoLeaks());
+}
 // TODO(sang): Need to add a network failure test once we support network failure
 // properly.
 

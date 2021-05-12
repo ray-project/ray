@@ -189,7 +189,6 @@ void Subscriber::Subscribe(const rpc::ChannelType channel_type,
                            const std::string &key_id_binary,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
-  absl::MutexLock lock(&mutex_);
   Channel(channel_type)
       ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
@@ -211,7 +210,6 @@ void Subscriber::Subscribe(const rpc::ChannelType channel_type,
 bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
                              const std::string &key_id_binary) {
-  absl::MutexLock lock(&mutex_);
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
 }
 
@@ -226,7 +224,6 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   publisher_client->PubsubLongPolling(
       long_polling_request, [this, publisher_address, subscriber_address](
                                 Status status, const rpc::PubsubLongPollingReply &reply) {
-        absl::MutexLock lock(&mutex_);
         HandleLongPollingResponse(publisher_address, subscriber_address, status, reply);
       });
 }
@@ -270,7 +267,6 @@ inline bool Subscriber::SubscriptionExists(const PublisherID &publisher_id) {
 }
 
 bool Subscriber::CheckNoLeaks() const {
-  absl::MutexLock lock(&mutex_);
   bool leaks = false;
   for (const auto &channel_it : channels_) {
     if (!channel_it.second->CheckNoLeaks()) {

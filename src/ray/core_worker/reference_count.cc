@@ -757,7 +757,6 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
     rpc::WorkerAddress borrower_addr) {
-  absl::MutexLock lock(&mutex_);
   // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
@@ -800,6 +799,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
           const ReferenceTable new_borrower_refs =
               ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
 
+          absl::MutexLock lock(&mutex_);
           CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
           // Unsubscribe the object once the message is published.
           RAY_CHECK(object_status_subscriber_->Unsubscribe(
@@ -811,6 +811,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         const auto publisher_failed_callback = [this, addr, object_id]() {
           // When the request is failed, there's no new borrowers ref published from this
           // borrower.
+          absl::MutexLock lock(&mutex_);
           CleanupBorrowersOnRefRemoved({}, object_id, addr);
         };
 
@@ -820,6 +821,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
           return;
         }
 
+        absl::MutexLock lock(&mutex_);
         object_status_subscriber_->Subscribe(
             rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
             object_id.Binary(), message_published_callback, publisher_failed_callback);
