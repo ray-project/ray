@@ -98,11 +98,10 @@ Training Workflows
    How to setup a custom TorchPolicy.
 - `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
-
-
-custom_experiment.py
-random_parametric_agent.py
-two_trainer_workflow.py
+- `Custom execution plan function handling two different Policies (DQN and PPO) at the same time <https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py>`__:
+   Example of how to use the exec. plan of a Trainer to trin two different policies in parallel (also using multi-agent API).
+- `Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py>`__:
+   How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
 
 
 Evaluation:
@@ -171,8 +170,16 @@ GPU examples
 Special Action- and Observation Spaces
 --------------------------------------
 
+- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py>`__:
+   Learning in arbitrarily nested action spaces.
 - `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__:
-   Example of how to handle variable-length or parametric action spaces.
+   Example of how to handle variable-length or parametric action spaces (see also `this example here <https://github.com/ray-project/ray/blob/master/rllib/examples/random_parametric_agent.py>`__).
+- `Custom observation filters <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py>`__:
+   How to filter raw observations coming from the environment for further processing by the Agent's model(s).
+- `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__:
+   How to use RLlib's `Repeated` space to handle variable length observations.
+- `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__:
+   Learning with auto-regressive action dependencies (e.g. 2 action components; distribution for 2nd component depends on the 1st component's actually sampled value).
 
 
 Community Examples
