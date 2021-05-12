@@ -31,29 +31,29 @@ class ClientBuilder:
 
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
-        self.job_config = JobConfig()
+        self._job_config = JobConfig()
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
         Set an environment for the session.
         """
-        self.job_config = JobConfig(runtime_env=env)
+        self._job_config = JobConfig(runtime_env=env)
         return self
 
     def connect(self) -> ClientInfo:
         """
         Begin a connection to the address passed in via ray.client(...).
         """
-        client_info_tuple = ray.util.client_connect.connect(
-            self.address, job_config=self.job_config)
+        client_info_dict = ray.util.client_connect.connect(
+            self.address, job_config=self._job_config)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
         return ClientInfo(
             dashboard_url=dashboard_url,
-            python_version=client_info_tuple["python_version"],
-            ray_version=client_info_tuple["ray_version"],
-            ray_commit=client_info_tuple["ray_commit"],
-            protocol_version=client_info_tuple["protocol_version"])
+            python_version=client_info_dict["python_version"],
+            ray_version=client_info_dict["ray_version"],
+            ray_commit=client_info_dict["ray_commit"],
+            protocol_version=client_info_dict["protocol_version"])
 
 
 class _LocalClientBuilder(ClientBuilder):
@@ -64,9 +64,11 @@ def _split_address(address: str) -> Tuple[str, str]:
     """
     Splits address into a module string (scheme) and an inner_address.
     """
+    if "://" not in address:
+        address = "ray://" + address
     url_object = urlparse(address)
-    module_string = url_object.scheme or "ray"
-    inner_address = "".join(url_object[1:])
+    module_string = url_object.scheme
+    inner_address = address.replace(module_string + "://", "", 1)
     return (module_string, inner_address)
 
 
