@@ -12,6 +12,8 @@ from warnings import warn
 from weakref import WeakValueDictionary
 
 from starlette.requests import Request
+from uvicorn.lifespan.on import LifespanOn
+from uvicorn.config import Config
 
 from ray import cloudpickle
 from ray.actor import ActorHandle
@@ -22,8 +24,7 @@ from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view,
-                                 make_startup_shutdown_hooks)
+from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger)
@@ -608,6 +609,7 @@ def start(
             )
 
     # Initialize ray if needed.
+    ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
 
@@ -676,6 +678,7 @@ def connect() -> Client:
     """
 
     # Initialize ray if needed.
+    ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
 
@@ -996,18 +999,24 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        startup_hook, shutdown_hook = make_startup_shutdown_hooks(frozen_app)
-
         class FastAPIWrapper(cls):
             async def __init__(self, *args, **kwargs):
+                self.app = frozen_app
+
+                # Use uvicorn's lifespan handling code to properly deal with
+                # startup and shutdown event.
+                self.lifespan = LifespanOn(Config(self.app, lifespan="on"))
+                # Replace uvicorn logger with our own.
+                self.lifespan.logger = logger
+                await self.lifespan.startup()
+
                 # TODO(edoakes): should the startup_hook run before or after
                 # the constructor?
-                await startup_hook()
                 super().__init__(*args, **kwargs)
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
-                await frozen_app(
+                await self.app(
                     request.scope,
                     request._receive,
                     sender,
@@ -1015,7 +1024,8 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 return sender.build_starlette_response()
 
             def __del__(self):
-                asyncio.get_event_loop().run_until_complete(shutdown_hook())
+                asyncio.get_event_loop().run_until_complete(
+                    self.lifespan.shutdown())
 
         FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper

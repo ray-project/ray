@@ -68,7 +68,8 @@ ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
     return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
   }
 
-  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(&actor_func);
+  void *temp = &actor_func;
+  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(temp);
   ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
   return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
 }
