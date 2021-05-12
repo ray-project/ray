@@ -11,7 +11,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -42,6 +42,7 @@ class TestCQL(unittest.TestCase):
         config["learning_starts"] = 0
         config["rollout_fragment_length"] = 1
         config["train_batch_size"] = 10
+        config["input_evaluation"] = ["is"]#TODO
 
         num_iterations = 2
 

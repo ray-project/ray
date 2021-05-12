@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -35,7 +35,7 @@ class TestMARWIL(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        data_file = os.path.join(rllib_dir, "tests/data/cartpole/small.json")#TODO "large"
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
@@ -57,7 +57,7 @@ class TestMARWIL(unittest.TestCase):
             for i in range(num_iterations):
                 eval_results = trainer.train().get("evaluation")
                 if eval_results:
-                    print("iter={} R={}".format(
+                    print("iter={} R={} ".format(
                         i, eval_results["episode_reward_mean"]))
                     # Learn until some reward is reached on an actual live env.
                     if eval_results["episode_reward_mean"] > min_reward:
