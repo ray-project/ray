@@ -1,17 +1,13 @@
-# -*- coding: utf-8-*-
 import os
 import torch
 import time
 import argparse
 from dgl.dataloading import NodeCollator
-from torchvision import transforms
 import ray
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import AverageMeterCollection
 from ray.util.sgd.torch import TrainingOperator
 import dgl
-import tqdm
-import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
@@ -171,7 +167,6 @@ class CustomTrainingOperator(TrainingOperator):
         with th.no_grad():
             x = g.ndata['features']
             for l, layer in enumerate(self.convs):
-
                 if l < args.n_layers - 1:
                     y = th.zeros(g.number_of_nodes(),
                                  args.n_hidden * args.n_heads if l != len(self.convs) - 1 else self.n_classes)
@@ -197,7 +192,6 @@ class CustomTrainingOperator(TrainingOperator):
                     else:
                         h = layer(block, (h, h_dst)).mean(1)
                         h = h.log_softmax(dim=-1)
-
                     y[output_nodes] = h.cpu()
                 x = y
             pred = y
@@ -233,8 +227,6 @@ def run(num_workers=1, use_gpu=False, num_epochs=2):
 # Use ray.init(address="auto") if running on a Ray cluster.
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--gpu', type=int, default=1,
-                           help="GPU device ID. Use -1 for CPU training")
     argparser.add_argument('--num-epochs', type=int, default=2)
     argparser.add_argument('--n-hidden', type=int, default=128)
     argparser.add_argument('--n-layers', type=int, default=2)
@@ -245,7 +237,7 @@ if __name__ == '__main__':
     argparser.add_argument('--feat-drop', type=float, default=0.)
     argparser.add_argument('--attn-drop', type=float, default=0.)
     argparser.add_argument('--negative-slope', type=float, default=0.2)
-    argparser.add_argument('--num-workers', type=int, default=4,
+    argparser.add_argument('--num-workers', type=int, default=0,
                            help="Number of sampling processes. Use 0 for no extra process.")
     argparser.add_argument('--dashboard-host', type=str, default='127.0.0.1',
                            help="The host to bind the dashboard server to.")
