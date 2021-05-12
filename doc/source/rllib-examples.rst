@@ -29,6 +29,7 @@ Blog Posts
 
 Environments and Adapters
 -------------------------
+
 - `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
 - `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/unity3d_env_local.py>`__:
@@ -60,7 +61,6 @@ Custom- and Complex Models
    Example showing how to use the auto-attention wrapper for your default- and custom models in RLlib.
 - `LSTM model learning the "repeat-after-me" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py>`__:
    Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
-
 - `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__:
    Example of using a custom Keras model.
 - `Custom Keras/PyTorch RNN model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py>`__:
@@ -88,10 +88,29 @@ Training Workflows
    Example of how to use Tune's support for custom training functions to implement custom training workflows.
 - `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
    Example of how to adjust the configuration of an environment over time.
+- `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_logger.py>`__:
+   How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
    Example of how to output custom training metrics to TensorBoard.
+- `Custom Policy class (TensorFlow) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__:
+   How to setup a custom TFPolicy.
+- `Custom Policy class (PyTorch) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
+   How to setup a custom TorchPolicy.
 - `Using rollout workers directly for control over the whole training workflow <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__:
    Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
+
+
+custom_experiment.py
+random_parametric_agent.py
+two_trainer_workflow.py
+
+
+Evaluation:
+-----------
+- `Custom evaluation function <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__:
+   Example of how to write a custom evaluation function that is called instead of the default behavior, which is running with the evaluation worker set through n episodes.
+- `Parallel evaluation and training <https://github.com/ray-project/ray/blob/master/rllib/examples/parallel_evaluation_and_training.py>`__:
+   Example showing how the evaluation workers and the "normal" rollout workers can run (to some extend) in parallel to speed up training.
 
 
 Serving and Offline
