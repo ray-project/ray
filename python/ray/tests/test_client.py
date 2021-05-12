@@ -496,7 +496,8 @@ def test_startup_retry(ray_start_regular_shared):
         ray_client.connect("localhost:50051", connection_retries=1)
 
     def run_client():
-        ray_client.connect("localhost:50051")
+        import ray
+        ray.client("localhost:50051").connect()
         ray_client.disconnect()
 
     thread = threading.Thread(target=run_client, daemon=True)
@@ -522,7 +523,8 @@ def test_dataclient_server_drop(ray_start_regular_shared):
         server.stop(0)
 
     server = ray_client_server.serve("localhost:50051")
-    ray_client.connect("localhost:50051")
+    import ray
+    ray.client("localhost:50051").connect()
     thread = threading.Thread(target=stop_server, args=(server, ))
     thread.start()
     x = f.remote(2)
