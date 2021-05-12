@@ -9,7 +9,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 
 class TestApexDQN(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, local_mode=False)#TODO
+        ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
@@ -30,22 +30,22 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_dqn_compilation_and_per_worker_epsilon_values(self):
         """Test whether an APEX-DQNTrainer can be built on all frameworks."""
         config = apex.APEX_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 2#TODO 3
+        config["num_workers"] = 3
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
         config["timesteps_per_iteration"] = 1000
-        config["min_iter_time_s"] = 5 #TODO1
+        config["min_iter_time_s"] = 1
         config["num_gpus"] = 0
         config["target_network_update_freq"] = 5000
         config["buffer_size"] = 20000
         config["model"]["fcnet_hiddens"] = [64]
         config["model"]["fcnet_activation"] = "linear"
-        config["optimizer"]["num_replay_buffer_shards"] = 2#TODO 1
+        config["optimizer"]["num_replay_buffer_shards"] = 1
 
         config["evaluation_interval"] = 1
         config["evaluation_config"]["explore"] = False
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO
+        for _ in framework_iterator(config):
             plain_config = config.copy()
             trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
 

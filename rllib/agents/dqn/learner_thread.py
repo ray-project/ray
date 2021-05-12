@@ -54,6 +54,7 @@ class LearnerThread(threading.Thread):
                         td_error = info.get(
                             "td_error",
                             info[LEARNER_STATS_KEY].get("td_error"))
+                        replay.policy_batches[pid].set_get_interceptor(None)
                         prio_dict[pid] = (
                             replay.policy_batches[pid].get("batch_indexes"),
                             td_error)
