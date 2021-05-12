@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
@@ -35,7 +35,8 @@ class TestMARWIL(unittest.TestCase):
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/small.json")#TODO "large"
+        data_file = os.path.join(
+            rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
