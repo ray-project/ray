@@ -6,6 +6,7 @@ import ray
 from ray import ray_constants
 from ray.test_utils import get_error_message, init_error_pubsub, \
     run_string_as_driver
+from ray.cluster_utils import Cluster
 
 
 def test_isolation(shutdown_only):
@@ -123,6 +124,32 @@ ray.get(actor.ping.remote())
 
     act = ray.get_actor("Pinger")
     assert ray.get(act.ping.remote()) == "pong from other job"
+
+
+def test_namespace_client(shutdown_only):
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=4, ray_client_server_port=8080)
+    cluster.wait_for_nodes(1)
+
+    template = """
+import ray
+ray.util.connect("{address}", namespace="{namespace}")
+
+@ray.remote
+class DetachedActor:
+    def ping(self):
+        return "pong from other job"
+
+actor = DetachedActor.options(name="Pinger", lifetime="detached").remote()
+ray.get(actor.ping.remote())
+    """
+
+    run_string_as_driver(template.format(address="localhost:8080", namespace=""))
+
+    ray.util.connect("localhost:8080", namespace="")
+
+    pinger = ray.get_actor("Pinger")
+    assert ray.get(pinger.ping.remote()) == "pong from other job"
 
 
 def test_detached_warning(shutdown_only):
