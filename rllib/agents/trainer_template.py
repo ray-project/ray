@@ -178,7 +178,7 @@ def build_trainer(
                 # Kick off evaluation-loop (and parallel train() call,
                 # if requested).
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    eval_future = executor.submit(self.evaluate)
+                    eval_future = executor.submit(self._evaluate)
                     # Parallelism.
                     if self.config["evaluation_parallel_to_training"]:
                         res = next(self.train_exec_impl)
@@ -227,9 +227,6 @@ def build_trainer(
                 ... True
             """
             return build_trainer(**dict(original_kwargs, **overrides))
-
-        def __repr__(self):
-            return self._name
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
