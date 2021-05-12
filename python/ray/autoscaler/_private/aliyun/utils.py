@@ -95,7 +95,7 @@ class AcsClient:
         request.set_SpotStrategy(spot_strategy)
         request.set_InternetChargeType(internet_charge_type)
         request.set_InternetMaxBandwidthOut(internet_max_bandwidth_out)
-        # request.set_KeyPairName(key_pair_name)
+        request.set_KeyPairName(key_pair_name)
         request.set_Tags(tags)
 
         response = self._send_request(request)
