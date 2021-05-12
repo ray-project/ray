@@ -13,7 +13,7 @@ def setup_tracing(*args: Any, **kwargs: Any) -> None:
     # context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(
-        SimpleExportSpanProcessor(
+        SimpleSpanProcessor(
             OTLPSpanExporter(
                 endpoint="http://localhost:4317",
                 insecure=True
