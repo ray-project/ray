@@ -111,8 +111,7 @@ class Subscriber {
   /// \param pub_message A message to publish.
   /// \param try_publish If true, it try publishing the object id if there is a
   /// connection.
-  void QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
-                    bool try_publish = true);
+  void QueueMessage(const rpc::PubMessage &pub_message, bool try_publish = true);
 
   /// Publish all queued messages if possible.
   ///
@@ -172,7 +171,7 @@ class PublisherInterface {
   /// \param pub_message The message to publish.
   /// \param key_id_binary The message id to publish.
   virtual void Publish(const rpc::ChannelType channel_type,
-                       std::unique_ptr<rpc::PubMessage> pub_message,
+                       const rpc::PubMessage &pub_message,
                        const std::string &key_id_binary) = 0;
 
   /// Unregister subscription. It means the given object id won't be published to the
@@ -224,9 +223,9 @@ class Publisher : public PublisherInterface {
     periodical_runner_->RunFnPeriodically([this] { CheckDeadSubscribers(); },
                                           subscriber_timeout_ms);
     // Insert index map for each channel.
-    subscription_index_map_.emplace(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+    subscription_index_map_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
                                     pub_internal::SubscriptionIndex<ObjectID>());
-    subscription_index_map_.emplace(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
+    subscription_index_map_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                                     pub_internal::SubscriptionIndex<ObjectID>());
   }
 
@@ -255,8 +254,7 @@ class Publisher : public PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param pub_message The message to publish.
   /// \param key_id_binary The message id to publish.
-  void Publish(const rpc::ChannelType channel_type,
-               std::unique_ptr<rpc::PubMessage> pub_message,
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
                const std::string &key_id_binary) override;
 
   /// Unregister subscription. It means the given object id won't be published to the
@@ -306,6 +304,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestNoConnectionWhenRegistered);
   FRIEND_TEST(PublisherTest, TestMultiObjectsFromSingleNode);
   FRIEND_TEST(PublisherTest, TestMultiObjectsFromMultiNodes);
+  FRIEND_TEST(PublisherTest, TestMultiSubscribers);
   FRIEND_TEST(PublisherTest, TestBatch);
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionExisted);
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);

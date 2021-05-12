@@ -795,15 +795,15 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         // If the message is published, this callback will be invoked.
         const auto message_published_callback = [this, addr,
                                                  object_id](const rpc::PubMessage &msg) {
-          RAY_CHECK(msg.has_wait_for_ref_removed_message());
+          RAY_CHECK(msg.has_worker_ref_removed_message());
           const ReferenceTable new_borrower_refs =
-              ReferenceTableFromProto(msg.wait_for_ref_removed_message().borrowed_refs());
+              ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
 
           absl::MutexLock lock(&mutex_);
           CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
           // Unsubscribe the object once the message is published.
           RAY_CHECK(object_status_subscriber_->Unsubscribe(
-              rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, addr.ToProto(),
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
               object_id.Binary()));
         };
 
@@ -823,7 +823,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
         absl::MutexLock lock(&mutex_);
         object_status_subscriber_->Subscribe(
-            rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, addr.ToProto(),
+            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, addr.ToProto(),
             object_id.Binary(), message_published_callback, publisher_failed_callback);
       });
 }
@@ -902,21 +902,20 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
   }
 
   // Send the owner information about any new borrowers.
-  auto pub_message = absl::make_unique<rpc::PubMessage>();
-  pub_message->set_key_id(object_id.Binary());
-  pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL);
-  auto *wait_for_ref_removed_message =
-      pub_message->mutable_wait_for_ref_removed_message();
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(object_id.Binary());
+  pub_message.set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
+  auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
   ReferenceTableToProto(borrowed_refs,
-                        wait_for_ref_removed_message->mutable_borrowed_refs());
+                        worker_ref_removed_message->mutable_borrowed_refs());
 
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
-                 << wait_for_ref_removed_message->borrowed_refs().size()
+                 << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
-                                    std::move(pub_message), object_id.Binary());
+  object_status_publisher_->Publish(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    pub_message, object_id.Binary());
   object_status_publisher_->UnregisterSubscription(
-      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
       object_id.Binary());
 }
 

@@ -132,8 +132,7 @@ bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
   return false;
 }
 
-void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
-                              bool try_publish) {
+void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
   if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_) {
     mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
@@ -141,7 +140,7 @@ void Subscriber::QueueMessage(std::unique_ptr<rpc::PubMessage> pub_message,
   // Update the long polling reply.
   auto *next_long_polling_reply = mailbox_.back().get();
   auto *new_pub_message = next_long_polling_reply->add_pub_messages();
-  new_pub_message->Swap(pub_message.get());
+  new_pub_message->CopyFrom(pub_message);
 
   if (try_publish) {
     PublishIfPossible();
@@ -229,7 +228,7 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
 }
 
 void Publisher::Publish(const rpc::ChannelType channel_type,
-                        std::unique_ptr<rpc::PubMessage> pub_message,
+                        const rpc::PubMessage &pub_message,
                         const std::string &key_id_binary) {
   absl::MutexLock lock(&mutex_);
   // TODO(sang): Currently messages are lost if publish happens
@@ -244,7 +243,7 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
-    subscriber->QueueMessage(std::move(pub_message));
+    subscriber->QueueMessage(pub_message);
   }
 }
 

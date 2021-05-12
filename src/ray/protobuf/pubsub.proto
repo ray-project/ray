@@ -19,24 +19,24 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 
 enum ChannelType {
-  WAIT_FOR_OBJECT_EVICTION = 0;
-  WAIT_FOR_REF_REMOVED_CHANNEL = 1;
+  WORKER_OBJECT_EVICTION = 0;
+  WORKER_REF_REMOVED_CHANNEL = 1;
 }
 
 message PubMessage {
   ChannelType channel_type = 1;
   bytes key_id = 2;
   oneof pub_message_oneof {
-    WaitForObjectEvictionMessage wait_for_object_eviction_message = 3;
-    WaitForRefRemovedMessage wait_for_ref_removed_message = 4;
+    WorkerObjectEvictionMessage worker_object_eviction_message = 3;
+    WorkerRefRemovedMessage worker_ref_removed_message = 4;
   }
 }
 
-message WaitForObjectEvictionMessage {
+message WorkerObjectEvictionMessage {
   bytes object_id = 1;
 }
 
-message WaitForRefRemovedMessage {
+message WorkerRefRemovedMessage {
   // The reference counts for the object that the worker was borrowing and
   // any objects nested inside. The worker should no longer be using the object
   // ID by the time it replies, but may have accumulated other borrowers or may

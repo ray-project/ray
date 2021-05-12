@@ -147,7 +147,7 @@ class SubscriberChannel : public SubscribeChannelInterface {
 class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
  public:
   WaitForObjectEvictionChannel() : SubscriberChannel() {
-    channel_type_ = rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION;
+    channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   }
   ~WaitForObjectEvictionChannel() = default;
 };
@@ -155,7 +155,7 @@ class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
 class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
  public:
   WaitForRefRemovedChannel() : SubscriberChannel() {
-    channel_type_ = rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL;
+    channel_type_ = rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL;
   }
   ~WaitForRefRemovedChannel() = default;
 };
@@ -233,9 +233,9 @@ class Subscriber : public SubscriberInterface {
             std::make_shared<WaitForObjectEvictionChannel>()),
         wait_for_ref_removed_channel_(std::make_shared<WaitForRefRemovedChannel>()),
         /// This is used to define new channel_type -> Channel abstraction.
-        channels_({{rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
+        channels_({{rpc::ChannelType::WORKER_OBJECT_EVICTION,
                     wait_for_object_eviction_channel_},
-                   {rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL,
+                   {rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
                     wait_for_ref_removed_channel_}}) {}
 
   ~Subscriber() = default;

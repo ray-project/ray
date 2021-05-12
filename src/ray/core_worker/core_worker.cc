@@ -2404,24 +2404,23 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
 
-    auto pub_message = std::make_unique<rpc::PubMessage>();
-    pub_message->set_key_id(object_id.Binary());
-    pub_message->set_channel_type(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION);
-    pub_message->mutable_wait_for_object_eviction_message()->set_object_id(
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    pub_message.mutable_worker_object_eviction_message()->set_object_id(
         object_id.Binary());
 
-    object_status_publisher_->Publish(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION,
-                                      std::move(pub_message), object_id.Binary());
+    object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                      pub_message, object_id.Binary());
     object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
-        object_id.Binary());
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   // Always register the subscription before we register the delete callback to avoid race
   // condition.
-  object_status_publisher_->RegisterSubscription(
-      rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
+  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 subscriber_node_id, object_id.Binary());
 
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
@@ -2430,8 +2429,7 @@ void CoreWorker::HandleSubscribeForObjectEviction(
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription.
     object_status_publisher_->UnregisterSubscription(
-        rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION, subscriber_node_id,
-        object_id.Binary());
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
     std::ostringstream stream;
     stream << "Reference for object " << object_id << " has already been freed.";
     RAY_LOG(DEBUG) << stream.str();
@@ -2540,7 +2538,7 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   object_status_publisher_->RegisterSubscription(
-      rpc::ChannelType::WAIT_FOR_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
       object_id.Binary());
   // Set a callback to publish the message when the requested object ID's ref count
   // goes to 0.

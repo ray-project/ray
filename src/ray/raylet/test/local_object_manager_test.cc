@@ -54,8 +54,8 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     auto msg = rpc::PubMessage();
     msg.set_key_id(object_id.Binary());
     msg.set_channel_type(channel_type_);
-    auto *wait_for_object_eviction_msg = msg.mutable_wait_for_object_eviction_message();
-    wait_for_object_eviction_msg->set_object_id(object_id.Binary());
+    auto *object_eviction_msg = msg.mutable_worker_object_eviction_message();
+    object_eviction_msg->set_object_id(object_id.Binary());
     callback(msg);
     callbacks.pop_front();
     return true;
@@ -65,7 +65,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
 
-  rpc::ChannelType channel_type_ = rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION;
+  rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
 };
 

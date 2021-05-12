@@ -60,7 +60,7 @@ class SubscriberTest : public ::testing::Test {
         self_node_port_(1234),
         owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        channel(rpc::ChannelType::WAIT_FOR_OBJECT_EVICTION) {}
+        channel(rpc::ChannelType::WORKER_OBJECT_EVICTION) {}
   ~SubscriberTest() {}
 
   void SetUp() {
