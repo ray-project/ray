@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
@@ -60,6 +61,10 @@ int fake_munmap(void *, int64_t);
 // dlmalloc.c defined DEBUG which will conflict with RAY_LOG(DEBUG).
 #ifdef DEBUG
 #undef DEBUG
+#endif
+
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
 #endif
 
 constexpr int GRANULARITY_MULTIPLIER = 2;
@@ -107,7 +112,15 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // MAP_POPULATE can be used to pre-populate the page tables for this memory region
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
-  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, *fd, 0);
+  auto flags = MAP_SHARED;
+  if (RayConfig::instance().preallocate_plasma_memory()) {
+    if (!MAP_POPULATE) {
+      RAY_LOG(FATAL) << "MAP_POPULATE is not supported on this platform.";
+    }
+    RAY_LOG(INFO) << "Preallocating all plasma memory using MAP_POPULATE.";
+    flags |= MAP_POPULATE;
+  }
+  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, *fd, 0);
   if (*pointer == MAP_FAILED) {
     RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
     if (errno == ENOMEM && plasma_config->hugepages_enabled) {
