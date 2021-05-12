@@ -247,8 +247,12 @@ if __name__ == '__main__':
     argparser.add_argument('--negative-slope', type=float, default=0.2)
     argparser.add_argument('--num-workers', type=int, default=4,
                            help="Number of sampling processes. Use 0 for no extra process.")
+    argparser.add_argument('--dashboard-host', type=str, default='127.0.0.1',
+                           help="The host to bind the dashboard server to.")
+    argparser.add_argument('--dashboard-port', type=int, default=8265,
+                           help="The port to bind the dashboard server to.")
     args = argparser.parse_args()
-    ray.init(dashboard_host="10.3.68.117", dashboard_port=8888)
+    ray.init(dashboard_host=args.dashboard_host, dashboard_port=args.dashboard_port)
     ###connect to started ray cluster
     # ray.init(address='auto', _redis_password='5241590000000000')
     start_time = time.time()
