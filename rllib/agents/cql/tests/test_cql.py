@@ -47,7 +47,7 @@ class TestCQL(unittest.TestCase):
         config["train_batch_size"] = 10
 
         # Switch on off-policy evaluation.
-        config["input_evaluation"] = ["is", "wis"]
+        config["input_evaluation"] = ["is"]
 
         num_iterations = 2
 
