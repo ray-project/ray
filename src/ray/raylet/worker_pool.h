@@ -368,6 +368,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
                                const ProcessEnvironment &env);
 
+  virtual Process StartContainerProcess(
+      const std::vector<std::string> &worker_command_args, const ProcessEnvironment &env,
+      const ResourceSet &worker_resource);
+
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
 

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
+
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
@@ -77,8 +78,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time)
-      worker_process_in_container_(worker_process_in_container) {
+      get_time_(get_time) worker_process_in_container_(worker_process_in_container) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -400,13 +400,10 @@ Process WorkerPool::StartContainerProcess(
     const std::vector<std::string> &worker_command_args, const ProcessEnvironment &env,
     const ResourceSet &worker_resource) {
   // Launch the process to create the worker.
-  std::vector<std::string> my_new_vec;
-  std::error_code ec;
-  std::vector<const char *> argv;
+  std::vector<std::string> argv;
   argv.push_back("podman");
   argv.push_back("run");
-  argv.push_back("-u");
-  argv.push_back("admin");
+  // TODO set uid for container: -u root
   argv.push_back("-d");
   argv.push_back("-v");
   std::string temp_dir = temp_dir_ + ":" + temp_dir_;
@@ -415,31 +412,35 @@ Process WorkerPool::StartContainerProcess(
   argv.push_back("--security-opt=seccomp=unconfined");
   argv.push_back("--network=host");
   argv.push_back("--pid=host");
-  std::stringstream container_pid_file_path;
-  container_pid_file_path << "/tmp/ray/container/";
-  container_pid_file_path << WorkerID::FromRandom();
-  container_pid_file_path << ".txt";
-  std::string pid_file_arg = "--pidfile=" + container_pid_file_path.str();
+  std::string container_pid_file_path = "/tmp/ray/container/" + WorkerID::FromRandom().Hex() + ".txt";
+  std::string pid_file_arg = "--pidfile=" + container_pid_file_path;
   argv.push_back(pid_file_arg.c_str());
   if (!worker_resource.IsEmpty()) {
     const FractionalResourceQuantity cpu_quantity =
         worker_resource.GetResource(kCPU_ResourceLabel);
     if (cpu_quantity.ToDouble() > 0) {
-      my_new_vec.push_back("--cpus=" + std::to_string(cpu_quantity.ToDouble()));
+      argv.push_back("--cpus=" + std::to_string(cpu_quantity.ToDouble()));
     }
     const FractionalResourceQuantity memory_quantity =
         worker_resource.GetResource(kMemory_ResourceLabel);
     if (memory_quantity.ToDouble() > 0) {
-      my_new_vec.push_back("--memory=" + std::to_string(memory_quantity.ToDouble()) +
+      argv.push_back("--memory=" + std::to_string(memory_quantity.ToDouble()) +
                            "b");
     }
   }
-  for (auto item : env) {
-    my_new_vec.push_back("--env");
-    my_new_vec.push_back((item.first + "=" + item.second).c_str());
+  ProcessEnvironment new_env;
+  for (char *const *e = environ; *e; ++e) {
+    RAY_CHECK(*e && **e != '\0') << "environment variable name is absent";
+    const char *key_end = strchr(*e, '=');
+    RAY_CHECK(key_end) << "environment variable value is absent: " << e;
+    new_env[std::string(*e, static_cast<size_t>(key_end - *e))] = key_end + 1;
   }
-  for (auto &s : my_new_vec) {
-    argv.push_back(s.c_str());
+  for (const auto &item : env) {
+    new_env[item.first] = item.second;
+  }
+  for (const auto &item : new_env) {
+    argv.push_back("--env");
+    argv.push_back((item.first + '=' + item.second).c_str());
   }
   argv.push_back("--entrypoint");
   argv.push_back(worker_command_args[0].c_str());
@@ -460,8 +461,8 @@ Process WorkerPool::StartContainerProcess(
     RAY_LOG(DEBUG) << stream.str();
   }
   // we need to wait for container started or failed
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
-  if (!child.IsValid() || ec) {
+  std::error_code ec = Process::Call(argv, env);
+  if (ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
       RAY_LOG(FATAL) << "Too many workers, failed to create a file. Try setting "
@@ -472,17 +473,7 @@ Process WorkerPool::StartContainerProcess(
                      << ec.message();
     }
   }
-  RAY_LOG(DEBUG) << "Started container worker " << child.GetId();
-  int exitCode;
-  if (waitpid(child.GetId(), &exitCode, 0) == -1) {
-    std::error_code error = std::error_code(errno, std::system_category());
-    RAY_LOG(FATAL) << "Failed to wait for process " << child.GetId() << " with error "
-                   << error << ": " << error.message();
-  }
-  if (exitCode != 0) {
-    RAY_LOG(FATAL) << "Container start failed with exitCode: " << exitCode;
-  }
-  std::ifstream pid_file(container_pid_file_path, std::ios_base::in);
+  std::ifstream pid_file(container_pid_file_path.str(), std::ios_base::in);
   if (pid_file.good()) {
     pid_t pid = -1;
     pid_file >> pid;
@@ -967,11 +958,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc =
-          StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                             task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
-                             task_spec.OverrideEnvironmentVariables(),
-                             task_spec.GetRequiredResources());
+      proc = StartWorkerProcess(
+          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
+          dynamic_options, task_spec.RuntimeEnv(),
+          task_spec.OverrideEnvironmentVariables(), task_spec.GetRequiredResources());
       if (proc.IsValid()) {
         state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
