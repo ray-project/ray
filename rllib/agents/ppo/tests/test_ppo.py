@@ -88,7 +88,7 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
-        num_iterations = 2
+        num_iterations = 1
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:

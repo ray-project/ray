@@ -1201,13 +1201,13 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+
+py_test(
+    name = "evaluation/tests/test_evaluation",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_evaluation.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_rollout_worker",
@@ -1215,6 +1215,14 @@ py_test(
     size = "medium",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
+
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
 
 
 # --------------------------------------------------------------------
@@ -1400,13 +1408,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
-)
-
-py_test(
-    name = "tests/test_evaluators",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_evaluators.py"]
 )
 
 py_test(
@@ -2244,6 +2245,14 @@ py_test(
     size = "medium",
     srcs = ["examples/partial_gpus.py"],
     args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
+    name = "examples/restore_1_of_n_agents_from_checkpoint",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
 )
 
 py_test(
