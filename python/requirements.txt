@@ -21,6 +21,7 @@ opencensus
 prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
+pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
@@ -37,7 +38,6 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic>=1.8
 dataclasses; python_version < '3.7'
 starlette
 

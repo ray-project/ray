@@ -2783,16 +2783,19 @@ void CoreWorker::HandleDeleteSpilledObjects(
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
   bool own_objects = reference_counter_->OwnObjects();
-  // Fail the request if it owns any object.
-  reply->set_success(!own_objects);
+  int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
+  // We consider the worker to be idle if it doesn't own any objects and it doesn't have
+  // any object pinning RPCs in flight.
+  bool is_idle = !own_objects && pins_in_flight == 0;
+  reply->set_success(is_idle);
   send_reply_callback(Status::OK(),
-                      [own_objects, this]() {
-                        // If it doesn't own objects, we'll exit it
-                        if (!own_objects) {
+                      [this, is_idle]() {
+                        // If the worker is idle, we exit.
+                        if (is_idle) {
                           Exit(rpc::WorkerExitType::INTENDED_EXIT);
                         }
                       },
-                      // We need to kill it if grpc failed.
+                      // We need to kill it regardless if the RPC failed.
                       [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
