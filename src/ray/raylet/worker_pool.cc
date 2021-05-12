@@ -80,7 +80,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
       get_time_(get_time), worker_process_in_container_(worker_process_in_container,
-      temp_dir_(temp_dir)) {
+      temp_dir_(temp_dir) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
