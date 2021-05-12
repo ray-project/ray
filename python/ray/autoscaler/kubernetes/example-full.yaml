@@ -88,6 +88,10 @@ provider:
                   protocol: TCP
                   port: 8265
                   targetPort: 8265
+                - name: ray-serve
+                  protocol: TCP
+                  port: 8000
+                  targetPort: 8000
 
 # Specify the pod type for the ray head node (as configured below).
 head_node_type: head_node
@@ -100,7 +104,7 @@ available_node_types:
     max_workers: 2
     # User-specified custom resources for use by Ray. Object with string keys and integer values.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    resources: {"foo": 1, "bar": 2}
+    resources: {"example-resource-a": 1, "example-resource-b": 2}
     node_config:
       apiVersion: v1
       kind: Pod

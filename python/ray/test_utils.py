@@ -206,7 +206,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None):
     return out
 
 
-def run_string_as_driver_nonblocking(driver_script):
+def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
@@ -226,7 +226,8 @@ def run_string_as_driver_nonblocking(driver_script):
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -236,7 +237,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
-                _ for _ in ray.actors().values()
+                _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state
         ]) >= num_actors:
             return
@@ -246,11 +247,11 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.actors(actor_id)
+        actor_status = ray.state.actors(actor_id)
         if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return

@@ -34,8 +34,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/common.h"
-#include "ray/object_manager/format/object_manager_generated.h"
-#include "ray/object_manager/notification/object_store_notification_manager.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
@@ -83,13 +81,15 @@ struct ObjectManagerConfig {
 
 struct LocalObjectInfo {
   /// Information from the object store about the object.
-  object_manager::protocol::ObjectInfoT object_info;
+  ObjectInfo object_info;
 };
 class ObjectStoreRunner {
  public:
   ObjectStoreRunner(const ObjectManagerConfig &config,
                     SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback);
+                    std::function<void()> object_store_full_callback,
+                    AddObjectCallback add_object_callback,
+                    DeleteObjectCallback delete_object_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -98,7 +98,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                        bool is_worker_request) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual ~ObjectManagerInterface(){};
@@ -217,8 +218,9 @@ class ObjectManager : public ObjectManagerInterface,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
-      SpillObjectsCallback spill_objects_callback = nullptr,
-      std::function<void()> object_store_full_callback = nullptr);
+      SpillObjectsCallback spill_objects_callback,
+      std::function<void()> object_store_full_callback,
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
 
   ~ObjectManager();
 
@@ -233,22 +235,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// local object manager. False otherwise.
   bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
-  /// Subscribe to notifications of objects added to local store.
-  /// Upon subscribing, the callback will be invoked for all objects that
-  ///
-  /// already exist in the local store.
-  /// \param callback The callback to invoke when objects are added to the local store.
-  /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjAdded(
-      std::function<void(const object_manager::protocol::ObjectInfoT &)> callback);
-
-  /// Subscribe to notifications of objects deleted from local store.
-  ///
-  /// \param callback The callback to invoke when objects are removed from the local
-  /// store.
-  /// \return Status of whether adding the subscription succeeded.
-  ray::Status SubscribeObjDeleted(std::function<void(const ray::ObjectID &)> callback);
-
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
   /// on the same object, the second one might be ignored).
@@ -262,8 +248,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// bundle local until the request is canceled with the returned ID.
   ///
   /// \param object_refs The bundle of objects that must be made local.
+  /// \param is_worker_request Whether this is a (`ray.get` or `ray.wait`)
+  /// request from a worker. If false, then it should be a request for a queued
+  /// task's arguments.
   /// \return A request ID that can be used to cancel the request.
-  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override;
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,
+                bool is_worker_request) override;
 
   /// Cancels the pull request with the given ID. This cancels any fetches for
   /// objects that were passed to the original pull request, if no other pull
@@ -384,10 +374,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle an object being added to this node. This adds the object to the
   /// directory, pushes the object to other nodes if necessary, and cancels any
   /// outstanding Pull requests for the object.
-  void HandleObjectAdded(const object_manager::protocol::ObjectInfoT &object_info);
+  void HandleObjectAdded(const ObjectInfo &object_info);
 
-  /// Register object remove with directory.
-  void NotifyDirectoryObjectDeleted(const ObjectID &object_id);
+  /// Handle an object being deleted from this node. This registers object remove
+  /// with directory. This also asks the pull manager to fetch this object again
+  /// as soon as possible.
+  void HandleObjectDeleted(const ObjectID &object_id);
 
   /// This is used to notify the main thread that the sending of a chunk has
   /// completed.
@@ -432,9 +424,7 @@ class ObjectManager : public ObjectManagerInterface,
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   // Object store runner.
   ObjectStoreRunner object_store_internal_;
-  // Process notifications from Plasma. We make it a shared pointer because
-  // we will decide its type at runtime, and we would pass it to Plasma Store.
-  std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
+
   ObjectBufferPool buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.

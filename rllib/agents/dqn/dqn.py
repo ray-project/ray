@@ -275,9 +275,16 @@ def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
     if not config["training_intensity"]:
         return [1, 1]
-    # e.g., 32 / 4 -> native ratio of 8.0
-    native_ratio = (
-        config["train_batch_size"] / config["rollout_fragment_length"])
+
+    # Calculate the "native ratio" as:
+    # [train-batch-size] / [size of env-rolled-out sampled data]
+    # This is to set freshly rollout-collected data in relation to
+    # the data we pull from the replay buffer (which also contains old
+    # samples).
+    native_ratio = config["train_batch_size"] / \
+        (config["rollout_fragment_length"] *
+         config["num_envs_per_worker"] * config["num_workers"])
+
     # Training intensity is specified in terms of
     # (steps_replayed / steps_sampled), so adjust for the native ratio.
     weights = [1, config["training_intensity"] / native_ratio]

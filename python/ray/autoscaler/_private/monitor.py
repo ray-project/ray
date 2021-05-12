@@ -9,6 +9,8 @@ import signal
 import time
 import traceback
 import json
+from multiprocessing.synchronize import Event
+from typing import Optional
 
 import grpc
 
@@ -28,6 +30,7 @@ import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized, _internal_kv_get, _internal_kv_del
+from ray._raylet import connect_to_gcs, disconnect_from_gcs
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +91,19 @@ class Monitor:
                  redis_address,
                  autoscaling_config,
                  redis_password=None,
-                 prefix_cluster_info=False):
+                 prefix_cluster_info=False,
+                 stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
         self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
 
+        (ip, port) = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
+
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = grpc.insecure_channel(gcs_address, options=options)
         self.gcs_node_resources_stub = \
@@ -105,16 +112,24 @@ class Monitor:
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
+        worker.gcs_client = self.gcs_client
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
+        # Can be used to signal graceful exit from monitor loop.
+        self.stop_event = stop_event  # type: Optional[Event]
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 
         logger.info("Monitor: Started")
+
+    def __del__(self):
+        disconnect_from_gcs(self.gcs_client)
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
@@ -164,6 +179,8 @@ class Monitor:
     def _run(self):
         """Run the monitor loop."""
         while True:
+            if self.stop_event and self.stop_event.is_set():
+                break
             self.update_load_metrics()
             self.update_resource_requests()
             self.update_event_summary()
@@ -255,7 +272,7 @@ class Monitor:
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
+            self.redis_address, password=self.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
         push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)

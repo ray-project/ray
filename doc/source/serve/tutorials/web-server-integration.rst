@@ -66,16 +66,10 @@ Here's how to run this example:
 
 1. Run ``ray start --head`` to start a local Ray cluster in the background.
 
-2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.
+2. In the directory where the example files are saved, run ``python aiohttp_deploy_serve.py`` to deploy our Ray Serve endpoint.
 
-.. note::
-  Because we have omitted the keyword argument ``route`` in ``serve.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.
+3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker`` to start the AIOHTTP app using gunicorn.
 
-3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker --bind localhost:8001`` to start the AIOHTTP app using gunicorn. We bind to port 8001 because the Ray Dashboard is already using port 8000 by default.
-
-.. tip::
-  You can change the Ray Dashboard port with the command ``ray start --dashboard-port XXXX``.
-
-4. To test out the server, run ``curl localhost:8001/dummy-model``.  This should output ``Model received data: dummy input``.
+4. To test out the server, run ``curl localhost:8000/dummy-model``.  This should output ``Model received data: dummy input``.
 
 5. For cleanup, you can press Ctrl-C to stop the Gunicorn server, and run ``ray stop`` to stop the background Ray cluster.

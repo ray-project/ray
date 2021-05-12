@@ -125,19 +125,22 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             address_len = len(owner_address)
             metadata_len = len(metadata)
             buf_len = len(buf)
+            payload = address_len.to_bytes(8, byteorder="little") + \
+                metadata_len.to_bytes(8, byteorder="little") + \
+                buf_len.to_bytes(8, byteorder="little") + \
+                owner_address + metadata + memoryview(buf)
             # 24 bytes to store owner address, metadata, and buffer lengths.
-            data_size_in_bytes = (
-                address_len + metadata_len + buf_len + self.HEADER_LENGTH)
-            f.write(address_len.to_bytes(8, byteorder="little"))
-            f.write(metadata_len.to_bytes(8, byteorder="little"))
-            f.write(buf_len.to_bytes(8, byteorder="little"))
-            f.write(owner_address)
-            f.write(metadata)
-            f.write(memoryview(buf))
-            url_with_offset = create_url_with_offset(
-                url=url, offset=offset, size=data_size_in_bytes)
-            keys.append(url_with_offset.encode())
-            offset += data_size_in_bytes
+            assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
+                == len(payload)
+            # TODO (yic): Considering add retry here to avoid transient issue
+            try:
+                written_bytes = f.write(payload)
+                url_with_offset = create_url_with_offset(
+                    url=url, offset=offset, size=written_bytes)
+                keys.append(url_with_offset.encode())
+                offset = f.tell()
+            except IOError:
+                return keys
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len,
@@ -231,11 +234,11 @@ class FileSystemStorage(ExternalStorage):
 
     def __init__(self, directory_path):
         # -- sub directory name --
-        self.spill_dir_name = DEFAULT_OBJECT_PREFIX
+        self._spill_dir_name = DEFAULT_OBJECT_PREFIX
         # -- A list of directory paths to spill objects --
-        self.directory_paths = []
+        self._directory_paths = []
         # -- Current directory to spill objects --
-        self.current_directory_index = 0
+        self._current_directory_index = 0
 
         # Validation.
         assert directory_path is not None, (
@@ -248,27 +251,26 @@ class FileSystemStorage(ExternalStorage):
 
         # Create directories.
         for path in directory_path:
-            full_dir_path = os.path.join(path, self.spill_dir_name)
+            full_dir_path = os.path.join(path, self._spill_dir_name)
             os.makedirs(full_dir_path, exist_ok=True)
             if not os.path.exists(full_dir_path):
                 raise ValueError("The given directory path to store objects, "
                                  f"{full_dir_path}, could not be created.")
-            self.directory_paths.append(full_dir_path)
-        assert len(self.directory_paths) == len(directory_path)
-
+            self._directory_paths.append(full_dir_path)
+        assert len(self._directory_paths) == len(directory_path)
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
-        self.current_directory_index = random.randrange(
-            0, len(self.directory_paths))
+        self._current_directory_index = random.randrange(
+            0, len(self._directory_paths))
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
             return []
         # Choose the current directory path by round robin order.
-        self.current_directory_index = (
-            (self.current_directory_index + 1) % len(self.directory_paths))
-        directory_path = self.directory_paths[self.current_directory_index]
+        self._current_directory_index = (
+            (self._current_directory_index + 1) % len(self._directory_paths))
+        directory_path = self._directory_paths[self._current_directory_index]
 
         # Always use the first object ref as a key when fusing objects.
         first_ref = object_refs[0]
@@ -310,7 +312,7 @@ class FileSystemStorage(ExternalStorage):
             os.remove(path)
 
     def destroy_external_storage(self):
-        for directory_path in self.directory_paths:
+        for directory_path in self._directory_paths:
             self._destroy_external_storage(directory_path)
 
     def _destroy_external_storage(self, directory_path):
@@ -418,7 +420,8 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(metadata_len, buf_len, parsed_result.size)
+                self._size_check(address_len, metadata_len, buf_len,
+                                 parsed_result.size)
                 owner_address = f.read(address_len)
                 total += buf_len
                 metadata = f.read(metadata_len)
@@ -437,6 +440,27 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
 _external_storage = NullStorage()
 
 
+class UnstableFileStorage(FileSystemStorage):
+    """This class is for testing with writing failure."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._failure_rate = 0.1
+        self._partial_failure_ratio = 0.2
+
+    def spill_objects(self, object_refs, owner_addresses) -> List[str]:
+        r = random.random() < self._failure_rate
+        failed = r < self._failure_rate
+        partial_failed = r < self._partial_failure_ratio
+        if failed:
+            raise IOError("Spilling object failed")
+        elif partial_failed:
+            i = random.choice(range(len(object_refs)))
+            return super().spill_objects(object_refs[:i], owner_addresses)
+        else:
+            return super().spill_objects(object_refs, owner_addresses)
+
+
 def setup_external_storage(config):
     """Setup the external storage according to the config."""
     global _external_storage
@@ -451,6 +475,10 @@ def setup_external_storage(config):
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
             _external_storage = FileSystemStorage(**config["params"])
+        elif storage_type == "unstable_fs":
+            # This storage is used to unit test unstable file system for fault
+            # tolerance
+            _external_storage = UnstableFileStorage(**config["params"])
         else:
             raise ValueError(f"Unknown external storage type: {storage_type}")
     else:

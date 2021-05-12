@@ -3,22 +3,26 @@ import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree
-from typing import Dict, List, Optional
+import tree  # pip install dm_tree
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +565,8 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
+            SampleBatch.OBS: ViewRequirement(
+                space=self.observation_space, used_for_compute_actions=True),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
@@ -612,20 +617,25 @@ class Policy(metaclass=ABCMeta):
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
-        input_dict = self._lazy_tensor_dict(
-            {k: v
-             for k, v in self._dummy_batch.items()})
+        self._lazy_tensor_dict(self._dummy_batch)
         actions, state_outs, extra_outs = \
-            self.compute_actions_from_input_dict(input_dict, explore=False)
+            self.compute_actions_from_input_dict(
+                self._dummy_batch, explore=False)
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
-            self._dummy_batch[key] = np.zeros_like(value)
+            self._dummy_batch[key] = value
             if key not in self.view_requirements:
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
                     used_for_compute_actions=False)
+        for key in self._dummy_batch.accessed_keys:
+            if key not in self.view_requirements:
+                self.view_requirements[key] = ViewRequirement()
+            self.view_requirements[key].used_for_compute_actions = True
+        self._dummy_batch = self._get_dummy_batch_from_view_requirements(
+            sample_batch_size)
         self._dummy_batch.set_get_interceptor(None)
         self.exploration.postprocess_trajectory(self, self._dummy_batch)
         postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
@@ -642,8 +652,11 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+            postprocessed_batch["seq_lens"] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        # Calling loss, so set `is_training` to True.
+        train_batch.is_training = True
         if seq_lens is not None:
             train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
@@ -741,7 +754,7 @@ class Policy(metaclass=ABCMeta):
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
-        return SampleBatch(ret, _dont_check_lens=True)
+        return SampleBatch(ret)
 
     def _update_model_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.
@@ -752,16 +765,37 @@ class Policy(metaclass=ABCMeta):
         """
         self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
+
         obj = model or self
+        if model and not hasattr(model, "view_requirements"):
+            model.view_requirements = {
+                SampleBatch.OBS: ViewRequirement(space=self.observation_space)
+            }
+        view_reqs = obj.view_requirements
         # Add state-ins to this model's view.
-        for i, state in enumerate(obj.get_initial_state()):
+        init_state = []
+        if hasattr(obj, "get_initial_state") and callable(
+                obj.get_initial_state):
+            init_state = obj.get_initial_state()
+        else:
+            # Add this functionality automatically for new native model API.
+            if tf and isinstance(model, tf.keras.Model) and \
+                    "state_in_0" not in view_reqs:
+                obj.get_initial_state = lambda: [
+                    np.zeros_like(view_req.space.sample())
+                    for k, view_req in model.view_requirements.items()
+                    if k.startswith("state_in_")]
+            else:
+                obj.get_initial_state = lambda: []
+                if "state_in_0" in view_reqs:
+                    self.is_recurrent = lambda: True
+        for i, state in enumerate(init_state):
             space = Box(-1.0, 1.0, shape=state.shape) if \
                 hasattr(state, "shape") else state
-            view_reqs = model.view_requirements if model else \
-                self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
+                used_for_compute_actions=True,
                 batch_repeat_value=self.config.get("model", {}).get(
                     "max_seq_len", 1),
                 space=space)

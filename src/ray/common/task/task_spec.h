@@ -27,6 +27,26 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
   return ref;
 };
 
+/// Information about the environment for a task (actor and non-actor).
+class RuntimeEnv {
+ public:
+  RuntimeEnv() {}
+  RuntimeEnv(std::string conda_env_name) : conda_env_name(conda_env_name) {}
+  std::string conda_env_name;
+
+  /// Perform a simple dict update.
+  ///
+  /// \param runtime_env the runtime env to merge into the current runtime env.
+  void Update(RuntimeEnv runtime_env);
+
+  // Get the corresponding protobuf message.
+  rpc::RuntimeEnv GetMessage() const;
+
+  static RuntimeEnv FromProto(rpc::RuntimeEnv message);
+
+  bool IsEmpty() const;
+};
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
@@ -36,10 +56,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskSpecification() {}
 
   /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
+  /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
     ComputeResources();
   }
 
@@ -69,6 +94,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   size_t ParentCounter() const;
 
   ray::FunctionDescriptor FunctionDescriptor() const;
+
+  ray::RuntimeEnv RuntimeEnv() const;
 
   size_t NumArgs() const;
 
@@ -127,9 +154,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  ///
+  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies(
+      bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
 

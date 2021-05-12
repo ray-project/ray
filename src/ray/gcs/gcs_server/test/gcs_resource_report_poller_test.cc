@@ -28,7 +28,7 @@ class GcsResourceReportPollerTest : public ::testing::Test {
   GcsResourceReportPollerTest()
       : current_time_(0),
         gcs_resource_report_poller_(
-            nullptr, nullptr, [](const rpc::ResourcesData &) {},
+            nullptr, [](const rpc::ResourcesData &) {},
             [this]() { return current_time_; },
             [this](const rpc::Address &address,
                    std::shared_ptr<rpc::NodeManagerClientPool> &client_pool,
@@ -71,7 +71,6 @@ TEST_F(GcsResourceReportPollerTest, TestBasic) {
           const rpc::Address &, std::shared_ptr<rpc::NodeManagerClientPool> &,
           std::function<void(const Status &, const rpc::RequestResourceReportReply &)>
               callback) {
-        RAY_LOG(ERROR) << "Requesting";
         rpc_sent = true;
         rpc::RequestResourceReportReply temp;
         callback(Status::OK(), temp);

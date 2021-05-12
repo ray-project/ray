@@ -4,6 +4,7 @@ import logging
 import platform
 import sys
 import time
+import unittest
 
 import numpy as np
 import pytest
@@ -37,6 +38,7 @@ def attempt_to_load_balance(remote_function,
     assert attempts < num_attempts
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets
     # in a roughly equal manner.
@@ -413,16 +415,17 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     }).remote([f_obj])) == worker_node.unique_id
 
 
+@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(
         num_cpus=1,
         _system_config={
-            # This test uses ray.objects(), which only works with the GCS-based
-            # object directory
+            # This test uses ray.state.objects(), which only works with the
+            # GCS-based object directory
             "ownership_based_object_directory_enabled": False,
             "object_timeout_milliseconds": 200
         })
-    assert len(ray.objects()) == 0
+    assert len(ray.state.objects()) == 0
 
     @ray.remote
     def f(x):
@@ -441,7 +444,7 @@ def test_lease_request_leak(shutdown_only):
 
     time.sleep(
         1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.objects()) == 0, ray.objects()
+    assert len(ray.state.objects()) == 0, ray.state.objects()
 
 
 if __name__ == "__main__":

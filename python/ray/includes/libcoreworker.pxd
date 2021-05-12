@@ -20,6 +20,10 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
     CWorkerID,
 )
+
+from ray.includes.gcs_client cimport CGcsClient
+
+
 from ray.includes.common cimport (
     CAddress,
     CActorCreationOptions,
@@ -217,6 +221,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
+        shared_ptr[CGcsClient] GetGcsClient() const
+
         c_bool IsExiting() const
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
@@ -229,6 +235,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
+        c_bool interactive
         c_string node_ip_address
         int node_manager_port
         c_string raylet_ip_address

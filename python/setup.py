@@ -79,7 +79,7 @@ ray_files += [
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
-    "ray/autoscaler/_private/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
     "ray/autoscaler/staroid/defaults.yaml",
     "ray/autoscaler/ray-schema.json",
 ]
@@ -94,16 +94,15 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 extras = {
-    "full": ["colorful"],
+    "default": ["colorful"],
     "serve": ["uvicorn", "requests", "starlette", "fastapi"],
     "tune": ["pandas", "tabulate", "tensorboardX"],
     "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
-    "atari_py",
     "dm_tree",
-    "gym[atari]",
+    "gym",
     "lz4",
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
@@ -133,7 +132,7 @@ install_requires = [
     "numpy >= 1.16",
     "protobuf >= 3.15.3",
     "py-spy >= 0.2.0",
-    "pydantic>=1.8",
+    "pydantic >= 1.8",
     "pyyaml",
     "requests",
     "redis >= 3.5.0",
@@ -308,7 +307,6 @@ def move_file(target_dir, filename):
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
-        print("Copying {} to {}.".format(source, destination))
         if sys.platform == "win32":
             # Does not preserve file mode (needed to avoid read-only bit)
             shutil.copyfile(source, destination, follow_symlinks=True)

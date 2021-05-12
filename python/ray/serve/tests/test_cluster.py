@@ -21,9 +21,12 @@ def ray_cluster():
 
 def test_scale_up(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=1)
+    cluster.connect()
+    # By default, Serve controller and proxy actors use 0 CPUs,
+    # so initially there should only be room for 1 replica.
 
-    @serve.deployment("D", version="1", num_replicas=1)
+    @serve.deployment(version="1", num_replicas=1)
     def D(*args):
         return os.getpid()
 
@@ -36,7 +39,6 @@ def test_scale_up(ray_cluster):
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
 
-    ray.init(head_node.address)
     serve.start(detached=True)
     client = serve.connect()
 
@@ -44,12 +46,16 @@ def test_scale_up(ray_cluster):
     pids1 = get_pids(1)
 
     goal_ref = D.options(num_replicas=3).deploy(_blocking=False)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+
+    # Check that a new replica has not started in 1.0 seconds.  This
+    # doesn't guarantee that a new replica won't ever be started, but
+    # 1.0 seconds is a reasonable upper bound on replica startup time.
+    assert not client._wait_for_goal(goal_ref, timeout=1.0)
     assert get_pids(1) == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
-    assert not client._wait_for_goal(goal_ref, timeout=0.1)
+    assert not client._wait_for_goal(goal_ref, timeout=1.0)
     pids2 = get_pids(2)
     assert pids1.issubset(pids2)
 
@@ -61,13 +67,15 @@ def test_scale_up(ray_cluster):
     assert pids2.issubset(pids3)
 
 
-@pytest.mark.skip("Currently hangs due to max_task_retries=-1.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_node_failure(ray_cluster):
     cluster = ray_cluster
     cluster.add_node(num_cpus=3)
+    cluster.connect()
+
     worker_node = cluster.add_node(num_cpus=2)
 
-    @serve.deployment("D", version="1", num_replicas=3)
+    @serve.deployment(version="1", num_replicas=3)
     def D(*args):
         return os.getpid()
 
@@ -80,7 +88,6 @@ def test_node_failure(ray_cluster):
                 raise TimeoutError("Timed out waiting for pids.")
         return pids
 
-    ray.init(cluster.address)
     serve.start(detached=True)
 
     print("Initial deploy.")

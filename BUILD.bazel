@@ -243,8 +243,6 @@ cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/format/object_manager_generated.h",
-        "src/ray/object_manager/notification/object_store_notification_manager.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",
@@ -269,7 +267,6 @@ cc_library(
     linkopts = PLASMA_LINKOPTS,
     strip_include_prefix = "src",
     deps = [
-        ":object_manager_fbs",
         ":plasma_fbs",
         ":ray_common",
         ":ray_util",
@@ -479,6 +476,28 @@ cc_binary(
     ],
 )
 
+# Ray native pubsub module.
+cc_library(
+    name = "pubsub_lib",
+    srcs = glob([
+        "src/ray/pubsub/*.cc",
+    ]),
+    hdrs = glob([
+        "src/ray/pubsub/*.h",
+    ]),
+    copts = COPTS,
+    strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ray_common",
+        ":worker_rpc",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 cc_library(
     name = "stats_lib",
     srcs = glob(
@@ -552,6 +571,7 @@ cc_library(
         ":node_manager_rpc",
         ":object_manager",
         ":plasma_client",
+        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":service_based_gcs_client_lib",
@@ -631,6 +651,7 @@ cc_library(
     deps = [
         ":gcs",
         ":plasma_client",
+        ":pubsub_lib",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
@@ -745,16 +766,6 @@ cc_test(
 )
 
 cc_test(
-    name = "publisher_test",
-    srcs = ["src/ray/core_worker/test/publisher_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":core_worker_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
     copts = COPTS,
@@ -834,18 +845,6 @@ cc_test(
     name = "local_object_manager_test",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "subscriber_test",
-    srcs = [
-        "src/ray/raylet/test/subscriber_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -993,6 +992,28 @@ cc_test(
     copts = COPTS,
     deps = [
         ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "publisher_test",
+    srcs = ["src/ray/pubsub/test/publisher_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":pubsub_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "subscriber_test",
+    srcs = [
+        "src/ray/pubsub/test/subscriber_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1267,6 +1288,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "grpc_based_resource_broadcaster_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
@@ -1386,7 +1420,6 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
-        ":object_manager_fbs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
         ":ray_common",
@@ -1670,13 +1703,6 @@ flatbuffer_cc_library(
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "ray/raylet/format/",
-)
-
-flatbuffer_cc_library(
-    name = "object_manager_fbs",
-    srcs = ["src/ray/object_manager/format/object_manager.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "src/ray/object_manager/format/",
 )
 
 pyx_library(

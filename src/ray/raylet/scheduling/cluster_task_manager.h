@@ -158,6 +158,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
+  void RecordMetrics() override;
+
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
@@ -289,6 +291,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
+
+  /// Metrics collected since the last report.
+  uint64_t metric_tasks_queued_;
+  uint64_t metric_tasks_dispatched_;
+  uint64_t metric_tasks_spilled_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

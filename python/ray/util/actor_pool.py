@@ -213,3 +213,64 @@ class ActorPool:
         self._idle_actors.append(actor)
         if self._pending_submits:
             self.submit(*self._pending_submits.pop(0))
+
+    def has_free(self):
+        """Returns whether there are any idle actors available.
+
+        Returns:
+            True if there are any idle actors and no pending submits.
+
+        Examples:
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool(a1)
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.has_free())
+            False
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.has_free())
+            True
+        """
+        return len(self._idle_actors) > 0 and len(self._pending_submits) == 0
+
+    def pop_idle(self):
+        """Removes an idle actor from the pool.
+
+        Returns:
+            An idle actor if one is available.
+            None if no actor was free to be removed.
+
+        Examples:
+            >>> a1 = Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.pop_idle())
+            None
+            >>> print(pool.get_next())
+            2
+            >>> print(pool.pop_idle())
+            <ptr to a1>
+        """
+        if self.has_free():
+            return self._idle_actors.pop()
+        return None
+
+    def push(self, actor):
+        """Pushes a new actor into the current list of idle actors.
+
+        Examples:
+            >>> a1, b1 = Actor.remote(), Actor.remote()
+            >>> pool = ActorPool([a1])
+            >>> pool.submit(lambda a, v: a.double.remote(v), 1)
+            >>> print(pool.get_next())
+            2
+            >>> pool2 = ActorPool([b1])
+            >>> pool2.push(pool.pop_idle())
+        """
+        busy_actors = []
+        if self._future_to_actor.values():
+            _, busy_actors = zip(*self._future_to_actor.values())
+        if actor in self._idle_actors or actor in busy_actors:
+            raise ValueError("Actor already belongs to current ActorPool")
+        else:
+            self._idle_actors.append(actor)

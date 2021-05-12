@@ -30,11 +30,10 @@ def connect(conn_str: str,
         job_config=job_config,
         secure=secure,
         metadata=metadata,
-        connection_retries=3,
+        connection_retries=connection_retries,
         ignore_version=ignore_version)
 
 
 def disconnect():
-    if not ray.is_connected():
-        raise RuntimeError("Ray Client is currently disconnected.")
+    """Disconnects from server; is idempotent."""
     return ray.disconnect()

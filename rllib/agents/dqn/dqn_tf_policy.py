@@ -317,12 +317,8 @@ def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     }, **policy.q_loss.stats)
 
 
-def setup_early_mixins(policy: Policy, obs_space, action_space,
-                       config: TrainerConfigDict) -> None:
-    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-
-
 def setup_mid_mixins(policy: Policy, obs_space, action_space, config) -> None:
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ComputeTDErrorMixin.__init__(policy)
 
 
@@ -443,7 +439,6 @@ DQNTFPolicy = build_tf_policy(
     gradients_fn=clip_gradients,
     extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
-    before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     mixins=[

@@ -95,7 +95,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.object_transfer_timeline()
+    transfer_events = ray.state.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
@@ -175,7 +175,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
     # Wait for profiling information to be pushed to the profile table.
     time.sleep(1)
-    transfer_events = ray.object_transfer_timeline()
+    transfer_events = ray.state.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
@@ -406,6 +406,45 @@ def test_max_pinned_args_memory(shutdown_only):
     # okay.
     ref = np.zeros(80 * 1024 * 1024, dtype=np.uint8)
     ray.get(large_arg.remote(ref))
+
+
+@pytest.mark.timeout(30)
+def test_ray_get_task_args_deadlock(shutdown_only):
+    cluster = Cluster()
+    object_size = int(6e6)
+    num_objects = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0, object_store_memory=4 * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    @ray.remote
+    def test_deadlock(get_args, task_args):
+        foo.remote(*task_args)
+        ray.get(get_args)
+
+    for i in range(5):
+        start = time.time()
+        get_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        ray.get(test_deadlock.remote(get_args, task_args))
+        print(f"round {i} finished in {time.time() - start}")
 
 
 if __name__ == "__main__":

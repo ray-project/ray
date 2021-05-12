@@ -138,9 +138,9 @@ class AlphaZeroPolicy(TorchPolicy):
         grad_info = self.extra_grad_info(train_batch)
         grad_info.update(grad_process_info)
         grad_info.update({
-            "total_loss": loss_out.detach().numpy(),
-            "policy_loss": policy_loss.detach().numpy(),
-            "value_loss": value_loss.detach().numpy()
+            "total_loss": loss_out.detach().cpu().numpy(),
+            "policy_loss": policy_loss.detach().cpu().numpy(),
+            "value_loss": value_loss.detach().cpu().numpy()
         })
 
         return {LEARNER_STATS_KEY: grad_info}

@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 import inspect
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -11,6 +11,7 @@ from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
+    EndpointInfo,
     EndpointTag,
     GoalId,
     NodeId,
@@ -18,7 +19,10 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
+from ray.serve.constants import (
+    ALL_HTTP_METHODS,
+    RESERVED_VERSION_TAG,
+)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.kv_store import RayInternalKVStore
@@ -34,7 +38,7 @@ CHECKPOINT_KEY = "serve-controller-checkpoint"
 CONTROL_LOOP_PERIOD_S = 0.1
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -109,8 +113,14 @@ class ServeController:
     async def run_control_loop(self) -> None:
         while True:
             async with self.write_lock:
-                self.http_state.update()
-                self.backend_state.update()
+                try:
+                    self.http_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating HTTP state: {e}")
+                try:
+                    self.backend_state.update()
+                except Exception as e:
+                    logger.error(f"Exception updating backend state: {e}")
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -167,7 +177,7 @@ class ServeController:
             endpoint: str,
             traffic_dict: Dict[str, float],
             route: Optional[str],
-            methods: List[str],
+            methods: Set[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -181,8 +191,13 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.endpoint_state.create_endpoint(endpoint, route, methods,
-                                                TrafficPolicy(traffic_dict))
+            self.endpoint_state.create_endpoint(
+                endpoint, EndpointInfo(methods, route=route),
+                TrafficPolicy(traffic_dict))
+
+        # TODO(simon): Use GoalID mechanism for this so client can check for
+        # goal id and http_state complete the goal id.
+        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
 
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
@@ -258,30 +273,10 @@ class ServeController:
             self.kv_store.delete(CHECKPOINT_KEY)
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig,
-                     version: Optional[str]) -> Optional[GoalId]:
-        # By default the path prefix is the deployment name.
-        if replica_config.path_prefix is None:
-            replica_config.path_prefix = f"/{name}"
-            # Backend config should be synchronized so the backend worker
-            # is aware of it.
-            backend_config.internal_metadata.path_prefix = f"/{name}"
-
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            # {wildcard:path} is used so HTTPProxy's Starlette router can match
-            # arbitrary path.
-            http_route = f"{replica_config.path_prefix}" + "/{wildcard:path}"
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-            http_methods = [
-                "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS",
-                "TRACE", "PATCH"
-            ]
-        else:
-            http_route = replica_config.path_prefix
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
+                     replica_config: ReplicaConfig, version: Optional[str],
+                     route_prefix: Optional[str]) -> Optional[GoalId]:
+        if route_prefix is not None:
+            assert route_prefix.startswith("/")
 
         python_methods = []
         if inspect.isclass(replica_config.backend_def):
@@ -298,14 +293,15 @@ class ServeController:
                 replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.create_endpoint(
-                name,
-                http_route,
-                http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
-                python_methods=python_methods)
+            endpoint_info = EndpointInfo(
+                ALL_HTTP_METHODS,
+                route=route_prefix,
+                python_methods=python_methods,
+                legacy=False)
+            self.endpoint_state.update_endpoint(name, endpoint_info,
+                                                TrafficPolicy({
+                                                    name: 1.0
+                                                }))
             return goal_id
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
@@ -331,3 +327,11 @@ class ServeController:
         route = self.endpoint_state.get_endpoint_route(name)
 
         return backend_info, route
+
+    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all active deployments."""
+        return {
+            name: (self.backend_state.get_backend(name),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs()
+        }

@@ -76,18 +76,34 @@ def test_validate_port():
 
 
 def test_basic_preregister(init_and_serve):
+    """Tests conversion of Ray actors and remote functions to client actors
+    and client remote functions.
+
+    Checks that the conversion works when disconnecting and reconnecting client
+    sessions.
+    """
     from ray.util.client import ray
+    for _ in range(2):
+        ray.connect("localhost:50051")
+        val = ray.get(hello_world.remote())
+        print(val)
+        assert val >= 20
+        assert val <= 200
+        c = C.remote(3)
+        x = c.double.remote()
+        y = c.double.remote()
+        ray.wait([x, y])
+        val = ray.get(c.get.remote())
+        assert val == 12
+        ray.disconnect()
+
+
+def test_idempotent_disconnect(init_and_serve):
+    from ray.util.client import ray
+    ray.disconnect()
+    ray.disconnect()
     ray.connect("localhost:50051")
-    val = ray.get(hello_world.remote())
-    print(val)
-    assert val >= 20
-    assert val <= 200
-    c = C.remote(3)
-    x = c.double.remote()
-    y = c.double.remote()
-    ray.wait([x, y])
-    val = ray.get(c.get.remote())
-    assert val == 12
+    ray.disconnect()
     ray.disconnect()
 
 

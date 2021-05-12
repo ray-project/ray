@@ -414,7 +414,6 @@ class LocalReplayBuffer(ParallelIteratorWorker):
 
         if self.num_added < self.replay_starts:
             return None
-
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.

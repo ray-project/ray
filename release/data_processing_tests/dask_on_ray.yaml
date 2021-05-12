@@ -120,6 +120,10 @@ rsync_filter:
 # is setup.
 initialization_commands: []
 
+file_mounts: {
+    "~/data_processing_tests": "."
+}
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # - sudo apt install -y iotop

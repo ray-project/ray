@@ -27,13 +27,13 @@
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
-#include "ray/core_worker/pubsub/publisher.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -73,6 +73,7 @@ struct CoreWorkerOptions {
         enable_logging(false),
         log_dir(""),
         install_failure_signal_handler(false),
+        interactive(false),
         node_ip_address(""),
         node_manager_port(0),
         raylet_ip_address(""),
@@ -115,6 +116,8 @@ struct CoreWorkerOptions {
   std::string log_dir;
   /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
   bool install_failure_signal_handler;
+  /// Whether this worker is running in a tty.
+  bool interactive;
   /// IP address of the node.
   std::string node_ip_address;
   /// Port of the local raylet.
@@ -301,9 +304,6 @@ class CoreWorkerProcess {
   /// \param[in] The existing `CoreWorker` instance.
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
-
-  /// The global instance of `CoreWorkerProcess`.
-  static std::unique_ptr<CoreWorkerProcess> instance_;
 
   /// The various options.
   const CoreWorkerOptions options_;
@@ -992,6 +992,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get serialized job configuration.
   const rpc::JobConfig &GetJobConfig() const;
 
+  // Get gcs_client
+  std::shared_ptr<gcs::GcsClient> GetGcsClient() const;
+
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
 
@@ -1219,7 +1222,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Server that handles pubsub operations of raylets / core workers.
-  std::shared_ptr<Publisher> object_status_publisher_;
+  std::shared_ptr<pubsub::Publisher> object_status_publisher_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;

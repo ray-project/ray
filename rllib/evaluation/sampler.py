@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from ray.rllib.agents.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.utils import try_import_tf
+    _, tf, _ = try_import_tf()
+    from gym.envs.classic_control.rendering import SimpleImageViewer
 
 logger = logging.getLogger(__name__)
 
@@ -863,12 +866,17 @@ def _process_observations(
                     rewards[env_id][agent_id] or 0.0)
                 to_eval[policy_id].append(item)
 
-        # Invoke the step callback after the step is logged to the episode
-        callbacks.on_episode_step(
-            worker=worker,
-            base_env=base_env,
-            episode=episode,
-            env_index=env_id)
+        # Invoke the `on_episode_step` callback after the step is logged
+        # to the episode.
+        # Exception: The very first env.poll() call causes the env to get reset
+        # (no step taken yet, just a single starting observation logged).
+        # We need to skip this callback in this case.
+        if episode.length > 0:
+            callbacks.on_episode_step(
+                worker=worker,
+                base_env=base_env,
+                episode=episode,
+                env_index=env_id)
 
         # Episode is done for all agents (dones[__all__] == True)
         # or we hit the horizon.
