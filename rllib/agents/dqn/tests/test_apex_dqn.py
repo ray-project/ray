@@ -33,41 +33,30 @@ class TestApexDQN(unittest.TestCase):
         config["num_workers"] = 3
         config["learning_starts"] = 1000
         config["prioritized_replay"] = True
-        config["timesteps_per_iteration"] = 1000
+        config["timesteps_per_iteration"] = 100
         config["min_iter_time_s"] = 1
-        config["num_gpus"] = 0
-        config["target_network_update_freq"] = 5000
-        config["buffer_size"] = 20000
-        config["model"]["fcnet_hiddens"] = [64]
-        config["model"]["fcnet_activation"] = "linear"
         config["optimizer"]["num_replay_buffer_shards"] = 1
-
-        config["evaluation_interval"] = 1
-        config["evaluation_config"]["explore"] = False
 
         for _ in framework_iterator(config):
             plain_config = config.copy()
             trainer = apex.ApexTrainer(config=plain_config, env="CartPole-v0")
 
             # Test per-worker epsilon distribution.
-            #infos = trainer.workers.foreach_policy(
-            #    lambda p, _: p.get_exploration_info())
-            #expected = [0.4, 0.016190862, 0.00065536]
-            #check([i["cur_epsilon"] for i in infos], [0.0] + expected)
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            expected = [0.4, 0.016190862, 0.00065536]
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
-            #check_compute_single_action(trainer)
+            check_compute_single_action(trainer)
 
-            # TODO(ekl) fix iterator metrics bugs w/multiple trainers.
-            for i in range(100):
-                results = trainer.train()
-                print(f"iter={trainer.iteration} "
-                      f"R={results['evaluation']['episode_reward_mean']}")
+            for i in range(2):
+                print(trainer.train())
 
             # Test again per-worker epsilon distribution
             # (should not have changed).
-            #infos = trainer.workers.foreach_policy(
-            #    lambda p, _: p.get_exploration_info())
-            #check([i["cur_epsilon"] for i in infos], [0.0] + expected)
+            infos = trainer.workers.foreach_policy(
+                lambda p, _: p.get_exploration_info())
+            check([i["cur_epsilon"] for i in infos], [0.0] + expected)
 
             trainer.stop()
 
