@@ -831,6 +831,29 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::vector<ObjectID>> &contained_object_ids,
       std::vector<std::shared_ptr<RayObject>> *return_objects);
 
+  /// Allocate a return object for an executing task. The caller should write into the
+  /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
+  ///
+  /// \param[in] object_id Object ID of the return value.
+  /// \param[in] data_size Size of the return value.
+  /// \param[in] metadata Metadata buffer of the return value.
+  /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[out] return_object RayObject containing buffers to write results into.
+  /// \return Status.
+  Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
+                              const std::shared_ptr<Buffer> &metadata,
+                              const std::vector<ObjectID> &contained_object_id,
+                              std::shared_ptr<RayObject> &return_object);
+
+  /// Seal a return object for an executing task. The caller should already have
+  /// written into the data buffer.
+  ///
+  /// \param[in] return_id Object ID of the return value.
+  /// \param[in] return_object RayObject containing the buffer written info.
+  /// \return Status.
+  Status SealReturnObject(const ObjectID &return_id,
+                          std::shared_ptr<RayObject> return_object);
+
   /// Get a handle to an actor.
   ///
   /// NOTE: This function should be called ONLY WHEN we know actor handle exists.

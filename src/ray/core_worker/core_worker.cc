@@ -1949,37 +1949,48 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    AllocateReturnObject(object_ids[i], data_sizes[i], metadatas[i],
+                         contained_object_ids[i], return_objects[i]);
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
+                                        const size_t &data_size,
+                                        const std::shared_ptr<Buffer> &metadata,
+                                        const std::vector<ObjectID> &contained_object_id,
+                                        std::shared_ptr<RayObject> &return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
                                  : worker_context_.GetCurrentTask()->CallerAddress());
 
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    bool object_already_exists = false;
-    std::shared_ptr<Buffer> data_buffer;
-    if (data_sizes[i] > 0) {
-      RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
-      // Mark this object as containing other object IDs. The ref counter will
-      // keep the inner IDs in scope until the outer one is out of scope.
-      if (!contained_object_ids[i].empty() && !options_.is_local_mode) {
-        reference_counter_->AddNestedObjectIds(object_ids[i], contained_object_ids[i],
-                                               owner_address);
-      }
+  bool object_already_exists = false;
+  std::shared_ptr<Buffer> data_buffer;
+  if (data_size > 0) {
+    RAY_LOG(DEBUG) << "Creating return object " << object_id;
+    // Mark this object as containing other object IDs. The ref counter will
+    // keep the inner IDs in scope until the outer one is out of scope.
+    if (!contained_object_id.empty() && !options_.is_local_mode) {
+      reference_counter_->AddNestedObjectIds(object_id, contained_object_id,
+                                             owner_address);
+    }
 
-      // Allocate a buffer for the return object.
-      if (options_.is_local_mode ||
-          static_cast<int64_t>(data_sizes[i]) < max_direct_call_object_size_) {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
-      } else {
-        RAY_RETURN_NOT_OK(CreateExisting(metadatas[i], data_sizes[i], object_ids[i],
-                                         owner_address, &data_buffer));
-        object_already_exists = !data_buffer;
-      }
+    // Allocate a buffer for the return object.
+    if (options_.is_local_mode ||
+        static_cast<int64_t>(data_size) < max_direct_call_object_size_) {
+      data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
+    } else {
+      RAY_RETURN_NOT_OK(
+          CreateExisting(metadata, data_size, object_id, owner_address, &data_buffer));
+      object_already_exists = !data_buffer;
     }
-    // Leave the return object as a nullptr if the object already exists.
-    if (!object_already_exists) {
-      return_objects->at(i) =
-          std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
-    }
+  }
+  // Leave the return object as a nullptr if the object already exists.
+  if (!object_already_exists) {
+    return_object =
+        std::make_shared<RayObject>(data_buffer, metadata, contained_object_id);
   }
 
   return Status::OK();
@@ -2048,23 +2059,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
       creation_task_exception_pb_bytes);
 
-  absl::optional<rpc::Address> caller_address(
-      options_.is_local_mode ? absl::optional<rpc::Address>()
-                             : worker_context_.GetCurrentTask()->CallerAddress());
-  for (size_t i = 0; i < return_objects->size(); i++) {
-    // The object is nullptr if it already existed in the object store.
-    if (!return_objects->at(i)) {
-      continue;
-    }
-    if (return_objects->at(i)->GetData() != nullptr &&
-        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!SealExisting(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
-                       << return_ids[i] << " in store: " << status.message();
-      }
-    }
-  }
-
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also notify the caller of
@@ -2117,6 +2111,25 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
 
   return status;
+}
+
+Status CoreWorker::SealReturnObject(const ObjectID &return_id,
+                                    std::shared_ptr<RayObject> return_object) {
+  if (!return_object) {
+    return Status::OK();
+  }
+  absl::optional<rpc::Address> caller_address(
+      options_.is_local_mode ? absl::optional<rpc::Address>()
+                             : worker_context_.GetCurrentTask()->CallerAddress());
+  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
+    if (!SealExisting(return_id, /*pin_object=*/true, caller_address).ok()) {
+      // TODO: pass them in
+      RAY_LOG(FATAL) << "Task failed to seal object " << return_id;
+      // RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
+      //                 << return_id << " in store: " << status.message();
+    }
+  }
+  return Status::OK();
 }
 
 void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
