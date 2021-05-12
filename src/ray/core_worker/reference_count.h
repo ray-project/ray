@@ -767,8 +767,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// It should be used as a WaitForRefRemoved callback.
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
-                                    rpc::WorkerAddress borrower_addr)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                                    rpc::WorkerAddress borrower_addr);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
@@ -815,13 +814,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::function<void()> shutdown_hook_ GUARDED_BY(mutex_) = nullptr;
 
   /// Object status publisher. It is used to publish the ref removed message for the
-  /// reference counting protocol. It is not guarded by a lock because the class itself is
-  /// thread-safe.
+  /// reference counting protocol. The class is thread-safe.
   pubsub::PublisherInterface *object_status_publisher_;
 
   /// Object status subscriber. It is used to subscribe the ref removed information from
-  /// other workers.
-  pubsub::SubscriberInterface *object_status_subscriber_ GUARDED_BY(mutex_);
+  /// other workers. The class is thread-safe.
+  pubsub::SubscriberInterface *object_status_subscriber_;
 };
 
 }  // namespace ray

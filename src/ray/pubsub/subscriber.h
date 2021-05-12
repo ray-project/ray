@@ -184,6 +184,7 @@ class SubscriberInterface {
 
   /// Unsubscribe the object.
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
+  /// If you do that, it will deadlock.
   /// NOTE: Currently, this method doesn't send a RPC to the pubsub server. It is because
   /// the client is currently used for WaitForObjectFree, and the coordinator will
   /// automatically unregister the subscriber after publishing the object. But if we use
@@ -249,10 +250,6 @@ class Subscriber : public SubscriberInterface {
                    const rpc::Address &publisher_address,
                    const std::string &key_id_binary) override;
 
-  /// Return the Channel of the given channel type.
-  std::shared_ptr<SubscribeChannelInterface> Channel(
-      const rpc::ChannelType channel_type) const;
-
  private:
   ///
   /// Testing fields
@@ -272,6 +269,10 @@ class Subscriber : public SubscriberInterface {
   /// Private fields
   ///
 
+  /// Return the Channel of the given channel type.
+  std::shared_ptr<SubscribeChannelInterface> Channel(
+      const rpc::ChannelType channel_type) const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Create a long polling connection to the publisher for receiving the published
   /// messages.
   ///
@@ -282,17 +283,20 @@ class Subscriber : public SubscriberInterface {
   /// objects.
   /// \param subscriber_address The address of the subscriber.
   void MakeLongPollingPubsubConnection(const rpc::Address &publisher_address,
-                                       const rpc::Address &subscriber_address);
+                                       const rpc::Address &subscriber_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Private method to handle long polling responses. Long polling responses contain the
   /// published messages.
   void HandleLongPollingResponse(const rpc::Address &publisher_address,
                                  const rpc::Address &subscriber_address,
                                  const Status &status,
-                                 const rpc::PubsubLongPollingReply &reply);
+                                 const rpc::PubsubLongPollingReply &reply)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Return true if the given publisher id has subscription to any of channel.
-  bool SubscriptionExists(const PublisherID &publisher_id);
+  bool SubscriptionExists(const PublisherID &publisher_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Self node's address information.
   const SubscriberID subscriber_id_;
@@ -302,19 +306,24 @@ class Subscriber : public SubscriberInterface {
   /// Cache of gRPC clients to publishers.
   rpc::CoreWorkerClientPool &publisher_client_pool_;
 
+  mutable absl::Mutex mutex_;
+
   /// A set to cache the connected publisher ids. "Connected" means the long polling
   /// request is in flight.
-  absl::flat_hash_set<PublisherID> publishers_connected_;
+  absl::flat_hash_set<PublisherID> publishers_connected_ GUARDED_BY(mutex_);
 
   /// WaitForObjectEviction channel.
-  std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_;
+  std::shared_ptr<WaitForObjectEvictionChannel> wait_for_object_eviction_channel_
+      GUARDED_BY(mutex_);
 
   /// WaitForRefRemoved channel.
-  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_;
+  std::shared_ptr<WaitForRefRemovedChannel> wait_for_ref_removed_channel_
+      GUARDED_BY(mutex_);
 
-  /// Mapping of channel type to channels.
-  absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
-      channels_;
+  /// Mapping of channel type to channels. Needs to be guarded because it contains
+  /// channels above.
+  const absl::flat_hash_map<rpc::ChannelType, std::shared_ptr<SubscribeChannelInterface>>
+      channels_ GUARDED_BY(mutex_);
 };
 
 }  // namespace pubsub
