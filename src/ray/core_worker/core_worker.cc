@@ -427,13 +427,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << ", raylet " << local_raylet_id;
 
   // Begin to get gcs server address from raylet.
-  gcs_server_address_updater_ = std::unique_ptr<GcsServerAddressUpdater>(
-      new GcsServerAddressUpdater(options_.raylet_ip_address, options_.node_manager_port,
-                                  [this](std::string ip, int port) {
-                                    absl::MutexLock lock(&gcs_server_address_mutex_);
-                                    gcs_server_address_.first = ip;
-                                    gcs_server_address_.second = port;
-                                  }));
+  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
+      options_.raylet_ip_address, options_.node_manager_port,
+      [this](std::string ip, int port) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        gcs_server_address_.first = ip;
+        gcs_server_address_.second = port;
+      });
 
   // Initialize gcs client.
   // As the synchronous and the asynchronous context of redis client is not used in this
