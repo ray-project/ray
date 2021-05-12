@@ -128,7 +128,7 @@ ray.get(actor.ping.remote())
 
 def test_namespace_client(shutdown_only):
     cluster = Cluster()
-    head_node = cluster.add_node(num_cpus=4, ray_client_server_port=8080)
+    cluster.add_node(num_cpus=4, ray_client_server_port=8080)
     cluster.wait_for_nodes(1)
 
     template = """
@@ -144,7 +144,8 @@ actor = DetachedActor.options(name="Pinger", lifetime="detached").remote()
 ray.get(actor.ping.remote())
     """
 
-    run_string_as_driver(template.format(address="localhost:8080", namespace=""))
+    run_string_as_driver(
+        template.format(address="localhost:8080", namespace=""))
 
     ray.util.connect("localhost:8080", namespace="")
 
