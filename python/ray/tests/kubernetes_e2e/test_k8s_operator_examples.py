@@ -8,9 +8,13 @@ import tempfile
 import time
 import unittest
 
+from contextlib import contextmanager
+
 import kubernetes
 import pytest
 import yaml
+
+import ray
 
 from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
@@ -28,6 +32,23 @@ RAY_PATH = os.path.abspath(
     os.path.dirname(
         os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
+
+
+@contextmanager
+def client_connect_to_k8s(port="10001"):
+    command = f"kubectl -n {NAMESPACE}"\
+        f" port-forward service/example-cluster-ray-head {port}:{port}"
+    command = command.split()
+    print(">>>Port-forwarding head service.")
+    proc = subprocess.Popen(command)
+    # Wait a bit for the port-forwarding connection to be
+    # established.
+    time.sleep(10)
+    ray.util.connect(f"127.0.0.1:{port}")
+    try:
+        yield proc
+    finally:
+        proc.kill()
 
 
 def retry_until_true(f):
@@ -83,6 +104,34 @@ def wait_for_job(job_pod):
     return success
 
 
+@retry_until_true
+def wait_for_command_to_succeed(cmd):
+    try:
+        subprocess.check_call(cmd, shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+@retry_until_true
+def wait_for_pod_status(pod_name, status):
+    client = kubernetes.client.CoreV1Api()
+    pod = client.read_namespaced_pod(namespace=NAMESPACE, name=pod_name)
+    return pod.status.phase == status
+
+
+@retry_until_true
+def wait_for_status(cluster_name, status):
+    client = kubernetes.client.CustomObjectsApi()
+    cluster_cr = client.get_namespaced_custom_object(
+        namespace=NAMESPACE,
+        group="cluster.ray.io",
+        version="v1",
+        plural="rayclusters",
+        name=cluster_name)
+    return cluster_cr["status"]["phase"] == status
+
+
 def kubernetes_configs_directory():
     relative_path = "python/ray/autoscaler/kubernetes"
     return os.path.join(RAY_PATH, relative_path)
@@ -98,11 +147,13 @@ def get_operator_config_path(file_name):
 
 
 def pods():
-    print(">>>Checking monitor logs for head and workers.")
-    cmd = f"kubectl -n {NAMESPACE} get pods --no-headers -o"\
-        " custom-columns=\":metadata.name\""
-    pod_list = subprocess.check_output(cmd, shell=True).decode().split()
-    return pod_list
+    client = kubernetes.client.CoreV1Api()
+    pod_items = client.list_namespaced_pod(namespace=NAMESPACE).items
+    return [
+        pod.metadata.name for pod in pod_items
+        if pod.status.phase in ["Running", "Pending"]
+        and pod.metadata.deletion_timestamp is None
+    ]
 
 
 def num_services():
@@ -114,7 +165,6 @@ def num_services():
 
 class KubernetesOperatorTest(unittest.TestCase):
     def test_examples(self):
-
         # Validate terminate_node error handling
         provider = KubernetesNodeProvider({
             "namespace": NAMESPACE
@@ -157,6 +207,12 @@ class KubernetesOperatorTest(unittest.TestCase):
                 pod_spec["containers"][0]["image"] = IMAGE
                 pod_spec["containers"][0]["imagePullPolicy"] = PULL_POLICY
 
+            # Use a custom Redis port for one of the clusters.
+            example_cluster_config["spec"]["headStartRayCommands"][1] += \
+                " --port 6400"
+            example_cluster_config["spec"]["workerStartRayCommands"][1] = \
+                " ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6400"
+
             # Dump to temporary files
             yaml.dump(example_cluster_config, example_cluster_file)
             yaml.dump(example_cluster2_config, example_cluster2_file)
@@ -169,7 +225,7 @@ class KubernetesOperatorTest(unittest.TestCase):
                 file.flush()
 
             # Start operator and two clusters
-            print(">>>Starting operator and two clusters.")
+            print("\n>>>Starting operator and two clusters.")
             for file in files:
                 cmd = f"kubectl -n {NAMESPACE} apply -f {file.name}"
                 subprocess.check_call(cmd, shell=True)
@@ -186,6 +242,55 @@ class KubernetesOperatorTest(unittest.TestCase):
             # ray cluster example-cluster.)
             operator_pod = [pod for pod in pods() if "operator" in pod].pop()
             wait_for_logs(operator_pod)
+
+            print(">>>Checking that Ray client connection is uninterrupted by"
+                  " operator restart.")
+            with client_connect_to_k8s():
+
+                @ray.remote
+                class Test:
+                    @ray.method()
+                    def method(self):
+                        return "success"
+
+                actor = Test.remote()
+                print(">>>Restarting operator pod.")
+                cmd = f"kubectl -n {NAMESPACE} delete pod {operator_pod}"
+                subprocess.check_call(cmd, shell=True)
+                wait_for_pods(6)
+                operator_pod = [pod for pod in pods()
+                                if "operator" in pod].pop()
+                wait_for_pod_status(operator_pod, "Running")
+                time.sleep(5)
+                print(">>>Confirming Ray is uninterrupted.")
+                assert ray.get(actor.method.remote()) == "success"
+
+            # Delete head node of the first cluster. Recovery logic should
+            # allow the rest of the test to pass.
+            print(">>>Deleting cluster's head to test recovery.")
+            head_pod = [pod for pod in pods() if "r-ray-head" in pod].pop()
+            cd = f"kubectl -n {NAMESPACE} delete pod {head_pod}"
+            subprocess.check_call(cd, shell=True)
+            print(">>>Confirming recovery.")
+            # Status marked "Running".
+            wait_for_status("example-cluster", "Running")
+            # Head pod recovered.
+            wait_for_pods(6)
+
+            # Get the new head pod
+            head_pod = [pod for pod in pods() if "r-ray-head" in pod].pop()
+            wait_for_pod_status(head_pod, "Running")
+            stat_cmd = f"kubectl -n {NAMESPACE} exec {head_pod} -- ray status"
+            print(">>>Waiting for success of `ray status` on recovered head.")
+            wait_for_command_to_succeed(stat_cmd)
+            print(">>>Stopping ray on the head node to test recovery.")
+            stop_cmd = f"kubectl -n {NAMESPACE} exec {head_pod} -- ray stop"
+            subprocess.check_call(stop_cmd, shell=True)
+            # ray status should fail when called immediately after ray stop
+            with pytest.raises(subprocess.CalledProcessError):
+                subprocess.check_call(stat_cmd, shell=True)
+            print(">>>Waiting for success of `ray status` on recovered head.")
+            wait_for_command_to_succeed(stat_cmd)
 
             # Delete the second cluster
             print(">>>Deleting example-cluster2.")
@@ -210,11 +315,6 @@ class KubernetesOperatorTest(unittest.TestCase):
             cmd = f"kubectl -n {NAMESPACE} delete jobs --all"
             subprocess.check_call(cmd, shell=True)
 
-            # Delete operator pod. Deployment controller should recover it,
-            # allowing the rest of this test to succeed.
-            print(">>>Deleting operator pod to test operator restart.")
-            cmd = f"kubectl -n {NAMESPACE} delete pod {operator_pod}"
-            subprocess.check_call(cmd, shell=True)
             # Check that cluster updates work: increase minWorkers to 3
             # and check that one worker is created.
             print(">>>Updating cluster size.")

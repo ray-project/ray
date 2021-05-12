@@ -11,6 +11,8 @@ from ray.rllib.utils.typing import LocalOptimizer, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
+    from ray.rllib.utils import try_import_tf
+    _, tf, _ = try_import_tf()
 
 _, nn = try_import_torch()
 

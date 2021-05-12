@@ -142,19 +142,23 @@ class DependencyWaiterInterface {
 };
 
 /// Inteface for getting resource reports.
-class ResourceRequestInterface {
+class ResourceTrackingInterface {
  public:
+  virtual void UpdateResourceUsage(
+      std::string &serialized_resource_usage_batch,
+      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
+
   virtual void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
-  virtual ~ResourceRequestInterface(){};
+  virtual ~ResourceTrackingInterface(){};
 };
 
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
-                              public ResourceRequestInterface {
+                              public ResourceTrackingInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -404,6 +408,10 @@ class RayletClient : public RayletClientInterface {
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
+  void UpdateResourceUsage(
+      std::string &serialized_resource_usage_batch,
+      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
+
   void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
@@ -415,6 +423,8 @@ class RayletClient : public RayletClientInterface {
   JobID GetJobID() const { return job_id_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
+
+  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
@@ -429,6 +439,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+
+  /// The number of object ID pin RPCs currently in flight.
+  std::atomic_int64_t pins_in_flight_{0};
 };
 
 }  // namespace raylet

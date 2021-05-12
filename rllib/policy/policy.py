@@ -4,7 +4,7 @@ from gym.spaces import Box
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -20,6 +20,9 @@ from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 logger = logging.getLogger(__name__)
 

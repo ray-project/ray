@@ -30,7 +30,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
         "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
-        "maximum_gcs_dead_node_cached_count,10");
+        "maximum_gcs_dead_node_cached_count,10;"
+        "grpc_based_resource_broadcast,false");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -44,6 +45,10 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     config_.redis_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
     config_.redis_port = TEST_REDIS_SERVER_PORTS.front();
+    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
+    // test targets.
+    config_.pull_based_resource_reporting = false;
+    config_.grpc_based_resource_broadcast = false;
 
     client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {

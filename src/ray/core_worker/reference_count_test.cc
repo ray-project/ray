@@ -2054,9 +2054,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
-  bool owned_by_us;
+  bool owned_by_us = false;
   NodeID pinned_at;
-  bool spilled;
+  bool spilled = false;
   ASSERT_TRUE(
       rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_FALSE(owned_by_us);
