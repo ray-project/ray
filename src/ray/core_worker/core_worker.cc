@@ -1951,7 +1951,7 @@ Status CoreWorker::AllocateReturnObjects(
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     AllocateReturnObject(object_ids[i], data_sizes[i], metadatas[i],
-                         contained_object_ids[i], return_objects[i]);
+                         contained_object_ids[i], return_objects->at(i));
   }
 
   return Status::OK();
@@ -2115,21 +2115,21 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object) {
+  Status status = Status::OK();
   if (!return_object) {
-    return Status::OK();
+    return status;
   }
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
                              : worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    if (!SealExisting(return_id, /*pin_object=*/true, caller_address).ok()) {
-      // TODO: pass them in
-      RAY_LOG(FATAL) << "Task failed to seal object " << return_id;
-      // RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
-      //                 << return_id << " in store: " << status.message();
+    status = SealExisting(return_id, /*pin_object=*/true, caller_address);
+    if (!status.ok()) {
+      RAY_LOG(FATAL) << "Failed to seal object " << return_id
+                     << " in store: " << status.message();
     }
   }
-  return Status::OK();
+  return status;
 }
 
 void CoreWorker::ExecuteTaskLocalMode(const TaskSpecification &task_spec,
