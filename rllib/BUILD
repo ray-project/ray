@@ -1872,7 +1872,7 @@ py_test(
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/curriculum_learning.py"],
-    args = ["--as-test", "--stop-reward=1000.0"]
+    args = ["--as-test", "--stop-reward=800.0"]
 )
 
 py_test(
