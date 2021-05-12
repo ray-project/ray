@@ -77,7 +77,7 @@ jobs:
         restore-keys: |
           pip-${{ runner.os }}-
           pip-
-    - name: Run CI script
+    - name: Build
       shell: bash -x -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
@@ -99,6 +99,16 @@ jobs:
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
+    - name: Run Tests
+      shell: bash -x -e -o pipefail -l {0}
+      run: |
+        function clean_up() {
+          echo "Performing cleanup"
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
+        }
+        trap clean_up EXIT
+
+        python -u ci/remote-watch.py --skip_repo=ray-project/ray &
         . ./ci/travis/ci.sh test_core
         . ./ci/travis/ci.sh test_python
     - name: Run Clang Include-What-You-Use
