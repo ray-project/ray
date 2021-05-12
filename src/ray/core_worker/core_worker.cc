@@ -1382,9 +1382,9 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   }
 
   // Find the raylet that hosts the primary copy of the object.
+  bool owned_by_us = false;
   NodeID pinned_at;
-  bool spilled;
-  bool owned_by_us;
+  bool spilled = false;
   RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us,
                                                               &pinned_at, &spilled));
   RAY_CHECK(owned_by_us);
