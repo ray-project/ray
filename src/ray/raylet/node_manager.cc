@@ -218,7 +218,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-                   RayConfig::instance().worker_process_in_container()),
+                   RayConfig::instance().worker_process_in_container(),
+                   config.temp_dir),
       dependency_manager_(object_manager_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
