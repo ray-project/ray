@@ -56,12 +56,13 @@ class TestCQL(unittest.TestCase):
 
             check_compute_single_action(trainer)
 
-            # Example on how to do evaluation on the trained Trainer
-            # using the data from our buffer.
+            # Get policy, model, and replay-buffer.
             pol = trainer.get_policy()
             cql_model = pol.model
-            # Get the repay buffer object.
             from ray.rllib.agents.cql.cql import replay_buffer
+
+            # Example on how to do evaluation on the trained Trainer
+            # using the data from our buffer.
             # Get a sample (MultiAgentBatch -> SampleBatch).
             batch = replay_buffer.replay().policy_batches["default_policy"]
             obs = torch.from_numpy(batch["obs"])
