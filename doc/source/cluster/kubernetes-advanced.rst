@@ -6,13 +6,17 @@ Ray Operator Advanced Configuration
 This document covers configuration options for the Ray Helm chart.
 We recommend reading this :ref:`introductory guide<ray-k8s-deploy>` on the Helm chart first.
 
+.. _helm-config:
+
 Helm chart configuration
 ------------------------
 This section discusses the `RayCluster` configuration options exposed in the Ray Helm chart's `values.yaml`_ file.
+The default values in ``values.yaml`` were chosen for the purposes of demonstration.
+For production use cases, the values should be modified, for example to increase Ray node resource requests.
 
 Setting custom chart values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To configure Helm chart values, you can pass in a ``custom values.yaml`` and/or set individual fields.
+To configure Helm chart values, you can pass in a custom values configuration` and/or set individual fields.
 For example,
 
 .. code-block:: shell
