@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/function_manager.h>
+#include <ray/api/overload.h>
 
 namespace ray {
 
@@ -76,6 +77,8 @@ namespace api {
 #define RAY_REMOTE(...)                 \
   static auto ANONYMOUS_VARIABLE(var) = \
       ray::internal::RegisterRemoteFunctions(#__VA_ARGS__, __VA_ARGS__);
+
+#define RAY_FUNC(f, ...) ray::internal::underload<__VA_ARGS__>(f)
 
 }  // namespace api
 }  // namespace ray
