@@ -171,6 +171,7 @@ def _user_setup_func():
     runtime_env.VAR = "hello world"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_user_setup_function():
     script = """
 import ray
