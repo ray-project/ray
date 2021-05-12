@@ -158,10 +158,11 @@ class DetachedActor:
 
 actor = DetachedActor.options(name="Pinger", lifetime="detached").remote()
 ray.get(actor.ping.remote())
+print("Done!!!")
     """
 
-    run_string_as_driver(
-        template.format(address="localhost:8080", namespace=""))
+    print(run_string_as_driver(
+        template.format(address="localhost:8080", namespace="")))
 
     ray.util.connect("localhost:8080", namespace="")
 
