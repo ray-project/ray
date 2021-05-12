@@ -17,6 +17,7 @@ from ray import cloudpickle
 from ray.job_config import JobConfig
 import ray
 import ray.state
+import ray.gcs_utils as gcs_utils
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
@@ -56,32 +57,51 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
 
-    def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
+    def _check_for_job_config_collision(
+            self, request_job_config: "gcs_utils.JobConfig",
+            existing_job_config: "gcs_utils.JobConfig") -> bool:
+        """
+        We can only run one job at a time, but if 2 jobs come, we'll try to
+        run them under the same driver IF they have the same config.
+
+        Returns: True if the job configs collide (they have different values
+            for the same entries).
+        """
+        if len(request_job_config.runtime_env.uris) > 0 and set(
+                request_job_config.runtime_env.uris) != set(
+                    existing_job_config.runtime_env.uris):
+            # If the new job doesn't have a runtime env, assume it's ok to \
+            # reuse the old one.
+            return True
+        if request_job_config.ray_namespace != \
+           existing_job_config.ray_namespace:
+            return True
+        return False
+
+    def Init(self, request, context=None) \
+            -> ray_client_pb2.InitResponse:
         import pickle
-        if request.job_config:
-            job_config = pickle.loads(request.job_config)
-            job_config.client_job = True
-        else:
-            job_config = None
-        current_job_config = None
+        assert request.job_config is not None
+        job_config = pickle.loads(request.job_config)
+        job_config.client_job = True
+
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray.worker.global_worker
-                current_job_config = worker.core_worker.get_job_config()
+                existing_job_config = \
+                    ray.worker.global_worker.core_worker.get_job_config()
+                if self._check_for_job_config_collision(
+                        job_config.get_proto_job_config(),
+                        existing_job_config):
+                    return ray_client_pb2.InitResponse(
+                        ok=False,
+                        msg=f"The requested job config doesn't match the "
+                        f"existing one. Requested: "
+                        f"{job_config.get_proto_job_config()}, existing: "
+                        f"{existing_job_config}. To use a new job config "
+                        f"make sure all other jobs have finished first.")
             else:
                 self.ray_connect_handler(job_config)
-        if job_config is None:
-            return ray_client_pb2.InitResponse()
-        job_config = job_config.get_proto_job_config()
-        # If the server has been initialized, we need to compare whether the
-        # runtime env is compatible.
-        if current_job_config and set(job_config.runtime_env.uris) != set(
-                current_job_config.runtime_env.uris):
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env.uris} "
-                f"current one {current_job_config.runtime_env.uris}")
+
         return ray_client_pb2.InitResponse(ok=True)
 
     def PrepRuntimeEnv(self, request,

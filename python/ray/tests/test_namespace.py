@@ -126,7 +126,23 @@ ray.get(actor.ping.remote())
     assert ray.get(act.ping.remote()) == "pong from other job"
 
 
-def test_namespace_client(shutdown_only):
+def test_detached_warning(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class DetachedActor:
+        def ping(self):
+            return "pong"
+
+    error_pubsub = init_error_pubsub()
+    actor = DetachedActor.options(  # noqa: F841
+        name="Pinger", lifetime="detached").remote()
+    errors = get_error_message(error_pubsub, 1, None)
+    error = errors.pop()
+    assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
+
+
+def test_namespace_client():
     cluster = Cluster()
     cluster.add_node(num_cpus=4, ray_client_server_port=8080)
     cluster.wait_for_nodes(1)
@@ -152,21 +168,16 @@ ray.get(actor.ping.remote())
     pinger = ray.get_actor("Pinger")
     assert ray.get(pinger.ping.remote()) == "pong from other job"
 
+    ray.util.disconnect()
+    cluster.shutdown()
+    # This piece of cleanup doesn't seem to happen automatically.
+    ray._private.client_mode_hook._explicitly_disable_client_mode()
 
-def test_detached_warning(shutdown_only):
+
+def test_temp(shutdown_only):
     ray.init()
 
-    @ray.remote
-    class DetachedActor:
-        def ping(self):
-            return "pong"
-
-    error_pubsub = init_error_pubsub()
-    actor = DetachedActor.options(  # noqa: F841
-        name="Pinger", lifetime="detached").remote()
-    errors = get_error_message(error_pubsub, 1, None)
-    error = errors.pop()
-    assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
+    pass
 
 
 if __name__ == "__main__":

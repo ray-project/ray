@@ -450,11 +450,6 @@ class Worker:
     def _server_init(self, job_config: JobConfig):
         """Initialize the server"""
         try:
-            if job_config is None:
-                init_req = ray_client_pb2.InitRequest()
-                self.data_client.Init(init_req)
-                return
-
             import ray._private.runtime_env as runtime_env
             import tempfile
             with tempfile.TemporaryDirectory() as tmp_dir:
