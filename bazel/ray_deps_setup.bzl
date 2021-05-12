@@ -77,6 +77,14 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
 
+    # Explicitly bring in protobuf dependency to work around
+    # https://github.com/ray-project/ray/issues/14117
+    http_archive(
+        name = "com_google_protobuf",
+        strip_prefix = "protobuf-3.15.6",
+        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.15.6.tar.gz"],
+    )
+
     auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
