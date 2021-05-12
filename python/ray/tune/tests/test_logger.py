@@ -169,8 +169,11 @@ class LoggerSuite(unittest.TestCase):
                     "D": 123
                 }
             },
-            "d": np.int64(1),
-            "e": np.bool8(True)
+            "int32": np.int32(1),
+            "int64": np.int64(1),
+            "bool8": np.bool8(True),
+            "float32": np.float32(1),
+            "float64": np.float64(1),
         }
         t = Trial(
             evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
