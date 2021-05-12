@@ -135,9 +135,9 @@ Serving and Offline
 Multi-Agent and Hierarchical
 ----------------------------
 
-- `Simple independent multi-agent setup vs a PettingZoo env <<https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__:
+- `Simple independent multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`__:
    Setup RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
-- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <<https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__:
+- `More complex (shared-parameter) multi-agent setup vs a PettingZoo env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py>`__:
    Setup RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
 - `Rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py>`__:
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
