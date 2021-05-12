@@ -46,13 +46,16 @@ class TestCQL(unittest.TestCase):
         config["rollout_fragment_length"] = 1
         config["train_batch_size"] = 10
 
+        # Switch on off-policy evaluation.
+        config["input_evaluation"] = ["is", "wis"]
+
         num_iterations = 2
 
         # Test for tf framework (torch not implemented yet).
         for _ in framework_iterator(config, frameworks=("torch")):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
-                trainer.train()
+                print(trainer.train())
 
             check_compute_single_action(trainer)
 
