@@ -3,7 +3,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
-    SimpleExportSpanProcessor,
+    SimpleSpanProcessor,
 )
 from typing import Any
 
@@ -21,7 +21,7 @@ def setup_tracing(*args: Any, **kwargs: Any) -> None:
         )
     )
     trace.get_tracer_provider().add_span_processor(
-        SimpleExportSpanProcessor(
+        SimpleSpanProcessor(
             ConsoleSpanExporter()
         )
     )
