@@ -76,16 +76,16 @@ class AcsClient:
         return None
 
     def create_instance(
-        self,
-        instance_type,
-        image_id,
-        tags,
-        key_pair_name,
-        optimized="optimized",
-        instance_charge_type="PostPaid",
-        spot_strategy="SpotWithPriceLimit",
-        internet_charge_type="PayByTraffic",
-        internet_max_bandwidth_out=5,
+            self,
+            instance_type,
+            image_id,
+            tags,
+            key_pair_name,
+            optimized="optimized",
+            instance_charge_type="PostPaid",
+            spot_strategy="SpotWithPriceLimit",
+            internet_charge_type="PayByTraffic",
+            internet_max_bandwidth_out=5,
     ):
         request = CreateInstanceRequest()
         request.set_InstanceType(instance_type)
@@ -108,19 +108,19 @@ class AcsClient:
         return None
 
     def run_instances(
-        self,
-        instance_type,
-        image_id,
-        tags,
-        security_group_id,
-        vswitch_id,
-        key_pair_name,
-        amount=1,
-        optimized="optimized",
-        instance_charge_type="PostPaid",
-        spot_strategy="SpotWithPriceLimit",
-        internet_charge_type="PayByTraffic",
-        internet_max_bandwidth_out=1,
+            self,
+            instance_type,
+            image_id,
+            tags,
+            security_group_id,
+            vswitch_id,
+            key_pair_name,
+            amount=1,
+            optimized="optimized",
+            instance_charge_type="PostPaid",
+            spot_strategy="SpotWithPriceLimit",
+            internet_charge_type="PayByTraffic",
+            internet_max_bandwidth_out=1,
     ):
         request = RunInstancesRequest()
         request.set_InstanceType(instance_type)
