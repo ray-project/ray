@@ -655,6 +655,7 @@ class SimpleListCollector(SampleCollector):
                     "allow this.")
             # If (only this?) agent is done, erase its buffer entirely.
             if pre_batch[SampleBatch.DONES][-1]:
+                del self.agent_key_to_policy_id[(episode_id, agent_id)]
                 del self.agent_collectors[(episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
