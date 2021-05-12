@@ -133,7 +133,7 @@ def wait_for_status(cluster_name, status):
 
 
 def kubernetes_configs_directory():
-    relative_path = "python/ray/autoscaler/kubernetes"
+    relative_path = "ray/deploy"
     return os.path.join(RAY_PATH, relative_path)
 
 

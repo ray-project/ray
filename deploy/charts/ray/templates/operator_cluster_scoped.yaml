@@ -49,6 +49,9 @@ spec:
         imagePullPolicy: Always
         image: {{ .Values.operatorImage }}
         command: ["ray-operator"]
+        env:
+        - name: AUTOSCALER_MAX_NUM_FAILURES
+          value: "inf"
         resources:
           requests:
             cpu: 1
