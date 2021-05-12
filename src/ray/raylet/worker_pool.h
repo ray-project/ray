@@ -84,21 +84,11 @@ struct WorkerCacheKeyHasher {
   std::size_t operator()(const WorkerCacheKey &k) const { return k.Hash(); }
 };
 
-/// TODO(archit):
-/// 1. Add runtime_env dict in the task_spec to the RuntimeEnv cache
-///    key below once it's implemented.
-/// 2. Make this compile by making the RuntimeEnv type hashable. This will
-///    include making the dicts passed in ordered (we should sort them in
-///    Python and pass them as tuples or something?).
-/// 3. Fix tests and add new ones to worker_pool_test.cc.
-/// 4. Eventually we should unify the two codepaths for when these options are
+/// TODO(architkulkarni):
+/// 1. Add worker caching logic using WorkerCacheKey
+/// 2. Fix tests and add new ones to worker_pool_test.cc.
+/// 3. Eventually we should unify the two codepaths for when these options are
 ///    and aren't set instead of having a "special" codepath for it.
-
-/// Tuple of (TaskID, DynamicWorkerOptions, OverrideEnvironmentVariables)
-/// that's used as a cache key for workers. DynamicWorkerOptions and
-/// OverrideEnvironmentVariables will be unified into RuntimeEnv in the future.
-using RuntimeEnv = std::tuple<TaskID, std::vector<std::string>,
-                              std::unordered_map<std::string, std::string>>;
 
 /// \class WorkerPoolInterface
 ///
