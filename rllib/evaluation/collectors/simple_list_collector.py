@@ -653,10 +653,6 @@ class SimpleListCollector(SampleCollector):
                     "of all live agents when setting done[__all__] to "
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this.")
-            # If (only this?) agent is done, erase its buffer entirely.
-            if pre_batch[SampleBatch.DONES][-1]:
-                del self.agent_key_to_policy_id[(episode_id, agent_id)]
-                del self.agent_collectors[(episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
@@ -710,6 +706,8 @@ class SimpleListCollector(SampleCollector):
             del self.episode_steps[episode_id]
             del self.agent_steps[episode_id]
             del self.episodes[episode_id]
+            del self.agent_key_to_policy_id[(episode_id, agent_id)]
+            del self.agent_collectors[(episode_id, agent_id)]
             # Make PolicyCollectorGroup available for more agent batches in
             # other episodes. Do not reset count to 0.
             if policy_collector_group:
