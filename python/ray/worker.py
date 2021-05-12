@@ -1240,8 +1240,6 @@ def connect(node,
         # paths such as the client.
         print("Explicitely setting the namespace field to ", namespace)
         job_config.set_ray_namespace(namespace)
-    else:
-        print("not setting the namespace field of job config")
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(

@@ -65,9 +65,6 @@ class RayAPIStub:
 
         if job_config is None:
             job_config = JobConfig()
-        if namespace is not None:
-            print("Setting job config's namespace!!!")
-            job_config.set_ray_namespace(namespace)
 
         try:
             self.client_worker = Worker(
