@@ -42,7 +42,7 @@ class MockPublisher : public pubsub::PublisherInterface {
                                           const std::string &key_id_binary));
 
   MOCK_METHOD3(Publish, void(const rpc::ChannelType channel_type,
-                             std::unique_ptr<rpc::PubMessage> pub_message,
+                             const rpc::PubMessage &pub_message,
                              const std::string &key_id_binary));
 
   MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,

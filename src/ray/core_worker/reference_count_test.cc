@@ -165,8 +165,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     RAY_CHECK(false) << "No need to implement it for testing.";
   }
 
-  void Publish(const rpc::ChannelType channel_type,
-               std::unique_ptr<rpc::PubMessage> pub_message,
+  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
                const std::string &key_id_binary) {
     auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
     const auto oid = ObjectID::FromBinary(key_id_binary);
@@ -177,7 +176,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
       RAY_CHECK(it != subscription_callback_map_->end());
       const auto callback_it = it->second.find(oid);
       RAY_CHECK(callback_it != it->second.end());
-      callback_it->second(*pub_message);
+      callback_it->second(pub_message);
     }
   }
 
@@ -932,7 +931,6 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ASSERT_FALSE(borrower1->rc_.HasReference(outer_id2));
   // The owner should now have borrower 2 in its count.
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
-  RAY_LOG(ERROR) << "4";
   borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
   ASSERT_FALSE(borrower2->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));

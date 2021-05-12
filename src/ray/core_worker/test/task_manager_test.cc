@@ -44,7 +44,7 @@ class TaskManagerTest : public ::testing::Test {
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(), publisher_, subscriber_,
+            rpc::Address(), publisher_.get(), subscriber_.get(),
             /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
         manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
