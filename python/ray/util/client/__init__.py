@@ -63,9 +63,8 @@ class RayAPIStub:
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
 
-        if job_config is None:
-            job_config = JobConfig()
         if namespace is not None:
+            job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
 
         try:
