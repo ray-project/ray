@@ -503,6 +503,13 @@ class BackendState:
         self._notify_backend_configs_changed()
         self._notify_replica_handles_changed()
 
+    def shutdown(self) -> None:
+        for replica_dict in self.get_running_replica_handles().values():
+            for replica in replica_dict.values():
+                ray.kill(replica, no_restart=True)
+
+        self._kv_store.delete(CHECKPOINT_KEY)
+
     def _checkpoint(self) -> None:
         self._kv_store.put(
             CHECKPOINT_KEY,
