@@ -1,7 +1,6 @@
 import logging
 import multiprocessing as mp
 import os
-import subprocess
 import time
 from typing import Any
 from typing import Callable
@@ -17,8 +16,6 @@ from ray._private import services
 from ray.autoscaler._private import commands
 from ray.ray_operator import operator_utils
 from ray.ray_operator.operator_utils import AUTOSCALER_RETRIES_FIELD
-from ray.ray_operator.operator_utils import NAMESPACED_OPERATOR
-from ray.ray_operator.operator_utils import OPERATOR_NAMESPACE
 from ray.ray_operator.operator_utils import STATUS_AUTOSCALING_EXCEPTION
 from ray.ray_operator.operator_utils import STATUS_RUNNING
 from ray.ray_operator.operator_utils import STATUS_UPDATING
@@ -219,8 +216,9 @@ def create_fn(body, name, namespace, logger, **kwargs):
     ray_clusters[cluster_identifier] = ray_cluster
     ray_cluster.cluster_status_q.put(STATUS_UPDATING)
 
-    # TODO if the Ray Cluster is healthy following a resume event, we should
-    #  not restart the Ray processes
+    # Launch a the Ray cluster by SSHing into the pod and running
+    # the initialization commands. This will not restart the cluster
+    # unless there was a failure.
     logger.info(f"{log_prefix}: Launching cluster.")
     ray_cluster.create_or_update()
     ray_cluster.cluster_status_q.put(STATUS_RUNNING)
