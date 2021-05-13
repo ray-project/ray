@@ -271,6 +271,9 @@ RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
+/// The min amount of time between triggering global_gc in raylet
+RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
+
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
