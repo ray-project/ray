@@ -240,8 +240,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
           variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
-        assert isinstance(idxes[0], int), \
-            "ERROR: `idxes` is not a List of ints, but {}!".format(idxes)
+        assert isinstance(idxes, (list, np.ndarray)), \
+            "ERROR: `idxes` is not a list or np.ndarray, but " \
+            "{}!".format(type(idxes).__name__)
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
