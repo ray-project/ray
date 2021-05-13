@@ -31,7 +31,6 @@ from ray.serve.utils import logger
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
-CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
@@ -263,13 +262,9 @@ class ServeController:
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for proxy in self.http_state.get_http_proxy_handles().values():
-                ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_running_replica_handles(
-            ).values():
-                for replica in replica_dict.values():
-                    ray.kill(replica, no_restart=True)
-            self.kv_store.delete(CHECKPOINT_KEY)
+            self.backend_state.shutdown()
+            self.endpoint_state.shutdown()
+            self.http_state.shutdown()
 
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, python_methods: List[str],
