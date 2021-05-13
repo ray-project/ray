@@ -148,8 +148,7 @@ def get_component_config_path(file_name):
 
 
 def get_crd_path():
-    return get_kubernetes_config_path(
-        "charts/ray/crds/cluster_crd.yaml")
+    return get_kubernetes_config_path("charts/ray/crds/cluster_crd.yaml")
 
 
 def pods():
@@ -186,8 +185,6 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Get paths to operator configs
             example_cluster_config_path = get_component_config_path(
                 "example_cluster.yaml")
-            example_cluster2_config_path = get_component_config_path(
-                "example_cluster2.yaml")
             operator_config_path = get_component_config_path(
                 "operator_namespaced.yaml")
             job_path = os.path.join(RAY_PATH,
