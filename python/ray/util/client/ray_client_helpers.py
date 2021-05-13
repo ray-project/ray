@@ -9,15 +9,16 @@ from ray._private.client_mode_hook import enable_client_mode
 @contextmanager
 def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
     with ray_start_client_server_pair(
-            metadata=metadata,
-            ray_connect_handler=ray_connect_handler,
+            metadata=metadata, ray_connect_handler=ray_connect_handler,
             **kwargs) as pair:
         client, server = pair
         yield client
 
 
 @contextmanager
-def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwargs):
+def ray_start_client_server_pair(metadata=None,
+                                 ray_connect_handler=None,
+                                 **kwargs):
     ray._inside_client_test = True
     server = ray_client_server.serve(
         "localhost:50051", ray_connect_handler=ray_connect_handler)
