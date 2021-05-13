@@ -470,8 +470,25 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   profiler_ = std::make_shared<worker::Profiler>(
       worker_context_, options_.node_ip_address, io_service_, gcs_client_);
 
+  core_worker_client_pool_ =
+      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+
+  object_status_publisher_ = std::make_unique<pubsub::Publisher>(
+      /*periodical_runner=*/&periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+  object_status_subscriber_ = std::make_unique<pubsub::Subscriber>(
+      /*subscriber_id=*/GetWorkerID(),
+      /*subscriber_address=*/rpc_address_.ip_address(),
+      /*subscriber_port=*/rpc_address_.port(),
+      /*publisher_client_pool=*/*(core_worker_client_pool_.get()));
+
   reference_counter_ = std::make_shared<ReferenceCounter>(
-      rpc_address_, RayConfig::instance().distributed_ref_counting_enabled(),
+      rpc_address_,
+      /*object_status_publisher=*/object_status_publisher_.get(),
+      /*object_status_subscriber=*/object_status_subscriber_.get(),
+      RayConfig::instance().distributed_ref_counting_enabled(),
       RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
@@ -569,9 +586,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     SetCurrentTaskId(task_id);
   }
 
-  core_worker_client_pool_ =
-      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
-
   auto raylet_client_factory = [this](const std::string ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
@@ -585,12 +599,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
-
-  object_status_publisher_ = std::make_shared<pubsub::Publisher>(
-      /*periodical_runner=*/&periodical_runner_,
-      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -2401,21 +2409,38 @@ void CoreWorker::HandleSubscribeForObjectEviction(
   // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [this, subscriber_node_id](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Object " << object_id << " is deleted. Unpinning the object.";
-    object_status_publisher_->Publish(object_id);
-    object_status_publisher_->UnregisterSubscription(subscriber_node_id, object_id);
+
+    rpc::PubMessage pub_message;
+    pub_message.set_key_id(object_id.Binary());
+    pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_EVICTION);
+    pub_message.mutable_worker_object_eviction_message()->set_object_id(
+        object_id.Binary());
+
+    object_status_publisher_->Publish(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                      pub_message, object_id.Binary());
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
   };
 
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  // Always register the subscription before we register the delete callback to avoid race
+  // condition.
+  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 subscriber_node_id, object_id.Binary());
+
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+    // If the object is already evicted (callback cannot be set), unregister the
+    // subscription.
+    object_status_publisher_->UnregisterSubscription(
+        rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, object_id.Binary());
     std::ostringstream stream;
     stream << "Reference for object " << object_id << " has already been freed.";
     RAY_LOG(DEBUG) << stream.str();
     send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
   } else {
-    object_status_publisher_->RegisterSubscription(subscriber_node_id, object_id);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
@@ -2424,21 +2449,9 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_address().raylet_id());
-  auto long_polling_reply_callback =
-      [send_reply_callback = std::move(send_reply_callback), reply,
-       subscriber_id](const std::vector<ObjectID> &object_ids) {
-        RAY_LOG(DEBUG) << "Long polling replied to " << subscriber_id;
-        // TODO(sang): The max grpc message size is 100 MB, meaning this operation can
-        // fail if the number of batched objects are more than 50K. Though it is very
-        // rare, we should probably handle it.
-        for (const auto &object_id : object_ids) {
-          reply->add_object_ids(object_id.Binary());
-        }
-        send_reply_callback(Status::OK(), nullptr, nullptr);
-      };
   RAY_LOG(DEBUG) << "Got long polling request from node " << subscriber_id;
-  object_status_publisher_->ConnectToSubscriber(subscriber_id,
-                                                std::move(long_polling_reply_callback));
+  object_status_publisher_->ConnectToSubscriber(subscriber_id, reply,
+                                                std::move(send_reply_callback));
 }
 
 void CoreWorker::HandleAddObjectLocationOwner(
@@ -2517,14 +2530,27 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                            send_reply_callback)) {
     return;
   }
+
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   ObjectID contained_in_id = ObjectID::FromBinary(request.contained_in_id());
+  const WorkerID subscriber_worker_id =
+      WorkerID::FromBinary(request.subscriber_worker_id());
   const auto owner_address = request.reference().owner_address();
+
+  // We need to reply first to avoid race condition where publish
+  // happens before subscriber receives the reply.
+  // Note that this function should be called after accessing fields from the request.
+  // Otherwise, request could be GC'ed.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL, subscriber_worker_id,
+      object_id.Binary());
+  // Set a callback to publish the message when the requested object ID's ref count
+  // goes to 0.
   auto ref_removed_callback =
       boost::bind(&ReferenceCounter::HandleRefRemoved, reference_counter_, object_id,
-                  reply, send_reply_callback);
-  // Set a callback to send the reply when the requested object ID's ref count
-  // goes to 0.
+                  subscriber_worker_id);
   reference_counter_->SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                             ref_removed_callback);
 }
