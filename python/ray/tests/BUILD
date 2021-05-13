@@ -49,6 +49,7 @@ py_test_module_list(
   files = [
     "test_actor.py",
     "test_global_gc.py",
+    "test_memstat.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -145,17 +146,6 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive"],
-  deps = ["//:ray_lib"],
-)
-
-
-py_test_module_list(
-  files = [
-    "test_memstat.py",
-  ],
-  size = "small",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
   deps = ["//:ray_lib"],
 )
 
