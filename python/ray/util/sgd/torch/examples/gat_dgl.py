@@ -1,6 +1,7 @@
 import os
 import torch
 import time
+import numpy as np
 import argparse
 from dgl.dataloading import NodeCollator
 import ray
@@ -207,8 +208,8 @@ class CustomTrainingOperator(TrainingOperator):
                                        compute_acc(pred[test_nid], labels[test_nid])
         metrics = {
             "num_samples": pred.size(0),
-            "val_acc": val_acc,
-            "test_acc": test_acc
+            "val_acc": val_acc.item(),
+            "test_acc": test_acc.item()
         }
         meter_collection.update(metrics, n=metrics.pop("num_samples", 1))
         status = meter_collection.summary()
@@ -239,7 +240,7 @@ def run(num_workers=1, use_gpu=False, num_epochs=2):
 # Use ray.init(address="auto") if running on a Ray cluster.
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--num-epochs', type=int, default=10)
+    argparser.add_argument('--num-epochs', type=int, default=2)
     argparser.add_argument('--n-hidden', type=int, default=128)
     argparser.add_argument('--n-layers', type=int, default=2)
     argparser.add_argument('--n-heads', type=int, default=4)
