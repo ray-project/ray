@@ -199,7 +199,7 @@ py_test(
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
   name = "test_tracing",
-  size = "small",
+  size = "medium",
   srcs = SRCS + ["test_tracing.py"],
   tags = ["exclusive"],
   deps = ["//:ray_lib"]
