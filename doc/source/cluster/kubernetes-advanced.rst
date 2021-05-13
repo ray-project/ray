@@ -33,8 +33,8 @@ Ray cluster configuration
 A :ref:`Ray cluster<ray-cluster-overview>` consists of a head node and a collection of worker nodes.
 When deploying Ray on Kubernetes, each Ray node runs in its own Kubernetes Pod.
 The ``podTypes`` field of ``values.yaml`` represents the pod configurations available for use as nodes in the Ray cluster.
-Each ``podType`` has a ``name``. The field ``headPodType`` identifies the name of the podType to use for the Ray head node.
-The rest of the podTypes are used as configuration for the Ray worker nodes.
+The key of each ``podType`` is a user-defined name for the ``podType``. The field ``headPodType`` identifies the name of the podType to use for the Ray head node.
+The rest of the ``podTypes`` are used as configuration for the Ray worker nodes.
 
 Each ``podType`` specifies ``minWorkers`` and ``maxWorkers`` fields.
 The autoscaler will try to maintain at least ``minWorkers`` workers of the ``podType`` and can scale up to
