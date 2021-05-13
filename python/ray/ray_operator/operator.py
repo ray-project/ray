@@ -211,7 +211,7 @@ def status_handling_loop(queue: queue.Queue):
 
 @kopf.on.resume('rayclusters')
 @kopf.on.create('rayclusters')
-def create_fn(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
+def create_fn(body, name, namespace, logger, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
     log_prefix = ",".join(cluster_identifier)
@@ -232,7 +232,7 @@ def create_fn(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
 
 
 @kopf.on.update('rayclusters')
-def update_fn(body, old, new, name, namespace, memo: kopf.Memo, **kwargs):
+def update_fn(body, old, new, name, namespace, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
 
