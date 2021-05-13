@@ -63,8 +63,9 @@ class JobConfig:
         return job_config.SerializeToString()
 
     def set_ray_namespace(self, ray_namespace):
-        self.ray_namespace = ray_namespace
-        self._cached_pb = None
+        if ray_namespace != self.ray_namespace:
+            self.ray_namespace = ray_namespace
+            self._cached_pb = None
 
     def get_proto_job_config(self):
         """Return the prototype structure of JobConfig"""
