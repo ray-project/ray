@@ -234,7 +234,6 @@ class Node:
             redis_client.set("temp_dir", self._temp_dir)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
-            # if os.getenv("RAY_TRACING_STARTUP_HOOK"):
             if ray_params.tracing_startup_hook:
                 redis_client.hset("tracing_startup_hook", "value",
                                   ray_params.tracing_startup_hook)
