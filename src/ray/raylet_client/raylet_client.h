@@ -447,7 +447,7 @@ class RayletClient : public RayletClientInterface {
   std::unique_ptr<RayletConnection> conn_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic_int64_t pins_in_flight_{0};
+  std::atomic<int64_t> pins_in_flight_{0};
 };
 
 }  // namespace raylet
