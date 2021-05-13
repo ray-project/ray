@@ -1,0 +1,16 @@
+- name: shuffle_10gb
+  owner:
+    mail: "ekl@anyscale.com"
+    slack: "@proj-data-processing"
+
+  cluster:
+    app_config: shuffle/shuffle_app_config.yaml
+    compute_template: shuffle/shuffle_compute.yaml
+
+  run:
+    timeout: 600
+    script: python shuffle/shuffle_10gb.py
+
+  smoke_test:
+    cluster:
+      compute_template: shuffle/shuffle_compute_smoke.yaml  # Does not exist yet

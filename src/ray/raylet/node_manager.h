@@ -553,6 +553,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `GetGcsServerAddress` request.
+  void HandleGetGcsServerAddress(const rpc::GetGcsServerAddressRequest &request,
+                                 rpc::GetGcsServerAddressReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
 

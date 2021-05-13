@@ -50,7 +50,7 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -100,6 +100,14 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
+
+/// Whether to re-populate plasma memory. This avoids memory allocation failures
+/// at runtime (SIGBUS errors creating new objects), however it will use more memory
+/// upfront and can slow down Ray startup.
+/// See also: https://github.com/ray-project/ray/issues/14182
+RAY_CONFIG(bool, preallocate_plasma_memory,
+           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
+               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
 
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
@@ -407,7 +415,7 @@ RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
 /// The maximum number of objects to publish for each publish calls.
-RAY_CONFIG(uint64_t, publish_batch_size, 5000)
+RAY_CONFIG(int, publish_batch_size, 5000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.

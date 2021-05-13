@@ -164,6 +164,8 @@ class BasicVariantGenerator(SearchAlgorithm):
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
+        max_concurrent (int): Maximum number of concurrently running trials.
+            If 0 (default), no maximum is enforced.
 
 
     Example:
@@ -228,7 +230,9 @@ class BasicVariantGenerator(SearchAlgorithm):
     """
     CKPT_FILE_TMPL = "basic-variant-state-{}.json"
 
-    def __init__(self, points_to_evaluate: Optional[List[Dict]] = None):
+    def __init__(self,
+                 points_to_evaluate: Optional[List[Dict]] = None,
+                 max_concurrent: int = 0):
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None
@@ -245,6 +249,8 @@ class BasicVariantGenerator(SearchAlgorithm):
             self._uuid_prefix = str(uuid.uuid1().hex)[:5] + "_"
 
         self._total_samples = 0
+        self.max_concurrent = max_concurrent
+        self._live_trials = set()
 
     @property
     def total_samples(self):
@@ -292,15 +298,27 @@ class BasicVariantGenerator(SearchAlgorithm):
         Returns:
             Trial: Returns a single trial.
         """
+        if self.max_concurrent > 0 and len(
+                self._live_trials) >= self.max_concurrent:
+            return None
         if not self._trial_iter:
             self._trial_iter = iter(self._trial_generator)
         try:
-            return next(self._trial_iter)
+            trial = next(self._trial_iter)
+            self._live_trials.add(trial.trial_id)
+            return trial
         except StopIteration:
             self._trial_generator = []
             self._trial_iter = None
             self.set_finished()
             return None
+
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
+        if trial_id in self._live_trials:
+            self._live_trials.remove(trial_id)
 
     def get_state(self):
         if any(iterator.lazy_eval for iterator in self._iterators):

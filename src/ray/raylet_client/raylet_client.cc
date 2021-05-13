@@ -409,7 +409,13 @@ void raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  grpc_client_->PinObjectIDs(request, callback);
+  pins_in_flight_++;
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::PinObjectIDsReply &reply) {
+    pins_in_flight_--;
+    callback(status, reply);
+  };
+  grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
 void raylet::RayletClient::GlobalGC(
@@ -447,6 +453,12 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
+}
+
+void raylet::RayletClient::GetGcsServerAddress(
+    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
+  rpc::GetGcsServerAddressRequest request;
+  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray
