@@ -1201,13 +1201,13 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+
+py_test(
+    name = "evaluation/tests/test_evaluation",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_evaluation.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_rollout_worker",
@@ -1215,6 +1215,14 @@ py_test(
     size = "medium",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
+
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
 
 
 # --------------------------------------------------------------------
@@ -1400,13 +1408,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_env_with_subprocess.py"]
-)
-
-py_test(
-    name = "tests/test_evaluators",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_evaluators.py"]
 )
 
 py_test(
@@ -2223,7 +2224,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_pg_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
 )

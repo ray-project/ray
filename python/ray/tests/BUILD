@@ -36,7 +36,6 @@ py_test_module_list(
     "test_iter.py",
     "test_joblib.py",
     "test_global_state.py",
-    "test_global_gc.py",
     "test_healthcheck.py",
     "test_mldataset.py",
   ],
@@ -49,6 +48,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_global_gc.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -199,7 +199,7 @@ py_test(
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
   name = "test_tracing",
-  size = "small",
+  size = "medium",
   srcs = SRCS + ["test_tracing.py"],
   tags = ["exclusive"],
   deps = ["//:ray_lib"]
@@ -222,7 +222,7 @@ py_test_module_list(
     "test_basic.py",
     "test_basic_2.py",
     "test_basic_3.py",
-    "test_asyncio.py"
+    "test_asyncio.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
