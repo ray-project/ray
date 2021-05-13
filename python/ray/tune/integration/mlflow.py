@@ -140,7 +140,8 @@ class MLflowLoggerCallback(LoggerCallback):
                                  key, value))
                 continue
             self.client.log_metric(
-                run_id=run_id, key=key, value=value, step=iteration)
+                run_id=run_id, key=key, value=value, step=result[
+                    "training_iteration"])
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]

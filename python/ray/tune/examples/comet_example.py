@@ -1,42 +1,30 @@
 #!/usr/bin/env python
 """Examples logging Tune runs to comet.ml"""
 import argparse
-import os
-import tempfile
-import time
+import numpy as np
 
 from ray import tune
 from ray.tune.integration.comet import CometLoggerCallback
 
-def evaluation_fn(step, width, height):
-    return (0.1 + width * step / 100)**(-1) + height * 0.1
+def train_function(config, checkpoint_dir=None):
+    for i in range(30):
+        loss = config["mean"] + config["sd"] * np.random.randn()
+        tune.report(loss=loss)
 
 
-def easy_objective(config):
-    # Hyperparameters
-    width, height = config["width"], config["height"]
-
-    for step in range(config.get("steps", 100)):
-        # Iterative training function - can be any arbitrary training procedure
-        intermediate_score = evaluation_fn(step, width, height)
-        # Feed the score back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
-        time.sleep(0.1)
-
-
-def tune_function(api_key=None, project_name=None, finish_fast=False):
+def tune_function(api_key=None, project_name=None):
     analysis = tune.run(
-        easy_objective,
+        train_function,
         name="comet",
-        num_samples=5,
+        metric="loss",
+        mode="min",
         callbacks=[
             CometLoggerCallback(api_key=api_key, project_name=project_name,
                                 tags=["comet_example"])
         ],
         config={
-            "width": tune.randint(10, 100),
-            "height": tune.randint(0, 100),
-            "steps": 5 if finish_fast else 100,
+            "mean": tune.grid_search([1, 2, 3, 4, 5]),
+            "sd": tune.uniform(0.2, 0.8)
         })
     return analysis.best_config
 
@@ -59,5 +47,5 @@ if __name__ == "__main__":
                                                   "API access.")
     args, _ = parser.parse_known_args()
 
-    tune_function(args.api_key, args.project_name, finish_fast=True)
+    tune_function(args.api_key, args.project_name)
 
