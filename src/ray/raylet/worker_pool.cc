@@ -147,7 +147,8 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const std::vector<std::string> &dynamic_options, const ray::RuntimeEnv &runtime_env,
+    const std::vector<std::string> &dynamic_options,
+    const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -282,9 +283,8 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON) {
-    if (!runtime_env.IsEmpty()) {
-      const std::string conda_env_name = runtime_env.conda_env_name;
-      worker_command_args.push_back("--conda-env-name=" + conda_env_name);
+    if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
+      worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -837,7 +837,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   Process proc;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
-      !task_spec.RuntimeEnv().IsEmpty()) {
+      !(task_spec.SerializedRuntimeEnv() == "{}" ||
+        task_spec.SerializedRuntimeEnv() == "")) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options, or any task with environment variable overrides, or
     // any task with a specified RuntimeEnv.
@@ -862,10 +863,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc =
-          StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                             task_spec.JobId(), dynamic_options, task_spec.RuntimeEnv(),
-                             task_spec.OverrideEnvironmentVariables());
+      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                                task_spec.JobId(), dynamic_options,
+                                task_spec.SerializedRuntimeEnv(),
+                                task_spec.OverrideEnvironmentVariables());
       if (proc.IsValid()) {
         state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
