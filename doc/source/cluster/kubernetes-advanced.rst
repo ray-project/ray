@@ -98,7 +98,7 @@ three separate Helm releases:
   helm -n ray install example-cluster --set clusterOnly=true ./ray
 
   # Install a second Ray cluster. Launch the second cluster without any workers.
-  helm -n ray install example-cluster2 --set podTypes[1].minWorkers=0 --set clusterOnly=true
+  helm -n ray install example-cluster2 --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ./ray
 
   # Verify that both clusters are running.
   kubectl -n ray get pods
@@ -112,7 +112,7 @@ Alternatively, the Operator and one of the Ray Clusters can be installed in the 
 
    # Start another Ray cluster.
    # The cluster will be managed by the operator created in the last command.
-   helm -n ray install example-cluster2 --set podTypes[1].minWorkers=0 --set clusterOnly=true
+   helm -n ray install example-cluster2 --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true
 
 
 The Operator pod outputs autoscaling logs for all of the Ray clusters it manages.

@@ -2,52 +2,55 @@
 
 # RayCluster settings:
 
-# Ray image to use for the head and workers of this Ray cluster.
+# image is Ray image to use for the head and workers of this Ray cluster.
 image: rayproject/ray:1.3.0
-# Pod type for the Ray head node (as configured below).
-headPodType: ray-head-type
+# headPodType is the podType used for the Ray head node (as configured below).
+headPodType: rayHeadType
+# podTypes is the list of pod configurations available for use as Ray nodes.
 podTypes:
-    # Since we set headPodType: head-node, the Ray head pod will use the configuration
+    # The key for each podType is a user-defined string.
+    # Since we set headPodType: rayHeadType, the Ray head pod will use the configuration
     # defined in this entry of podTypes:
-  - name: ray-head-type
-    # No worker pods of this pod type. Thus, we set minWorkers and maxWorkers to 0.
-    minWorkers: 0
-    maxWorkers: 0
-    # Number of CPUs used by this pod type.
-    # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
-    numCPU: 1
-    # Memory used by this Pod type.
-    # (Used for both requests and limits.)
-    memory: 512Mi
-    # Number of NVIDIA GPUs used by this pod type.
-    # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
-    numGPU: 0
-    # Optionally, signal additional resources to Ray with string-int key-value pairs.
-    # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
-    # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
-    rayResources: {}
-    # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
-    nodeSelector: {}
-  - name: ray-worker-type
-    # Minimum number of Ray workers of this pod type to keep running.
-    minWorkers: 2
-    # Maximum number of Ray workers of this pod type to which Ray will scale.
-    maxWorkers: 3
-    # Memory used by this Pod type.
-    # (Used for both requests and limits.)
-    memory: 512Mi
-    # Number of CPUs used by this pod type.
-    # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
-    numCPU: 1
-    # Number of NVIDIA GPUs used by this pod type.
-    # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
-    numGPU: 0
-    # Optionally, signal additional resources to Ray with string-int key-value pairs.
-    # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
-    # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
-    rayResources: {}
-    # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
-    nodeSelector: {}
+    rayHeadType:
+        # No worker pods of this pod type. Thus, we set minWorkers and maxWorkers to 0.
+        minWorkers: 0
+        maxWorkers: 0
+        # Number of CPUs used by this pod type.
+        # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
+        numCPU: 1
+        # Memory used by this Pod type.
+        # (Used for both requests and limits.)
+        memory: 512Mi
+        # Number of NVIDIA GPUs used by this pod type.
+        # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
+        numGPU: 0
+        # Optionally, signal additional resources to Ray with string-int key-value pairs.
+        # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
+        # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+        rayResources: {}
+        # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+        nodeSelector: {}
+    # The key for each podType is a user-defined string.
+    rayWorkerType:
+        # Minimum number of Ray workers of this pod type to keep running.
+        minWorkers: 2
+        # Maximum number of Ray workers of this pod type to which Ray will scale.
+        maxWorkers: 3
+        # Memory used by this Pod type.
+        # (Used for both requests and limits.)
+        memory: 512Mi
+        # Number of CPUs used by this pod type.
+        # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
+        numCPU: 1
+        # Number of NVIDIA GPUs used by this pod type.
+        # (Optional, requires GPU nodes with appropriate setup. See https://docs.ray.io/en/master/cluster/kubernetes-gpu.html)
+        numGPU: 0
+        # Optionally, signal additional resources to Ray with string-int key-value pairs.
+        # "CPU", "GPU", and "memory" are filled automatically based on the above settings.
+        # See https://docs.ray.io/en/master/advanced.html#dynamic-remote-parameters for an example of usage of custom resources in a Ray task.
+        rayResources: {}
+        # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+        nodeSelector: {}
 
 
 # Operator settings:

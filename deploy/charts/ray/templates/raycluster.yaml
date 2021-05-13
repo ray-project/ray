@@ -17,19 +17,19 @@ spec:
   headPodType: {{ .Values.headPodType }}
   # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
-    {{- range .Values.podTypes }}
-    - name: {{ .name }}
-      minWorkers: {{ .minWorkers }}
-      maxWorkers: {{ .maxWorkers }}
-      {{- if .rayResources }}
+    {{- range $key, $val := .Values.podTypes }}
+    - name: {{ $key }}
+      minWorkers: {{ $val.minWorkers }}
+      maxWorkers: {{ $val.maxWorkers }}
+      {{- if $val.rayResources }}
       rayResources:
-        {{- toYaml .rayResources | nindent 8 }}
+        {{- toYaml $val.rayResources | nindent 8 }}
       {{- end }}
       podConfig:
         apiVersion: v1
         kind: Pod
         metadata:
-          generateName: {{ .name }}-
+          generateName: {{ kebabcase $key }}-
         spec:
           restartPolicy: Never
           # This volume allocates shared memory for Ray to use for its plasma

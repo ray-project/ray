@@ -70,7 +70,8 @@ def wait_for_pods(n, namespace=NAMESPACE):
     pods = client.list_namespaced_pod(namespace=namespace).items
     # Double-check that the correct image is use.
     for pod in pods:
-        assert pod.spec.containers[0].image == IMAGE
+        assert pod.spec.containers[0].image == IMAGE,\
+            pod.spec.containers[0].image
     return len(pods) == n
 
 
