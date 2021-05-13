@@ -33,6 +33,7 @@ class RayAPIStub:
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
+                namespace: str = None,
                 *,
                 ignore_version: bool = False) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -61,6 +62,11 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
+
+        if job_config is None:
+            job_config = JobConfig()
+        if namespace is not None:
+            job_config.set_ray_namespace(namespace)
 
         try:
             self.client_worker = Worker(
@@ -149,7 +155,7 @@ class RayAPIStub:
         server_handle, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        address_info = self.connect("localhost:50051", namespace=namespace, job_config=job_config)
         self._connected_with_init = True
         return address_info
 

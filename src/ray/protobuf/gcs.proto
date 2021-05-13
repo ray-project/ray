@@ -149,9 +149,11 @@ message ActorTableData {
   // The exception thrown in creation task. This field is set if this actor died because
   // of exception thrown in creation task. Only applies when state=DEAD.
   RayException creation_task_exception = 18;
+  // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 19;
   // Runtime required to run this actor
   // It'll only be set if it's a detached actor and the original job has this field
-  RuntimeEnv runtime_env = 19;
+  RuntimeEnv runtime_env = 20;
 }
 
 message ErrorTableData {
@@ -277,6 +279,8 @@ message JobConfig {
   repeated string code_search_path = 4;
   // Runtime environment to run the code
   RuntimeEnv runtime_env = 5;
+  // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 6;
 }
 
 message JobTableData {

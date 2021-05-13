@@ -1877,9 +1877,11 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   ActorID actor_id;
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
+  const auto &ray_namespace = job_config_->ray_namespace();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, [this, &actor_id, name, ready_promise](
-                Status status, const boost::optional<rpc::ActorTableData> &result) {
+      name, ray_namespace,
+      [this, &actor_id, name, ready_promise](
+          Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::make_unique<ActorHandle>(*result);
           actor_id = actor_handle->GetActorID();

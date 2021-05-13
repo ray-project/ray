@@ -1,4 +1,5 @@
 import ray
+import uuid
 
 
 class JobConfig:
@@ -24,7 +25,8 @@ class JobConfig:
                  jvm_options=None,
                  code_search_path=None,
                  runtime_env=None,
-                 client_job=False):
+                 client_job=False,
+                 ray_namespace=None):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -52,23 +54,37 @@ class JobConfig:
             f"{type(code_search_path)}"
         self.runtime_env = runtime_env or dict()
         self.client_job = client_job
+        self.ray_namespace = ray_namespace
+        self._cached_pb = None
 
     def serialize(self):
         """Serialize the struct into protobuf string"""
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
+    def set_ray_namespace(self, ray_namespace):
+        self.ray_namespace = ray_namespace
+        self._cached_pb = None
+
     def get_proto_job_config(self):
         """Return the prototype structure of JobConfig"""
-        job_config = ray.gcs_utils.JobConfig()
-        for key in self.worker_env:
-            job_config.worker_env[key] = self.worker_env[key]
-        job_config.num_java_workers_per_process = (
-            self.num_java_workers_per_process)
-        job_config.jvm_options.extend(self.jvm_options)
-        job_config.code_search_path.extend(self.code_search_path)
-        job_config.runtime_env.CopyFrom(self._get_proto_runtime())
-        return job_config
+        # Make sure we only run this logic once, since the protobuf name is
+        # nondeterministic.
+        if self._cached_pb is None:
+            self._cached_pb = ray.gcs_utils.JobConfig()
+            # TODO (alex): should the default here be a uuid?
+            if self.ray_namespace is None:
+                self._cached_pb.ray_namespace = str(uuid.uuid4())
+            else:
+                self._cached_pb.ray_namespace = self.ray_namespace
+            for key in self.worker_env:
+                self._cached_pb.worker_env[key] = self.worker_env[key]
+            self._cached_pb.num_java_workers_per_process = (
+                self.num_java_workers_per_process)
+            self._cached_pb.jvm_options.extend(self.jvm_options)
+            self._cached_pb.code_search_path.extend(self.code_search_path)
+            self._cached_pb.runtime_env.CopyFrom(self._get_proto_runtime())
+        return self._cached_pb
 
     def get_runtime_env_uris(self):
         """Get the uris of runtime environment"""
