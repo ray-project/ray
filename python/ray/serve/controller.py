@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
-import inspect
-from typing import Dict, Any, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -215,7 +214,7 @@ class ServeController:
         async with self.write_lock:
             backend_info = BackendInfo(
                 worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                    backend_tag, replica_config.serialized_backend_def),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
@@ -273,21 +272,16 @@ class ServeController:
             self.kv_store.delete(CHECKPOINT_KEY)
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, version: Optional[str],
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str],
                      route_prefix: Optional[str]) -> Optional[GoalId]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
-        python_methods = []
-        if inspect.isclass(replica_config.backend_def):
-            for method_name, _ in inspect.getmembers(
-                    replica_config.backend_def, inspect.isfunction):
-                python_methods.append(method_name)
-
         async with self.write_lock:
             backend_info = BackendInfo(
                 worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                    name, replica_config.serialized_backend_def),
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)
