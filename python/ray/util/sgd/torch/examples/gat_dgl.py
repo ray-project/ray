@@ -18,10 +18,11 @@ from torch.utils.data import DataLoader
 print("Current Path: " + os.getcwd())
 torch.manual_seed(42)
 
+
 # define the model class
 class GAT(nn.Module):
-    def __init__(self, in_feats, n_hidden, n_classes, n_layers, n_heads, activation, feat_drop, attn_drop,
-                 negative_slope, residual):
+    def __init__(self, in_feats, n_hidden, n_classes, n_layers, n_heads,
+                 activation, feat_drop, attn_drop, negative_slope, residual):
         super().__init__()
 
         self.n_layers = n_layers
@@ -33,18 +34,20 @@ class GAT(nn.Module):
 
         # input layer
         self.convs.append(
-            GATConv((in_feats, in_feats), n_hidden, n_heads,
-                    feat_drop, attn_drop, negative_slope, residual, self.activation))
+            GATConv((in_feats, in_feats), n_hidden, n_heads, feat_drop,
+                    attn_drop, negative_slope, residual, self.activation))
         # hidden layer
         for l in range(1, n_layers - 1):
             # due to multi-head, the in_dim = num_hidden * num_heads
-            self.convs.append(GATConv(
-                (n_hidden * n_heads, n_hidden * n_heads), n_hidden, n_heads,
-                feat_drop, attn_drop, negative_slope, residual, self.activation))
+            self.convs.append(
+                GATConv((n_hidden * n_heads, n_hidden * n_heads), n_hidden,
+                        n_heads, feat_drop, attn_drop, negative_slope,
+                        residual, self.activation))
         ##output layer
-        self.convs.append(GATConv(
-            (n_hidden * n_heads, n_hidden * n_heads), n_classes, n_heads,
-            feat_drop, attn_drop, negative_slope, residual, None))
+        self.convs.append(
+            GATConv((n_hidden * n_heads, n_hidden * n_heads), n_classes,
+                    n_heads, feat_drop, attn_drop, negative_slope, residual,
+                    None))
 
     def forward(self, blocks, x):
         h = x
@@ -65,18 +68,20 @@ def compute_acc(pred, labels):
     """
     return (th.argmax(pred, dim=1) == labels).float().sum() / len(pred)
 
+
 class _NodeCollator(NodeCollator):
     def collate(self, items):
         # input_nodes, output_nodes, blocks
         result = super().collate(items)
         return result
-    
+
+
 class CustomTrainingOperator(TrainingOperator):
     def setup(self, config):
         # transforms for images
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
+            transforms.Normalize((0.1307, ), (0.3081, ))
         ])
 
         # load reddit data
@@ -105,23 +110,23 @@ class CustomTrainingOperator(TrainingOperator):
         # Create PyTorch DataLoader for constructing blocks
 
         collator = _NodeCollator(g, train_nid, sampler)
-        train_dataloader = DataLoader(collator.dataset,
-                                collate_fn=collator.collate,
-                                batch_size=args.batch_size,
-                                shuffle=False,
-                                drop_last=False,
-                                num_workers=args.num_workers
-                                )
+        train_dataloader = DataLoader(
+            collator.dataset,
+            collate_fn=collator.collate,
+            batch_size=args.batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=args.num_workers)
         # Define model and optimizer, residual is set to True
-        model = GAT(self.in_feats, args.n_hidden, self.n_classes, args.n_layers,
-                    args.n_heads, F.elu, args.feat_drop, args.attn_drop, args.negative_slope, True)
+        model = GAT(self.in_feats, args.n_hidden, self.n_classes,
+                    args.n_layers, args.n_heads, F.elu, args.feat_drop,
+                    args.attn_drop, args.negative_slope, True)
         self.convs = model.convs
         # Define optimizer.
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         # Register model, optimizer, and loss.
         self.model, self.optimizer = self.register(
-            models=model,
-            optimizers=optimizer)
+            models=model, optimizers=optimizer)
         # Register data loaders.
         self.register_data(train_loader=train_dataloader)
 
@@ -148,10 +153,13 @@ class CustomTrainingOperator(TrainingOperator):
             iter_tput.append(len(seeds) / (time.time() - tic_step))
             if step % 20 == 0:
                 acc = compute_acc(batch_pred, batch_labels)
-                gpu_mem_alloc = th.cuda.max_memory_allocated() / 1000000 if th.cuda.is_available() else 0
-                print('Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU '
-                      '{:.1f} MB'.format(
-                    info['epoch_idx'] + 1, step, loss.item(), acc.item(), np.mean(iter_tput[3:]), gpu_mem_alloc))
+                gpu_mem_alloc = th.cuda.max_memory_allocated(
+                ) / 1000000 if th.cuda.is_available() else 0
+                print(
+                    'Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU '
+                    '{:.1f} MB'.format(info['epoch_idx'] + 1, step,
+                                       loss.item(), acc.item(),
+                                       np.mean(iter_tput[3:]), gpu_mem_alloc))
         status = meter_collection.summary()
         return status
 
@@ -168,19 +176,23 @@ class CustomTrainingOperator(TrainingOperator):
             x = g.ndata['features']
             for l, layer in enumerate(self.convs):
                 if l < args.n_layers - 1:
-                    y = th.zeros(g.number_of_nodes(),
-                                 args.n_hidden * args.n_heads if l != len(self.convs) - 1 else self.n_classes)
+                    y = th.zeros(
+                        g.number_of_nodes(), args.n_hidden * args.n_heads
+                        if l != len(self.convs) - 1 else self.n_classes)
                 else:
-                    y = th.zeros(g.number_of_nodes(), args.n_hidden if l != len(self.convs) - 1 else self.n_classes)
+                    y = th.zeros(
+                        g.number_of_nodes(), args.n_hidden
+                        if l != len(self.convs) - 1 else self.n_classes)
                 sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
-                collator = _NodeCollator(g, th.arange(g.number_of_nodes()), sampler)
-                dataloader = DataLoader(collator.dataset,
-                                        collate_fn=collator.collate,
-                                        batch_size=args.batch_size,
-                                        shuffle=False,
-                                        drop_last=False,
-                                        num_workers=args.num_workers
-                                        )
+                collator = _NodeCollator(g, th.arange(g.number_of_nodes()),
+                                         sampler)
+                dataloader = DataLoader(
+                    collator.dataset,
+                    collate_fn=collator.collate,
+                    batch_size=args.batch_size,
+                    shuffle=False,
+                    drop_last=False,
+                    num_workers=args.num_workers)
                 for input_nodes, output_nodes, blocks in dataloader:
                     block = blocks[0]
                     # print("block:",block)
@@ -199,10 +211,15 @@ class CustomTrainingOperator(TrainingOperator):
         train_acc, val_acc, test_acc = compute_acc(pred[train_nid], labels[train_nid]), \
                                        compute_acc(pred[val_nid], labels[val_nid]), \
                                        compute_acc(pred[test_nid], labels[test_nid])
-        metrics = {"num_samples": pred.size(0), "val_acc": val_acc, "test_acc":test_acc}
+        metrics = {
+            "num_samples": pred.size(0),
+            "val_acc": val_acc,
+            "test_acc": test_acc
+        }
         meter_collection.update(metrics, n=metrics.pop("num_samples", 1))
         status = meter_collection.summary()
         return status
+
 
 def run(num_workers=1, use_gpu=False, num_epochs=2):
     trainer = TorchTrainer(
@@ -223,7 +240,8 @@ def run(num_workers=1, use_gpu=False, num_epochs=2):
     trainer.shutdown()
     print(testResults)
     print("success!")
-    
+
+
 # Use ray.init(address="auto") if running on a Ray cluster.
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
@@ -237,14 +255,24 @@ if __name__ == '__main__':
     argparser.add_argument('--feat-drop', type=float, default=0.)
     argparser.add_argument('--attn-drop', type=float, default=0.)
     argparser.add_argument('--negative-slope', type=float, default=0.2)
-    argparser.add_argument('--num-workers', type=int, default=0,
-                           help="Number of sampling processes. Use 0 for no extra process.")
-    argparser.add_argument('--dashboard-host', type=str, default='127.0.0.1',
-                           help="The host to bind the dashboard server to.")
-    argparser.add_argument('--dashboard-port', type=int, default=8265,
-                           help="The port to bind the dashboard server to.")
+    argparser.add_argument(
+        '--num-workers',
+        type=int,
+        default=0,
+        help="Number of sampling processes. Use 0 for no extra process.")
+    argparser.add_argument(
+        '--dashboard-host',
+        type=str,
+        default='127.0.0.1',
+        help="The host to bind the dashboard server to.")
+    argparser.add_argument(
+        '--dashboard-port',
+        type=int,
+        default=8265,
+        help="The port to bind the dashboard server to.")
     args = argparser.parse_args()
-    ray.init(dashboard_host=args.dashboard_host, dashboard_port=args.dashboard_port)
+    ray.init(
+        dashboard_host=args.dashboard_host, dashboard_port=args.dashboard_port)
     ###connect to started ray cluster
     # ray.init(address='auto', _redis_password='5241590000000000')
     start_time = time.time()
