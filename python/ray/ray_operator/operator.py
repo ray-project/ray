@@ -185,7 +185,7 @@ ray_clusters = {}  # type: Dict[Tuple[str, str], RayCluster]
 
 @kopf.on.startup()
 def start_background_worker(memo: kopf.Memo, **_):
-    memo.status_handler = threading.Thread(target=status_handling_loop, daemon=True)
+    memo.status_handler = threading.Thread(target=status_handling_loop, args=(cluster_status_q,))
     memo.status_handler.start()
 
 
