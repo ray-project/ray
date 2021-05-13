@@ -705,15 +705,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   Throttler global_gc_throttler_;
 
   /// Seconds to initialize a local gc
-  const int64_t local_gc_interval_ns_;
-
-  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
-  /// triggered).
-  const int64_t local_gc_min_interval_ns_;
-
-  /// The min interval in nanoseconds between global GC triggers
-  /// triggered).
-  const uint64_t global_gc_min_interval_ns_;
+  const uint64_t local_gc_interval_ns_;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
