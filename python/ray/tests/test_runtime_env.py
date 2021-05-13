@@ -33,11 +33,13 @@ if not job_config.runtime_env:
 
 try:
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.util.connect("{address}", job_config=job_config)
+        ray.util.connect("{address}", job_config=job_config, namespace="")
     else:
         ray.init(address="{address}",
                  job_config=job_config,
-                 logging_level=logging.DEBUG)
+                 logging_level=logging.DEBUG,
+                 namespace=""
+)
 except ValueError:
     print("ValueError")
     sys.exit(0)
