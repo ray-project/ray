@@ -78,12 +78,6 @@ class _NodeCollator(NodeCollator):
 
 class CustomTrainingOperator(TrainingOperator):
     def setup(self, config):
-        # transforms for images
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307, ), (0.3081, ))
-        ])
-
         # load reddit data
         data = RedditDataset()
         g = data[0]
@@ -245,7 +239,7 @@ def run(num_workers=1, use_gpu=False, num_epochs=2):
 # Use ray.init(address="auto") if running on a Ray cluster.
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
-    argparser.add_argument('--num-epochs', type=int, default=2)
+    argparser.add_argument('--num-epochs', type=int, default=10)
     argparser.add_argument('--n-hidden', type=int, default=128)
     argparser.add_argument('--n-layers', type=int, default=2)
     argparser.add_argument('--n-heads', type=int, default=4)
