@@ -155,7 +155,7 @@ class RayAPIStub:
         server_handle, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        address_info = self.connect("localhost:50051", namespace=namespace, job_config=job_config)
+        address_info = self.connect("localhost:50051")
         self._connected_with_init = True
         return address_info
 

@@ -1,4 +1,3 @@
-import ray as real_ray
 from ray.util.client import ray
 from ray.job_config import JobConfig
 from ray._private.client_mode_hook import _enable_client_hook
