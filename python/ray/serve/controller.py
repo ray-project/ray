@@ -217,7 +217,9 @@ class ServeController:
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -247,7 +249,9 @@ class ServeController:
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
                 replica_config=existing_info.replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -268,8 +272,8 @@ class ServeController:
 
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, python_methods: List[str],
-                     version: Optional[str],
-                     route_prefix: Optional[str]) -> Optional[GoalId]:
+                     version: Optional[str], route_prefix: Optional[str]
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -281,7 +285,8 @@ class ServeController:
                 backend_config=backend_config,
                 replica_config=replica_config)
 
-            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            goal_id, updating = self.backend_state.deploy_backend(
+                name, backend_info)
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
@@ -291,7 +296,7 @@ class ServeController:
                                                 TrafficPolicy({
                                                     name: 1.0
                                                 }))
-            return goal_id
+            return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)

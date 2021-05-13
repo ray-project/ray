@@ -150,9 +150,8 @@ class Client:
             self._shutdown = True
 
     def _wait_for_goal(self,
-                       result_object_id: ray.ObjectRef,
+                       goal_id: Optional[GoalId],
                        timeout: Optional[float] = None) -> bool:
-        goal_id: Optional[GoalId] = ray.get(result_object_id)
         if goal_id is None:
             return True
 
@@ -214,7 +213,7 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        self._wait_for_goal(
+        ray.get(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
 
@@ -264,8 +263,9 @@ class Client:
         if isinstance(config_options, dict):
             config_options = BackendConfig.parse_obj(config_options)
         self._wait_for_goal(
-            self._controller.update_backend_config.remote(
-                backend_tag, config_options))
+            ray.get(
+                self._controller.update_backend_config.remote(
+                    backend_tag, config_options)))
 
     @_ensure_connected
     def get_backend_config(self, backend_tag: str) -> BackendConfig:
@@ -347,8 +347,9 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         self._wait_for_goal(
-            self._controller.create_backend.remote(backend_tag, backend_config,
-                                                   replica_config))
+            ray.get(
+                self._controller.create_backend.remote(
+                    backend_tag, backend_config, replica_config)))
 
     @_ensure_connected
     def deploy(self,
@@ -396,18 +397,29 @@ class Client:
                                                      inspect.isfunction):
                 python_methods.append(method_name)
 
-        goal_ref = self._controller.deploy.remote(
-            name, backend_config, replica_config, python_methods, version,
-            route_prefix)
+        goal_id, updating = ray.get(
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, python_methods,
+                                           version, route_prefix))
+
+        if updating:
+            msg = f"Updating deployment '{name}'"
+            if version is not None:
+                msg += f" to version '{version}'"
+            logger.info(f"{msg}.")
+        else:
+            logger.info(f"Deployment '{name}' is already at version "
+                        f"'{version}', not updating.")
 
         if _blocking:
-            self._wait_for_goal(goal_ref)
+            self._wait_for_goal(goal_id)
         else:
-            return goal_ref
+            return goal_id
 
     @_ensure_connected
     def delete_deployment(self, name: str) -> None:
-        self._wait_for_goal(self._controller.delete_deployment.remote(name))
+        self._wait_for_goal(
+            ray.get(self._controller.delete_deployment.remote(name)))
 
     @_ensure_connected
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
@@ -437,7 +449,8 @@ class Client:
               for graceful shutdown. Default to false.
         """
         self._wait_for_goal(
-            self._controller.delete_backend.remote(backend_tag, force))
+            ray.get(
+                self._controller.delete_backend.remote(backend_tag, force)))
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
