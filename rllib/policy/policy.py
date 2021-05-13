@@ -791,8 +791,10 @@ class Policy(metaclass=ABCMeta):
                     self.is_recurrent = lambda: True
 
         for i, state in enumerate(init_state):
+            fw = np if isinstance(state, np.ndarray) else torch if \
+                torch and torch.is_tensor(state) else None
             space = Box(-1.0, 1.0, shape=state.shape) if \
-                hasattr(state, "shape") and np.all(state == 0.0) else state
+                fw.all(state == 0.0) else state
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
