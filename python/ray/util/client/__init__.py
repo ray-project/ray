@@ -65,7 +65,8 @@ class RayAPIStub:
 
         if job_config is None:
             job_config = JobConfig()
-        job_config.set_ray_namespace(namespace)
+        if namespace is not None:
+            job_config.set_ray_namespace(namespace)
 
         try:
             self.client_worker = Worker(
@@ -73,6 +74,7 @@ class RayAPIStub:
                 secure=secure,
                 metadata=metadata,
                 connection_retries=connection_retries)
+            print("set client worker", self.is_connected())
             self.api.worker = self.client_worker
             self.client_worker._server_init(job_config)
             conn_info = self.client_worker.connection_info()
@@ -121,6 +123,7 @@ class RayAPIStub:
         if self.client_worker is not None:
             self.client_worker.close()
         self.client_worker = None
+        print("Disconnected?!?")
 
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
@@ -143,7 +146,9 @@ class RayAPIStub:
         return getattr(self.api, key)
 
     def is_connected(self) -> bool:
+        print("called apistub.is_connected", self.client_worker)
         if self.client_worker is None:
+            print("Returning false because client worker is none")
             return False
         return self.client_worker.is_connected()
 
@@ -151,10 +156,15 @@ class RayAPIStub:
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
-        server_handle, address_info = ray_client_server.init_and_serve(
+        print("starting client init!")
+        namespace = kwargs.pop("namespace", None)
+        job_config = kwargs.pop("job_config", None)
+        server_handle = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        address_info = self.connect("localhost:50051", namespace=namespace, job_config=job_config)
+        print("===================Initing in client==================")
+        assert self.is_connected()
         self._connected_with_init = True
         return address_info
 

@@ -1,3 +1,4 @@
+import ray as real_ray
 from ray.util.client import ray
 from ray.job_config import JobConfig
 from ray._private.client_mode_hook import _enable_client_hook
@@ -14,6 +15,9 @@ def connect(conn_str: str,
             namespace: str = None,
             *,
             ignore_version: bool = False) -> Dict[str, Any]:
+    import sys
+    print("Ray is connected: ", ray.is_connected(), file=sys.stderr)
+    print("Ray is initialized: ", real_ray.is_initialized(), file=sys.stderr)
     if ray.is_connected():
         raise RuntimeError("Ray Client is already connected. "
                            "Maybe you called ray.util.connect twice by "

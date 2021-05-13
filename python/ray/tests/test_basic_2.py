@@ -704,7 +704,7 @@ class A:
 if __name__ == "__main__":
     current_path = os.path.dirname(__file__)
     job_config = ray.job_config.JobConfig(code_search_path=[current_path])
-    ray.init({}, job_config=job_config)
+    ray.util.connect({}, job_config=job_config, namespace="")
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """
@@ -713,9 +713,10 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
+            addr = ray_start_regular_shared.get("redis_address", ray_start_regular_shared.get("address"))
             f.write(
                 code_test.format(
-                    repr(ray_start_regular_shared["redis_address"])))
+                    repr(addr)))
         output = subprocess.check_output([sys.executable, test_driver])
         assert b"OK" in output
 

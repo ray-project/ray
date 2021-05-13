@@ -623,9 +623,9 @@ def serve(connection_str, ray_connect_handler=None):
 
 
 def init_and_serve(connection_str, *args, **kwargs):
-    with disable_client_hook():
-        # Disable client mode inside the worker's environment
-        info = ray.init(*args, **kwargs)
+    # with disable_client_hook():
+    #     # Disable client mode inside the worker's environment
+    #     info = ray.init(*args, **kwargs)
 
     def ray_connect_handler(job_config=None):
         # Ray client will disconnect from ray when
@@ -637,7 +637,7 @@ def init_and_serve(connection_str, *args, **kwargs):
 
     server_handle = serve(
         connection_str, ray_connect_handler=ray_connect_handler)
-    return (server_handle, info)
+    return server_handle
 
 
 def shutdown_with_server(server, _exiting_interpreter=False):

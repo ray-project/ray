@@ -6,6 +6,7 @@ import logging
 import threading
 import _thread
 
+from ray.cluster_utils import Cluster
 import ray.util.client.server.server as ray_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.util.client.common import ClientObjectRef
@@ -17,8 +18,8 @@ from ray._private.client_mode_hook import enable_client_mode
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_client_thread_safe(call_ray_stop_only):
-    import ray
-    ray.init(num_cpus=2)
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
 
     with ray_start_client_server() as ray:
 
@@ -50,8 +51,8 @@ def test_client_thread_safe(call_ray_stop_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_interrupt_ray_get(call_ray_stop_only):
-    import ray
-    ray.init(num_cpus=2)
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
 
     with ray_start_client_server() as ray:
 
@@ -81,9 +82,10 @@ def test_interrupt_ray_get(call_ray_stop_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_real_ray_fallback(ray_start_regular_shared):
+def test_real_ray_fallback(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
-
         @ray.remote
         def get_nodes_real():
             import ray as real_ray
@@ -102,7 +104,9 @@ def test_real_ray_fallback(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_nested_function(ray_start_regular_shared):
+def test_nested_function(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -117,7 +121,9 @@ def test_nested_function(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_put_get(ray_start_regular_shared):
+def test_put_get(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
         print(objectref)
@@ -132,7 +138,9 @@ def test_put_get(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_put_failure_get(ray_start_regular_shared):
+def test_put_failure_get(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
 
         class DeSerializationFailure:
@@ -151,7 +159,9 @@ def test_put_failure_get(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_wait(ray_start_regular_shared):
+def test_wait(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
         ready, remaining = ray.wait([objectref])
@@ -180,7 +190,9 @@ def test_wait(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_remote_functions(ray_start_regular_shared):
+def test_remote_functions(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         SignalActor = create_remote_signal_actor(ray)
         signaler = SignalActor.remote()
@@ -239,7 +251,9 @@ def test_remote_functions(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_function_calling_function(ray_start_regular_shared):
+def test_function_calling_function(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -256,7 +270,9 @@ def test_function_calling_function(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_basic_actor(ray_start_regular_shared):
+def test_basic_actor(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
 
         @ray.remote
@@ -278,7 +294,9 @@ def test_basic_actor(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_pass_handles(ray_start_regular_shared):
+def test_pass_handles(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
     caller.
@@ -342,7 +360,9 @@ def test_pass_handles(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_basic_log_stream(ray_start_regular_shared):
+def test_basic_log_stream(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         log_msgs = []
 
@@ -363,7 +383,9 @@ def test_basic_log_stream(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_stdout_log_stream(ray_start_regular_shared):
+def test_stdout_log_stream(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         log_msgs = []
 
@@ -385,14 +407,18 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_serializing_exceptions(ray_start_regular_shared):
+def test_serializing_exceptions(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         with pytest.raises(ValueError):
             ray.get_actor("abc")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_create_remote_before_start(ray_start_regular_shared):
+def test_create_remote_before_start(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     """Creates remote objects (as though in a library) before
     starting the client.
     """
@@ -417,7 +443,9 @@ def test_create_remote_before_start(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_basic_named_actor(ray_start_regular_shared):
+def test_basic_named_actor(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     """Test that ray.get_actor() can create and return a detached actor.
     """
     with ray_start_client_server() as ray:
@@ -458,7 +486,9 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(detatched_actor.get.remote()) == 6
 
 
-def test_error_serialization(ray_start_regular_shared):
+def test_error_serialization(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     """Test that errors will be serialized properly."""
     fake_path = os.path.join(os.path.dirname(__file__), "not_a_real_file")
     with pytest.raises(FileNotFoundError):
@@ -474,7 +504,9 @@ def test_error_serialization(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_internal_kv(ray_start_regular_shared):
+def test_internal_kv(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     with ray_start_client_server() as ray:
         assert ray._internal_kv_initialized()
         assert not ray._internal_kv_put("apple", "b")
@@ -488,7 +520,9 @@ def test_internal_kv(ray_start_regular_shared):
         assert ray._internal_kv_get("apple") == b""
 
 
-def test_startup_retry(ray_start_regular_shared):
+def test_startup_retry(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     from ray.util.client import ray as ray_client
     ray_client._inside_client_test = True
 
@@ -508,7 +542,9 @@ def test_startup_retry(ray_start_regular_shared):
     ray_client._inside_client_test = False
 
 
-def test_dataclient_server_drop(ray_start_regular_shared):
+def test_dataclient_server_drop(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     from ray.util.client import ray as ray_client
     ray_client._inside_client_test = True
 
@@ -538,7 +574,6 @@ def test_dataclient_server_drop(ray_start_regular_shared):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_client_gpu_ids(call_ray_stop_only):
     import ray
-    ray.init(num_cpus=2)
 
     with enable_client_mode():
         # No client connection.
@@ -556,7 +591,8 @@ def test_client_serialize_addon(call_ray_stop_only):
     import ray
     import pydantic
 
-    ray.init(num_cpus=0)
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0)
 
     class User(pydantic.BaseModel):
         name: str
@@ -566,7 +602,9 @@ def test_client_serialize_addon(call_ray_stop_only):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_client_context_manager(ray_start_regular_shared, connect_to_client):
+def test_client_context_manager(shutdown_only, connect_to_client):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=2)
     import ray
     with connect_to_client_or_not(connect_to_client):
         if connect_to_client:

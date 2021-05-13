@@ -77,6 +77,7 @@ class Worker:
               at least once.  For infinite retries, catch the ConnectionError
               exception.
         """
+        self.conn_str = conn_str
         self.metadata = metadata if metadata else []
         self.channel = None
         self.server = None
@@ -148,6 +149,7 @@ class Worker:
 
     def _on_channel_state_change(self, conn_state: grpc.ChannelConnectivity):
         logger.debug(f"client gRPC channel state change: {conn_state}")
+        print(f"client gRPC channel state change: {conn_state}")
         self._conn_state = conn_state
 
     def connection_info(self):
@@ -156,6 +158,7 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details())
         return {
+            "address": self.conn_str,
             "num_clients": data.num_clients,
             "python_version": data.python_version,
             "ray_version": data.ray_version,
@@ -445,6 +448,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
+        print("Called worker.is_connected!", self._conn_state)
         return self._conn_state == grpc.ChannelConnectivity.READY
 
     def _server_init(self, job_config: JobConfig):

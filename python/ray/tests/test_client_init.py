@@ -42,7 +42,7 @@ class C:
 
 @pytest.fixture
 def init_and_serve():
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
@@ -114,8 +114,9 @@ def test_num_clients(init_and_serve_lazy):
     def get_job_id(api):
         return api.get_runtime_context().worker.current_job_id
 
-    api1 = RayAPIStub()
-    info1 = api1.connect("localhost:50051")
+    # api1 = RayAPIStub()
+    # info1 = api1.connect("localhost:50051")
+    info1 = ray.util.connect("localhost:50051")
     job_id_1 = get_job_id(api1)
     assert info1["num_clients"] == 1, info1
     api2 = RayAPIStub()
