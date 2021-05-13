@@ -665,21 +665,11 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.dedicated_workers_to_envs.find(worker->GetProcess());
-  if (it != state.dedicated_workers_to_envs.end()) {
-    // The worker is used for a task which needs a dedicated worker process.
-    // Put it into idle dedicated worker pool.
-    const auto env = it->second;
-    state.idle_dedicated_workers.insert(std::make_pair(env, worker));
-    state.envs_to_pending_workers.erase(env);
-  } else {
-    // The worker is not used for a task which needs a dedicated worker process.
-    // Put the worker to the general idle pool.
-    state.idle.insert(worker);
-    int64_t now = get_time_();
-    idle_of_all_languages_.emplace_back(worker, now);
-    idle_of_all_languages_map_[worker] = now;
-  }
+  // Put the worker to the general idle pool.
+  state.idle.insert(worker);
+  int64_t now = get_time_();
+  idle_of_all_languages_.emplace_back(worker, now);
+  idle_of_all_languages_map_[worker] = now;
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
@@ -832,43 +822,16 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  } else if ((task_spec.IsActorCreationTask() &&
-              !task_spec.DynamicWorkerOptions().empty()) ||
-             task_spec.OverrideEnvironmentVariables().size() > 0 ||
-             !(task_spec.SerializedRuntimeEnv() == "{}" ||
-               task_spec.SerializedRuntimeEnv() == "")) {
-    // Code path of task that needs a dedicated worker: an actor creation task with
-    // dynamic worker options, or any task with environment variable overrides, or
-    // any task with a specified RuntimeEnv.
+  } else {
+    // Find an available worker which is already assigned to this job and which has
+    // the specified runtime env.
+    // Try to pop the most recently pushed worker.
     std::vector<std::string> dynamic_options = {};
     if (task_spec.IsActorCreationTask()) {
       dynamic_options = task_spec.DynamicWorkerOptions();
     }
     WorkerCacheKey env = {dynamic_options, task_spec.OverrideEnvironmentVariables(),
                           task_spec.SerializedRuntimeEnv()};
-    // Try to pop it from idle dedicated pool.
-    auto it = state.idle_dedicated_workers.find(env);
-    if (it != state.idle_dedicated_workers.end()) {
-      // There is an idle dedicated worker for this task.
-      worker = std::move(it->second);
-      state.idle_dedicated_workers.erase(it);
-    } else if (!HasPendingWorkerForEnv(task_spec.GetLanguage(), env)) {
-      // We are not pending a registration from a worker for this task,
-      // so start a new worker process for this task.
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
-                                task_spec.SerializedRuntimeEnv(),
-                                task_spec.OverrideEnvironmentVariables());
-      if (proc.IsValid()) {
-        state.dedicated_workers_to_envs[proc] =
-            env;  // TODO(architkulkarni): This never gets erased currently
-        state.envs_to_pending_workers.insert(std::make_pair(env, proc));
-      }
-    }
-  } else {
-    // Code path of normal task or actor creation task without dynamic worker options.
-    // Find an available worker which is already assigned to this job.
-    // Try to pop the most recently pushed worker.
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -881,6 +844,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
         continue;
       }
+      // Skip if the runtime env doesn't match.
+      auto it2 = state.workers_to_envs.find(it->first->GetProcess());
+      if (it2 == state.workers_to_envs.end() || !(it2->second == env)) {
+        continue;
+      }
+
       state.idle.erase(it->first);
       // We can't erase a reverse_iterator.
       auto lit = it.base();
@@ -894,7 +863,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId());
+                                task_spec.JobId(), dynamic_options,
+                                task_spec.SerializedRuntimeEnv(),
+                                task_spec.OverrideEnvironmentVariables());
+      if (proc.IsValid()) {
+        state.workers_to_envs[proc] = env;
+      }
     }
   }
 

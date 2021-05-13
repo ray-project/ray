@@ -457,6 +457,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map for speeding up looking up the pending worker for the given env.
     std::unordered_multimap<WorkerCacheKey, Process, WorkerCacheKeyHasher>
         envs_to_pending_workers;
+    std::unordered_map<Process, WorkerCacheKey> workers_to_envs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
