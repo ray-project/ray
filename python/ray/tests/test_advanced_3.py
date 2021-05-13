@@ -886,6 +886,64 @@ def test_override_environment_variables_reuse(shutdown_only):
     assert ray.get(f.remote()) is None
 
 
+def test_override_environment_variables_env_caching(shutdown_only):
+    """Test that workers with specified envs are cached and reused."""
+    ray.init()
+
+    env_var_name = "TEST123"
+    val1 = "VAL1"
+    val2 = "VAL2"
+    assert os.environ.get(env_var_name) is None
+
+    def task():
+        return os.environ.get(env_var_name), os.getpid()
+
+    @ray.remote
+    def f():
+        return task()
+
+    @ray.remote
+    def g():
+        return task()
+
+    assert ray.get(f.remote())[0] is None
+    ret_val1, pid1 = ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val1
+        }).remote())
+    assert ret_val1 == val1
+
+    ret_val2, pid2 = ray.get(
+        g.options(override_environment_variables={
+            env_var_name: val2
+        }).remote())
+    assert ret_val2 == val2
+    assert pid1 != pid2
+    _, pid3 = ray.get(g.remote())
+    assert pid2 != pid3
+
+    _, pid4 = ray.get(
+        g.options(override_environment_variables={
+            env_var_name: val2
+        }).remote())
+    assert pid4 == pid2
+    _, pid5 = ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val2
+        }).remote())
+    assert pid5 != pid1
+    _, pid6 = ray.get(
+        f.options(override_environment_variables={
+            env_var_name: val1
+        }).remote())
+    assert pid6 == pid1
+    _, pid7 = ray.get(
+        g.options(override_environment_variables={
+            env_var_name: val2
+        }).remote())
+    assert pid7 == pid2
+
+
 def test_sync_job_config(shutdown_only):
     num_java_workers_per_process = 8
     worker_env = {

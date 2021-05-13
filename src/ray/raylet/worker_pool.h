@@ -45,14 +45,13 @@ using WorkerCommandMap =
 /// Struct used as a cache key for workers. The dynamic_options and
 /// override_environment_variables will be unified into runtime_env in the future.
 struct WorkerCacheKey {
-  TaskID task_id;
   std::vector<std::string> dynamic_options;
   std::unordered_map<std::string, std::string> override_environment_variables;
   std::string serialized_runtime_env;
   mutable std::size_t hash_ = 0;
 
   bool operator==(const WorkerCacheKey &k) const {
-    return task_id == k.task_id && dynamic_options == k.dynamic_options &&
+    return dynamic_options == k.dynamic_options &&
            override_environment_variables == k.override_environment_variables &&
            serialized_runtime_env == k.serialized_runtime_env;
   }
@@ -60,8 +59,6 @@ struct WorkerCacheKey {
   std::size_t Hash() const {
     // Cache the hash value.
     if (!hash_) {
-      boost::hash_combine(hash_, std::hash<TaskID>()(task_id));
-
       for (auto &str : dynamic_options) {
         boost::hash_combine(hash_, str);
       }
@@ -83,12 +80,6 @@ struct WorkerCacheKey {
 struct WorkerCacheKeyHasher {
   std::size_t operator()(const WorkerCacheKey &k) const { return k.Hash(); }
 };
-
-/// TODO(architkulkarni):
-/// 1. Add worker caching logic using WorkerCacheKey
-/// 2. Fix tests and add new ones to worker_pool_test.cc.
-/// 3. Eventually we should unify the two codepaths for when these options are
-///    and aren't set instead of having a "special" codepath for it.
 
 /// \class WorkerPoolInterface
 ///
@@ -360,14 +351,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
-  /// Whether there is a pending worker for the given task.
-  /// Note that, this is only used for actor creation task with dynamic options.
+  /// Whether there is a pending worker for the given env.
+  /// Note that this is only used for tasks that require a dedicated worker.
   /// And if the worker registered but isn't assigned a task,
   /// the worker also is in pending state, and this'll return true.
   ///
   /// \param language The required language.
-  /// \param task_id The task that we want to query.
-  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
+  /// \param env The env that we want to query.
+  bool HasPendingWorkerForEnv(const Language &language, const WorkerCacheKey &env);
 
   /// Get the set of active object IDs from all workers in the worker pool.
   /// \return A set containing the active object IDs.
@@ -435,9 +426,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The pool of dedicated workers for actor creation tasks
-    /// with prefix or suffix worker command.
-    std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
+    /// The idle worker pool for tasks that need a dedicated worker: an actor creation
+    /// task with dynamic worker options, or any task with environment variable overrides,
+    /// or any task with a specified RuntimeEnv.
+    std::unordered_multimap<WorkerCacheKey, std::shared_ptr<WorkerInterface>,
+                            WorkerCacheKeyHasher>
+        idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
@@ -457,16 +451,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the task with dynamic options by the pid of the pending
+    /// A map for looking up the env of a worker by the pid of the pending
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
-    /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
-    /// A map for looking up tasks with existing dedicated worker processes (processes
-    /// with a specially installed environment) so the processes can be reused.
-    std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
-    /// TODO(architkulkarni)
-    std::unordered_map<WorkerCacheKey, Process, WorkerCacheKeyHasher> envs_to_workers;
+    std::unordered_map<Process, WorkerCacheKey> dedicated_workers_to_envs;
+    /// A map for speeding up looking up the pending worker for the given env.
+    std::unordered_multimap<WorkerCacheKey, Process, WorkerCacheKeyHasher>
+        envs_to_pending_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
