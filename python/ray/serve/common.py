@@ -24,9 +24,9 @@ class EndpointInfo:
 
 
 class BackendInfo(BaseModel):
-    # TODO(architkulkarni): Add type hint for worker_class after upgrading
+    # TODO(architkulkarni): Add type hint for actor_def after upgrading
     # cloudpickle and adding types to RayServeWrappedReplica
-    worker_class: Any
+    actor_def: Any
     version: Optional[str]
     backend_config: BackendConfig
     replica_config: ReplicaConfig
