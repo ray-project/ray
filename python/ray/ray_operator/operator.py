@@ -1,12 +1,14 @@
 import logging
 import multiprocessing as mp
+import queue
 import os
-import time
+import threading
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import Tuple
 from typing import Optional
+from typing import Union
 
 import kopf
 import yaml
@@ -22,6 +24,9 @@ from ray.ray_operator.operator_utils import STATUS_UPDATING
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
+
+# Queue to process cluster status updates.
+cluster_status_q = queue.Queue()  # type: queue.Queue[Union[None, Tuple[str, str, str]]]
 
 
 class RayCluster(object):
@@ -52,10 +57,6 @@ class RayCluster(object):
         # subprocess name:
         self.subprocess_name = ",".join([self.name, self.namespace])
         self.monitor_stop_event = mp.Event()
-
-        # Queue to process cluster status updates.
-        self.cluster_status_q = mp.Queue()  # type: mp.Queue[str]
-
         self.setup_logging()
 
     def create_or_update(self, restart_ray: bool = False) -> None:
@@ -76,7 +77,7 @@ class RayCluster(object):
             self.start_monitor()
         except Exception:
             # Report failed autoscaler status to trigger cluster restart.
-            self.cluster_status_q.put(STATUS_AUTOSCALING_EXCEPTION)
+            cluster_status_q.put((self.name, self.namespace, STATUS_AUTOSCALING_EXCEPTION))
             # `status_handling_loop` will increment the
             # `status.AutoscalerRetries` of the CR. A restart will trigger
             # at the subsequent "MODIFIED" event.
@@ -177,34 +178,40 @@ class RayCluster(object):
 
 
 # Maps ray cluster (name, namespace) pairs to RayCluster python objects.
+# TODO: decouple monitoring background thread into a kopf.daemon and move this into
+#  the memo state.
 ray_clusters = {}  # type: Dict[Tuple[str, str], RayCluster]
 
 
-@kopf.daemon('rayclusters')
-def status_handling_loop(stopped, name, namespace, **kwargs):
-    cluster_identifier = (name, namespace)
-    while not stopped:
-        time.sleep(1)
+@kopf.on.startup()
+def start_background_worker(memo: kopf.Memo, **_):
+    memo.status_handler = threading.Thread(target=status_handling_loop, daemon=True)
+    memo.status_handler.start()
 
-        ray_cluster = ray_clusters.get(cluster_identifier)
-        if not ray_cluster:
-            continue
 
-        cluster_status_q = ray_cluster.cluster_status_q
-        if cluster_status_q.empty():
-            continue
+@kopf.on.cleanup()
+def stop_background_worker(memo: kopf.Memo, **_):
+    cluster_status_q.put(None)
+    memo.status_handler.join()
 
-        phase = cluster_status_q.get_nowait()
+
+def status_handling_loop(queue: queue.Queue):
+    while True:
+        item = queue.get()
+        if item is None:
+            break
+
+        cluster_name, cluster_namespace, phase = item
         try:
-            operator_utils.set_status(name, namespace, phase)
+            operator_utils.set_status(cluster_name, cluster_namespace, phase)
         except Exception:
-            log_prefix = ",".join([name, namespace])
+            log_prefix = ",".join([cluster_name, cluster_namespace])
             logger.exception(f"{log_prefix}: Error setting RayCluster status.")
 
 
 @kopf.on.resume('rayclusters')
 @kopf.on.create('rayclusters')
-def create_fn(body, name, namespace, logger, **kwargs):
+def create_fn(body, name, namespace, logger, memo: kopf.Memo, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
     log_prefix = ",".join(cluster_identifier)
@@ -214,18 +221,18 @@ def create_fn(body, name, namespace, logger, **kwargs):
 
     ray_cluster = RayCluster(cluster_config)
     ray_clusters[cluster_identifier] = ray_cluster
-    ray_cluster.cluster_status_q.put(STATUS_UPDATING)
+    cluster_status_q.put((name, namespace, STATUS_UPDATING))
 
     # Launch a the Ray cluster by SSHing into the pod and running
     # the initialization commands. This will not restart the cluster
     # unless there was a failure.
     logger.info(f"{log_prefix}: Launching cluster.")
     ray_cluster.create_or_update()
-    ray_cluster.cluster_status_q.put(STATUS_RUNNING)
+    cluster_status_q.put((name, namespace, STATUS_RUNNING))
 
 
 @kopf.on.update('rayclusters')
-def update_fn(body, old, new, name, namespace, **kwargs):
+def update_fn(body, old, new, name, namespace, memo: kopf.Memo, **kwargs):
     cluster_config = operator_utils.cr_to_config(body)
     cluster_identifier = (name, namespace)
 
@@ -253,7 +260,7 @@ def update_fn(body, old, new, name, namespace, **kwargs):
             ray_cluster = RayCluster(cluster_config)
             ray_clusters[cluster_identifier] = ray_cluster
 
-        ray_cluster.cluster_status_q.put(STATUS_UPDATING)
+        cluster_status_q.put((name, namespace, STATUS_UPDATING))
 
         # Clean up the previous cluster monitor processes to prevent running multiple
         # overlapping background threads
@@ -262,7 +269,7 @@ def update_fn(body, old, new, name, namespace, **kwargs):
         # Update the config and restart the Ray processes if there's been a failure
         ray_cluster.set_config(cluster_config)
         ray_cluster.create_or_update(restart_ray=ray_restart_required)
-        ray_cluster.cluster_status_q.put(STATUS_RUNNING)
+        cluster_status_q.put((name, namespace, STATUS_RUNNING))
 
 
 @kopf.on.delete('rayclusters')
