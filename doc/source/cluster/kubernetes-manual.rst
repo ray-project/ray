@@ -32,7 +32,7 @@ Starting a Ray Cluster
 
 
 A Ray cluster consists of a single head node and a set of worker nodes (the
-provided ``ray-cluster.yaml`` file will start 3 worker nodes). In the example
+provided `ray-cluster.yaml <https://github.com/ray-project/ray/blob/master/doc/kubernetes/ray-cluster.yaml>`__ file will start 3 worker nodes). In the example
 Kubernetes configuration, this is implemented as:
 
 - A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the location of the head node on start up.

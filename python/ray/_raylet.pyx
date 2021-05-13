@@ -7,6 +7,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import asyncio
+import copy
 import gc
 import inspect
 import threading
@@ -51,7 +52,6 @@ from ray.includes.common cimport (
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
-    CRuntimeEnv,
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
@@ -1203,7 +1203,7 @@ cdef class CoreWorker:
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
-                    runtime_env,
+                    runtime_env_dict,
                     override_environment_variables
                     ):
         cdef:
@@ -1213,15 +1213,15 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            CRuntimeEnv c_runtime_env
+            c_string c_serialized_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
 
         with self.profile_event(b"submit_task"):
+            c_serialized_runtime_env = \
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
-            conda_env_name = runtime_env.conda_env_name or ""
-            c_runtime_env = CRuntimeEnv(conda_env_name)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1232,7 +1232,8 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
-                    c_runtime_env, c_override_environment_variables),
+                    c_serialized_runtime_env,
+                    c_override_environment_variables),
                 &return_ids, max_retries,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1257,7 +1258,7 @@ cdef class CoreWorker:
                      int64_t placement_group_bundle_index,
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
-                     runtime_env,
+                     runtime_env_dict,
                      override_environment_variables
                      ):
         cdef:
@@ -1269,15 +1270,16 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            CRuntimeEnv c_runtime_env
+            c_string c_serialized_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
 
         with self.profile_event(b"submit_task"):
+            c_serialized_runtime_env = \
+                self.prepare_runtime_env(runtime_env_dict)
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
-            c_runtime_env = CRuntimeEnv(runtime_env.conda_env_name or "")
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
@@ -1293,7 +1295,7 @@ cdef class CoreWorker:
                             c_placement_group_id,
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
-                        c_runtime_env,
+                        c_serialized_runtime_env,
                         c_override_environment_variables),
                     extension_data,
                     &c_actor_id))
@@ -1666,6 +1668,16 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
+    def get_current_runtime_env_dict(self):
+        # This should never change, so we can safely cache it to avoid ser/de
+        if self.current_runtime_env_dict is None:
+            self.current_runtime_env_dict = json.loads(
+                CCoreWorkerProcess.GetCoreWorker()
+                .GetWorkerContext()
+                .GetCurrentSerializedRuntimeEnv()
+            )
+        return self.current_runtime_env_dict
+
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
@@ -1721,6 +1733,32 @@ cdef class CoreWorker:
             self.job_config = ray.gcs_utils.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
+
+    def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
+        """Update parent's runtime env with new env via a simple dict update.
+
+        If the resulting runtime env is empty, fall back to the runtime env
+        set in the JobConfig.  Returns the JSON-serialized runtime env.
+        """
+
+        # Short-circuit in the common case.
+        if (runtime_env_dict == {}
+                and self.get_current_runtime_env_dict() == {}):
+            return self.get_job_config().serialized_runtime_env
+
+        result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
+        result_dict.update(runtime_env_dict)
+
+        # TODO(architkulkarni): remove once workers are cached by runtime env.
+        if all(val is None for val in result_dict.values()):
+            result_dict = {}
+
+        if result_dict == {}:
+            return self.get_job_config().serialized_runtime_env
+        else:
+            # TODO(architkulkarni): We should just use RuntimeEnvDict here
+            # so all the serialization and validation is done in one place
+            return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
