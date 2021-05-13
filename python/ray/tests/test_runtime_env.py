@@ -552,7 +552,7 @@ sleep(600)
     execute_statement = "print('OK')"
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    assert out.strip().split()[-1] == "OK"
+    assert out.strip().split()[-1] == "OK", out
     proc.kill()
     proc.wait()
 

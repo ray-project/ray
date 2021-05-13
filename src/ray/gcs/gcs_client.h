@@ -81,6 +81,10 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
+  virtual std::pair<std::string, int> GetGcsServerAddress() {
+    return std::make_pair("", 0);
+  }
+
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 

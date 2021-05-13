@@ -33,7 +33,7 @@ class JobConfig:
             self.worker_env = worker_env
         import ray._private.runtime_env as runtime_support
         if runtime_env:
-            # Remove working_dir rom the dict here, since that needs to be
+            # Remove working_dir from the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
             without_dir = dict(runtime_env)
             if "working_dir" in without_dir:
@@ -69,11 +69,8 @@ class JobConfig:
 
     def get_proto_job_config(self):
         """Return the prototype structure of JobConfig"""
-        # Make sure we only run this logic once, since the protobuf name is
-        # nondeterministic.
         if self._cached_pb is None:
             self._cached_pb = ray.gcs_utils.JobConfig()
-            # TODO (alex): should the default here be a uuid?
             if self.ray_namespace is None:
                 self._cached_pb.ray_namespace = str(uuid.uuid4())
             else:
@@ -85,6 +82,7 @@ class JobConfig:
             self._cached_pb.jvm_options.extend(self.jvm_options)
             self._cached_pb.code_search_path.extend(self.code_search_path)
             self._cached_pb.runtime_env.CopyFrom(self._get_proto_runtime())
+            self._cached_pb.serialized_runtime_env = self.get_serialized_runtime_env()
         return self._cached_pb
 
     def get_runtime_env_uris(self):
@@ -93,10 +91,12 @@ class JobConfig:
             return self.runtime_env.get("uris")
         return []
 
+    def get_serialized_runtime_env(self) -> str:
+        """Return the JSON-serialized parsed runtime env dict"""
+        return self._parsed_runtime_env.serialize()
+
     def _get_proto_runtime(self):
         from ray.core.generated.common_pb2 import RuntimeEnv
         runtime_env = RuntimeEnv()
         runtime_env.uris[:] = self.get_runtime_env_uris()
-        runtime_env.conda_env_name = (self._parsed_runtime_env.conda_env_name
-                                      or "")
         return runtime_env

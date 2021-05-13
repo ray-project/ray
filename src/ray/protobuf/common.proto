@@ -139,7 +139,6 @@ message RayException {
 /// run some task or actor.
 message RuntimeEnv {
   repeated string uris = 1;
-  string conda_env_name = 2;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -199,7 +198,8 @@ message TaskSpec {
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 23;
-  RuntimeEnv runtime_env = 24;
+  // Serialized JSON string of the parsed runtime environment dict for this task.
+  string serialized_runtime_env = 24;
 }
 
 message Bundle {

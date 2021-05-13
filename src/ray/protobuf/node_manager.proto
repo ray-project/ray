@@ -222,6 +222,14 @@ message UpdateResourceUsageRequest {
 message UpdateResourceUsageReply {
 }
 
+message GetGcsServerAddressRequest {
+}
+
+message GetGcsServerAddressReply {
+  string ip = 1;
+  int32 port = 2;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage
@@ -273,4 +281,6 @@ service NodeManagerService {
       returns (ReleaseUnusedBundlesReply);
   // Get the system config.
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
+  // Get gcs server address.
+  rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
 }

@@ -281,6 +281,8 @@ message JobConfig {
   RuntimeEnv runtime_env = 5;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 6;
+  // Serialized JSON string of the parsed runtime environment dict for this job.
+  string serialized_runtime_env = 7;
 }
 
 message JobTableData {
