@@ -77,13 +77,13 @@ if [ "${TRAVIS-}" = true ]; then
   # of jobs to 50
   # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
   # it under 'build' here avoid conflicts with other --config options.
-  num_cores = `nproc`
-  echo "build --jobs=" `expr $num_cores + 8` >> ~/.bazelrc
+  num_cores=`nproc`
+  echo "build --jobs="`expr $num_cores + 8` >> ~/.bazelrc
 fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
-  num_cores = `nproc`
-  echo "build --jobs=" `expr $num_cores + 8` >> ~/.bazelrc
+  num_cores=`nproc`
+  echo "build --jobs="`expr $num_cores + 8` >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
