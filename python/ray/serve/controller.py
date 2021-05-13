@@ -218,7 +218,9 @@ class ServeController:
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -248,7 +250,9 @@ class ServeController:
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
                 replica_config=existing_info.replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""

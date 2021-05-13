@@ -213,10 +213,9 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        self._wait_for_goal(
-            ray.get(
-                self._controller.create_endpoint.remote(
-                    endpoint_name, {backend: 1.0}, route, upper_methods)))
+        ray.get(
+            self._controller.create_endpoint.remote(
+                endpoint_name, {backend: 1.0}, route, upper_methods))
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
