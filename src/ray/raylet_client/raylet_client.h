@@ -424,6 +424,8 @@ class RayletClient : public RayletClientInterface {
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
+  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
+
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
   /// request types.
@@ -437,6 +439,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+
+  /// The number of object ID pin RPCs currently in flight.
+  std::atomic_int64_t pins_in_flight_{0};
 };
 
 }  // namespace raylet
