@@ -1,8 +1,9 @@
-Ray Operator Advanced Configuration
-===================================
+:orphan:
 
 .. _k8s-advanced:
 
+Ray Operator Advanced Configuration
+===================================
 This document covers configuration options for the Ray Helm chart.
 We recommend reading this :ref:`introductory guide<ray-k8s-deploy>` on the Helm chart first.
 
@@ -147,18 +148,11 @@ Deploying without Helm
 ----------------------
 It is possible to deploy the Ray Operator without Helm.
 The necessary configuration files are available on the Ray GitHub under `deploy`_.
-The following manifests must be installed in the order listed:
+The following manifests should be installed in the order listed:
 
-- The `RayCluster CRD`_
-- The Ray Operator, `namespaced`_ or `cluster-scoped`_. Note that the cluster-scoped operator is configured to run in namespaced ``default``;
-  modify as needed.
+- The `RayCluster CRD`_.
+- The Ray Operator, `namespaced`_ or `cluster-scoped`_.\Note that the cluster-scoped operator is configured to run in namespaced ``default``;\modify as needed.
 - A RayCluster custom resource, `example`_.
-
-Cluster scoped operator
-Namespaced operator
-An example custom resource.
-podTypes
-take a look at.
 
 Ray Cluster Lifecycle
 ---------------------

@@ -32,7 +32,12 @@ def helm(namespace, command, release, **options):
     else:
         raise ValueError("Unrecognized helm command.")
     final_cmd = " ".join(cmd)
-    subprocess.check_call(final_cmd, shell=True)
+    try:
+        subprocess.check_output(
+            final_cmd, shell=True, stderr=subprocess.STDOUT).decode()
+    except subprocess.CalledProcessError as e:
+        assert False, "returncode: {}, stdout: {}".format(
+            e.returncode, e.stdout)
 
 
 class HelmTest(unittest.TestCase):
