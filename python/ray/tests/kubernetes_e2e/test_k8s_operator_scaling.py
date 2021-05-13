@@ -19,14 +19,14 @@ import pytest
 import yaml
 
 import ray
-from test_k8s_operator_examples import client_connect_to_k8s
-from test_k8s_operator_examples import get_crd_path
-from test_k8s_operator_examples import get_component_config_path
-from test_k8s_operator_examples import retry_until_true
-from test_k8s_operator_examples import wait_for_pods
-from test_k8s_operator_examples import IMAGE
-from test_k8s_operator_examples import PULL_POLICY
-from test_k8s_operator_examples import NAMESPACE
+from test_k8s_operator_basic import client_connect_to_k8s
+from test_k8s_operator_basic import get_crd_path
+from test_k8s_operator_basic import get_component_config_path
+from test_k8s_operator_basic import retry_until_true
+from test_k8s_operator_basic import wait_for_pods
+from test_k8s_operator_basic import IMAGE
+from test_k8s_operator_basic import PULL_POLICY
+from test_k8s_operator_basic import NAMESPACE
 
 
 def submit_scaling_job(num_tasks):
