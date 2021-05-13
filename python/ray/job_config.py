@@ -82,7 +82,8 @@ class JobConfig:
             self._cached_pb.jvm_options.extend(self.jvm_options)
             self._cached_pb.code_search_path.extend(self.code_search_path)
             self._cached_pb.runtime_env.CopyFrom(self._get_proto_runtime())
-            self._cached_pb.serialized_runtime_env = self.get_serialized_runtime_env()
+            self._cached_pb.serialized_runtime_env = \
+                self.get_serialized_runtime_env()
         return self._cached_pb
 
     def get_runtime_env_uris(self):
