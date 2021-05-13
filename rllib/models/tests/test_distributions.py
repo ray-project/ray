@@ -24,6 +24,13 @@ torch, _ = try_import_torch()
 class TestDistributions(unittest.TestCase):
     """Tests ActionDistribution classes."""
 
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Set seeds for deterministic tests (make sure we don't fail
+        # because of "bad" sampling).
+        np.random.seed(42)
+        torch.manual_seed(42)
+
     def _stability_test(self,
                         distribution_cls,
                         network_output_shape,
