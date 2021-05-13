@@ -125,7 +125,7 @@ bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
     RAY_CHECK(reply != nullptr);
     RAY_CHECK(send_reply_callback != nullptr);
     long_polling_connection_ =
-        absl::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
+        std::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
     last_connection_update_time_ms_ = get_time_ms_();
     return true;
   }
@@ -224,17 +224,21 @@ void Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                          std::make_shared<pub_internal::Subscriber>(
                              get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
-  subscription_index_map_[channel_type].AddEntry(key_id_binary, subscriber_id);
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
+  subscription_index_it->second.AddEntry(key_id_binary, subscriber_id);
 }
 
 void Publisher::Publish(const rpc::ChannelType channel_type,
                         const rpc::PubMessage &pub_message,
                         const std::string &key_id_binary) {
   absl::MutexLock lock(&mutex_);
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
   auto maybe_subscribers =
-      subscription_index_map_[channel_type].GetSubscriberIdsByKeyId(key_id_binary);
+      subscription_index_it->second.GetSubscriberIdsByKeyId(key_id_binary);
   if (!maybe_subscribers.has_value()) {
     return;
   }
@@ -251,7 +255,9 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
                                        const SubscriberID &subscriber_id,
                                        const std::string &key_id_binary) {
   absl::MutexLock lock(&mutex_);
-  return subscription_index_map_[channel_type].EraseEntry(key_id_binary, subscriber_id);
+  auto subscription_index_it = subscription_index_map_.find(channel_type);
+  RAY_CHECK(subscription_index_it != subscription_index_map_.end());
+  return subscription_index_it->second.EraseEntry(key_id_binary, subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {

@@ -756,7 +756,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
 
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
     const ReferenceTable &new_borrower_refs, const ObjectID &object_id,
-    rpc::WorkerAddress borrower_addr) {
+    const rpc::WorkerAddress &borrower_addr) {
   // Merge in any new borrowers that the previous borrower learned of.
   MergeRemoteBorrowers(object_id, borrower_addr, new_borrower_refs);
 
@@ -817,6 +817,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
 
         // If the request was failed, we just invoke the failure callback right away.
         if (!status.ok()) {
+          RAY_LOG(INFO) << "Ref removed subscription to " << addr.ip_address << ":"
+                        << addr.port << " for an object " << object_id << " has failed.";
           publisher_failed_callback();
           return;
         }

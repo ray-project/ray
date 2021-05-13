@@ -121,7 +121,9 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   void HandlePublisherFailure(const rpc::Address &publisher_address) override;
 
-  bool SubscriptionExists(const PublisherID &publisher_id) override;
+  bool SubscriptionExists(const PublisherID &publisher_id) override {
+    return subscription_map_.count(publisher_id);
+  }
 
   const rpc::ChannelType GetChannelType() const override { return channel_type_; }
 
@@ -131,12 +133,38 @@ class SubscriberChannel : public SubscribeChannelInterface {
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionCallback> GetSubscriptionCallback(
-      const rpc::Address &publisher_address, const KeyIdType &key_id) const;
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const {
+    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    auto subscription_it = subscription_map_.find(publisher_id);
+    if (subscription_it == subscription_map_.end()) {
+      return absl::nullopt;
+    }
+    auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
+    bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+    if (!exist) {
+      return absl::nullopt;
+    }
+    auto subscription_callback = callback_it->second.first;
+    return absl::optional<SubscriptionCallback>{subscription_callback};
+  }
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
   absl::optional<SubscriptionFailureCallback> GetFailureCallback(
-      const rpc::Address &publisher_address, const KeyIdType &key_id) const;
+      const rpc::Address &publisher_address, const KeyIdType &key_id) const {
+    const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+    auto subscription_it = subscription_map_.find(publisher_id);
+    if (subscription_it == subscription_map_.end()) {
+      return absl::nullopt;
+    }
+    auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
+    bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
+    if (!exist) {
+      return absl::nullopt;
+    }
+    auto subscription_failure_callback = callback_it->second.second;
+    return absl::optional<SubscriptionFailureCallback>{subscription_failure_callback};
+  }
 
   /// Mapping of the publisher ID -> subscription info.
   absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
@@ -251,7 +279,11 @@ class Subscriber : public SubscriberInterface {
 
   /// Return the Channel of the given channel type.
   std::shared_ptr<SubscribeChannelInterface> Channel(
-      const rpc::ChannelType channel_type) const;
+      const rpc::ChannelType channel_type) const {
+    const auto it = channels_.find(channel_type);
+    RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
+    return it->second;
+  }
 
  private:
   ///
@@ -292,7 +324,11 @@ class Subscriber : public SubscriberInterface {
                                  const rpc::PubsubLongPollingReply &reply);
 
   /// Return true if the given publisher id has subscription to any of channel.
-  bool SubscriptionExists(const PublisherID &publisher_id);
+  bool SubscriptionExists(const PublisherID &publisher_id) {
+    return std::any_of(channels_.begin(), channels_.end(), [publisher_id](const auto &p) {
+      return p.second->SubscriptionExists(publisher_id);
+    });
+  }
 
   /// Self node's address information.
   const SubscriberID subscriber_id_;

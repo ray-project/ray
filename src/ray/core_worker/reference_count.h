@@ -767,7 +767,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// It should be used as a WaitForRefRemoved callback.
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
-                                    rpc::WorkerAddress borrower_addr)
+                                    const rpc::WorkerAddress &borrower_addr)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a

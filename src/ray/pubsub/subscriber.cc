@@ -132,57 +132,9 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   }
 }
 
-template <typename KeyIdType>
-inline absl::optional<SubscriptionCallback>
-SubscriberChannel<KeyIdType>::GetSubscriptionCallback(
-    const rpc::Address &publisher_address, const KeyIdType &key_id) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return absl::nullopt;
-  }
-  auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
-  bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
-  if (!exist) {
-    return absl::nullopt;
-  }
-  auto subscription_callback = callback_it->second.first;
-  return absl::optional<SubscriptionCallback>{subscription_callback};
-}
-
-template <typename KeyIdType>
-inline absl::optional<SubscriptionFailureCallback>
-SubscriberChannel<KeyIdType>::GetFailureCallback(const rpc::Address &publisher_address,
-                                                 const KeyIdType &key_id) const {
-  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto subscription_it = subscription_map_.find(publisher_id);
-  if (subscription_it == subscription_map_.end()) {
-    return absl::nullopt;
-  }
-  auto callback_it = subscription_it->second.subscription_callback_map.find(key_id);
-  bool exist = callback_it != subscription_it->second.subscription_callback_map.end();
-  if (!exist) {
-    return absl::nullopt;
-  }
-  auto subscription_failure_callback = callback_it->second.second;
-  return absl::optional<SubscriptionFailureCallback>{subscription_failure_callback};
-}
-
-template <typename KeyIdType>
-bool SubscriberChannel<KeyIdType>::SubscriptionExists(const PublisherID &publisher_id) {
-  return subscription_map_.count(publisher_id);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
-
-inline std::shared_ptr<SubscribeChannelInterface> Subscriber::Channel(
-    const rpc::ChannelType channel_type) const {
-  const auto it = channels_.find(channel_type);
-  RAY_CHECK(it != channels_.end()) << "Unknown channel: " << channel_type;
-  return it->second;
-}
 
 void Subscriber::Subscribe(const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
@@ -258,12 +210,6 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
   } else {
     publishers_connected_.erase(publisher_id);
   }
-}
-
-inline bool Subscriber::SubscriptionExists(const PublisherID &publisher_id) {
-  return std::any_of(channels_.begin(), channels_.end(), [publisher_id](const auto &p) {
-    return p.second->SubscriptionExists(publisher_id);
-  });
 }
 
 bool Subscriber::CheckNoLeaks() const {
