@@ -110,7 +110,7 @@ class DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
         """Inject trace context into otel propagator."""
         context_dict: Dict[Any, Any] = {}
-        propagate.inject(dict.__setitem__, context_dict)
+        propagate.inject(context_dict)
         return context_dict
 
     def extract(context_dict: Dict[Any, Any]) -> "Context":
