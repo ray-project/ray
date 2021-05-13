@@ -56,7 +56,7 @@ const ActorID &ActorHandle<ActorType>::ID() const {
 template <typename ActorType>
 template <typename F>
 ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
-  RemoteFunctionPtrHolder ptr{};
+  RemoteFunctionHolder ptr{};
   if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
     auto function_name =
         ray::internal::FunctionManager::Instance().GetFunctionName(actor_func);

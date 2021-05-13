@@ -12,7 +12,7 @@ class ActorCreator {
  public:
   ActorCreator();
 
-  ActorCreator(RayRuntime *runtime, RemoteFunctionPtrHolder ptr)
+  ActorCreator(RayRuntime *runtime, RemoteFunctionHolder ptr)
       : runtime_(runtime), ptr_(ptr) {}
 
   template <typename... Args>
@@ -20,7 +20,7 @@ class ActorCreator {
 
  private:
   RayRuntime *runtime_;
-  RemoteFunctionPtrHolder ptr_;
+  RemoteFunctionHolder ptr_;
   std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
 

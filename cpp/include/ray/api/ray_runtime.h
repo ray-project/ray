@@ -18,7 +18,7 @@ struct MemberFunctionPtrHolder {
   uintptr_t value[2];
 };
 
-struct RemoteFunctionPtrHolder {
+struct RemoteFunctionHolder {
   /// The remote function pointer
   uintptr_t function_pointer;
   /// The executable function pointer
@@ -37,11 +37,11 @@ class RayRuntime {
   virtual WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects,
                           int timeout_ms) = 0;
 
-  virtual ObjectID Call(const RemoteFunctionPtrHolder &fptr,
+  virtual ObjectID Call(const RemoteFunctionHolder &fptr,
                         std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
-  virtual ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
+  virtual ActorID CreateActor(const RemoteFunctionHolder &fptr,
                               std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
-  virtual ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
+  virtual ObjectID CallActor(const RemoteFunctionHolder &fptr, const ActorID &actor,
                              std::vector<std::unique_ptr<::ray::TaskArg>> &args) = 0;
 };
 
