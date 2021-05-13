@@ -123,7 +123,11 @@ def _dir_travel(
         excludes.append(e)
     skip = any(e(path) for e in excludes)
     if not skip:
-        handler(path)
+        try:
+            handler(path)
+        except Exception as e:
+            logger.error(f"Issue with path: {path}")
+            raise e
         if path.is_dir():
             for sub_path in path.iterdir():
                 _dir_travel(sub_path, excludes, handler)
