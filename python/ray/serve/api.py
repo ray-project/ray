@@ -18,12 +18,15 @@ from uvicorn.config import Config
 from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
+from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
+                              ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+                                 INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
+                                 SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.http_proxy import HTTPProxyDeployment
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
@@ -95,7 +98,6 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config = ray.get(controller.get_http_config.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -645,23 +647,33 @@ def start(
         },
     ).remote(
         controller_name,
-        http_options,
         detached=detached,
     )
 
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s.")
-
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
+
+    if http_options.location != DeploymentMode.NoServer:
+        if http_options.location == DeploymentMode.HeadOnly:
+            num_replicas = 1
+            resources = {get_current_node_resource_key(): 0.01}
+        elif http_options.location == DeploymentMode.EveryNode:
+            num_replicas = "EveryNode"
+            resources = None
+        else:
+            assert False
+
+        deployment(HTTPProxyDeployment).options(
+            name=INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
+            num_replicas=num_replicas,
+            ray_actor_options={
+                "num_cpus": http_options.num_cpus,
+                "resources": resources
+            },
+            user_config={},
+        ).deploy(http_options.host, http_options.port,
+                 http_options.middlewares)
+
     return client
 
 
@@ -1363,15 +1375,17 @@ def list_deployments() -> Dict[str, Deployment]:
 
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            backend_info.replica_config.backend_def,
-            name,
-            backend_info.backend_config,
-            version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
-            route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
+        if name != INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME:
+            deployments[name] = Deployment(
+                backend_info.replica_config.backend_def,
+                name,
+                backend_info.backend_config,
+                version=backend_info.version,
+                init_args=backend_info.replica_config.init_args,
+                route_prefix=route_prefix,
+                ray_actor_options=backend_info.replica_config.
+                ray_actor_options,
+                _internal=True,
+            )
 
     return deployments

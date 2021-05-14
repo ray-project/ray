@@ -17,7 +17,6 @@ import pydantic
 import ray
 import ray.serialization_addons
 from ray.util.serialization import StandaloneSerializationContext
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
@@ -146,7 +145,7 @@ class ServeEncoder(json.JSONEncoder):
 def block_until_http_ready(http_endpoint,
                            backoff_time_s=1,
                            check_ready=None,
-                           timeout=HTTP_PROXY_TIMEOUT):
+                           timeout=60):
     http_is_ready = False
     start_time = time.time()
 

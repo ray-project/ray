@@ -7,16 +7,13 @@ import uvicorn
 import starlette.responses
 import starlette.routing
 
-import ray
 from ray import serve
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.long_poll import LongPollNamespace
 from ray.util import metrics
 from ray.serve.utils import logger
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import HTTPRequestWrapper, receive_http_body, Response
-from ray.serve.long_poll import LongPollClient
 from ray.serve.handle import DEFAULT
 
 MAX_REPLICA_FAILURE_RETRIES = 10
@@ -188,15 +185,10 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(controller_name))
+    >>> uvicorn.run(HTTPProxy())
     """
 
-    def __init__(self, controller_name: str):
-        # Set the controller name so that serve will connect to the
-        # controller instance this proxy is running in.
-        ray.serve.api._set_internal_replica_context(None, None,
-                                                    controller_name, None)
-
+    def __init__(self):
         # Used only for displaying the route table.
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
 
@@ -208,11 +200,6 @@ class HTTPProxy:
         self.starlette_router = starlette.routing.Router(
             default=self._fallback_to_prefix_router)
         self.prefix_router = LongestPrefixRouter()
-        self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name), {
-                LongPollNamespace.ROUTE_TABLE: self._update_routes,
-            },
-            call_in_event_loop=asyncio.get_event_loop())
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
@@ -231,8 +218,8 @@ class HTTPProxy:
 
         return starlette_routes, prefix_routes
 
-    def _update_routes(self,
-                       endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+    def update_routes(self,
+                      endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
             if not info.legacy and info.route is None:
@@ -306,12 +293,10 @@ class HTTPProxy:
         await self.starlette_router(scope, receive, send)
 
 
-@ray.remote(num_cpus=0)
-class HTTPProxyActor:
+class HTTPProxyDeployment:
     def __init__(self,
                  host: str,
                  port: int,
-                 controller_name: str,
                  http_middlewares: List[
                      "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
@@ -319,7 +304,7 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy()
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -329,6 +314,9 @@ class HTTPProxyActor:
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
         self.running_task = asyncio.get_event_loop().create_task(self.run())
+
+    def reconfigure(self, config: Dict[EndpointTag, EndpointInfo]) -> None:
+        self.app.update_routes(config)
 
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.

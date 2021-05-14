@@ -16,9 +16,6 @@ DEFAULT_HTTP_PORT = 8000
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-#: Max time to wait for HTTP proxy in `serve.start()`.
-HTTP_PROXY_TIMEOUT = 60
-
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
     1,
@@ -48,3 +45,5 @@ ALL_HTTP_METHODS = [
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
     "PATCH"
 ]
+
+INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME = "ServeHTTPProxy"

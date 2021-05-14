@@ -59,7 +59,8 @@ class EndpointState:
 
     def update_endpoint(self, endpoint: EndpointTag,
                         endpoint_info: EndpointInfo,
-                        traffic_policy: TrafficPolicy) -> None:
+                        traffic_policy: TrafficPolicy
+                        ) -> Optional[Dict[EndpointTag, EndpointInfo]]:
         """Create or update the given endpoint.
 
         This method is idempotent - if the endpoint already exists it will be
@@ -77,18 +78,20 @@ class EndpointState:
         if endpoint in self._endpoints:
             if (self._endpoints[endpoint] == endpoint_info
                     and self._traffic_policies == traffic_policy):
-                return
+                return None
 
         self._endpoints[endpoint] = endpoint_info
         self._traffic_policies[endpoint] = traffic_policy
 
         self._checkpoint()
-        self._notify_route_table_changed()
         self._notify_traffic_policies_changed(endpoint)
+
+        return self._endpoints
 
     def create_endpoint(self, endpoint: EndpointTag,
                         endpoint_info: EndpointInfo,
-                        traffic_policy: TrafficPolicy):
+                        traffic_policy: TrafficPolicy
+                        ) -> Optional[Dict[EndpointTag, EndpointInfo]]:
         err_prefix = "Cannot create endpoint."
         if endpoint_info.route is not None:
             existing_route_endpoint = self._get_endpoint_for_route(
@@ -101,7 +104,7 @@ class EndpointState:
         if endpoint in self._endpoints:
             if (self._endpoints[endpoint] == endpoint_info
                     and self._traffic_policies == traffic_policy):
-                return
+                return None
             else:
                 raise ValueError(
                     "{} Endpoint '{}' is already registered.".format(
@@ -111,8 +114,9 @@ class EndpointState:
         self._traffic_policies[endpoint] = traffic_policy
 
         self._checkpoint()
-        self._notify_route_table_changed()
         self._notify_traffic_policies_changed(endpoint)
+
+        return self._endpoints
 
     def set_traffic_policy(self, endpoint: EndpointTag,
                            traffic_policy: TrafficPolicy):
@@ -162,14 +166,17 @@ class EndpointState:
             }
         return endpoints
 
-    def delete_endpoint(self, endpoint: EndpointTag) -> None:
+    def delete_endpoint(self, endpoint: EndpointTag
+                        ) -> Optional[Dict[EndpointTag, EndpointInfo]]:
         # This method must be idempotent. We should validate that the
         # specified endpoint exists on the client.
         if endpoint not in self._endpoints:
-            return
+            return None
 
         del self._endpoints[endpoint]
         del self._traffic_policies[endpoint]
 
         self._checkpoint()
-        self._notify_route_table_changed()
+        self._notify_traffic_policies_changed(endpoint)
+
+        return self._endpoints

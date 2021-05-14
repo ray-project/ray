@@ -14,7 +14,8 @@ from ray.serve.config import BackendConfig
 from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.utils import (format_actor_name, get_random_letters, logger)
+from ray.serve.utils import (format_actor_name, get_all_node_ids,
+                             get_random_letters, logger)
 
 import ray
 
@@ -44,14 +45,20 @@ class ActorReplicaWrapper:
     *All Ray API calls should be made here, not in BackendState.*
     """
 
-    def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+    def __init__(self,
+                 actor_name: str,
+                 detached: bool,
+                 controller_name: str,
+                 replica_tag: ReplicaTag,
+                 backend_tag: BackendTag,
+                 node_resource: Optional[str] = None):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
+        self._node_resource = node_resource
 
         self._startup_obj_ref = None
         self._drain_obj_ref = None
@@ -81,6 +88,8 @@ class ActorReplicaWrapper:
 
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
+        if self._node_resource is not None:
+            self._actor_resources[self._node_resource] = 0.001
 
         try:
             self._placement_group = ray.util.get_placement_group(
@@ -195,16 +204,26 @@ class BackendReplica(VersionedReplica):
     This is basically a checkpointable lightweight state machine.
     """
 
-    def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag,
-                 version: str):
+    def __init__(self,
+                 controller_name: str,
+                 detached: bool,
+                 replica_tag: ReplicaTag,
+                 backend_tag: BackendTag,
+                 version: str,
+                 node_id: Optional[str] = None,
+                 node_resource: Optional[str] = None):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag, controller_name), detached,
-            controller_name, replica_tag, backend_tag)
+            format_actor_name(replica_tag, controller_name),
+            detached,
+            controller_name,
+            replica_tag,
+            backend_tag,
+            node_resource=node_resource)
         self._controller_name = controller_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
         self._version = version
+        self._node_id = node_id
         self._start_time = None
         self._prev_slow_startup_warning_time = None
         self._state = ReplicaState.SHOULD_START
@@ -226,8 +245,16 @@ class BackendReplica(VersionedReplica):
             self.stop()
 
     @property
+    def node_id(self) -> str:
+        return self._node_id
+
+    @property
     def replica_tag(self) -> ReplicaTag:
         return self._replica_tag
+
+    @property
+    def state(self):
+        return self._state
 
     @property
     def version(self):
@@ -712,8 +739,14 @@ class BackendState:
         """
         assert (backend_tag in self._backend_metadata
                 ), "Backend {} is not registered.".format(backend_tag)
-        assert target_replicas >= 0, ("Number of replicas must be"
-                                      " greater than or equal to 0.")
+        if isinstance(target_replicas, str):
+            assert target_replicas == "EveryNode"
+            node_ids = dict(zip(get_all_node_ids()))
+            target_replicas = len(node_ids)
+        else:
+            assert target_replicas >= 0, ("Number of replicas must be"
+                                          " greater than or equal to 0.")
+            node_ids = None
 
         backend_info: BackendInfo = self._backend_metadata[backend_tag]
         graceful_shutdown_timeout_s = (
@@ -727,47 +760,86 @@ class BackendState:
             logger.info(f"Stopping {stopped} replicas of backend "
                         f"'{backend_tag}' with outdated versions.")
 
-        current_replicas = self._replicas[backend_tag].count(states=[
-            ReplicaState.SHOULD_START, ReplicaState.STARTING,
-            ReplicaState.RUNNING
-        ])
-
-        delta_replicas = target_replicas - current_replicas
-        if delta_replicas == 0:
-            return False
-
-        elif delta_replicas > 0:
-            # Don't ever exceed target_replicas.
-            stopping_replicas = self._replicas[backend_tag].count(states=[
-                ReplicaState.SHOULD_STOP,
-                ReplicaState.STOPPING,
+        # Code path for the node-agnostic logic (common case).
+        if node_ids is None:
+            current_replicas = self._replicas[backend_tag].count(states=[
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
             ])
-            to_add = max(delta_replicas - stopping_replicas, 0)
-            if to_add > 0:
-                logger.info(f"Adding {to_add} replicas "
-                            f"to backend '{backend_tag}'.")
-            for _ in range(to_add):
+
+            delta_replicas = target_replicas - current_replicas
+            if delta_replicas == 0:
+                return False
+
+            elif delta_replicas > 0:
+                # Don't ever exceed target_replicas.
+                stopping_replicas = self._replicas[backend_tag].count(states=[
+                    ReplicaState.SHOULD_STOP,
+                    ReplicaState.STOPPING,
+                ])
+                to_add = max(delta_replicas - stopping_replicas, 0)
+                if to_add > 0:
+                    logger.info(f"Adding {to_add} replicas "
+                                f"to backend '{backend_tag}'.")
+                for _ in range(to_add):
+                    replica_tag = "{}#{}".format(backend_tag,
+                                                 get_random_letters())
+                    self._replicas[backend_tag].add(
+                        ReplicaState.SHOULD_START,
+                        BackendReplica(self._controller_name, self._detached,
+                                       replica_tag, backend_tag,
+                                       target_version))
+
+            elif delta_replicas < 0:
+                to_remove = -delta_replicas
+                logger.info(f"Removing {to_remove} replicas "
+                            f"from backend '{backend_tag}'.")
+                replicas_to_stop = self._replicas[backend_tag].pop(
+                    states=[
+                        ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                        ReplicaState.RUNNING
+                    ],
+                    max_replicas=to_remove)
+
+                for replica in replicas_to_stop:
+                    replica.set_should_stop(graceful_shutdown_timeout_s)
+                    self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
+                                                    replica)
+
+        # Code path for the "EveryNode" logic.
+        else:
+            current_replicas = self._replicas[backend_tag].pop(states=[
+                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.RUNNING
+            ])
+
+            # Go through the list of current replicas. If a replica belongs to
+            # an extant node, do nothing. If it belongs to a node not in the
+            # map, stop it.
+            for replica in current_replicas:
+                assert replica.node_id is not None
+                if replica.node_id in node_ids:
+                    del node_ids[replica.node_id]
+                    self._replicas[backend_tag].add(replica.state, replica)
+                else:
+                    replica.set_should_stop(graceful_shutdown_timeout_s)
+                    self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
+                                                    replica)
+
+            # We popped node_ids that already have a replica from the dict,
+            # so those remaining need a replica to be created.
+            for node_id, node_resource in node_ids:
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
-                    BackendReplica(self._controller_name, self._detached,
-                                   replica_tag, backend_tag, target_version))
-
-        elif delta_replicas < 0:
-            to_remove = -delta_replicas
-            logger.info(f"Removing {to_remove} replicas "
-                        f"from backend '{backend_tag}'.")
-            replicas_to_stop = self._replicas[backend_tag].pop(
-                states=[
-                    ReplicaState.SHOULD_START, ReplicaState.STARTING,
-                    ReplicaState.RUNNING
-                ],
-                max_replicas=to_remove)
-
-            for replica in replicas_to_stop:
-                replica.set_should_stop(graceful_shutdown_timeout_s)
-                self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
-                                                replica)
+                    BackendReplica(
+                        self._controller_name,
+                        self._detached,
+                        replica_tag,
+                        backend_tag,
+                        target_version,
+                        node_id=node_id,
+                        node_resource=node_resource))
 
         return True
 

@@ -24,8 +24,13 @@ TEST_TAG = "TEST"
 
 
 class MockReplicaActorWrapper:
-    def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+    def __init__(self,
+                 actor_name: str,
+                 detached: bool,
+                 controller_name: str,
+                 replica_tag: ReplicaTag,
+                 backend_tag: BackendTag,
+                 node_resource: Optional[str] = None):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
