@@ -166,7 +166,8 @@ Status TaskExecutor::ExecuteTask(
       }
     }
 
-    ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result);
+    RAY_CHECK_OK(
+        ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
   }
   return ray::Status::OK();
 }

@@ -181,7 +181,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
               }
             }
 
-            ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result);
+            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
+                result_id, result));
           }
         }
 
