@@ -12,6 +12,7 @@ import pytest
 
 from ray.autoscaler._private.azure.config import (_configure_key_pair as
                                                   _azure_configure_key_pair)
+from ray.autoscaler._private import gcp
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -409,15 +410,14 @@ class AutoscalingConfigTest(unittest.TestCase):
         config = yaml.safe_load(open(path).read())
 
         config_subnets_configured = copy.deepcopy(config)
-        config_subnet_worker_configured = copy.deepcopy(config)
-        config_subnet_head_configured = copy.deepcopy(config)
+        config_subnets_worker_configured = copy.deepcopy(config)
+        config_subnets_head_configured = copy.deepcopy(config)
         config_subnets_no_type_configured = copy.deepcopy(config)
 
         config_subnets_configured["available_node_types"]["ray_head_default"][
             "node_config"]["networkInterfaces"] = "mock_interfaces"
-        config_subnets_configured["available_node_types"][
-            "ray_worker_small"]["node_config"][
-                "networkInterfaces"] = "mock_interfaces"
+        config_subnets_configured["available_node_types"]["ray_worker_small"][
+            "node_config"]["networkInterfaces"] = "mock_interfaces"
 
         config_subnets_worker_configured["available_node_types"][
             "ray_worker_small"]["node_config"][
@@ -436,41 +436,41 @@ class AutoscalingConfigTest(unittest.TestCase):
         # the configs for comparision after passing into the method.
         config_subnets_configured_post = copy.deepcopy(
             config_subnets_configured)
-        config_subnet_worker_configured_post = copy.deepcopy(
-            config_subnet_worker_configured)
+        config_subnets_worker_configured_post = copy.deepcopy(
+            config_subnets_worker_configured)
         config_subnets_head_configured_post = copy.deepcopy(
-            config_subnet_head_configured)
+            config_subnets_head_configured)
         config_subnets_no_type_configured_post = copy.deepcopy(
             config_subnets_no_type_configured)
 
-        with patch(
-                "ray.autoscaler._private.gcp._list_subnets",
-                return_value=[{
-                    "selfLink": "link"
-                }]):
-            for config_item in [
-                    config_subnets_configured_post,
-                    config_subnet_worker_configured_post,
-                    config_subnets_head_configured_post,
-                    config_subnets_no_type_configured
-            ]:
-                _configure_subnet(config_item, compute="mock_compute")
+        # Track number of times list_subnets has been called.
+        list_subnets_counter = 0
 
-        # Unchanged
-        assert config_subnets_configured_post == config_subnets_configured
-        assert config_subnets_configured["available_node_types"][
-            "ray_head_default"]["node_config"][
-                "networkInterfaces"] == "mock_interfaces"
-        assert config_subnets_configured["available_node_types"][
-            "ray_worker_small"]["node_config"][
-                "networkInterfaces"] == "mock_interfaces"
+        def mock_list_subnets(*args):
+            nonlocal list_subnets_counter
+            list_subnets_counter += 1
+            return [{"selfLink": "link"}]
 
-        # All had networkInterfaces filled/overridden in the same way.
-        assert (config_subnet_worker_configured ==
-                config_subnet_configured_head ==
-                config_subnet_no_type_configured)
+        with patch("ray.autoscaler._private.gcp.config._list_subnets",
+                   mock_list_subnets):
+            gcp.config._configure_subnet(
+                config_subnets_configured_post, compute="mock_compute")
+            # List subnets wasn't called
+            assert list_subnets_counter == 0
+            gcp.config._configure_subnet(
+                config_subnets_worker_configured_post, compute="mock_compute")
+            # List subnets was called
+            assert list_subnets_counter == 1
+            gcp.config._configure_subnet(
+                config_subnets_head_configured_post, compute="mock_compute")
+            # List subnets was called
+            assert list_subnets_counter == 2
+            gcp.config._configure_subnet(
+                config_subnets_no_type_configured_post, compute="mock_compute")
+            # List subnets was called
+            assert list_subnets_counter == 3
 
-        expected_interfaces = [{
+        default_interfaces = [{
             "subnetwork": "link",
             "accessConfigs": [{
                 "name": "External NAT",
@@ -478,14 +478,35 @@ class AutoscalingConfigTest(unittest.TestCase):
             }],
         }]
 
-        # Expected interfaces field for this config and thus also for all three
-        # for which equality is asserted above.
-        assert config_subnets_worker_configured["available_node_types"][
+        # Unchanged
+        assert config_subnets_configured_post == config_subnets_configured
+        assert config_subnets_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+        assert config_subnets_configured_post["available_node_types"][
             "ray_worker_small"]["node_config"][
-                "networkInterfaces"] == expected_interfaces
-        assert config_subnets_worker_configured["available_node_types"][
+                "networkInterfaces"] == "mock_interfaces"
+
+        assert config_subnets_worker_configured_post["available_node_types"][
             "ray_worker_small"]["node_config"][
-                "networkInterfaces"] == expected_interfaces
+                "networkInterfaces"] == "mock_interfaces"
+        assert config_subnets_worker_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+
+        assert config_subnets_head_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+        assert config_subnets_head_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == "mock_interfaces"
+
+        assert config_subnets_no_type_configured_post["available_node_types"][
+            "ray_worker_small"]["node_config"][
+                "networkInterfaces"] == default_interfaces
+        assert config_subnets_no_type_configured_post["available_node_types"][
+            "ray_head_default"]["node_config"][
+                "networkInterfaces"] == default_interfaces
 
 
 if __name__ == "__main__":
