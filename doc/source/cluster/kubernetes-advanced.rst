@@ -25,7 +25,7 @@ For example,
    # Pass in a custom values yaml.
    $ helm install example-cluster -f custom_values.yaml ./ray
    # or set custom values on the command line
-   $ helm install example-cluster --set image=rayproject/ray:1.2.0
+   $ helm install example-cluster --set image=rayproject/ray:1.2.0 ./ray
 
 Refer the `Helm docs`_ for more information.
 
@@ -95,14 +95,19 @@ three separate Helm releases:
   # Install the operator in its own Helm release.
   helm install ray-operator --set operatorOnly=true ./ray
 
-  # Install a Ray cluster in a new namespace.
-  helm -n ray install example-cluster --set clusterOnly=true ./ray
+  # Install a Ray cluster in a new namespace "ray".
+  helm -n ray install example-cluster --set clusterOnly=true ./ray --create-namespace
 
   # Install a second Ray cluster. Launch the second cluster without any workers.
   helm -n ray install example-cluster2 --set podTypes.rayWorkerType.minWorkers=0 --set clusterOnly=true ./ray
 
-  # Verify that both clusters are running.
+  # Examine the pods in both clusters.
   kubectl -n ray get pods
+  NAME                                    READY   STATUS    RESTARTS   AGE
+   example-cluster-ray-head-type-v6tt9     1/1     Running   0          35s
+   example-cluster-ray-worker-type-fmn4k   1/1     Running   0          22s
+   example-cluster-ray-worker-type-r6m7k   1/1     Running   0          22s
+   example-cluster2-ray-head-type-tj666    1/1     Running   0          15s
 
 Alternatively, the Operator and one of the Ray Clusters can be installed in the same Helm release:
 
@@ -123,8 +128,9 @@ This string can be used to filter for a specific Ray cluster's logs:
 .. code-block:: shell
 
     # The last 100 lines of logging output for the cluster with name "example-cluster2" in namespace "ray":
-    $ kubectl logs $(kubectl get pod -l cluster.ray.io/component=operator) | \
-      grep example-cluster2,ray | tail -n 100
+    $ kubectl logs \
+      $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
+      | grep example-cluster2,ray | tail -n 100
 
 Cluster-scoped vs. namespaced operators
 ---------------------------------------
@@ -177,12 +183,14 @@ Running ``kubectl -n <namespace> get raycluster`` will show all Ray clusters in 
 .. code-block:: shell
 
    kubectl -n ray get rayclusters
+   NAME              STATUS    RESTARTS   AGE
+   example-cluster   Running   0          9s
 
 The ``STATUS`` column reports the RayCluster's ``status.phase`` field. The following values are possible:
   - Empty/nil: This means the RayCluster resource has not yet been registered by the Operator.
   - ``Updating``: The Operator is launching the Ray cluster or processing an update to the cluster's configuration.
   - ``Running``: The Ray cluster's autoscaling process is running in a normal state.
-  - ``AutoscalingExceptionRecovery`` The Ray cluster's autoscaling process has crashed. Ray processes will restart. This can happen
+  - ``AutoscalingExceptionRecovery`` The Ray cluster's autoscaling process has crashed.\Ray processes will restart. This can happen
     if the Ray head node goes down.
   - ``Error`` There was an unexpected error while updating the Ray cluster. The Ray maintainers would be grateful if you file a `bug report`_ with operator logs!
 
