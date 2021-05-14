@@ -1,11 +1,12 @@
 version: 2
 updates:
+  # Tune/SGD/Doc requirements
   - package-ecosystem: "pip"
     # The requirements base directory currently only contains Tune and RLlib
     # requirements.
     # If we want to add more requirements here (Core, Serve, etc.), then we should
     # make additional subdirectories for each one.
-    directory: "/python/requirements"
+    directory: "/python/requirements/tune"
     schedule:
       # Automatic upgrade checks Saturday at 12 AM.
       # Dependabot updates can still be manually triggered via Github at any time.
@@ -16,9 +17,24 @@ updates:
       # Use Pacific Standard Time
       timezone: "America/Los_Angeles"
     commit-message:
-      prefix: "[dependabot]"
+      prefix: "[tune]"
       include: "scope"
-    # Only 3 upgrade PRs open at a time.
-    open-pull-requests-limit: 3
+    # Only 5 upgrade PRs open at a time.
+    open-pull-requests-limit: 5
     reviewers:
       - "ray-project/ray-tune"
+
+  # RLlib requirements
+  - package-ecosystem: "pip"
+    directory: "/python/requirements/rllib"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
+      time: "00:00"
+      timezone: "America/Los_Angeles"
+    commit-message:
+      prefix: "[rllib]"
+      include: "scope"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "sven1977"
