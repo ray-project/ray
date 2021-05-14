@@ -273,12 +273,19 @@ class ServeController:
 
     async def deploy(self, name: str, backend_config: BackendConfig,
                      replica_config: ReplicaConfig, python_methods: List[str],
-                     version: Optional[str], route_prefix: Optional[str]
+                     version: Optional[str], prev_version: Optional[str], route_prefix: Optional[str]
                      ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
         async with self.write_lock:
+            if prev_version is not None:
+                existing_backend_info = self.backend_state.get_backend(name)
+                if existing_backend_info.version != prev_version:
+                    raise ValueError(
+                        "prev_version '{}' does not match with "
+                        "the existing version '{}'".format(prev_version, existing_backend_info.version))
+
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(

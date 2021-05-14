@@ -360,6 +360,7 @@ class Client:
                ray_actor_options: Optional[Dict] = None,
                config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
@@ -401,7 +402,7 @@ class Client:
         goal_id, updating = ray.get(
             self._controller.deploy.remote(name, backend_config,
                                            replica_config, python_methods,
-                                           version, route_prefix))
+                                           version, prev_version, route_prefix))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -1060,6 +1061,7 @@ class Deployment:
                  name: str,
                  config: BackendConfig,
                  version: Optional[str] = None,
+                 prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
                  route_prefix: Optional[str] = None,
                  ray_actor_options: Optional[Dict] = None,
@@ -1104,6 +1106,7 @@ class Deployment:
         self._func_or_class = func_or_class
         self._name = name
         self._version = version
+        self._prev_version = prev_version
         self._config = config
         self._init_args = init_args
         self._route_prefix = route_prefix
@@ -1120,8 +1123,16 @@ class Deployment:
 
         If None, will be redeployed every time `.deploy()` is called.
         """
-
         return self._version
+
+    @property
+    def prev_version(self) -> Optional[str]:
+        """Existing version of deployment to target.
+
+        If prev_version does not match with existing deployment
+        version, the deployment will fail to be deployed.
+        """
+        return self._prev_version
 
     @property
     def func_or_class(self) -> Callable:
@@ -1179,6 +1190,7 @@ class Deployment:
             ray_actor_options=self._ray_actor_options,
             config=self._config,
             version=self._version,
+            prev_version=self._prev_version,
             route_prefix=self._route_prefix,
             _blocking=_blocking,
             _internal=True)
@@ -1213,6 +1225,7 @@ class Deployment:
             func_or_class: Optional[Callable] = None,
             name: Optional[str] = None,
             version: Optional[str] = None,
+            prev_version: Optional[str] = None,
             init_args: Optional[Tuple[Any]] = None,
             route_prefix: Optional[str] = None,
             num_replicas: Optional[int] = None,
@@ -1259,6 +1272,7 @@ class Deployment:
             name,
             new_config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
