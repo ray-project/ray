@@ -30,7 +30,6 @@ try:
     from opentelemetry import context, trace
     from opentelemetry import propagate
     from opentelemetry.context.context import Context
-    from opentelemetry.trace.propagation.textmap import DictGetter
 except ImportError:
     if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
         raise ImportError(

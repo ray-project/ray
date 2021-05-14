@@ -14,14 +14,6 @@ def setup_tracing(*args: Any, **kwargs: Any) -> None:
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(
         SimpleSpanProcessor(
-            OTLPSpanExporter(
-                endpoint="http://localhost:4317",
-                insecure=True
-                )
-        )
-    )
+            OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)))
     trace.get_tracer_provider().add_span_processor(
-        SimpleSpanProcessor(
-            ConsoleSpanExporter()
-        )
-    )
+        SimpleSpanProcessor(ConsoleSpanExporter()))
