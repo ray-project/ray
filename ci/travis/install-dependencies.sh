@@ -354,8 +354,9 @@ install_dependencies() {
   fi
 
   # RLlib testing with TF 1.x.
-  if [ "${RLLIB_TESTING-}" = 1 ] && ([ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]); then
+  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
     pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
+  fi
 
   # Additional Tune dependency for Horovod.
   # This must be run last (i.e., torch cannot be re-installed after this)
