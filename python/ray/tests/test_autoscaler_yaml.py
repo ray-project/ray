@@ -400,11 +400,13 @@ class AutoscalingConfigTest(unittest.TestCase):
     @pytest.mark.skipif(
         sys.platform.startswith("win"), reason="Fails on Windows.")
     def testGCPSubnets(self):
-        """Validates that gcp _configure_subnet logic.
+        """Validates gcp _configure_subnet logic.
 
-        Checks that the method generates default networkInterfaces data if
-        networkInterfaces field is not filled for one of the available node
-        types and that otherwise the data is filled.
+        Checks that _configure_subnet fills default networkInterfaces data for
+        each node type that doesn't specify networkInterfaces.
+
+        Checks that _list_subnets is not called if all node types specify
+        networkInterfaces.
         """
         path = os.path.join(RAY_PATH, "autoscaler", "gcp", "example-full.yaml")
         config = yaml.safe_load(open(path).read())
