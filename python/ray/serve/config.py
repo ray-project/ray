@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import pydantic
-from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from pydantic import BaseModel, validator, NonNegativeFloat
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 
 
@@ -29,7 +29,7 @@ class BackendConfig(BaseModel):
             for shutdown. Defaults to 20s.
     """
 
-    num_replicas: PositiveInt = 1
+    num_replicas: Any = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
 
@@ -49,6 +49,18 @@ class BackendConfig(BaseModel):
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
+        return v
+
+    # Dynamic default for max_concurrent_queries
+    @validator("num_replicas", always=True)
+    def check_num_replicas(cls, v, values):  # noqa 805
+        if isinstance(v, int):
+            if v <= 0:
+                raise ValueError("num_replicas must be a positive integer.")
+        else:
+            if not isinstance(v, str) and v == "EveryNode":
+                raise TypeError("num_replicas must be an integer.")
+
         return v
 
 

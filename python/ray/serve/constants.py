@@ -1,8 +1,8 @@
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
-#: Actor name used to register HTTP proxy actor
-SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
+#: Internal name used for the HTTP proxy deployment.
+HTTP_PROXY_DEPLOYMENT_NAME = "ServeHTTPProxy"
 
 #: HTTP Address
 DEFAULT_HTTP_ADDRESS = "http://127.0.0.1:8000"
@@ -45,5 +45,3 @@ ALL_HTTP_METHODS = [
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
     "PATCH"
 ]
-
-INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME = "ServeHTTPProxy"

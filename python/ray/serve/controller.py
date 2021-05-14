@@ -20,7 +20,7 @@ from ray.serve.common import (
 from ray.serve.config import BackendConfig, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
-    INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
+    HTTP_PROXY_DEPLOYMENT_NAME,
     RESERVED_VERSION_TAG,
 )
 from ray.serve.endpoint_state import EndpointState
@@ -246,14 +246,14 @@ class ServeController:
                                     config_options: BackendConfig) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
+            # Call internal method that doesn't grab the lock.
             return await self._update_backend_config(backend_tag,
                                                      config_options)
 
     async def _update_http_proxy_deployment(
             self, endpoints: Dict[EndpointTag, EndpointInfo]):
-        return await self.update_backend_config(
-            INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
-            BackendConfig(user_config=endpoints))
+        return await self._update_backend_config(
+            HTTP_PROXY_DEPLOYMENT_NAME, BackendConfig(user_config=endpoints))
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -291,7 +291,7 @@ class ServeController:
                 replica_config=replica_config)
 
             goal_id = self.backend_state.deploy_backend(name, backend_info)
-            if name != INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME:
+            if name != HTTP_PROXY_DEPLOYMENT_NAME:
                 endpoint_info = EndpointInfo(
                     ALL_HTTP_METHODS,
                     route=route_prefix,

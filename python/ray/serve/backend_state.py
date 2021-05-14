@@ -741,7 +741,7 @@ class BackendState:
                 ), "Backend {} is not registered.".format(backend_tag)
         if isinstance(target_replicas, str):
             assert target_replicas == "EveryNode"
-            node_ids = dict(zip(get_all_node_ids()))
+            node_ids = get_all_node_ids()
             target_replicas = len(node_ids)
         else:
             assert target_replicas >= 0, ("Number of replicas must be"
@@ -828,7 +828,7 @@ class BackendState:
 
             # We popped node_ids that already have a replica from the dict,
             # so those remaining need a replica to be created.
-            for node_id, node_resource in node_ids:
+            for node_id, node_resource in node_ids.items():
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
                     ReplicaState.SHOULD_START,
@@ -884,6 +884,10 @@ class BackendState:
                 if all(r.version == target_version for r in running):
                     completed_goals.append(
                         self._backend_goals.pop(backend_tag, None))
+
+            elif target_count == "EveryNode":
+                completed_goals.append(
+                    self._backend_goals.pop(backend_tag, None))
 
         for backend_tag in deleted_backends:
             del self._replicas[backend_tag]

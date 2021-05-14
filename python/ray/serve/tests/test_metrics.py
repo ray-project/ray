@@ -8,7 +8,6 @@ import pytest
 import ray
 from ray import serve
 from ray.test_utils import wait_for_condition
-from ray.serve.utils import block_until_http_ready
 
 
 def test_serve_metrics(serve_instance):
@@ -19,8 +18,11 @@ def test_serve_metrics(serve_instance):
     f.deploy()
 
     # send 10 concurrent requests
-    url = "http://127.0.0.1:8000/metrics"
-    ray.get([block_until_http_ready.remote(url) for _ in range(10)])
+    @ray.remote(num_cpus=0)
+    def send_request():
+        requests.get("http://127.0.0.1:8000/metrics/")
+
+    ray.get([send_request.remote() for _ in range(10)])
 
     def verify_metrics(do_assert=False):
         try:

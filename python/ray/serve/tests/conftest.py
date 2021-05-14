@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.config import BackendConfig
+from ray.serve.constants import HTTP_PROXY_DEPLOYMENT_NAME
 from ray.serve.long_poll import LongPollNamespace
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
@@ -41,7 +42,8 @@ def serve_instance(_shared_serve_instance):
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
         serve.delete_endpoint(endpoint)
     for backend in ray.get(controller.get_all_backends.remote()).keys():
-        serve.delete_backend(backend, force=True)
+        if backend != HTTP_PROXY_DEPLOYMENT_NAME:
+            serve.delete_backend(backend, force=True)
 
 
 @pytest.fixture

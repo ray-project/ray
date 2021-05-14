@@ -11,10 +11,9 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.constants import SERVE_PROXY_NAME
+from ray.serve.constants import HTTP_PROXY_DEPLOYMENT_NAME
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
-                             format_actor_name)
+from ray.serve.utils import block_until_http_ready
 from ray.serve.config import HTTPOptions
 from ray.test_utils import wait_for_condition
 from ray._private.services import new_port
@@ -48,9 +47,6 @@ def test_shutdown(ray_shutdown):
 
     actor_names = [
         serve.api._global_client._controller_name,
-        format_actor_name(SERVE_PROXY_NAME,
-                          serve.api._global_client._controller_name,
-                          get_all_node_ids()[0][0])
     ]
 
     def check_alive():
@@ -168,66 +164,37 @@ def test_multiple_routers(ray_cluster):
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
 
-    def get_proxy_names():
-        proxy_names = []
-        for node_id, _ in get_all_node_ids():
-            proxy_names.append(
-                format_actor_name(SERVE_PROXY_NAME,
-                                  serve.api._global_client._controller_name,
-                                  node_id))
-        return proxy_names
+    controller = serve.api._global_client._controller
 
-    wait_for_condition(lambda: len(get_proxy_names()) == 2)
-    proxy_names = get_proxy_names()
+    def get_handles():
+        return ray.get(controller._all_replica_handles.remote())[
+            HTTP_PROXY_DEPLOYMENT_NAME]
 
-    # Two actors should be started.
-    def get_first_two_actors():
-        try:
-            ray.get_actor(proxy_names[0])
-            ray.get_actor(proxy_names[1])
-            return True
-        except ValueError:
-            return False
-
-    wait_for_condition(get_first_two_actors)
+    # Two replicas should be started for the two nodes.
+    wait_for_condition(lambda: len(get_handles()) == 2)
 
     # Wait for the actors to come up.
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Kill one of the servers, the HTTP server should still function.
-    ray.kill(ray.get_actor(get_proxy_names()[0]), no_restart=True)
+    ray.kill(list(get_handles().values())[0], no_restart=True)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
+
+    # The HTTP server should be brought back up.
+    wait_for_condition(lambda: len(get_handles()) == 2)
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
     new_node = cluster.add_node()
 
-    wait_for_condition(lambda: len(get_proxy_names()) == 3)
-    third_proxy = get_proxy_names()[2]
-
-    def get_third_actor():
-        try:
-            ray.get_actor(third_proxy)
-            return True
-        # IndexErrors covers when cluster resources aren't updated yet.
-        except (IndexError, ValueError):
-            return False
-
-    wait_for_condition(get_third_actor)
+    wait_for_condition(lambda: len(get_handles()) == 3)
 
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
     cluster.remove_node(new_node)
 
-    def third_actor_removed():
-        try:
-            ray.get_actor(third_proxy)
-            return False
-        except ValueError:
-            return True
-
     # Check that the actor is gone and the HTTP server still functions.
-    wait_for_condition(third_actor_removed)
+    wait_for_condition(lambda: len(get_handles()) == 2)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
 

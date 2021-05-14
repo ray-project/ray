@@ -21,7 +21,7 @@ from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
+                                 HTTP_PROXY_DEPLOYMENT_NAME,
                                  SERVE_CONTROLLER_NAME)
 from ray.serve.controller import BackendTag, ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
@@ -659,12 +659,14 @@ def start(
             resources = {get_current_node_resource_key(): 0.01}
         elif http_options.location == DeploymentMode.EveryNode:
             num_replicas = "EveryNode"
-            resources = None
+            resources = {}
         else:
             assert False
 
         deployment(HTTPProxyDeployment).options(
-            name=INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME,
+            name=HTTP_PROXY_DEPLOYMENT_NAME,
+            # Set a static version to avoid restarting on user_config changes.
+            version="1",
             num_replicas=num_replicas,
             ray_actor_options={
                 "num_cpus": http_options.num_cpus,
@@ -864,7 +866,11 @@ def list_backends() -> Dict[str, BackendConfig]:
 
     Dictionary maps backend tags to backend config objects.
     """
-    return _get_global_client().list_backends(_internal=True)
+    backends = _get_global_client().list_backends(_internal=True)
+    if HTTP_PROXY_DEPLOYMENT_NAME in backends:
+        del backends[HTTP_PROXY_DEPLOYMENT_NAME]
+
+    return backends
 
 
 def delete_backend(backend_tag: str, force: bool = False) -> None:
@@ -1375,7 +1381,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     deployments = {}
     for name, (backend_info, route_prefix) in infos.items():
-        if name != INTERNAL_HTTP_PROXY_DEPLOYMENT_NAME:
+        if name != HTTP_PROXY_DEPLOYMENT_NAME:
             deployments[name] = Deployment(
                 backend_info.replica_config.backend_def,
                 name,
