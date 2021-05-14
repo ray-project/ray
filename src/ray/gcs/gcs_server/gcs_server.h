@@ -15,6 +15,7 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -120,6 +121,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  // Init RuntimeENv manager
+  void InitRuntimeEnvManager();
+
   /// Initialize resource report polling.
   void InitResourceReportPolling(const GcsInitData &gcs_init_data);
 
@@ -212,6 +216,7 @@ class GcsServer {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;

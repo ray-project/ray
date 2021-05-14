@@ -80,6 +80,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs heartbeat manager.
   InitGcsHeartbeatManager(gcs_init_data);
 
+  // Init KV Manager
+  InitKVManager();
+
+  // Init RuntimeENv manager
+  InitRuntimeEnvManager();
+
   // Init gcs job manager.
   InitGcsJobManager();
 
@@ -100,9 +106,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init stats handler.
   InitStatsHandler();
-
-  // Init KV Manager
-  InitKVManager();
 
   // Init resource report polling.
   InitResourceReportPolling(gcs_init_data);
@@ -206,9 +209,11 @@ void GcsServer::InitGcsResourceScheduler() {
 
 void GcsServer::InitGcsJobManager() {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
-  gcs_job_manager_.reset(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
+                                                     *runtime_env_manager_);
   // Register service.
-  job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *gcs_job_manager_));
+  job_info_service_ =
+      std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
   rpc_server_.RegisterService(*job_info_service_);
 }
 
@@ -236,7 +241,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_,
+      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -345,6 +350,32 @@ void GcsServer::InitKVManager() {
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
+}
+
+void GcsServer::InitRuntimeEnvManager() {
+  runtime_env_manager_ =
+      std::make_unique<RuntimeEnvManager>([this](const std::string &uri, auto cb) {
+        std::string sep = "://";
+        auto pos = uri.find(sep);
+        if (pos == std::string::npos || pos + sep.size() == uri.size()) {
+          RAY_LOG(ERROR) << "Invalid uri: " << uri;
+          cb(false);
+        } else {
+          auto scheme = uri.substr(0, pos);
+          if (scheme != "gcs") {
+            // Skip other uri
+            cb(true);
+          } else {
+            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
+              if (deleted_num == 0) {
+                cb(false);
+              } else {
+                cb(true);
+              }
+            });
+          }
+        }
+      });
 }
 
 void GcsServer::InitGcsWorkerManager() {

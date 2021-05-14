@@ -112,6 +112,9 @@ class NodeManagerWorkerClient
   /// Get the system config from Raylet.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
 
+  /// Get gcs server address.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_, )
+
  private:
   /// Constructor.
   ///

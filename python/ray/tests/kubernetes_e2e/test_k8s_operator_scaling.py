@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 import ray
+from test_k8s_operator_examples import client_connect_to_k8s
 from test_k8s_operator_examples import get_operator_config_path
 from test_k8s_operator_examples import retry_until_true
 from test_k8s_operator_examples import wait_for_pods
@@ -27,14 +28,13 @@ from test_k8s_operator_examples import PULL_POLICY
 from test_k8s_operator_examples import NAMESPACE
 
 
-def submit_scaling_job(client_port, num_tasks):
+def submit_scaling_job(num_tasks):
     @ray.remote(num_cpus=1)
     def f(i):
         time.sleep(60)
         return i
 
     print(">>>Submitting tasks with Ray client.")
-    ray.util.connect(f"127.0.0.1:{client_port}")
     futures = [f.remote(i) for i in range(num_tasks)]
 
     print(">>>Verifying scale-up.")
@@ -161,34 +161,14 @@ class KubernetesScaleTest(unittest.TestCase):
             print(">>>Verifying scale-down.")
             wait_for_pods(1)
 
-            # Test scale up and scale down after task submission.
-            command = f"kubectl -n {NAMESPACE}"\
-                " port-forward service/example-cluster-ray-head 10002:10002"
-            command = command.split()
-            print(">>>Port-forwarding head service.")
-            self.proc = subprocess.Popen(command)
-            try:
-                # Wait a bit for the port-forwarding connection to be
-                # established.
-                time.sleep(10)
-                # Check that job submission works
-                submit_scaling_job(client_port="10002", num_tasks=15)
-                # Clean up
-                self.proc.kill()
-            except Exception:
-                # Clean up on failure
-                self.proc.kill()
-                raise
+            with client_connect_to_k8s(port="10002"):
+                # Test scale up and scale down after task submission.
+                submit_scaling_job(num_tasks=15)
 
             print(">>>Sleeping for a minute while workers time-out.")
             time.sleep(60)
             print(">>>Verifying scale-down.")
             wait_for_pods(1)
-
-    def __del__(self):
-        # To be safer, kill again:
-        # (does not raise an error if the process has already been killed)
-        self.proc.kill()
 
 
 if __name__ == "__main__":
