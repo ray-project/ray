@@ -49,6 +49,7 @@ py_test_module_list(
   files = [
     "test_actor.py",
     "test_global_gc.py",
+    "test_memstat.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -71,7 +72,6 @@ py_test_module_list(
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
-    "test_scheduling.py",
     "test_serialization.py",
     "test_stress.py",
     "test_stress_sharded.py",
@@ -89,6 +89,7 @@ py_test_module_list(
     "test_object_manager.py",
     "test_reference_counting_2.py",
     "test_multi_tenancy.py",
+    "test_scheduling.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -116,7 +117,6 @@ py_test_module_list(
     "test_job.py",
     "test_k8s_operator_unit_tests.py",
     "test_kv.py",
-    "test_memstat.py",
     "test_metrics_agent.py",
     "test_microbenchmarks.py",
     "test_mini.py",
@@ -199,7 +199,7 @@ py_test(
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
   name = "test_tracing",
-  size = "small",
+  size = "medium",
   srcs = SRCS + ["test_tracing.py"],
   tags = ["exclusive"],
   deps = ["//:ray_lib"]
