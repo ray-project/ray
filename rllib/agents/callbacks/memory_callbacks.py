@@ -1,6 +1,6 @@
 import os
 import tracemalloc
-from typing import Optional, Dict
+from typing import Optional, Dict, TYPE_CHECKING
 
 import psutil
 
