@@ -1,3 +1,4 @@
+import atexit
 import os
 import importlib
 import logging
@@ -5,8 +6,12 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from typing import Any, Dict, Optional, Tuple
 
+import ray
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray.job_config import JobConfig
+from ray._private.client_mode_hook import disable_client_hook
+from ray._private.utils import get_unused_port
+import ray.util.client.server as client_server
 import ray.util.client_connect
 
 logger = logging.getLogger(__name__)
@@ -31,7 +36,7 @@ class ClientBuilder:
 
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
-        self._job_config = JobConfig()
+        self._job_config: Optional[JobConfig] = None
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -57,7 +62,57 @@ class ClientBuilder:
 
 
 class _LocalClientBuilder(ClientBuilder):
-    pass
+    """
+    Connects/or Creates to a local Ray Cluster with Ray Client.
+    """
+
+    def __init__(self, address: Optional[str]) -> None:
+        super().__init__(address)
+        # If local, we should always create a new cluster.
+        self.create_cluster_without_searching = (address == "local")
+        self._init_args = {}
+        self._server = None
+
+    def resources(
+            self,
+            *,
+            num_cpus: Optional[int] = None,
+            num_gpus: Optional[int] = None,
+            resources: Optional[Dict[str, str]] = None,
+            object_store_memory: Optional[int] = None) -> "ClientBuilder":
+        self._init_args["num_cpus"] = num_cpus
+        self._init_args["num_gpus"] = num_gpus
+        self._init_args["resources"] = resources
+        self._init_args["object_store_memory"] = object_store_memory
+        return self
+
+    def dashboard(self,
+                  *,
+                  include: bool = True,
+                  host: str = "127.0.0.1",
+                  port: Optional[int] = None) -> "ClientBuilder":
+        assert self.create_cluster_without_searching
+        self._init_args["include_dashboard"] = include
+        self._init_args["dashboard_host"] = host
+        self._init_args["dashboard_port"] = port
+        return self
+
+    def connect(self) -> ClientInfo:
+        if self.create_cluster_without_searching:
+
+            def ray_connect_handler(job_config=None):
+                with disable_client_hook():
+                    if not ray.is_initialized():
+                        ray.init(job_config=job_config, **self._init_args)
+
+            port, _ = get_unused_port()
+            self.address = f"localhost:{port}"
+            logger.info(f"Creating a server on {self.address}")
+            self._server = client_server.serve(self.address,
+                                               ray_connect_handler)
+            atexit.register(ray.shutdown, True)
+            atexit.register(self._server.grpc_server.stop, 0)
+        return super().connect()
 
 
 def _split_address(address: str) -> Tuple[str, str]:
@@ -74,7 +129,8 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address is None or address == "local":
-        return _LocalClientBuilder(address)
+        local_builder = _LocalClientBuilder(address)
+        return local_builder
     module_string, inner_address = _split_address(address)
     module = importlib.import_module(module_string)
     return module.ClientBuilder(inner_address)

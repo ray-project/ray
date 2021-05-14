@@ -5,7 +5,6 @@ import errno
 import json
 import logging
 import os
-import random
 import signal
 import socket
 import subprocess
@@ -23,7 +22,7 @@ import ray._private.services
 import ray._private.utils
 from ray.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
-                                open_log)
+                                open_log, get_unused_port)
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -31,7 +30,6 @@ from ray._private.utils import (try_to_create_directory, try_to_symlink,
 logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
-NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = 20
 
 
@@ -547,31 +545,6 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
-    def _get_unused_port(self, close_on_exit=True):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("", 0))
-        port = s.getsockname()[1]
-
-        # Try to generate a port that is far above the 'next available' one.
-        # This solves issue #8254 where GRPC fails because the port assigned
-        # from this method has been used by a different process.
-        for _ in range(NUM_PORT_RETRIES):
-            new_port = random.randint(port, 65535)
-            new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                new_s.bind(("", new_port))
-            except OSError:
-                new_s.close()
-                continue
-            s.close()
-            if close_on_exit:
-                new_s.close()
-            return new_port, new_s
-        logger.error("Unable to succeed in selecting a random port.")
-        if close_on_exit:
-            s.close()
-        return port, s
-
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
 
@@ -588,7 +561,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = (f"tcp://{self._localhost}"
-                          f":{self._get_unused_port()[0]}")
+                          f":{get_unused_port()[0]}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -640,7 +613,7 @@ class Node:
             port = int(ports_by_node[self.unique_id][port_name])
         else:
             # Pick a new port to use and cache it at this node.
-            port = (default_port or self._get_unused_port()[0])
+            port = (default_port or get_unused_port()[0])
             ports_by_node[self.unique_id][port_name] = port
             with open(file_path, "w") as f:
                 json.dump(ports_by_node, f)

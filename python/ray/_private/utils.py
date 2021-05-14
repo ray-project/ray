@@ -7,7 +7,9 @@ import logging
 import math
 import multiprocessing
 import os
+import random
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -40,6 +42,8 @@ linux_prctl = None
 # We keep a global job object to tie its lifetime to that of our own process.
 win32_job = None
 win32_AssignProcessToJobObject = None
+
+NUM_PORT_RETRIES = 40
 
 
 def get_user_temp_dir():
@@ -1004,3 +1008,29 @@ def import_attr(full_path: str):
     module_name = full_path[:last_period_idx]
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
+
+
+def get_unused_port(close_on_exit=True):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+
+    # Try to generate a port that is far above the 'next available' one.
+    # This solves issue #8254 where GRPC fails because the port assigned
+    # from this method has been used by a different process.
+    for _ in range(NUM_PORT_RETRIES):
+        new_port = random.randint(port, 65535)
+        new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            new_s.bind(("", new_port))
+        except OSError:
+            new_s.close()
+            continue
+        s.close()
+        if close_on_exit:
+            new_s.close()
+        return new_port, new_s
+    logger.error("Unable to succeed in selecting a random port.")
+    if close_on_exit:
+        s.close()
+    return port, s
