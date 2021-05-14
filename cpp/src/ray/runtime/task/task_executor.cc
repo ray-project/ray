@@ -153,24 +153,20 @@ Status TaskExecutor::ExecuteTask(
     }
   }
 
-  std::vector<size_t> data_sizes;
-  std::vector<std::shared_ptr<ray::Buffer>> metadatas;
-  std::vector<std::vector<ray::ObjectID>> contained_object_ids;
   if (task_type != TaskType::ACTOR_CREATION_TASK) {
-    metadatas.push_back(nullptr);
-    data_sizes.push_back(data->size());
-    contained_object_ids.push_back(std::vector<ray::ObjectID>());
-  }
-
-  RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-      return_ids, data_sizes, metadatas, contained_object_ids, results));
-  if (task_type != TaskType::ACTOR_CREATION_TASK) {
+    size_t data_size = data->size();
+    auto &result_id = return_ids[0];
     auto result = (*results)[0];
+    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), &result));
+
     if (result != nullptr) {
       if (result->HasData()) {
         memcpy(result->GetData()->Data(), data->data(), data_sizes[0]);
       }
     }
+
+    SealReturnObject(result_id, result);
   }
   return ray::Status::OK();
 }

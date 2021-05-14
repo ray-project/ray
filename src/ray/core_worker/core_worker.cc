@@ -1940,28 +1940,11 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 
 void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }
 
-Status CoreWorker::AllocateReturnObjects(
-    const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
-    const std::vector<std::shared_ptr<Buffer>> &metadatas,
-    const std::vector<std::vector<ObjectID>> &contained_object_ids,
-    std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  RAY_CHECK(object_ids.size() == metadatas.size());
-  RAY_CHECK(object_ids.size() == data_sizes.size());
-  return_objects->resize(object_ids.size(), nullptr);
-
-  for (size_t i = 0; i < object_ids.size(); i++) {
-    AllocateReturnObject(object_ids[i], data_sizes[i], metadatas[i],
-                         contained_object_ids[i], return_objects->at(i));
-  }
-
-  return Status::OK();
-}
-
 Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_id,
-                                        std::shared_ptr<RayObject> &return_object) {
+                                        std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
                                  : worker_context_.GetCurrentTask()->CallerAddress());
@@ -1989,7 +1972,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   }
   // Leave the return object as a nullptr if the object already exists.
   if (!object_already_exists) {
-    return_object =
+    *return_object =
         std::make_shared<RayObject>(data_buffer, metadata, contained_object_id);
   }
 

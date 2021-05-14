@@ -816,23 +816,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
  public:
-  /// Allocate the return objects for an executing task. The caller should write into the
-  /// data buffers of the allocated buffers.
-  ///
-  /// \param[in] object_ids Object IDs of the return values.
-  /// \param[in] data_sizes Sizes of the return values.
-  /// \param[in] metadatas Metadata buffers of the return values.
-  /// \param[in] contained_object_ids IDs serialized within each return object.
-  /// \param[out] return_objects RayObjects containing buffers to write results into.
-  /// \return Status.
-  Status AllocateReturnObjects(
-      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
-      const std::vector<std::shared_ptr<Buffer>> &metadatas,
-      const std::vector<std::vector<ObjectID>> &contained_object_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects);
-
-  /// Allocate a return object for an executing task. The caller should write into the
+  /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
+  /// To avoid deadlock, the caller should allocate and seal a single object at a time.
   ///
   /// \param[in] object_id Object ID of the return value.
   /// \param[in] data_size Size of the return value.
@@ -843,7 +829,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              std::shared_ptr<RayObject> &return_object);
+                              std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
   /// written into the data buffer.

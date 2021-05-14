@@ -1606,7 +1606,7 @@ cdef class CoreWorker:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                         return_id, data_size, metadata, contained_id,
-                        returns[0][i]))
+                        &returns[0][i]))
 
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
