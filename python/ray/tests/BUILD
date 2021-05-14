@@ -27,6 +27,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_cancel.py",
     "test_client.py",
+    "test_client_builder.py",
     "test_client_init.py",
     "test_client_library_integration.py",
     "test_component_failures_2.py",
