@@ -1,4 +1,5 @@
 import os
+import sys
 
 from ray.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL, DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
@@ -8,7 +9,11 @@ from ray.ray_constants import (  # noqa F401
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        val = os.environ[key]
+        if val == "inf":
+            return sys.maxsize
+        else:
+            return int(val)
     return default
 
 
