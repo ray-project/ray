@@ -137,15 +137,14 @@ def cql_loss(policy: Policy, model: ModelV2,
     else:
 
         def bc_log(model, obs, actions):
-
-            normed_actions = (actions - action_dist_t.low) / (action_dist_t.high - action_dist_t.low) * 2.0 - \
-                            1.0
             # Stabilize input to atanh.
-            save_normed_actions = torch.clamp(normed_actions, -1.0 + SMALL_NUMBER,
-                                             1.0 - SMALL_NUMBER)
+            normed_actions = \
+                (actions - action_dist_t.low) / \
+                (action_dist_t.high - action_dist_t.low) * 2.0 - 1.0
+            save_normed_actions = torch.clamp(
+                normed_actions, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
             z = atanh(save_normed_actions)
 
-            #z = atanh(actions)
             logits = model.get_policy_output(obs)
             mean, log_std = torch.chunk(logits, 2, dim=-1)
             # Mean Clamping for Stability
