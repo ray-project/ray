@@ -4,7 +4,7 @@ from typing import Optional, Dict
 
 import psutil
 
-from agents.callbacks.default_callback import DefaultCallbacks
+from agents.callbacks import DefaultCallbacks
 from env.base_env import BaseEnv
 from evaluation.episode import MultiAgentEpisode
 from policy.policy import Policy
@@ -17,11 +17,14 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     """
     MemoryTrackingCallbacks can be used to trace and track memory usage in rollout workers.
 
-    The Memory Tracking Callbacks uses tracemalloc and psutil to track python allocations during rollouts, in training or evaluation.
+    The Memory Tracking Callbacks uses tracemalloc and psutil to track python allocations during rollouts, 
+    in training or evaluation.
 
-    The tracking data is logged to the custom_metrics of an episode and can therefore be viewed in tensorboard (or in WandB etc..)
+    The tracking data is logged to the custom_metrics of an episode and can therefore be viewed in tensorboard 
+    (or in WandB etc..)
 
-    Warning: This class is meant for debugging and should not be used in production code as tracemalloc incurs a significant slowdown in execution speed.
+    Warning: This class is meant for debugging and should not be used in production code as tracemalloc incurs 
+    a significant slowdown in execution speed.
 
     Add MemoryTrackingCallbacks callback to the tune config e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
     """
@@ -32,8 +35,14 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         # Will track the top 10 lines where memory is allocated
         tracemalloc.start(10)
 
-    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv, policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, env_index: Optional[int] = None, **kwargs) -> None:
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
+                       policies: Dict[PolicyID, Policy],
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
+                       **kwargs) -> None:
         snapshot = tracemalloc.take_snapshot()
         top_stats = snapshot.statistics('lineno')
 
