@@ -644,7 +644,7 @@ class SimpleListCollector(SampleCollector):
             if is_done and check_dones and \
                     not pre_batch[SampleBatch.DONES][-1]:
                 raise ValueError(
-                    "Episode {} terminated for all agents, but we still don't "
+                    "Episode {} terminated for all agents, but we still"
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
                         episode_id, agent_id, self.agent_key_to_policy_id[(
@@ -680,7 +680,8 @@ class SimpleListCollector(SampleCollector):
         # Append into policy batches and reset.
         from ray.rllib.evaluation.rollout_worker import get_global_worker
         for agent_id, post_batch in sorted(post_batches.items()):
-            pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
+            agent_key = (episode_id, agent_id)
+            pid = self.agent_key_to_policy_id[agent_key]
             policy = self.policy_map[pid]
             self.callbacks.on_postprocess_trajectory(
                 worker=get_global_worker(),
@@ -696,6 +697,10 @@ class SimpleListCollector(SampleCollector):
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
 
+            if is_done:
+                del self.agent_key_to_policy_id[agent_key]
+                del self.agent_collectors[agent_key]
+
         if policy_collector_group:
             env_steps = self.episode_steps[episode_id]
             policy_collector_group.env_steps += env_steps
@@ -706,8 +711,6 @@ class SimpleListCollector(SampleCollector):
             del self.episode_steps[episode_id]
             del self.agent_steps[episode_id]
             del self.episodes[episode_id]
-            del self.agent_key_to_policy_id[(episode_id, agent_id)]
-            del self.agent_collectors[(episode_id, agent_id)]
             # Make PolicyCollectorGroup available for more agent batches in
             # other episodes. Do not reset count to 0.
             if policy_collector_group:
