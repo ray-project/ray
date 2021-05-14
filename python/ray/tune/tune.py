@@ -382,7 +382,8 @@ def run(
         num_samples = sys.maxsize
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors, queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        queue_trials=queue_trials,
         result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
