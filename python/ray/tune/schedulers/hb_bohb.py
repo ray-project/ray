@@ -124,7 +124,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                         return trial
         # MAIN CHANGE HERE!
         if not any(t.status == Trial.RUNNING
-                   for t in trial_runner.get_trials()):
+                   for t in trial_runner.get_live_trials()):
             for hyperband in self._hyperbands:
                 for bracket in hyperband:
                     if bracket and any(trial.status == Trial.PAUSED

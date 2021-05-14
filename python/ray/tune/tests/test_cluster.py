@@ -42,7 +42,7 @@ def _check_trial_running(trial):
 
 
 def _get_running_trials(runner):
-    return [t for t in runner.get_trials() if t.status == Trial.RUNNING]
+    return [t for t in runner.get_live_trials() if t.status == Trial.RUNNING]
 
 
 def _start_new_cluster():
