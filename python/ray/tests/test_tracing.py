@@ -49,12 +49,10 @@ def ray_start_init_tracing(scope="function"):
 
 def get_span_list():
     """Read span files and return list of span names."""
-    span_string = ""
     span_list = []
     for entry in glob.glob(f"{spans_dir}/**/*.txt", recursive=True):
         with open(entry) as f:
             for line in f.readlines():
-                span_string += line
                 span_list.append(json.loads(line))
     return span_list
 
