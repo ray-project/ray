@@ -102,7 +102,7 @@ class _TrialCleanup:
         """
         future = actor.stop.remote()
 
-        actor.__ray_terminate__.remote()
+        del actor
 
         self._cleanup_map[future] = trial
         if len(self._cleanup_map) > self.threshold:
