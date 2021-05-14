@@ -55,9 +55,7 @@ const Actors = () => {
               onChange={({ target: { checked } }) => setAutoRefresh(checked)}
             />
           </Grid>
-          <Grid item>
-            {timeStamp.format('YYYY-MM-DD HH:mm:ss')}
-          </Grid>
+          <Grid item>{timeStamp.format("YYYY-MM-DD HH:mm:ss")}</Grid>
         </Grid>
         <ActorTable actors={actors} />
       </TitleCard>

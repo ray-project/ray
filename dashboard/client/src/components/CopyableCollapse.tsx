@@ -3,9 +3,11 @@ import { CheckOutlined, FileCopyOutlined } from "@material-ui/icons";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 
-const CopyableCollapse: React.FC<{ text: string; length?: number, noCollapse?: boolean }> = (
-  props,
-) => {
+const CopyableCollapse: React.FC<{
+  text: string;
+  length?: number;
+  noCollapse?: boolean;
+}> = (props) => {
   const { text, length = 5, noCollapse } = props;
   const isTextLonger = text.length > length && !noCollapse;
   const displayText = isTextLonger ? `${text.slice(0, length)}` : text;

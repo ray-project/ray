@@ -34,8 +34,7 @@ const ActorTable = ({
   const { changeFilter, filterFunc } = useFilter();
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
-  const actorList = Object.values(actors || {})
-    .filter(filterFunc);
+  const actorList = Object.values(actors || {}).filter(filterFunc);
   const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
   return (
@@ -120,9 +119,7 @@ const ActorTable = ({
               setPageSize(Math.min(Number(value), 500) || 10);
             },
             endAdornment: (
-              <InputAdornment position="end">
-                Per Page
-              </InputAdornment>
+              <InputAdornment position="end">Per Page</InputAdornment>
             ),
           }}
         />
@@ -195,32 +192,25 @@ const ActorTable = ({
                 }
                 key={actorId}
               >
-                <TableCell
-                  align="center"
-                >
+                <TableCell align="center">
                   <CopyableCollapse text={actorId} />
                 </TableCell>
-                <TableCell align="center" style={{
+                <TableCell
+                  align="center"
+                  style={{
                     color: Number(numRestarts) > 0 ? orange[500] : "inherit",
-                  }}>
-                {numRestarts}
+                  }}
+                >
+                  {numRestarts}
                 </TableCell>
                 <TableCell align="center">{name}</TableCell>
                 <TableCell align="center">
-                  {
-                    functionDescriptor?.javaFunctionDescriptor?.className
-                  }
-                  {
-                    functionDescriptor?.pythonFunctionDescriptor?.className
-                  }
+                  {functionDescriptor?.javaFunctionDescriptor?.className}
+                  {functionDescriptor?.pythonFunctionDescriptor?.className}
                 </TableCell>
                 <TableCell align="center">
-                  {
-                    functionDescriptor?.javaFunctionDescriptor?.functionName
-                  }
-                  {
-                    functionDescriptor?.pythonFunctionDescriptor?.functionName
-                  }
+                  {functionDescriptor?.javaFunctionDescriptor?.functionName}
+                  {functionDescriptor?.pythonFunctionDescriptor?.functionName}
                 </TableCell>
                 <TableCell align="center">{jobId}</TableCell>
                 <TableCell align="center">{pid}</TableCell>
