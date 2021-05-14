@@ -1,5 +1,6 @@
 # Deep learning.
 # --------------
+tensorflow
 tensorflow-probability
 # Version requirement to match Tune.
 torch>=1.6.0
