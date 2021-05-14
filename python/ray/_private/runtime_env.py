@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import json
 
 from filelock import FileLock
 from pathlib import Path
@@ -12,8 +11,8 @@ from enum import Enum
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
-
-from typing import List, Tuple, Optional, Callable
+from ray._private.utils import BaseModel
+from typing import List, Tuple, Optional, Callable, Dict, Any
 from urllib.parse import urlparse
 import os
 import sys
@@ -27,66 +26,49 @@ logger = logging.getLogger(__name__)
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MB
 
 
-class RuntimeEnvDict:
-    """Parses and validates the runtime env dictionary from the user.
-
-    Attributes:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or zip file.
-            Examples:
-                "."  # cwd
-                "local_project.zip"  # archive is unpacked into directory
-        py_modules (List[Path]): Similar to working_dir, but specifies python
-            modules to add to the `sys.path`.
-            Examples:
-                ["/path/to/other_module", "/other_path/local_project.zip"]
-        conda (dict | str): Either the conda YAML config or the name of a
-            local conda env (e.g., "pytorch_p36"). The Ray dependency will be
-            automatically injected into the conda env to ensure compatibility
-            with the cluster Ray. The conda name may be mangled automatically
-            to avoid conflicts between runtime envs.
-            Examples:
-                {"channels": ["defaults"], "dependencies": ["codecov"]}
-                "pytorch_p36"   # Found on DLAMIs
-        docker (dict): Require a given (Docker) container image. The Ray
-            dependency will be automatically installed into the docker image
-            to ensure compatibility with the cluster Ray. The `run_options`
-            dict spec is here: https://docs.docker.com/engine/reference/run/
-            Examples:
-                {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
-        env_vars (dict): Environment variables to set.
-            Examples:
-                {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
-    """
-
-    def __init__(self, runtime_env_json: dict):
-        # Simple dictionary with all options validated. This will always
-        # contain all supported keys; values will be set to None if unspecified
-        self._dict = {}
-        self._dict["conda"] = None
-        if "conda" in runtime_env_json:
-            conda = runtime_env_json["conda"]
-            if isinstance(conda, str):
-                self._dict["conda"] = conda
-            elif isinstance(conda, dict):
-                # TODO(architkulkarni): add dynamic conda env installs
-                raise NotImplementedError
-            elif conda is not None:
-                raise TypeError("runtime_env['conda'] must be of type str or "
-                                "dict")
-        if "working_dir" in runtime_env_json:
-            self._dict["working_dir"] = runtime_env_json["working_dir"]
-        else:
-            self._dict["working_dir"] = None
-        # TODO(ekl) we should have better schema validation here.
-        # TODO(ekl) support py_modules
-        # TODO(architkulkarni) support env_vars, docker
-
-        # TODO(architkulkarni) remove once workers are cached by runtime env.
-        # Currently the worker pool just checks for a nonempty runtime env
-        # and if so, starts a new worker process and calls the shim process.
-        if all(val is None for val in self._dict.values()):
-            self._dict = {}
+class RuntimeEnv(BaseModel):
+    # Specifies the working directory of the worker.
+    # This can either be a local directory or zip file or a url.
+    #
+    # The archive format is one of “zip”, “tar”, “gztar”, “bztar”, or
+    # “xztar”. Please refer to
+    # https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
+    # Examples:
+    #     "."  # cwd
+    #     "local_project.zip"  # archive is unpacked into directory
+    working_dir: str = None
+    # Files/directories in excludes will be removed.
+    excludes: List[str] = []
+    uris: List[str] = []
+    # Similar to working_dir, but specifies python
+    # modules to add to the `sys.path`.
+    # Examples: ["/path/to/other_module", "/other_path/local_project.zip"]
+    # TODO(ekl) support py_modules
+    py_modules: List[str] = []
+    # Either the conda YAML config or the name of a
+    # local conda env (e.g., "pytorch_p36"). The Ray dependency will be
+    # automatically injected into the conda env to ensure compatibility
+    # with the cluster Ray. The conda name may be mangled automatically
+    # to avoid conflicts between runtime envs.
+    # Examples:
+    #     {"channels": ["defaults"], "dependencies": ["codecov"]}
+    #     "pytorch_p36"   # Found on DLAMIs
+    #
+    # TODO(architkulkarni): add dynamic conda env installs
+    conda: str = ""
+    # Require a given (Docker) container image. The Ray
+    # dependency will be automatically installed into the docker image
+    # to ensure compatibility with the cluster Ray. The `run_options`
+    # dict spec is here: https://docs.docker.com/engine/reference/run/
+    # Examples:
+    #     {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
+    # TODO(architkulkarni) support docker
+    docker: dict = {}
+    # Environment variables to set.
+    # Examples:
+    #     {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}
+    # TODO(architkulkarni) support env_vars
+    env_vars: Dict[str, Any] = {}
 
     def to_worker_env_vars(self, override_environment_variables: dict) -> dict:
         """Given existing worker env vars, return an updated dict.
@@ -96,19 +78,10 @@ class RuntimeEnvDict:
         """
         if override_environment_variables is None:
             override_environment_variables = {}
-        if self._dict.get("working_dir"):
+        if self.working_dir:
             override_environment_variables.update(
-                RAY_RUNTIME_ENV_FILES=self._dict["working_dir"])
+                RAY_RUNTIME_ENV_FILES=self.working_dir)
         return override_environment_variables
-
-    def get_parsed_dict(self) -> dict:
-        return self._dict
-
-    def serialize(self) -> str:
-        # Use sort_keys=True because we will use the output as a key to cache
-        # workers by, so we need the serialization to be independent of the
-        # dict order.
-        return json.dumps(self._dict, sort_keys=True)
 
 
 class Protocol(Enum):

@@ -25,6 +25,7 @@ import psutil
 import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+from pydantic import BaseModel as PydanticBaseModel, Extra
 
 pwd = None
 if sys.platform != "win32":
@@ -40,6 +41,15 @@ linux_prctl = None
 # We keep a global job object to tie its lifetime to that of our own process.
 win32_job = None
 win32_AssignProcessToJobObject = None
+
+
+class BaseModel(PydanticBaseModel):
+    """ The base model with default config for pydantic types.
+    """
+
+    class Config:
+        arbitrary_types_allowed = True
+        extra = Extra.forbid
 
 
 def get_user_temp_dir():

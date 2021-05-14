@@ -1756,7 +1756,7 @@ cdef class CoreWorker:
         if result_dict == {}:
             return self.get_job_config().serialized_runtime_env
         else:
-            # TODO(architkulkarni): We should just use RuntimeEnvDict here
+            # TODO(architkulkarni): We should just use RuntimeEnv here
             # so all the serialization and validation is done in one place
             return json.dumps(result_dict, sort_keys=True)
 

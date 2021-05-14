@@ -1,13 +1,8 @@
 from enum import Enum
 from typing import Dict, Any
-from pydantic import BaseModel as PydanticBaseModel, Extra
+from ray._private.utils import BaseModel
+from ray._private.runtime_env import RuntimeEnv
 from ray.core.generated import common_pb2
-
-
-class BaseModel(PydanticBaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-        extra = Extra.forbid
 
 
 class Language(str, Enum):
@@ -16,19 +11,12 @@ class Language(str, Enum):
     CPP = common_pb2.Language.Name(common_pb2.CPP)
 
 
-class RuntimeEnv(BaseModel):
-    # The url to download the job package archive. The archive format is
-    # one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
-    # https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
-    working_dir: str
-
-
 class JobDescription(BaseModel):
     # The job driver language, this field determines how to start the
     # driver. The value is one of the names of enum Language defined in
     # common.proto, e.g. PYTHON
     language: Language
-    # The runtime_env (RuntimeEnvDict) for the job config.
+    # The runtime_env (RuntimeEnv) for the job config.
     runtime_env: RuntimeEnv
     # The entry to start the driver.
     # PYTHON:

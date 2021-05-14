@@ -36,12 +36,12 @@ class JobConfig:
             without_dir = dict(runtime_env)
             if "working_dir" in without_dir:
                 del without_dir["working_dir"]
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
-                without_dir)
+            self._parsed_runtime_env = runtime_support.RuntimeEnv(
+                **without_dir)
             self.worker_env = self._parsed_runtime_env.to_worker_env_vars(
                 self.worker_env)
         else:
-            self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+            self._parsed_runtime_env = runtime_support.RuntimeEnv()
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -79,7 +79,10 @@ class JobConfig:
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
-        return self._parsed_runtime_env.serialize()
+        # Use sort_keys=True because we will use the output as a key to cache
+        # workers by, so we need the serialization to be independent of the
+        # dict order.
+        return self._parsed_runtime_env.json(sort_keys=True)
 
     def _get_proto_runtime(self):
         from ray.core.generated.common_pb2 import RuntimeEnv
