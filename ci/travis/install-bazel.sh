@@ -82,7 +82,7 @@ fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
   num_cores=`nproc`
-  echo "build --jobs="`expr $num_cores + 4` >> ~/.bazelrc
+  echo "build --jobs="`expr $num_cores + 2` >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
