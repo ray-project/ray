@@ -60,7 +60,7 @@ class BackendConfig(BaseModel):
             if v <= 0:
                 raise ValueError("num_replicas must be a positive integer.")
         else:
-            if not isinstance(v, str) and v == "EveryNode":
+            if not (isinstance(v, str) and v == "EveryNode"):
                 raise TypeError("num_replicas must be an integer.")
 
         return v

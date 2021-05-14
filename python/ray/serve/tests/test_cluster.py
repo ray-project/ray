@@ -80,10 +80,11 @@ def test_node_failure(ray_cluster):
         return os.getpid()
 
     def get_pids(expected, timeout=30):
+        handle = D.get_handle()
         pids = set()
         start = time.time()
         while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
+            pids.add(ray.get(handle.remote()))
             if time.time() - start >= timeout:
                 raise TimeoutError("Timed out waiting for pids.")
         return pids

@@ -28,9 +28,9 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_proxy import HTTPProxyDeployment
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
-from ray.serve.utils import (ensure_serialization_context, format_actor_name,
-                             get_current_node_resource_key, get_random_letters,
-                             logger)
+from ray.serve.utils import (
+    block_until_http_ready, ensure_serialization_context, format_actor_name,
+    get_current_node_resource_key, get_random_letters, logger)
 
 import ray
 
@@ -695,6 +695,25 @@ def start(
             user_config={},
         ).deploy(http_options.host, http_options.port,
                  http_options.middlewares)
+
+        # Wait for the HTTP proxies to start up.
+        if http_options.location == DeploymentMode.HeadOnly:
+            node_ids = [get_current_node_resource_key()]
+        else:
+            node_ids = ray.state.node_ids()
+
+        try:
+            ray.get(
+                [
+                    block_until_http_ready.options(resources={
+                        node_id: 0.001
+                    }).remote(f"http://localhost:{http_options.port}/-/routes")
+                    for node_id in node_ids
+                ],
+                timeout=10)
+        except Exception as e:
+            raise TimeoutError(
+                f"Failed to wait for all HTTP proxies to start: {e}")
 
     return client
 

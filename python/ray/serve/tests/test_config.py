@@ -12,9 +12,9 @@ def test_backend_config_validation():
 
     # Test num_replicas validation.
     BackendConfig(num_replicas=1)
-    with pytest.raises(ValidationError, match="type_error"):
+    with pytest.raises(ValidationError):
         BackendConfig(num_replicas="hello")
-    with pytest.raises(ValidationError, match="value_error"):
+    with pytest.raises(ValidationError):
         BackendConfig(num_replicas=-1)
 
     # Test dynamic default for max_concurrent_queries.
