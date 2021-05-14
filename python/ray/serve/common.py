@@ -25,7 +25,7 @@ class EndpointInfo:
 
 
 class BackendInfo(BaseModel):
-    actor_def: ActorClass
+    actor_def: Optional[ActorClass]
     version: Optional[str]
     backend_config: BackendConfig
     replica_config: ReplicaConfig
