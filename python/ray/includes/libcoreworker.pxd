@@ -282,6 +282,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         c_bool connect_on_start
+        # TODO(architkulkarni): Set to int throughout
+        int64_t runtime_env_hash
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

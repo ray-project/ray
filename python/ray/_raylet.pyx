@@ -859,7 +859,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, metrics_agent_port):
+                  serialized_job_config, metrics_agent_port, runtime_env_hash):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -913,6 +913,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
+        options.runtime_env_hash = runtime_env_hash
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
