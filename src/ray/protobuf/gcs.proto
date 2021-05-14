@@ -152,6 +152,10 @@ message ActorTableData {
   // Runtime required to run this actor
   // It'll only be set if it's a detached actor and the original job has this field
   RuntimeEnv runtime_env = 19;
+  // The unix ms timestamp the actor was started at.
+  uint64 start_time = 20;
+  // The unix ms timestamp the actor was ended at.
+  uint64 end_time = 21;
 }
 
 message ErrorTableData {
@@ -279,6 +283,8 @@ message JobConfig {
   RuntimeEnv runtime_env = 5;
   // Serialized JSON string of the parsed runtime environment dict for this job.
   string serialized_runtime_env = 6;
+  // An opaque kv store for job related metadata.
+  map<string, string> metadata = 9;
 }
 
 message JobTableData {
@@ -294,6 +300,10 @@ message JobTableData {
   int64 driver_pid = 5;
   // The config of this job.
   JobConfig config = 6;
+  // The timestamp the job was started at.
+  uint64 start_time = 7;
+  // The timestamp the job was ended at.
+  uint64 end_time = 8;
 }
 
 message WorkerTableData {

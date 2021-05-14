@@ -59,6 +59,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
   ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);
+
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs
