@@ -172,7 +172,13 @@ def after_init(trainer):
     elif isinstance(reader, ShuffledInput):
         num_batches = 0
         total_timesteps = 0
+        max_ = float("-inf")
+        min_ = float("inf")
         for batch in reader.child.read_all_files():
+            if batch["actions"].max() > max_:
+                max_ = batch["actions"].max()
+            if batch["actions"].min() < min_:
+                min_ = batch["actions"].min()
             num_batches += 1
             total_timesteps += len(batch)
             # Add NEXT_OBS if not available. This is slightly hacked
@@ -188,6 +194,7 @@ def after_init(trainer):
         print(
             f"Loaded {num_batches} batches ({total_timesteps} ts) into "
             f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
+        print("MIN={} MAX={}".format(min_, max_))
     else:
         raise ValueError(
             "Unknown offline input! config['input'] must either be list of "

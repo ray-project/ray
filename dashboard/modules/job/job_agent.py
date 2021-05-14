@@ -15,8 +15,8 @@ import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import create_task
 from ray.new_dashboard.modules.job import job_consts
 from ray.new_dashboard.modules.job.job_description import JobDescription
-from ray.core.generated import job_agent_pb2
-from ray.core.generated import job_agent_pb2_grpc
+#from ray.core.generated import job_agent_pb2
+#from ray.core.generated import job_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 
 logger = logging.getLogger(__name__)
@@ -228,8 +228,8 @@ ray.shutdown()
                                         self._job_info.env)
 
 
-class JobAgent(dashboard_utils.DashboardAgentModule,
-               job_agent_pb2_grpc.JobAgentServiceServicer):
+class JobAgent:#(dashboard_utils.DashboardAgentModule,
+               #job_agent_pb2_grpc.JobAgentServiceServicer):
     """ The JobAgentService defined in job_agent.proto for initializing /
     cleaning job environments.
     """

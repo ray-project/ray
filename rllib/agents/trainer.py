@@ -1381,12 +1381,12 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state:
+        if "worker" in state and hasattr(self, "workers"):
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        if "optimizer" in state:
+        if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
 
     @staticmethod

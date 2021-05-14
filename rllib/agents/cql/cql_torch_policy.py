@@ -112,6 +112,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     action_dist_t = action_dist_class(
         model.get_policy_output(model_out_t), policy.model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
+    print("log_pis_t={}".format(log_pis_t))
     log_pis_t = torch.unsqueeze(log_pis_t, -1)
 
     # Unlike original SAC, Alpha and Actor Loss are computed first.
@@ -135,7 +136,15 @@ def cql_loss(policy: Policy, model: ModelV2,
     else:
 
         def bc_log(model, obs, actions):
-            z = atanh(actions)
+
+            normed_actions = (actions - action_dist_t.low) / (action_dist_t.high - action_dist_t.low) * 2.0 - \
+                            1.0
+            # Stabilize input to atanh.
+            save_normed_actions = torch.clamp(normed_actions, -1.0 + SMALL_NUMBER,
+                                             1.0 - SMALL_NUMBER)
+            z = atanh(save_normed_actions)
+
+            #z = atanh(actions)
             logits = model.get_policy_output(obs)
             mean, log_std = torch.chunk(logits, 2, dim=-1)
             # Mean Clamping for Stability
@@ -160,9 +169,13 @@ def cql_loss(policy: Policy, model: ModelV2,
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(
-        model.get_policy_output(model_out_tp1), policy.model)
+    try:
+        action_dist_tp1 = action_dist_class(
+            model.get_policy_output(model_out_tp1), policy.model)
+    except Exception as e:
+        raise e
     policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
+    print("log_pis_tp1={}".format(log_pis_tp1))
 
     log_pis_tp1 = torch.unsqueeze(log_pis_tp1, -1)
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
