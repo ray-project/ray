@@ -2,7 +2,7 @@ Release Process
 ===============
 
 The following documents the Ray release process. Please use the
-`Release Checklist`_ to keep track of your progress, as it is meant
+`Release Checklist <RELEASE_CHECKLIST.md>`_ to keep track of your progress, as it is meant
 to be used alongside this process document. Also, please keep the
 team up-to-date on any major regressions or changes to the timeline
 via emails to the engineering@anyscale.com Google Group.
