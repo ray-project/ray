@@ -176,10 +176,11 @@ print("Done!!!")
     ray._private.client_mode_hook._explicitly_disable_client_mode()
 
 
-def test_temp(shutdown_only):
-    ray.init()
-
-    pass
+def test_runtime_context(shutdown_only):
+    ray.init(namespace="abc")
+    namespace = ray.get_runtime_context().namespace
+    assert namespace == "abc"
+    assert namespace == ray.get_runtime_context().get()["namespace"]
 
 
 if __name__ == "__main__":
