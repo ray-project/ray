@@ -400,9 +400,9 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(name, backend_config,
-                                           replica_config, python_methods,
-                                           version, prev_version, route_prefix))
+            self._controller.deploy.remote(
+                name, backend_config, replica_config, python_methods, version,
+                prev_version, route_prefix))
 
         if updating:
             msg = f"Updating deployment '{name}'"
