@@ -14,8 +14,8 @@ from ray.new_dashboard.modules.job.job_description import JobDescription
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-#from ray.core.generated import job_agent_pb2
-#from ray.core.generated import job_agent_pb2_grpc
+from ray.core.generated import job_agent_pb2
+from ray.core.generated import job_agent_pb2_grpc
 from ray.new_dashboard.datacenter import (
     DataSource,
     GlobalSignals,
@@ -54,9 +54,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         address = f"{ip}:{ports[1]}"
         options = (("grpc.enable_http_proxy", 0), )
         channel = aiogrpc.insecure_channel(address, options=options)
-        #stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
-        #request = job_agent_pb2.InitializeJobEnvRequest(
-        #    job_description=json.dumps(job_description_data))
+        stub = job_agent_pb2_grpc.JobAgentServiceStub(channel)
+        request = job_agent_pb2.InitializeJobEnvRequest(
+            job_description=json.dumps(job_description_data))
         # TODO(fyrestone): It's better not to wait the RPC InitializeJobEnv.
         reply = await stub.InitializeJobEnv(request)
         # TODO(fyrestone): We should reply a job id for the submitted job.

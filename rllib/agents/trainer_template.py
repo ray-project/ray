@@ -196,17 +196,15 @@ def build_trainer(
         @override(Trainer)
         def __getstate__(self):
             state = Trainer.__getstate__(self)
-            if hasattr(self, "train_exec_impl"):
-                state["train_exec_impl"] = (
-                    self.train_exec_impl.shared_metrics.get().save())
+            state["train_exec_impl"] = (
+                self.train_exec_impl.shared_metrics.get().save())
             return state
 
         @override(Trainer)
         def __setstate__(self, state):
             Trainer.__setstate__(self, state)
-            if hasattr(self, "train_exec_impl"):
-                self.train_exec_impl.shared_metrics.get().restore(
-                    state["train_exec_impl"])
+            self.train_exec_impl.shared_metrics.get().restore(
+                state["train_exec_impl"])
 
         @staticmethod
         @override(Trainer)
