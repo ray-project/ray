@@ -74,7 +74,7 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow==2.4.1
+tensorflow
 testfixtures
 werkzeug
 xlrd
