@@ -348,7 +348,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         sys.platform.startswith("win"), reason="Fails on Windows.")
     def testLegacyYaml(self):
         # Test correct default-merging behavior for legacy yamls.
-        providers = ["aws", "gcp", "azure"]
+        providers = ["aws", "azure"]
         for provider in providers:
             path = os.path.join(RAY_PATH, "autoscaler", provider,
                                 "example-full-legacy.yaml")
