@@ -57,20 +57,13 @@ template <typename ActorType>
 template <typename F>
 ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   RemoteFunctionHolder ptr{};
-  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-    auto function_name =
-        ray::internal::FunctionManager::Instance().GetFunctionName(actor_func);
-    if (function_name.empty()) {
-      throw RayException(
-          "Function not found. Please use RAY_REMOTE to register this function.");
-    }
-    ptr.function_name = std::move(function_name);
-    return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
+  auto function_name =
+      ray::internal::FunctionManager::Instance().GetFunctionName(actor_func);
+  if (function_name.empty()) {
+    throw RayException(
+        "Function not found. Please use RAY_REMOTE to register this function.");
   }
-
-  void *temp = &actor_func;
-  MemberFunctionPtrHolder holder = *(MemberFunctionPtrHolder *)(temp);
-  ptr.function_pointer = reinterpret_cast<uintptr_t>(holder.value[0]);
+  ptr.function_name = std::move(function_name);
   return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
 }
 

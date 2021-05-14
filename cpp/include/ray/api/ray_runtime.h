@@ -14,15 +14,8 @@
 namespace ray {
 namespace api {
 
-struct MemberFunctionPtrHolder {
-  uintptr_t value[2];
-};
-
 struct RemoteFunctionHolder {
-  /// The remote function pointer
-  uintptr_t function_pointer;
-  /// The executable function pointer
-  uintptr_t exec_function_pointer;
+  /// The remote function name.
   std::string function_name;
 };
 

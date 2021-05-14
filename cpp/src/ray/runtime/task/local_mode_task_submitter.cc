@@ -23,17 +23,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
-  if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr =
-        GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  }
-  auto func_offset =
-      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr);
-  auto exec_func_offset =
-      (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
-  auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset),
-      invocation.fptr.function_name);
+  auto functionDescriptor =
+      FunctionDescriptorBuilder::BuildCpp("SingleProcess", invocation.fptr.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;

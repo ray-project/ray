@@ -1,9 +1,10 @@
 
 #include "task_executor.h"
 
+#include <ray/api/exec_funcs.h>
+
 #include <memory>
 
-#include <ray/api/exec_funcs.h>
 #include "../../util/address_helper.h"
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
@@ -78,79 +79,41 @@ Status TaskExecutor::ExecuteTask(
             ray::FunctionDescriptorType::kCppFunctionDescriptor);
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
   std::string lib_name = typed_descriptor->LibName();
-  std::string func_offset = typed_descriptor->FunctionOffset();
-  std::string exec_func_offset = typed_descriptor->ExecFunctionOffset();
   std::string func_name = typed_descriptor->FunctionName();
-  uintptr_t base_addr = 0;
-  if (!func_offset.empty()) {
-    base_addr = FunctionHelper::GetInstance().GetBaseAddress(lib_name);
-  }
 
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
-    if (!func_name.empty()) {
-      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-      if (entry_func == nullptr) {
-        return ray::Status::NotFound(lib_name + " not found");
-      }
-
-      RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
-      auto result = entry_func(func_name, args_buffer, nullptr);
-      RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
-      data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    } else {
-      typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-          uintptr_t base_addr, size_t func_offset,
-          const std::vector<std::shared_ptr<RayObject>> &args_buffer);
-      ExecFunction exec_function =
-          (ExecFunction)(base_addr + std::stoul(exec_func_offset));
-      data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                              args_buffer);
+    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+    if (entry_func == nullptr) {
+      return ray::Status::NotFound(lib_name + " not found");
     }
 
+    RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
+    auto result = entry_func(func_name, args_buffer, nullptr);
+    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
     current_actor_ = data;
   } else if (task_type == TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
-    if (!func_name.empty()) {
-      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-      if (entry_func == nullptr) {
-        return ray::Status::NotFound(lib_name + " not found");
-      }
-
-      RAY_LOG(DEBUG) << "Get execute function ok";
-      auto result = entry_func(func_name, args_buffer, current_actor_.get());
-      RAY_LOG(DEBUG) << "Execute function ok";
-      data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    } else {
-      typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-          uintptr_t base_addr, size_t func_offset,
-          const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-          std::shared_ptr<msgpack::sbuffer> object);
-      ExecFunction exec_function =
-          (ExecFunction)(base_addr + std::stoul(exec_func_offset));
-      data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                              args_buffer, current_actor_);
+    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+    if (entry_func == nullptr) {
+      return ray::Status::NotFound(lib_name + " not found");
     }
+
+    RAY_LOG(DEBUG) << "Get execute function ok";
+    auto result = entry_func(func_name, args_buffer, current_actor_.get());
+    RAY_LOG(DEBUG) << "Execute function ok";
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
   } else {  // NORMAL_TASK
-    if (!func_name.empty()) {
-      auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-      if (entry_func == nullptr) {
-        return ray::Status::NotFound(lib_name + " not found");
-      }
-
-      RAY_LOG(DEBUG) << "Get execute function ok";
-      auto result = entry_func(func_name, args_buffer, nullptr);
-      RAY_LOG(DEBUG) << "Execute function ok";
-      data = std::make_shared<msgpack::sbuffer>(std::move(result));
-    } else {
-      typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-          uintptr_t base_addr, size_t func_offset,
-          const std::vector<std::shared_ptr<RayObject>> &args_buffer);
-      ExecFunction exec_function =
-          (ExecFunction)(base_addr + std::stoul(exec_func_offset));
-      data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                              args_buffer);
+    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+    if (entry_func == nullptr) {
+      return ray::Status::NotFound(lib_name + " not found");
     }
+
+    RAY_LOG(DEBUG) << "Get execute function ok";
+    auto result = entry_func(func_name, args_buffer, nullptr);
+    RAY_LOG(DEBUG) << "Execute function ok";
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
   }
 
   std::vector<size_t> data_sizes;
@@ -199,55 +162,23 @@ void TaskExecutor::Invoke(
   auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
   std::shared_ptr<msgpack::sbuffer> data;
-  if (ray::api::RayConfig::GetInstance()->use_ray_remote) {
-    if (actor) {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, actor.get());
-      data = std::make_shared<msgpack::sbuffer>(std::move(result));
-      runtime->Put(std::move(data), task_spec.ReturnId(0));
-    } else {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, nullptr);
-      data = std::make_shared<msgpack::sbuffer>(std::move(result));
-      if (task_spec.IsActorCreationTask()) {
-        std::unique_ptr<ActorContext> actorContext(new ActorContext());
-        actorContext->current_actor = data;
-        absl::MutexLock lock(&actor_contexts_mutex);
-        actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));
-      } else {
-        runtime->Put(std::move(data), task_spec.ReturnId(0));
-      }
-    }
-
-    return;
-  }
-
   if (actor) {
-    typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset,
-        std::vector<std::shared_ptr<RayObject>> & args_buffer,
-        std::shared_ptr<msgpack::sbuffer> object);
-    unsigned long offset = std::stoul(typed_descriptor->ExecFunctionOffset());
-    auto address = base_addr + offset;
-    ExecFunction exec_function = (ExecFunction)(address);
-    data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                            args_buffer, actor);
-  } else {
-    typedef std::shared_ptr<msgpack::sbuffer> (*ExecFunction)(
-        uintptr_t base_addr, size_t func_offset,
-        std::vector<std::shared_ptr<RayObject>> & args_buffer);
-    ExecFunction exec_function =
-        (ExecFunction)(base_addr + std::stoul(typed_descriptor->ExecFunctionOffset()));
-    data = (*exec_function)(base_addr, std::stoul(typed_descriptor->FunctionOffset()),
-                            args_buffer);
-  }
-  if (task_spec.IsActorCreationTask()) {
-    std::unique_ptr<ActorContext> actorContext(new ActorContext());
-    actorContext->current_actor = data;
-    absl::MutexLock lock(&actor_contexts_mutex);
-    actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));
-  } else {
+    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                 args_buffer, actor.get());
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
+  } else {
+    auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
+                                                 args_buffer, nullptr);
+    data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    if (task_spec.IsActorCreationTask()) {
+      std::unique_ptr<ActorContext> actorContext(new ActorContext());
+      actorContext->current_actor = data;
+      absl::MutexLock lock(&actor_contexts_mutex);
+      actor_contexts.emplace(task_spec.ActorCreationId(), std::move(actorContext));
+    } else {
+      runtime->Put(std::move(data), task_spec.ReturnId(0));
+    }
   }
 }
 

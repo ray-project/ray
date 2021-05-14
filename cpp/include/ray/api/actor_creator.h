@@ -7,16 +7,19 @@
 namespace ray {
 namespace api {
 
-template <typename ActorType>
+template <typename F>
+using GetActorType = absl::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
+
+template <typename F>
 class ActorCreator {
  public:
-  ActorCreator();
+  ActorCreator() {}
 
   ActorCreator(RayRuntime *runtime, RemoteFunctionHolder ptr)
       : runtime_(runtime), ptr_(ptr) {}
 
   template <typename... Args>
-  ActorHandle<ActorType> Remote(Args... args);
+  ActorHandle<GetActorType<F>> Remote(Args... args);
 
  private:
   RayRuntime *runtime_;
@@ -25,16 +28,13 @@ class ActorCreator {
 };
 
 // ---------- implementation ----------
-
-template <typename ActorType>
-ActorCreator<ActorType>::ActorCreator() {}
-
-template <typename ActorType>
+template <typename F>
 template <typename... Args>
-ActorHandle<ActorType> ActorCreator<ActorType>::Remote(Args... args) {
+ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args... args) {
+  StaticCheck<F, Args...>();
   Arguments::WrapArgs(&args_, args...);
   auto returned_actor_id = runtime_->CreateActor(ptr_, args_);
-  return ActorHandle<ActorType>(returned_actor_id);
+  return ActorHandle<GetActorType<F>>(returned_actor_id);
 }
 }  // namespace api
 }  // namespace ray
