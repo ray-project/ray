@@ -34,7 +34,7 @@ def test_client(address):
         assert builder.address == address.replace("ray://", "")
 
 
-def test_acutal_connect(ray_start_regular_shared):
+def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     client_info = ray.client("localhost:50055").connect()
 
