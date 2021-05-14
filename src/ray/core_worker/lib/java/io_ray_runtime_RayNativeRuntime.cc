@@ -162,29 +162,26 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
               [](JNIEnv *env, jobject java_native_ray_object) {
                 return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
               });
-          std::vector<size_t> data_sizes;
-          std::vector<std::shared_ptr<ray::Buffer>> metadatas;
-          std::vector<std::vector<ray::ObjectID>> contained_object_ids;
           for (size_t i = 0; i < return_objects.size(); i++) {
             auto &result_id = return_ids[i];
             size_t data_size =
                 return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
             auto &metadata = return_objects[i]->GetMetadata();
-            auto &container_object_id = return_objects[i]->GetNestedIds();
+            auto &contained_object_id = return_objects[i]->GetNestedIds();
             auto result = (*results)[i];
 
-            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-                return_id, data_size, metadata, contained_object_id, result));
+            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+                result_id, data_size, metadata, contained_object_id, &result));
 
             // A nullptr is returned if the object already exists.
             if (result != nullptr) {
               if (result->HasData()) {
                 memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
-                       data_sizes[i]);
+                       data_size);
               }
             }
 
-            SealReturnObject(result_id, result);
+            ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result);
           }
         }
 

@@ -162,11 +162,11 @@ Status TaskExecutor::ExecuteTask(
 
     if (result != nullptr) {
       if (result->HasData()) {
-        memcpy(result->GetData()->Data(), data->data(), data_sizes[0]);
+        memcpy(result->GetData()->Data(), data->data(), data_size);
       }
     }
 
-    SealReturnObject(result_id, result);
+    ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result);
   }
   return ray::Status::OK();
 }
