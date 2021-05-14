@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 @PublicAPI
 class MultiCallbacks(DefaultCallbacks):
     """
-    MultiCallback allows multiple callbacks to be registered at the same time in the config of the environment
+    MultiCallback allows multiple callbacks to be registered at the same
+    time in the config of the environment
 
     For example:
 
