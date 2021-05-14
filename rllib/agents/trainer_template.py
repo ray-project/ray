@@ -4,6 +4,7 @@ from typing import Callable, Iterable, List, Optional, Type
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.common import TIMESTEPS_TOTAL
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -119,6 +120,7 @@ def build_trainer(
 
         def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
+            self._prev_timesteps_total = 0
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
@@ -168,10 +170,20 @@ def build_trainer(
             # is already over.
             if (self.config["evaluation_interval"] and (self._iteration + 1) %
                     self.config["evaluation_interval"] == 0):
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                res.update(evaluation_metrics)
+                if not self._evaluation_reward_threshold_pass:
+                    episode_reward_mean = res["episode_reward_mean"]
+                    self._evaluation_reward_threshold_pass = (episode_reward_mean >=
+                                                              self.config["evaluation_reward_threshold"])
+                if self._evaluation_reward_threshold_pass:
+                    evaluation_metrics = self._evaluate()
+                    assert isinstance(evaluation_metrics, dict), \
+                        "_evaluate() needs to return a dict."
+                    res.update(evaluation_metrics)
+
+            timesteps_this_iter = res[TIMESTEPS_TOTAL] - self._prev_timesteps_total
+            self._prev_timesteps_total = res[TIMESTEPS_TOTAL]
+            res["timesteps_this_iter"] = timesteps_this_iter
+
             return res
 
         @override(Trainer)
@@ -216,4 +228,5 @@ def build_trainer(
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
+    trainer_cls.execution_plan = execution_plan
     return trainer_cls

@@ -197,7 +197,7 @@ def conda_envs():
         command_str = command_separator.join(commands)
         subprocess.run([command_str], shell=True)
 
-    tf_versions = ["2.2.0", "2.3.0"]
+    tf_versions = ["2.4.1"]
     ray.get([create_tf_env.remote(version) for version in tf_versions])
     ray.shutdown()
     yield
@@ -225,7 +225,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
     def get_tf_version():
         return tf.__version__
 
-    tf_versions = ["2.2.0", "2.3.0"]
+    tf_versions = ["2.4.1"]
     for tf_version in tf_versions:
         runtime_env = {"conda": f"tf-{tf_version}"}
         task = get_tf_version.options(runtime_env=runtime_env)
@@ -244,7 +244,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
         def get_tf_version(self):
             return tf.__version__
 
-    tf_versions = ["2.2.0", "2.3.0"]
+    tf_versions = ["2.4.1"]
     for tf_version in tf_versions:
         runtime_env = {"conda": f"tf-{tf_version}"}
         actor = TfVersionActor.options(runtime_env=runtime_env).remote()
@@ -271,7 +271,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
         def get_tf_version(self):
             return ray.get(wrapped_tf_version.remote())
 
-    tf_versions = ["2.2.0", "2.3.0"]
+    tf_versions = ["2.4.1"]
     for tf_version in tf_versions:
         runtime_env = {"conda": f"tf-{tf_version}"}
         task = wrapped_tf_version.options(runtime_env=runtime_env)
@@ -292,7 +292,7 @@ def test_job_config_conda_env(conda_envs):
     def get_conda_env():
         return tf.__version__
 
-    for tf_version in ["2.2.0", "2.3.0"]:
+    for tf_version in ["2.4.1"]:
         runtime_env = {"conda": f"tf-{tf_version}"}
         ray.init(job_config=JobConfig(runtime_env=runtime_env))
         assert ray.get(get_conda_env.remote()) == tf_version

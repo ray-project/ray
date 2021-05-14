@@ -36,12 +36,15 @@ def _summarize(obj):
         elif obj.dtype == np.object or obj.dtype.type is np.str_:
             return _StringValue("np.ndarray({}, dtype={}, head={})".format(
                 obj.shape, obj.dtype, _summarize(obj[0])))
-        else:
+        elif not issubclass(obj.dtype.type, np.flexible):
             return _StringValue(
                 "np.ndarray({}, dtype={}, min={}, max={}, mean={})".format(
                     obj.shape, obj.dtype, round(float(np.min(obj)), 3),
                     round(float(np.max(obj)), 3), round(
                         float(np.mean(obj)), 3)))
+        else:
+            return _StringValue("np.ndarray({}, dtype={}, head={})".format(
+                obj.shape, obj.dtype, obj))
     elif isinstance(obj, MultiAgentBatch):
         return {
             "type": "MultiAgentBatch",

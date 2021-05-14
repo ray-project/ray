@@ -71,7 +71,7 @@ def make_model_and_action_dist(policy, obs_space, action_space, config):
         action_space, config["model"], framework="torch")
     model_cls = DiscreteLinearModel
 
-    if hasattr(obs_space, "original_space"):
+    if hasattr(obs_space, "original_space") and obs_space.original_space is not None:
         original_space = obs_space.original_space
     else:
         original_space = obs_space

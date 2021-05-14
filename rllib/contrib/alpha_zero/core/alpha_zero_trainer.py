@@ -31,7 +31,7 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
     for on_episode_start.
     """
 
-    def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
+    def on_episode_start(self, worker, base_env, policies, episode, env_infos, **kwargs):
         # save env state when an episode starts
         env = base_env.get_unwrapped()[0]
         state = env.get_state()

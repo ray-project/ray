@@ -20,7 +20,7 @@ py_test(
 
 py_test(
     name = "test_torch",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],

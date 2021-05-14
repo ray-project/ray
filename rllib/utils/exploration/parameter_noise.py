@@ -1,6 +1,6 @@
 from gym.spaces import Box, Discrete
 import numpy as np
-from typing import Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -182,7 +182,8 @@ class ParameterNoise(Exploration):
                          *,
                          environment: BaseEnv = None,
                          episode: int = None,
-                         tf_sess: Optional["tf.Session"] = None):
+                         tf_sess: Optional["tf.Session"] = None,
+                         env_infos: Dict[str, Any] = {}):
         # We have to delay the noise-adding step by one forward call.
         # This is due to the fact that the optimizer does it's step right
         # after the episode was reset (and hence the noise was already added!).

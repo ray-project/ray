@@ -1,0 +1,34 @@
+# This template includes the steps of the lint job in travix.yml
+
+steps:
+- bash: |
+    echo Running LINT job of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # ADO is not setting the following properties properly:
+    #   * Build.SourceBranch
+    #   * System.PullRequest.TargetBranch
+    # we are running linting against HEAD
+    TRAVIS_PULL_REQUEST="false"
+
+    set +e
+
+    # Start Original lint job body
+
+    # Install part
+    . ./ci/travis/ci.sh init
+    . ./ci/travis/ci.sh lint
+    . ./ci/travis/ci.sh build
+
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    LINT: 1
+  displayName: 'Run original LINT job'
+  timeoutInMinutes: 120
+  continueOnError: 'true'

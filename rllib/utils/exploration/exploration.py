@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import List, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -111,7 +111,8 @@ class Exploration:
                          *,
                          environment: BaseEnv = None,
                          episode: int = None,
-                         tf_sess: Optional["tf.Session"] = None):
+                         tf_sess: Optional["tf.Session"] = None,
+                         env_infos: Dict[str, Any] = {}):
         """Handles necessary exploration logic at the beginning of an episode.
 
         Args:
@@ -119,6 +120,10 @@ class Exploration:
             environment (BaseEnv): The environment object we are acting in.
             episode (int): The number of the episode that is starting.
             tf_sess (Optional[tf.Session]): In case of tf, the session object.
+            env_infos (Dict): Dictionary with the info values comming from each
+                agent. These are the info values return by the poll method in
+                BaseEnv. They are being passed here by sampler in the _env_runner
+                method.
         """
         pass
 
@@ -209,3 +214,27 @@ class Exploration:
                 This may include tf.ops as values in graph mode.
         """
         return {}
+
+    @DeveloperAPI
+    def restore_info(self, info: dict):
+        """
+        Allows to restore the exploration state or at least the current point
+        of the schedule.
+
+        Args:
+            info (Dict): A dictionary with the same structure of the one return
+            by get_info.
+        """
+        pass
+
+    @DeveloperAPI
+    def deterministic_sample(self):
+        """
+        Get the deterministic "sampling" output for the exploration strategy.
+        This is usually the deterministic_sample of the action_dist
+        used.
+        This should be available in sub-classes when the get_exploration_action
+        method is called
+        """
+        # TODO: [Edi] not available in all sub-classes yet.
+        raise NotImplementedError

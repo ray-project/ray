@@ -1,0 +1,18 @@
+# This template includes the basic steps needed for
+# setting up java in different jobs. 
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(python.version)'
+  displayName: 'Use Python $(python.version)'
+- task: JavaToolInstaller@0
+  inputs:
+    versionSpec: '8'
+    jdkArchitectureOption: 'x64'
+    jdkSourceOption: AzureStorage
+    azureResourceManagerEndpoint: RayADOAgents2
+    azureStorageAccountName: adoraytests
+    azureContainerName: jdk
+    azureCommonVirtualFile: 'jdk-8u271-linux-x64.tar.gz'
+    jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk8'
+    cleanDestinationDirectory: false

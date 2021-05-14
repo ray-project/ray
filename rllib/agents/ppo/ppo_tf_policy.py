@@ -68,8 +68,13 @@ def ppo_surrogate_loss(
     prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
                                   model)
 
-    logp_ratio = tf.exp(
-        curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
+    policy.curr_dist_params = curr_action_dist.inputs
+    policy.prev_dist_params = prev_action_dist.inputs
+
+    policy.curr_actions_logp = curr_action_dist.logp(train_batch[SampleBatch.ACTIONS])
+
+    policy.logp_ratio = tf.exp(
+        policy.curr_actions_logp -
         train_batch[SampleBatch.ACTION_LOGP])
     action_kl = prev_action_dist.kl(curr_action_dist)
     mean_kl = reduce_mean_valid(action_kl)
@@ -77,12 +82,12 @@ def ppo_surrogate_loss(
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
 
-    surrogate_loss = tf.minimum(
-        train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+    policy.surrogate_loss = tf.minimum(
+        train_batch[Postprocessing.ADVANTAGES] * policy.logp_ratio,
         train_batch[Postprocessing.ADVANTAGES] * tf.clip_by_value(
-            logp_ratio, 1 - policy.config["clip_param"],
+            policy.logp_ratio, 1 - policy.config["clip_param"],
             1 + policy.config["clip_param"]))
-    mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+    mean_policy_loss = reduce_mean_valid(-policy.surrogate_loss)
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
@@ -97,12 +102,12 @@ def ppo_surrogate_loss(
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
         total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
+            -policy.surrogate_loss + policy.kl_coeff * action_kl +
             policy.config["vf_loss_coeff"] * vf_loss -
             policy.entropy_coeff * curr_entropy)
     else:
         mean_vf_loss = tf.constant(0.0)
-        total_loss = reduce_mean_valid(-surrogate_loss +
+        total_loss = reduce_mean_valid(-policy.surrogate_loss +
                                        policy.kl_coeff * action_kl -
                                        policy.entropy_coeff * curr_entropy)
 

@@ -87,7 +87,7 @@ class TestModelCatalog(unittest.TestCase):
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        for fw in framework_iterator(frameworks=("jax", "tf", "tf2", "torch")):
+        for fw in framework_iterator(frameworks=("tf", "tf2", "torch")):
             obs_space = Box(0, 1, shape=(3, ), dtype=np.float32)
             p1 = ModelCatalog.get_model_v2(
                 obs_space=obs_space,

@@ -178,7 +178,7 @@ class AutoscalingConfigTest(unittest.TestCase):
                     "Config did not pass multi node types auto fill test!")
 
     def testValidateNetworkConfig(self):
-        web_yaml = "https://raw.githubusercontent.com/ray-project/ray/" \
+        web_yaml = "https://raw.githubusercontent.com/BonsaiAI/ray/" \
             "master/python/ray/autoscaler/aws/example-full.yaml"
         response = urllib.request.urlopen(web_yaml, timeout=5)
         content = response.read()

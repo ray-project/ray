@@ -128,19 +128,23 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     # Q-values for the batched actions.
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
-    q_t = torch.squeeze(q_t, dim=-1)
     if twin_q:
         twin_q_t = model.get_twin_q_values(model_out_t,
                                            train_batch[SampleBatch.ACTIONS])
-        twin_q_t = torch.squeeze(twin_q_t, dim=-1)
 
     # Target q network evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+                                             policy_tp1)
     if twin_q:
         twin_q_tp1 = policy.target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
+
+    q_t = torch.squeeze(q_t, dim=-1)
+    if twin_q:
+        twin_q_t = torch.squeeze(twin_q_t, dim=-1)
+
     q_tp1 = torch.squeeze(input=q_tp1, dim=-1)
     q_tp1 = (1.0 - terminals.float()) * q_tp1
 
@@ -286,11 +290,11 @@ def cql_setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-CQLTorchPolicy = build_policy_class(
-    name="CQLTorchPolicy",
+CQLSACTorchPolicy = build_policy_class(
+    name="CQLSACTorchPolicy",
     framework="torch",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.agents.cql.cql.CQL_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.cql.cql.CQLSAC_DEFAULT_CONFIG,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,

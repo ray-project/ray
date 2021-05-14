@@ -69,6 +69,7 @@ class PettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
         self.env = env
         # agent idx list
+        self.env.reset()
         self.agents = self.env.possible_agents
 
         # Get dictionaries of obs_spaces and act_spaces

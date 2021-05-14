@@ -45,6 +45,7 @@ class StochasticSampling(Exploration):
         assert framework is not None
         super().__init__(
             action_space, model=model, framework=framework, **kwargs)
+        self._deterministic_sample = None
 
         # Create the Random exploration module (used for the first n
         # timesteps).
@@ -54,10 +55,14 @@ class StochasticSampling(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            np.array(0, np.int64),
+            np.array(0, np.int32),
             framework=self.framework,
             tf_name="timestep",
-            dtype=np.int64)
+            dtype=np.int32)
+
+    @override(Exploration)
+    def deterministic_sample(self):
+        return self._deterministic_sample
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -83,12 +88,12 @@ class StochasticSampling(Exploration):
                     explore=True)[0]),
             false_fn=lambda: action_dist.sample(),
         )
-        deterministic_actions = action_dist.deterministic_sample()
+        self._deterministic_sample = action_dist.deterministic_sample()
 
         action = tf.cond(
             tf.constant(explore) if isinstance(explore, bool) else explore,
             true_fn=lambda: stochastic_actions,
-            false_fn=lambda: deterministic_actions)
+            false_fn=lambda: self._deterministic_sample)
 
         def logp_false_fn():
             batch_size = tf.shape(tree.flatten(action)[0])[0]

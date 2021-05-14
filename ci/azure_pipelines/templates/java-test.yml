@@ -1,0 +1,28 @@
+# This template includes the steps of the java test job in travix.yml
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED
+
+    # script part
+    . ./ci/travis/ci.sh build
+    ./java/test.sh
+
+    # End Original script
+
+    exit 0
+  env:
+    JAVA_TESTS: 1
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+    RAY_INSTALL_JAVA: 1
+  displayName: 'Run original java job'
+  timeoutInMinutes: 120

@@ -91,6 +91,12 @@ COMMON_CONFIG: TrainerConfigDict = {
     #   beginning to end. Data collection will not stop unless the episode
     #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
+    # Allows to customize the metrics summarization
+    # The callable received the episodes, new_episodes and the result
+    # of the default summarize_episodes. Must return the new summary.
+    # The signatura of the callable is the following:
+    # Callable[[Sequence[Any], Sequence[Any], Dict[str, Any]], Dict[str, Any]]
+    "custom_summarize_episodes_callback": None,
 
     # === Settings for the Trainer process ===
     # Training batch size, if applicable. Should be >= rollout_fragment_length.
@@ -138,6 +144,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     "record_env": False,
     # Unsquash actions to the upper and lower bounds of env's action space
     "normalize_actions": False,
+    # If normalize_actions (above flag) is on, this flag allows you to
+    # control if the actions must be rescaled back to the env scale or not.
+    "disable_actions_rescaling": False,
     # Whether to clip rewards during Policy's postprocessing.
     # None (default): Clip for Atari only (r=sign(r)).
     # True: r=sign(r): Fixed rewards -1.0, 1.0, or 0.0.
@@ -205,6 +214,25 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
+    # Evaluate the policy after the `episode_reward_mean` is equal or greater than
+    # this number. The interaction between this config and `evaluation_interval`
+    # is as follow:
+    # - `evaluation_interval` == None with `evaluation_reward_threshold` == None:
+    #   evaluation is disable.
+    # - `evaluation_interval` == None with `evaluation_reward_threshold` != None:
+    #   evaluation is performed in every train step after the `episode_reward_mean`
+    #   is equal or greater than the number specified by `evaluation_reward_threshold`.
+    # - `evaluation_interval` != None with `evaluation_reward_threshold` == None:
+    #   evaluation is performed every `evaluation_interval` train steps.
+    # - `evaluation_interval` != None with `evaluation_reward_threshold` != None:
+    #   after the `episode_reward_mean` is equal or greater than the number specified
+    #   by `evaluation_reward_threshold`, the evaluation will be performed every
+    #   `evaluation_interval` train steps.
+    # Note that `episode_reward_mean` can decrease in cases where the agents gets
+    # into an unlearning condition. That's why this setting is used as switch,
+    # whenever the `episode_reward_mean` get to this threshold, the evaluation will
+    # be executed following the logic described before.
+    "evaluation_reward_threshold": None,
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
@@ -300,6 +328,15 @@ COMMON_CONFIG: TrainerConfigDict = {
     "extra_python_environs_for_driver": {},
     # The extra python environments need to set for worker processes.
     "extra_python_environs_for_worker": {},
+    # If set, this will fix the ratio of sampled to replayed timesteps.
+    # Otherwise, replay will proceed as fast as possible.
+    "training_intensity": None,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": None,
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 
     # === Resource Settings ===
     # Number of GPUs to allocate to the trainer process. Note that not all
@@ -492,6 +529,10 @@ class Trainer(Trainable):
         # in self.setup().
         config = config or {}
 
+        # The default value equal to True indicates that by default
+        # the evaluation schedule is controlled by `evaluation_interval`
+        self._evaluation_reward_threshold_pass = True
+
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
 
@@ -669,7 +710,7 @@ class Trainer(Trainable):
             logger.info("Tip: set framework=tfe or the --eager flag to enable "
                         "TensorFlow eager execution")
 
-        if self.config["normalize_actions"]:
+        if self.config["normalize_actions"] and not self.config["disable_actions_rescaling"]:
             inner = self.env_creator
 
             def normalize(env):
@@ -707,7 +748,17 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
 
             # Evaluation setup.
-            if self.config.get("evaluation_interval"):
+            if (self.config.get("evaluation_interval") or
+                self.config.get("evaluation_reward_threshold") is not None):
+                # If no evaluation interval is provided, we assumed that evaluations
+                # have to be performed every train step after the `episode_reward_mean`
+                # is equal or greater than the number specified by
+                # `evaluation_reward_threshold`.
+                if not self.config.get("evaluation_interval"):
+                    self.config["evaluation_interval"] = 1
+                self._evaluation_reward_threshold_pass = (self.config.
+                                                          get("evaluation_reward_threshold")
+                                                          is None)
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 # Assert that user has not unset "in_evaluation".

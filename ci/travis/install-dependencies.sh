@@ -50,9 +50,18 @@ install_base() {
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install_helper docker
-        if [ -n "${TRAVIS-}" ]; then
-          sudo usermod -a -G docker travis
+        if [ -x "$(command -v docker)" ]; then
+          echo 'Docker is already installed'
+          docker --version
+        else
+          pkg_install_helper docker
+          if [ -n "${SYSTEM_COLLECTIONID-}" ]; then
+            sudo usermod -a -G docker vsts
+          elif [ -n "${TRAVIS-}" ]; then
+            sudo usermod -a -G docker travis
+          elif [ -n "${SYSTEM_JOBID-}" ]; then
+            sudo usermod -a -G docker vsts
+          fi
         fi
       fi
       if [ -n "${PYTHON-}" ]; then
@@ -104,7 +113,8 @@ install_miniconda() {
         conda="${miniconda_dir}\Scripts\conda.exe"
         ;;
       *)
-        mkdir -p -- "${miniconda_dir}"
+        sudo mkdir -p -- "${miniconda_dir}"
+        sudo chmod 777 "${miniconda_dir}"
         # We're forced to pass -b for non-interactive mode.
         # Unfortunately it inhibits PATH modifications as a side effect.
         "${WORKSPACE_DIR}"/ci/suppress_output "${miniconda_target}" -f -b -p "${miniconda_dir}"
@@ -140,7 +150,13 @@ install_miniconda() {
     (
       set +x
       echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      if [ -n "${SYSTEM_COLLECTIONID-}" ] && [ -z "${OSTYPE##darwin*}" ]; then
+        mkdir -p /usr/local/miniconda/pkgs/cache
+        sudo chown -R 501:20 /usr/local/miniconda/
+      else
+        echo "No darwin: ${SYSTEM_COLLECTIONID} - ${OSTYPE}"
+      fi
+      conda install --show-channel-urls -v -y --force-reinstall python="${PYTHON}"
     )
   fi
 
@@ -244,8 +260,15 @@ install_node() {
     (
       set +x # suppress set -x since it'll get very noisy here
       . "${HOME}/.nvm/nvm.sh"
-      nvm install node
-      nvm use --silent node
+      if which node > /dev/null
+      then
+        echo "node is installed - node: $(node -v) - npm: $(npm -v), skipping..."
+      else
+        echo "node not installed, installing..."
+
+        nvm install node
+        nvm use --silent node
+      fi
       npm config set loglevel warn  # make NPM quieter
     )
   fi
@@ -257,6 +280,31 @@ install_toolchains() {
   fi
 }
 
+install_kubebuilder() {
+  echo "installing kubebuilder for testing purposes"
+  version=1.0.8 # latest stable version
+  arch=amd64
+  case "${OSTYPE}" in
+    darwin*)
+      # download the release
+      curl -L -O "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${version}/kubebuilder_${version}_darwin_${arch}.tar.gz"
+      # extract the archive
+      tar -zxvf kubebuilder_${version}_darwin_${arch}.tar.gz
+      mv kubebuilder_${version}_darwin_${arch} kubebuilder && sudo mv kubebuilder /usr/local/
+      ;;
+    linux*)
+        # download the release
+      curl -L -O "https://github.com/kubernetes-sigs/kubebuilder/releases/download/v${version}/kubebuilder_${version}_linux_${arch}.tar.gz"
+      # extract the archive
+      tar -zxvf kubebuilder_${version}_linux_${arch}.tar.gz
+      mv kubebuilder_${version}_linux_${arch} kubebuilder && sudo mv kubebuilder /usr/local/
+      ;;
+    *) false;;
+  esac
+  # update your PATH to include /usr/local/kubebuilder/bin
+  export PATH=$PATH:/usr/local/kubebuilder/bin
+}
+
 install_dependencies() {
 
   install_bazel
@@ -265,6 +313,7 @@ install_dependencies() {
   install_toolchains
   install_nvm
   install_upgrade_pip
+  install_kubebuilder # to enable testing with an in-memory k8s api-server
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
@@ -287,6 +336,8 @@ install_dependencies() {
       esac
     fi
 
+    pip install --upgrade pip
+    pip install --upgrade setuptools
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
     # after n seconds.
@@ -299,6 +350,7 @@ install_dependencies() {
     if [ "$status" != "0" ]; then
       echo "${status}" && return 1
     fi
+    python -m site
   fi
 
   if [ "${LINT-}" = 1 ]; then
@@ -339,6 +391,7 @@ install_dependencies() {
     if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
       case "${TORCH_VERSION-1.7}" in
         1.7) TORCHVISION_VERSION=0.8.1;;
+        1.6) TORCHVISION_VERSION=0.7.0;;
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
@@ -352,7 +405,8 @@ install_dependencies() {
   # This must be run last (i.e., torch cannot be re-installed after this)
   if [ "${INSTALL_HOROVOD-}" = 1 ]; then
     # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
+    # TODO(Edi):  HOROVOD_WITHOUT_MPI=1 was removed because MPI is not working in ADO
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then

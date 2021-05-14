@@ -64,7 +64,7 @@ def compute_advantages(rollout: SampleBatch,
              np.array([last_r])])
         discounted_returns = discount_cumsum(rewards_plus_v,
                                              gamma)[:-1].astype(np.float32)
-
+        use_critic = False
         if use_critic:
             rollout[Postprocessing.
                     ADVANTAGES] = discounted_returns - rollout[SampleBatch.

@@ -4,6 +4,7 @@ import argparse
 
 from ray.rllib import train
 from ray.rllib import rollout
+from ray.rllib import dataset
 
 EXAMPLE_USAGE = """
 Example usage for training:
@@ -11,6 +12,9 @@ Example usage for training:
 
 Example usage for rollout:
     rllib rollout /trial_dir/checkpoint_000001/checkpoint-1 --run DQN
+
+Example usage for dataset:
+    rllib dataset 250 -f tuned_examples/moab-ppo.yaml --steps 1000000
 """
 
 
@@ -28,11 +32,15 @@ def cli():
         lambda **kwargs: subcommand_group.add_parser("train", **kwargs))
     rollout_parser = rollout.create_parser(
         lambda **kwargs: subcommand_group.add_parser("rollout", **kwargs))
+    dataset_parser = dataset.create_parser(
+        lambda **kwargs: subcommand_group.add_parser("dataset", **kwargs))
     options = parser.parse_args()
 
     if options.command == "train":
         train.run(options, train_parser)
     elif options.command == "rollout":
         rollout.run(options, rollout_parser)
+    elif options.command == "dataset":
+        dataset.run(options, dataset_parser)
     else:
         parser.print_help()

@@ -1,6 +1,6 @@
 halfcheetah_cql:
     env: HalfCheetah-v2
-    run: CQL
+    run: CQL_SAC
     config:
         # SAC Configs
         input: d4rl.halfcheetah-random-v1
@@ -41,4 +41,4 @@ halfcheetah_cql:
         lagrangian: False
         evaluation_config:
             input: sampler
-
+        evaluation_num_episodes: 10

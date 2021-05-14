@@ -42,7 +42,8 @@ class DistributionalQTFModel(TFModelV2):
             #  generic option, then error if we use ParameterNoise as
             #  Exploration type and do not have any LayerNorm layers in
             #  the net.
-            add_layer_norm: bool = False):
+            add_layer_norm: bool = False,
+            **kwargs):
         """Initialize variables of this model.
 
         Extra model kwargs:
@@ -67,7 +68,7 @@ class DistributionalQTFModel(TFModelV2):
         should be defined in subclasses of DistributionalQModel.
         """
         super(DistributionalQTFModel, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+            obs_space, action_space, num_outputs, model_config, name, **kwargs)
 
         # setup the Q head output (i.e., model for get_q_values)
         self.model_out = tf.keras.layers.Input(

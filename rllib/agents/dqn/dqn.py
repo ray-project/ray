@@ -10,7 +10,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 """  # noqa: E501
 
 import logging
-from typing import List, Optional, Type
+from typing import List, Optional, Type, TypeVar
 
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -24,6 +24,8 @@ from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
     TrainTFMultiGPU
+from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
+from ray.rllib.offline.input_reader import InMemoryInputReader
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -127,6 +129,9 @@ DEFAULT_CONFIG = with_common_config({
     # if async_updates is set, then each worker returns gradients for a
     # batch of this size.
     "train_batch_size": 32,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
 
     # === Parallelism ===
     # Number of workers for collecting samples with. This only makes sense
@@ -137,6 +142,17 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
+    # Which mode to use in the Concurrently operator used at the end
+    # of the execution plan. This allows you to control how we pull
+    # data from the rollout task and the replay-learning task, concurrently.
+    # For more details check the operator in concurrency_ops.py module.
+    "rollout_learn_concurrency_mode": "round_robin",
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -211,13 +227,29 @@ def execution_plan(workers: WorkerSet,
         replay_zero_init_states=config.get("zero_init_states", True),
         **prio_args)
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    input_reader = workers.local_worker().input_reader
+    is_offline_training = isinstance(input_reader, InMemoryInputReader)
+    if is_offline_training:
+        # if we have an InMemoryInputReader, then we are in Offline Training
+        # which means that we don't need the sampling pipeline setup
+        for batch in input_reader.get_all():
+            local_replay_buffer.add_batch(batch)
+    else:
+        parallel_rollouts_mode = config.get("parallel_rollouts_mode", "bulk_sync")
+        num_async = config.get("parallel_rollouts_num_async")
+        # This could be set to None explicitly
+        if not num_async:
+            num_async = 1
+        rollouts = ParallelRollouts(workers, mode=parallel_rollouts_mode, num_async=num_async)
 
-    # We execute the following steps concurrently:
-    # (1) Generate rollouts and store them in our local replay buffer. Calling
-    # next() on store_op drives this.
-    store_op = rollouts.for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+        # We execute the following steps concurrently:
+        # (1) Generate rollouts and store them in our local replay buffer. Calling
+        # next() on store_op drives this.
+        store_op = rollouts.for_each(
+            StoreToReplayBuffer(local_buffer=local_replay_buffer))
+        if config.get("execution_plan_custom_store_ops"):
+            custom_store_ops = config["execution_plan_custom_store_ops"]
+            store_op = store_op.for_each(custom_store_ops(workers, config))
 
     def update_prio(item):
         samples, info_dict = item
@@ -238,7 +270,21 @@ def execution_plan(workers: WorkerSet,
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
-    post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+    replay_op = Replay(local_buffer=local_replay_buffer)
+
+    if is_offline_training:
+        def report_timesteps(batch):
+            metrics = _get_shared_metrics()
+            metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+            return batch
+
+        replay_op = replay_op.for_each(report_timesteps)
+
+    if config.get("before_learn_on_batch"):
+        before_learn_on_batch = config["before_learn_on_batch"]
+        before_learn_on_batch = before_learn_on_batch(workers, config)
+    else:
+        before_learn_on_batch = lambda b: b
 
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
@@ -252,22 +298,36 @@ def execution_plan(workers: WorkerSet,
             _fake_gpus=config["_fake_gpus"],
             framework=config.get("framework"))
 
-    replay_op = Replay(local_buffer=local_replay_buffer) \
-        .for_each(lambda x: post_fn(x, workers, config)) \
+    replay_op = replay_op.for_each(before_learn_on_batch) \
         .for_each(train_step_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
 
-    # Alternate deterministically between (1) and (2). Only return the output
-    # of (2) since training metrics are not available until (2) runs.
-    train_op = Concurrently(
-        [store_op, replay_op],
-        mode="round_robin",
-        output_indexes=[1],
-        round_robin_weights=calculate_rr_weights(config))
+    if is_offline_training:
+        # If we are in offline training, then we just need to iterate over
+        # the pipeline over the replay iterator
+        return StandardMetricsReporting(replay_op, workers, config)
+    else:
+        # Alternate deterministically between (1) and (2). Only return the output
+        # of (2) since training metrics are not available until (2) runs.
+        rollout_learn_concurrency_mode = config.get("rollout_learn_concurrency_mode",
+                                                    "round_robin")
+        if rollout_learn_concurrency_mode == "round_robin":
+            train_op = Concurrently(
+                [store_op, replay_op],
+                mode=rollout_learn_concurrency_mode,
+                output_indexes=[1],
+                round_robin_weights=calculate_rr_weights(config),
+                strict=True)
+        else:
+            train_op = Concurrently(
+                [store_op, replay_op],
+                mode=rollout_learn_concurrency_mode,
+                output_indexes=[1],
+                strict=True)
 
-    return StandardMetricsReporting(train_op, workers, config)
+        return StandardMetricsReporting(train_op, workers, config)
 
 
 def calculate_rr_weights(config: TrainerConfigDict) -> List[float]:

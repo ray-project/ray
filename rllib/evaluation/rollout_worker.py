@@ -1,4 +1,6 @@
 import random
+from typing import Iterator
+
 import numpy as np
 import gym
 import logging
@@ -26,7 +28,7 @@ from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
     OffPolicyEstimate
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
-from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
@@ -327,11 +329,7 @@ class RolloutWorker(ParallelIteratorWorker):
             for key, value in extra_python_environs.items():
                 os.environ[key] = str(value)
 
-        def gen_rollouts():
-            while True:
-                yield self.sample()
-
-        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
+        ParallelIteratorWorker.__init__(self, self.gen_rollouts, False)
 
         policy_config: TrainerConfigDict = policy_config or {}
         if (tf1 and policy_config.get("framework") in ["tf2", "tfe"]
@@ -680,6 +678,28 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.async_env, self.env, self.policy_map))
 
     @DeveloperAPI
+    def gen_rollouts(self):
+        """Simple generator of rollouts.
+        This generator is used by the ParallelRollout operators to produce
+        samples using the Ray ParallelIterator API.
+
+        Child classes could override this method if a custom generator function
+        is required.
+        """
+
+        class _GenRollouts(Iterator[SampleBatch]):
+            def __init__(self, parent_worker: RolloutWorker):
+                self.parent_worker = parent_worker
+
+            def __iter__(self) -> Iterator[SampleBatch]:
+                return self
+
+            def __next__(self) -> SampleBatch:
+                return self.parent_worker.sample()
+
+        return _GenRollouts(self)
+
+    @DeveloperAPI
     def sample(self) -> SampleBatchType:
         """Returns a batch of experience sampled from this worker.
 
@@ -714,6 +734,11 @@ class RolloutWorker(ParallelIteratorWorker):
             max_batches = self.num_envs
         else:
             max_batches = float("inf")
+
+        if log_once("batch_mode"):
+            logger.info(f"Sampling with batch_mode={self.batch_mode} - "
+                        f"max_batches={max_batches} - "
+                        f"rollout_fragment_length{self.rollout_fragment_length}")
 
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):

@@ -1,6 +1,7 @@
 from gym.spaces import Space
 from typing import Optional
 
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.schedules import ConstantSchedule
 
@@ -15,6 +16,8 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
 
     def __init__(self, action_space: Space, *, framework: str,
                  num_workers: Optional[int], worker_index: Optional[int],
+                 alpha: float = 7,
+                 eps: float = 0.4,
                  **kwargs):
         """Create a PerWorkerEpsilonGreedy exploration class.
 
@@ -24,28 +27,54 @@ class PerWorkerEpsilonGreedy(EpsilonGreedy):
             worker_index (Optional[int]): The index of the Worker using this
                 Exploration.
             framework (Optional[str]): One of None, "tf", "torch".
+            alpha (int): multiplicative factor of the exponent used
+            to compute the epsilon. The smaller the amount of rollout-workers,
+            the smaller the exponent should be. This helps to avoid too low
+            exploration rates. The default value here is took from
+            page 6 of https://arxiv.org/pdf/1803.00933.pdf
+            eps (float): base value use to compute the epsilon to be used
+            by a worker. The default value here is took from
+            page 6 of https://arxiv.org/pdf/1803.00933.pdf
         """
-        epsilon_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
         assert worker_index <= num_workers, (worker_index, num_workers)
-        if num_workers > 0:
-            if worker_index > 0:
-                # From page 5 of https://arxiv.org/pdf/1803.00933.pdf
-                alpha, eps, i = 7, 0.4, worker_index - 1
-                num_workers_minus_1 = float(num_workers - 1) \
-                    if num_workers > 1 else 1.0
-                epsilon_schedule = ConstantSchedule(
-                    eps**(1 + (i / num_workers_minus_1) * alpha),
-                    framework=framework)
-            # Local worker should have zero exploration so that eval
-            # rollouts run properly.
-            else:
-                epsilon_schedule = ConstantSchedule(0.0, framework=framework)
+        self.num_workers = num_workers
+        self.worker_index = worker_index
+        self.alpha = alpha
+        self.eps = eps
 
         super().__init__(
             action_space,
-            epsilon_schedule=epsilon_schedule,
             framework=framework,
             num_workers=num_workers,
             worker_index=worker_index,
             **kwargs)
+
+    @override(EpsilonGreedy)
+    def reset_schedule(self,
+                       initial_epsilon=None,
+                       final_epsilon=None,
+                       epsilon_timesteps=None,
+                       epsilon_schedule=None
+                       ):
+        epsilon_schedule = None
+        if self.num_workers > 0:
+            if self.worker_index > 0:
+                # The values used here, by default (see constructor defaults),
+                # are the same epsilon and alpha of the e-greedy policy use in
+                # page 6 of https://arxiv.org/pdf/1803.00933.pdf
+                i = self.worker_index - 1
+                num_workers_minus_1 = float(self.num_workers - 1) \
+                    if self.num_workers > 1 else 1.0
+                epsilon_schedule = ConstantSchedule(
+                    self.eps**(1 + (i / num_workers_minus_1) * self.alpha),
+                    framework=self.framework)
+            # Local worker should have zero exploration so that eval
+            # rollouts run properly.
+            else:
+                epsilon_schedule = ConstantSchedule(0.0, framework=self.framework)
+
+        super().reset_schedule(initial_epsilon=initial_epsilon,
+                       final_epsilon=final_epsilon,
+                       epsilon_timesteps=epsilon_timesteps,
+                       epsilon_schedule=epsilon_schedule)

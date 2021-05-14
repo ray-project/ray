@@ -152,7 +152,7 @@ class TestCuriosity(unittest.TestCase):
         config["num_workers"] = 0
         config["lr"] = 0.001
 
-        num_iterations = 10
+        num_iterations = 30
         for fw in framework_iterator(config):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {

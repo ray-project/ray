@@ -39,7 +39,7 @@ class TestTimeSteps(unittest.TestCase):
 
             # Artificially set ts to 100Bio, then keep computing actions and
             # train.
-            crazy_timesteps = int(1e11)
+            crazy_timesteps = int(1e9)
             policy.global_timestep = crazy_timesteps
             # Run for 10 more ts.
             for i in range(1, 11):

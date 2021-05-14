@@ -460,7 +460,35 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
+    def unpack_obs_item(batch_dims, offset, preproc_space, sub_space):
+        obs_slice = None
+        if tensorlib == tf and tf1.VERSION.startswith("1") or tensorlib.__name__ == "tensorflow.compat.v1":
+            # The following expression works also in TF
+            # obs_slice = obs[..., offset:offset + preproc_space.size]
+            # but it does not work for TF Lite 1.X because
+            # elipsis are not supported there.
+            # Here we are doing the equivalent to the elipsis.
+            slice_start = [0] * (obs.shape.rank - 1)
+            slice_start += [offset]
+            slice_end = [0] * (obs.shape.rank - 1)
+            slice_end += [offset + preproc_space.size]
+            slice_stride = [1] * obs.shape.rank
+            begin_end_mask = ((2 ** obs.shape.rank) - 1) & (~(1 << (obs.shape.rank - 1)))
+            obs_slice = tf.strided_slice(obs, slice_start, slice_end, slice_stride,
+                                         begin_end_mask, begin_end_mask, 0, 0, 0)
+        else:
+            obs_slice = obs[..., offset:offset + preproc_space.size]
+
+        item_shape = list(preproc_space.shape)
+        if not item_shape:
+            item_shape = [1]
+        unpacked_obs = _unpack_obs(
+            tensorlib.reshape(obs_slice, batch_dims + item_shape),
+            sub_space,
+            tensorlib=tensorlib)
+        return unpacked_obs
+
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated, gym.spaces.Box)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -473,7 +501,8 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 isinstance(obs, (list, tuple))) or \
                 (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
             return obs
-        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        elif not isinstance(space, gym.spaces.Box) \
+            and (len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]):
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape))
@@ -490,27 +519,24 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 (len(prep.preprocessors) == len(space.spaces))
             u = []
             for p, v in zip(prep.preprocessors, space.spaces):
-                obs_slice = obs[..., offset:offset + p.size]
+                unpacked_obs_item = unpack_obs_item(batch_dims, offset, p, v)
                 offset += p.size
-                u.append(
-                    _unpack_obs(
-                        tensorlib.reshape(obs_slice,
-                                          batch_dims + list(p.shape)),
-                        v,
-                        tensorlib=tensorlib))
+                u.append(unpacked_obs_item)
         elif isinstance(space, gym.spaces.Dict):
             assert len(prep.preprocessors) == len(space.spaces), \
                 (len(prep.preprocessors) == len(space.spaces))
             u = OrderedDict()
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
-                obs_slice = obs[..., offset:offset + p.size]
+                unpacked_obs_item = unpack_obs_item(batch_dims, offset, p, v)
                 offset += p.size
-                u[k] = _unpack_obs(
-                    tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
-                    v,
-                    tensorlib=tensorlib)
-        # Repeated space.
-        else:
+                u[k] = unpacked_obs_item
+        elif isinstance(space, gym.spaces.Box):
+            sp_shape = list(space.shape)
+            if not sp_shape:
+                sp_shape = [1]
+            batch_dims = batch_dims[:len(batch_dims) - (len(sp_shape)-1)]
+            u = tensorlib.reshape(obs, batch_dims + sp_shape)
+        elif isinstance(space, Repeated):
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.

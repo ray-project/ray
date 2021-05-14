@@ -1,17 +1,20 @@
-tensorflow-probability
-gast
+tensorflow==2.4.1
+tensorflow_probability==0.12.2
+
+gast==0.3.3
 # Version requirement to match Tune
-torch>=1.6.0
+torch==1.8.1
 # Version requirement to match Tune
-torchvision>=0.6.0
+torchvision==0.9.1
 # For auto-generating a rendering Window.
 pyglet
-smart_open
-
+smart_open==5.0.0
+gym==0.18.0
+msal==1.11.0
 # For testing in MuJoCo-like envs (in PyBullet).
 pybullet
 # For tests on PettingZoo's multi-agent envs.
-pettingzoo>=1.4.0
+pettingzoo==1.8.1
 # For tests on RecSim and Kaggle envs.
 recsim
 kaggle_environments
@@ -22,6 +25,8 @@ higher
 # Unity3D testing
 mlagents
 mlagents_envs
+cryptography==3.4.7
+
 
 # Ray Serve example
 starlette

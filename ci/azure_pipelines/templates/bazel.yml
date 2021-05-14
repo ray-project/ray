@@ -1,0 +1,28 @@
+# This template includes the steps of the general install phase
+# that is specified in the .travis.yml of the upstream repo.
+# This is the default install phase that is reused by some of the
+# parallel jobs in the build matrix of the .travis.yml file.
+
+steps:
+- bash: |
+    set -xe
+
+    if [ -x "$(command -v bazel)" -a -x "$(command -v bazelisk)" ]; then
+      echo 'Bazel is already installed'
+      bazel info
+      bazel --version
+      exit 0
+    fi
+
+    if [[ $AGENT_OS == "Darwin" ]]; then 
+      source "$BUILD_SOURCESDIRECTORY/ci/azure_pipelines/image/bazel-osx.sh"
+    else
+      source "$BUILD_SOURCESDIRECTORY/ci/azure_pipelines/image/bazel.sh"
+    fi
+
+    exit 0
+  env:
+    HELPER_SCRIPTS: $(Build.SourcesDirectory)/ci/azure_pipelines/image
+    METADATA_FILE: $(Build.SourcesDirectory)/ci/azure_pipelines/image/metadata.txt
+  displayName: 'Check Bazel'
+  timeoutInMinutes: 60

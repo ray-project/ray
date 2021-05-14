@@ -45,36 +45,36 @@ Example usage w/o checkpoint (for testing purposes):
 # register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
 
 
-def create_parser(parser_creator=None):
+def create_parser(parser_creator=None, pre_created_parser=None):
     parser_creator = parser_creator or argparse.ArgumentParser
-    parser = parser_creator(
+    parser = pre_created_parser or parser_creator(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Roll out a reinforcement learning agent "
         "given a checkpoint.",
         epilog=EXAMPLE_USAGE)
 
-    parser.add_argument(
-        "checkpoint",
-        type=str,
-        nargs="?",
-        help="(Optional) checkpoint from which to roll out. "
-        "If none given, will use an initial (untrained) Trainer.")
-
-    required_named = parser.add_argument_group("required named arguments")
-    required_named.add_argument(
-        "--run",
-        type=str,
-        required=True,
-        help="The algorithm or model to train. This may refer to the name "
-        "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
-        "user-defined trainable function or class registered in the "
-        "tune registry.")
-    required_named.add_argument(
-        "--env",
-        type=str,
-        help="The environment specifier to use. This could be an openAI gym "
-        "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
-        "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
+    if not pre_created_parser:
+        parser.add_argument(
+            "checkpoint",
+            type=str,
+            nargs="?",
+            help="(Optional) checkpoint from which to roll out. "
+                 "If none given, will use an initial (untrained) Trainer.")
+        required_named = parser.add_argument_group("required named arguments")
+        required_named.add_argument(
+            "--run",
+            type=str,
+            required=True,
+            help="The algorithm or model to train. This may refer to the name "
+            "of a built-on algorithm (e.g. RLLib's `DQN` or `PPO`), or a "
+            "user-defined trainable function or class registered in the "
+            "tune registry.")
+        required_named.add_argument(
+            "--env",
+            type=str,
+            help="The environment specifier to use. This could be an openAI gym "
+            "specifier (e.g. `CartPole-v0`) or a full class-path (e.g. "
+            "`ray.rllib.examples.env.simple_corridor.SimpleCorridor`).")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -86,6 +86,12 @@ def create_parser(parser_creator=None):
         const=True,
         help="Suppress rendering of the environment.")
     parser.add_argument(
+        "--monitor",
+        default=False,
+        action="store_true",
+        help="Wrap environment in gym Monitor to record video. NOTE: This "
+        "option is deprecated: Use `--video-dir [some dir]` instead.")
+    parser.add_argument(
         "--video-dir",
         type=str,
         default=None,
@@ -95,8 +101,8 @@ def create_parser(parser_creator=None):
         "--steps",
         default=10000,
         help="Number of timesteps to roll out. Rollout will also stop if "
-        "`--episodes` limit is reached first. A value of 0 means no "
-        "limitation on the number of timesteps run.")
+             "`--episodes` limit is reached first. A value of 0 means no "
+             "limitation on the number of timesteps run.")
     parser.add_argument(
         "--episodes",
         default=0,
@@ -104,13 +110,14 @@ def create_parser(parser_creator=None):
         "if `--steps` (timesteps) limit is reached first. A value of 0 means "
         "no limitation on the number of episodes run.")
     parser.add_argument("--out", default=None, help="Output filename.")
-    parser.add_argument(
-        "--config",
-        default="{}",
-        type=json.loads,
-        help="Algorithm-specific configuration (e.g. env, hyperparams). "
-        "Gets merged with loaded configuration from checkpoint file and "
-        "`evaluation_config` settings therein.")
+    if not pre_created_parser:
+        parser.add_argument(
+            "--config",
+            default="{}",
+            type=json.loads,
+            help="Algorithm-specific configuration (e.g. env, hyperparams). "
+            "Gets merged with loaded configuration from checkpoint file and "
+            "`evaluation_config` settings therein.")
     parser.add_argument(
         "--save-info",
         default=False,
@@ -256,11 +263,24 @@ class RolloutSaver:
         self._total_steps += 1
 
 
-def run(args, parser):
+def run(args, parser, checkpoint = None):
+    # --use_shelve w/o --out option.
+    if args.use_shelve and not args.out:
+        raise ValueError(
+            "If you set --use-shelve, you must provide an output file via "
+            "--out as well!")
+    # --track-progress w/o --out option.
+    if args.track_progress and not args.out:
+        raise ValueError(
+            "If you set --track-progress, you must provide an output file via "
+            "--out as well!")
+
     # Load configuration from checkpoint file.
+    if not checkpoint:
+        checkpoint = args.checkpoint
     config_path = ""
-    if args.checkpoint:
-        config_dir = os.path.dirname(args.checkpoint)
+    if checkpoint:
+        config_dir = os.path.dirname(checkpoint)
         config_path = os.path.join(config_dir, "params.pkl")
         # Try parent directory.
         if not os.path.exists(config_path):
@@ -307,16 +327,16 @@ def run(args, parser):
     config["render_env"] = not args.no_render
     config["record_env"] = args.video_dir
 
-    ray.init(local_mode=args.local_mode)
+    if not ray.is_initialized():
+        ray.init(local_mode=args.local_mode)
 
     # Create the Trainer from config.
     cls = get_trainable_cls(args.run)
     agent = cls(env=args.env, config=config)
 
     # Load state from checkpoint, if provided.
-    if args.checkpoint:
-        agent.restore(args.checkpoint)
-
+    if checkpoint:
+        agent.restore(checkpoint)
     num_steps = int(args.steps)
     num_episodes = int(args.episodes)
 
@@ -509,16 +529,5 @@ def rollout(agent,
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
-
-    # --use_shelve w/o --out option.
-    if args.use_shelve and not args.out:
-        raise ValueError(
-            "If you set --use-shelve, you must provide an output file via "
-            "--out as well!")
-    # --track-progress w/o --out option.
-    if args.track_progress and not args.out:
-        raise ValueError(
-            "If you set --track-progress, you must provide an output file via "
-            "--out as well!")
 
     run(args, parser)

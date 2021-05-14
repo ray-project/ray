@@ -68,6 +68,7 @@ def huber_loss(x, delta=1.0):
 
 
 def one_hot(x, space):
+    x = tf.cast(x, tf.int32)
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n)
     elif isinstance(space, MultiDiscrete):

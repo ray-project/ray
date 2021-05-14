@@ -33,8 +33,7 @@ public class KeyDataStream<K, T> extends DataStream<T> {
   /**
    * Apply a reduce function to this stream.
    *
-   * @param reduceFunction The reduce function.
-   * @return A new DataStream.
+   * @param reduceFunction The reduce function. Returns A new DataStream.
    */
   public DataStream<T> reduce(ReduceFunction reduceFunction) {
     return new DataStream<>(this, new ReduceOperator(reduceFunction));
@@ -45,8 +44,7 @@ public class KeyDataStream<K, T> extends DataStream<T> {
    *
    * @param aggregateFunction The aggregate function
    * @param <A> The type of aggregated intermediate data.
-   * @param <O> The type of result data.
-   * @return A new DataStream.
+   * @param <O> The type of result data. Returns A new DataStream.
    */
   public <A, O> DataStream<O> aggregate(AggregateFunction<T, A, O> aggregateFunction) {
     return new DataStream<>(this, null);

@@ -32,11 +32,12 @@ def test_union_stream():
             with open(sink_file, "r") as f:
                 result = f.read()
                 print("sink result", result)
-                assert set(result) == {"1", "2", "3", "4", "5", "6"}
-            print("Execution succeed")
-            break
-        if slept_time >= 60:
-            raise Exception("Execution not finished")
+                if set(result) == {"1", "2", "3", "4", "5", "6"}:
+                    print("Execution succeed")
+                    break
+                elif slept_time >= 60:
+                    ray.shutdown()
+                    assert set(result) == {"1", "2", "3", "4", "5", "6"}
         slept_time = slept_time + 1
         print("Wait finish...")
         time.sleep(1)

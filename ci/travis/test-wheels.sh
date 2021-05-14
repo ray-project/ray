@@ -45,7 +45,7 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("cp36" "cp37" "cp38")
   PY_MMS=("3.6.9"
           "3.7.6"
           "3.8.2")
@@ -66,7 +66,7 @@ if [[ "$platform" == "linux" ]]; then
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
-    "$PIP_CMD" install -q "$PYTHON_WHEEL"
+    "$PIP_CMD" install --force-reinstall "$PYTHON_WHEEL"
 
     # Check that ray.__commit__ was set properly.
     "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
@@ -91,7 +91,7 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38")
+  PY_WHEEL_VERSIONS=("cp36m-macosx" "cp37m-macosx" "cp38-macosx")
   PY_MMS=("3.6"
           "3.7"
           "3.8")
@@ -114,9 +114,11 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
-    for SCRIPT in "${TEST_SCRIPTS[@]}"; do
-      retry "$PYTHON_EXE" "$SCRIPT"
-    done
+    if [[ "$PY_MM" != "3.6" ]]; then
+      for SCRIPT in "${TEST_SCRIPTS[@]}"; do
+        retry "$PYTHON_EXE" "$SCRIPT"
+      done
+    fi
   done
 elif [ "${platform}" = windows ]; then
   echo "WARNING: Wheel testing not yet implemented for Windows."

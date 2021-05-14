@@ -57,8 +57,7 @@ public class ObjectSerializer {
    * Deserialize an object from an {@link NativeRayObject} instance.
    *
    * @param nativeRayObject The object to deserialize.
-   * @param objectId The associated object ID of the object.
-   * @return The deserialized object.
+   * @param objectId The associated object ID of the object. Returns The deserialized object.
    */
   public static Object deserialize(
       NativeRayObject nativeRayObject, ObjectId objectId, Class<?> objectType) {
@@ -107,8 +106,7 @@ public class ObjectSerializer {
   /**
    * Serialize an Java object to an {@link NativeRayObject} instance.
    *
-   * @param object The object to serialize.
-   * @return The serialized object.
+   * @param object The object to serialize. Returns The serialized object.
    */
   public static NativeRayObject serialize(Object object) {
     if (object instanceof NativeRayObject) {

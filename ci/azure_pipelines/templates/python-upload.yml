@@ -1,0 +1,30 @@
+# This template includes the basic steps needed for
+# publishing python packages in different jobs. 
+steps:
+# Authenticate twine
+- task: TwineAuthenticate@1
+  displayName: 'Twine Authenticate'
+  inputs:
+    artifactFeed: ray-feed
+# Use command line script to 'twine upload', use -r to pass the repository name and --config-file to pass the environment variable set by the authenticate task.
+- bash: |
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # Show explicitly which commands are currently running.
+    set -x
+
+    echo $PYPIRC_PATH
+    cat $PYPIRC_PATH
+    sed -i -e 's+repository=.*+repository=https://bizair.pkgs.visualstudio.com/ccf3fa37-3b57-498c-8b43-231e00d92672/_packaging/ray-feed/pypi/upload+g' $PYPIRC_PATH
+    UPLOAD_OUTPUT=$(python -m twine upload -r "ray-feed" --config-file $(PYPIRC_PATH) $BUILD_SOURCESDIRECTORY/.whl/*.whl)
+    echo $UPLOAD_OUTPUT
+    if [[ $UPLOAD_OUTPUT == *"HTTPError"* ]]; then
+      echo "Error detected after upload."
+      exit 1
+    fi
+    echo "Version used:"
+    cat $BUILD_SOURCESDIRECTORY/python/ray/__init__.py | grep "__version__ ="
+    echo "Files uploaded to the feed:"
+    ls -lrtah $BUILD_SOURCESDIRECTORY/.whl/*.whl
+  displayName: 'Upload to ray-feed'

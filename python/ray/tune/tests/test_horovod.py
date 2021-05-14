@@ -39,6 +39,7 @@ def ray_connect_cluster():
     ray.shutdown()
 
 
+@pytest.mark.skip("TODO(Edi): Fix ImportError: horovod/torch/mpi_lib_v2.cpython-36m-x86_64-linux-gnu.so: undefined symbol: _ZN5torch3jit6tracer9addInputsEPNS0_4NodeEPKcRKN3c1013TensorOptionsE")
 def test_single_step(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_hosts=1, num_slots=2)
@@ -47,6 +48,7 @@ def test_single_step(ray_start_2_cpus):
     trainer.stop()
 
 
+@pytest.mark.skip("TODO(Edi): Fix ImportError: horovod/torch/mpi_lib_v2.cpython-36m-x86_64-linux-gnu.so: undefined symbol: _ZN5torch3jit6tracer9addInputsEPNS0_4NodeEPKcRKN3c1013TensorOptionsE")
 def test_step_after_completion(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(
         _train_simple, num_hosts=1, num_slots=2)
@@ -65,6 +67,7 @@ def test_validation(ray_start_2_cpus):
         t_cls()
 
 
+@pytest.mark.skip("TODO(Edi): Fix ImportError: horovod/torch/mpi_lib_v2.cpython-36m-x86_64-linux-gnu.so: undefined symbol: _ZN5torch3jit6tracer9addInputsEPNS0_4NodeEPKcRKN3c1013TensorOptionsE")
 def test_set_global(ray_start_2_cpus):
     trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)
     trainable = trainable_cls()
@@ -73,6 +76,7 @@ def test_set_global(ray_start_2_cpus):
     assert result["rank"] == 0
 
 
+@pytest.mark.skip("TODO(Edi): Fix ImportError: horovod/torch/mpi_lib_v2.cpython-36m-x86_64-linux-gnu.so: undefined symbol: _ZN5torch3jit6tracer9addInputsEPNS0_4NodeEPKcRKN3c1013TensorOptionsE")
 @pytest.mark.parametrize("enabled_checkpoint", [True, False])
 def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
     trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)

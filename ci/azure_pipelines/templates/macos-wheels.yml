@@ -1,0 +1,66 @@
+# This template includes the steps to genarete the MacOS wheels in travis.
+
+steps:
+# Install phase of the travis MacOS wheels build
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+
+    brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+    brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+    java -version
+    . ./ci/travis/ci.sh build
+
+    # End Original script
+
+    exit 0
+  env:
+    MAC_WHEELS: 1
+    MAC_JARS: 1
+    PYTHONWARNINGS: 'ignore'
+    RAY_INSTALL_JAVA: 1
+    TRAVIS: 'true'
+  displayName: 'Run original travis install phase'
+  timeoutInMinutes: 240
+# Script phase of the travis MacOS wheels build
+- bash: |
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+    echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Duplicate the wheel packages for the architecture of the agent
+    pushd "$BUILD_SOURCESDIRECTORY/.whl/"
+    for f in *macosx_11_0*; do mv "$f" "$(echo "$f" | sed s/macosx_11_0/macosx_10_15/)"; done
+    popd
+
+    # Start Original script
+
+    . ./ci/travis/ci.sh test_wheels
+    # bash ./java/build-jar-multiplatform.sh darwin
+
+    # End Original script
+
+    set +e
+
+    ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+    exit 0
+  env:
+    MAC_WHEELS: 1
+    MAC_JARS: 1
+    PYTHONWARNINGS: 'ignore'
+    RAY_INSTALL_JAVA: 1
+    TRAVIS: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 120

@@ -18,6 +18,8 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
     elif algo == "ES":
         extra_config = ",\"episodes_per_batch\": 1,\"train_batch_size\": 10, "\
                        "\"noise_size\": 250000"
+    elif algo == "DQN" or algo == "SAC" or algo == "DDPG":
+        extra_config = ",\"learning_starts\": 20"
 
     for fw in framework_iterator(frameworks=("tf", "torch")):
         fw_ = ", \"framework\": \"{}\"".format(fw)

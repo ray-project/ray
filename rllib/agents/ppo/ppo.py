@@ -57,6 +57,9 @@ DEFAULT_CONFIG = with_common_config({
     # Number of SGD iterations in each outer loop (i.e., number of epochs to
     # execute per train batch).
     "num_sgd_iter": 30,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
     # Stepsize of SGD.
     "lr": 5e-5,
     # Learning rate schedule.
@@ -86,6 +89,12 @@ DEFAULT_CONFIG = with_common_config({
     "batch_mode": "truncate_episodes",
     # Which observation filter to apply to the observation.
     "observation_filter": "NoFilter",
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 
     # Deprecated keys:
     # Share layers for value function. If you set this to True, it's important
@@ -237,8 +246,16 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    parallel_rollouts_mode = config.get("parallel_rollouts_mode", "bulk_sync")
+    num_async = config.get("parallel_rollouts_num_async")
+    # This could be set to None explicitly
+    if not num_async:
+        num_async = 1
+    rollouts = ParallelRollouts(workers, mode=parallel_rollouts_mode, num_async=num_async)
 
+    if config.get("execution_plan_custom_store_ops"):
+        custom_store_ops = config["execution_plan_custom_store_ops"]
+        rollouts = rollouts.for_each(custom_store_ops(workers, config))
     # Collect batches for the trainable policies.
     rollouts = rollouts.for_each(
         SelectExperiences(workers.trainable_policies()))

@@ -15,7 +15,7 @@ public class RayUtils {
   /**
    * Get all node info from GCS
    *
-   * @return node info list
+   * <p>Returns node info list
    */
   public static List<NodeInfo> getAllNodeInfo() {
     if (Ray.getRuntimeContext().isSingleProcess()) {
@@ -28,7 +28,7 @@ public class RayUtils {
   /**
    * Get all alive node info map
    *
-   * @return node info map, key is unique node id , value is node info
+   * <p>Returns node info map, key is unique node id , value is node info
    */
   public static Map<UniqueId, NodeInfo> getAliveNodeInfoMap() {
     return getAllNodeInfo().stream()

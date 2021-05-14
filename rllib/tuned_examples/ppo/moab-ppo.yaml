@@ -1,0 +1,48 @@
+moab-ppo-expert:
+    env: MoabMoveToCenterSim-v0
+    run: PPO
+    local_dir: /Users/edilmo/tests/rllib
+    checkpoint_at_end: True
+    stop:
+        episode_reward_mean: 250
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        num_workers: 3
+        num_envs_per_worker: 5
+        # Advance configs
+        # default truncate_episodes
+        batch_mode: complete_episodes
+        # default True
+        use_gae: True
+        # default True
+        use_critic: True
+        # default True
+        shuffle_sequences: True
+        # default 0.0 - range 0 to 0.01
+        entropy_coeff: 0.0
+        # default 1.0 - range 0.5, 1
+        vf_loss_coeff: 1.0
+        # default 0.2 - range 0.3 to 1
+        kl_coeff: 0.2
+        # default 0.01 - range 0.003 to 0.03
+        kl_target: 0.01
+        # default 0.3 - range 0.1, 0.2, 0.3
+        clip_param: 0.3
+        # default 10.0 - range sensitive to scale of the rewards
+        vf_clip_param: 100.0
+        # default 0.99 - range 0.8 to 0.9997
+        gamma: 0.99
+        # default 1.0 - range 0.9 to 1
+        lambda: 1.0
+        # Size of batches collected from each worker
+        # default 200
+        rollout_fragment_length: 100
+        # default 128
+        sgd_minibatch_size: 128
+        # Num of SGD passes per train batch
+        # default 30
+        num_sgd_iter: 15
+        # Number of timesteps collected for each SGD round
+        # default 4000
+        train_batch_size: 6000

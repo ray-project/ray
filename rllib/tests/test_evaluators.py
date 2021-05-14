@@ -2,7 +2,7 @@ import gym
 import unittest
 
 import ray
-from ray.rllib.agents.dqn import DQNTrainer
+from ray.rllib.agents.dqn import DQNTrainer, DEFAULT_CONFIG as DQN_DEFAULT_CONFIG
 from ray.rllib.agents.a3c import A3CTrainer
 from ray.rllib.agents.dqn.dqn_tf_policy import _adjust_nstep
 from ray.rllib.utils.test_utils import framework_iterator
@@ -37,41 +37,65 @@ class EvalTest(unittest.TestCase):
             return gym.make("CartPole-v0")
 
         agent_classes = [A3CTrainer, DQNTrainer]
+        DQN_DEFAULT_CONFIG["learning_starts"] = 20
 
         for agent_cls in agent_classes:
-            for fw in framework_iterator(frameworks=("tf", "torch")):
-                register_env("CartPoleWrapped-v0", env_creator)
-                agent = agent_cls(
-                    env="CartPoleWrapped-v0",
-                    config={
-                        "evaluation_interval": 2,
-                        "evaluation_num_episodes": 2,
-                        "evaluation_config": {
-                            "gamma": 0.98,
-                            "env_config": {
-                                "fake_arg": True
-                            }
-                        },
-                        "framework": fw,
-                    })
-                # Given evaluation_interval=2, r0, r2, r4 should not contain
-                # evaluation metrics, while r1, r3 should.
-                r0 = agent.train()
-                print(r0)
-                r1 = agent.train()
-                print(r1)
-                r2 = agent.train()
-                print(r2)
-                r3 = agent.train()
-                print(r3)
-                agent.stop()
+            for evaluation_reward_threshold, evaluation_interval in [(None, 2), (20, 3)]:
+                for fw in framework_iterator(frameworks=("torch", "tf")):
+                    register_env("CartPoleWrapped-v0", env_creator)
+                    agent = agent_cls(
+                        env="CartPoleWrapped-v0",
+                        config={
+                            "evaluation_interval": evaluation_interval,
+                            "evaluation_reward_threshold": evaluation_reward_threshold,
+                            "evaluation_num_episodes": 2,
+                            "evaluation_config": {
+                                "gamma": 0.98,
+                                "env_config": {
+                                    "fake_arg": True
+                                }
+                            },
+                            "framework": fw,
+                        })
+                    if evaluation_reward_threshold is None:
+                        # Given evaluation_interval=2, r0, r2, r4 should not contain
+                        # evaluation metrics, while r1, r3 should.
+                        r0 = agent.train()
+                        r1 = agent.train()
+                        r2 = agent.train()
+                        r3 = agent.train()
+                        agent.stop()
 
-                self.assertFalse("evaluation" in r0)
-                self.assertTrue("evaluation" in r1)
-                self.assertFalse("evaluation" in r2)
-                self.assertTrue("evaluation" in r3)
-                self.assertTrue("episode_reward_mean" in r1["evaluation"])
-                self.assertNotEqual(r1["evaluation"], r3["evaluation"])
+                        self.assertTrue("evaluation" in r1)
+                        self.assertTrue("evaluation" in r3)
+                        self.assertFalse("evaluation" in r0)
+                        self.assertFalse("evaluation" in r2)
+                        self.assertTrue("episode_reward_mean" in r1["evaluation"])
+                        self.assertNotEqual(r1["evaluation"], r3["evaluation"])
+                    else:
+                        # Given evaluation_interval=2, r0, r2, r4 should not contain
+                        # evaluation metrics, while r1, r3, r5 could.
+                        # Given evaluation_reward_threshold of 32, r1 should not contain
+                        # evaluation metrics, while r3 and r5
+                        r0 = agent.train()
+                        r1 = agent.train()
+                        r2 = agent.train()
+                        r3 = agent.train()
+                        r4 = agent.train()
+                        r5 = agent.train()
+                        agent.stop()
+
+                        self.assertFalse("evaluation" in r0)
+                        self.assertFalse("evaluation" in r1)
+                        self.assertFalse("evaluation" in r3)
+                        self.assertFalse("evaluation" in r4)
+                        r2_episode_reward_mean = r2["episode_reward_mean"]
+                        self.assertTrue("evaluation" in r2,
+                                        f"{r2_episode_reward_mean} "
+                                        f"< {evaluation_reward_threshold}")
+                        self.assertTrue("evaluation" in r5)
+                        self.assertTrue("episode_reward_mean" in r2["evaluation"])
+                        self.assertTrue("episode_reward_mean" in r5["evaluation"])
 
 
 if __name__ == "__main__":

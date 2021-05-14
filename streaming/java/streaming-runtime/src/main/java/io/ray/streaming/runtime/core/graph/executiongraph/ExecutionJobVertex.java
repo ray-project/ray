@@ -109,7 +109,7 @@ public class ExecutionJobVertex implements Serializable {
   /**
    * e.g. 1-SourceOperator
    *
-   * @return operator name with index
+   * <p>Returns operator name with index
    */
   public String getExecutionJobVertexNameWithIndex() {
     return executionJobVertexId + "-" + executionJobVertexName;

@@ -4,7 +4,7 @@ Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
 """
 
-from typing import Dict
+from typing import Any, Dict
 import argparse
 import numpy as np
 import os
@@ -25,7 +25,7 @@ parser.add_argument("--stop-iters", type=int, default=2000)
 class MyCallbacks(DefaultCallbacks):
     def on_episode_start(self, *, worker: RolloutWorker, base_env: BaseEnv,
                          policies: Dict[str, Policy],
-                         episode: MultiAgentEpisode, env_index: int, **kwargs):
+                         episode: MultiAgentEpisode, env_index: int, env_infos: Dict[str, Any], **kwargs):
         print("episode {} (env-idx={}) started.".format(
             episode.episode_id, env_index))
 

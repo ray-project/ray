@@ -65,7 +65,7 @@ def convert_eager_inputs(func):
             # TODO: (sven) find a way to remove key-specific hacks.
             kwargs = {
                 k: _convert_to_tf(
-                    v, dtype=tf.int64 if k == "timestep" else None)
+                    v, dtype=tf.int32 if k == "timestep" else None)
                 for k, v in kwargs.items()
                 if k not in {"info_batch", "episodes"}
             }

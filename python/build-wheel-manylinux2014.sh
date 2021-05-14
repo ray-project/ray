@@ -22,9 +22,12 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.14.5")
 
+yum -y update
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+yum -y install curl
+yum install -y gcc-c++ make
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -46,18 +49,43 @@ if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
   unset RAY_INSTALL_JAVA
 fi
 
-# Install and use the latest version of Node.js in order to build the dashboard.
-set +x
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
-source "$HOME"/.nvm/nvm.sh
-nvm install "$NODE_VERSION"
-nvm use "$NODE_VERSION"
+# In azure pipelines or github acions, we don't need to install node
+if [ -x "$(command -v npm)" ]; then
+  echo "Node already installed"
+  npm -v
+else
+  # Install and use the latest version of Node.js in order to build the dashboard.
+  set +x
+  # Install nodejs
+  #TODO(Edi): given the new Docker image used, installing with APT is failing
+  # curl -sL https://deb.nodesource.com/setup_"$NODE_VERSION".x | sudo -E bash -
+  # sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+  #     --force-yes \
+  #     nodejs
+
+  # # Install NVM
+  # curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+  # NVM_HOME="${HOME}/.nvm"
+  # if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
+  #   echo "NVM is not installed"
+  #   exit 1
+  # fi
+
+  curl -sL https://rpm.nodesource.com/setup_"$NODE_VERSION".x | sudo -E bash -
+  yum install -y nodejs
+  # node –v
+  npm -v
+fi
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
 pushd python/ray/new_dashboard/client
+  pwd
+  echo "Run npm ci"
   npm ci
+  echo "Run npm run build"
   npm run build
+  echo "Done running npm run build"
 popd
 set -x
 
@@ -84,7 +112,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
       exit 1
     fi
 
-    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.4.1/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/

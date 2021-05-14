@@ -224,6 +224,9 @@ def sac_actor_critic_loss(
     """
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
+    bc_iters = policy.config["bc_iters"]
+    bc_iters_const = (tf.constant(bc_iters, dtype=policy.global_step.dtype)
+                      if bc_iters else None)
 
     # Get the base model output from the train batch.
     model_out_t, _ = model({
@@ -244,11 +247,75 @@ def sac_actor_critic_loss(
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
 
+    # Alpha- and actor losses.
+    # Note: In the papers, alpha is used directly, here we take the log.
+    # Discrete case: Multiply the action probs as weights with the original
+    # loss terms (no expectations needed).
+    def get_alpha_loss_op(policy_t, log_pis_t):
+        if model.discrete:
+            local_alpha_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.multiply(
+                        tf.stop_gradient(policy_t),
+                        -model.log_alpha * tf.stop_gradient(
+                            log_pis_t + model.target_entropy)),
+                    axis=-1))
+        else:
+            local_alpha_loss = -tf.reduce_mean(
+                model.log_alpha *
+                tf.stop_gradient(log_pis_t + model.target_entropy))
+        return local_alpha_loss
+
+    def get_actor_loss_op(policy_t, log_pis_t, det_policy):
+        if model.discrete:
+            local_actor_loss = tf.reduce_mean(
+                tf.reduce_sum(
+                    tf.multiply(
+                        # NOTE: No stop_grad around policy output here
+                        # (compare with q_t_det_policy for continuous case
+                        # and q_t for discrete).
+                        policy_t,
+                        model.alpha * log_pis_t - tf.stop_gradient(det_policy)),
+                    axis=-1))
+        else:
+            local_actor_loss = tf.reduce_mean(
+                model.alpha * log_pis_t - det_policy)
+        return local_actor_loss
+
+    def run_bc_if_needed(policy_t, log_pis_t, action_dist_t):
+        # If we want to pretrain with Behavioral Cloning, we have to compute
+        # the Alpha and Actor Loss first, to avoid gradients propagation of
+        # the normal SAC Loss.
+        if bc_iters:
+            # For policy gradient, update policy net one time v.s.
+            # update critic net `policy_delay` time(s).
+            should_run_bc = tf.math.less(policy.global_step, bc_iters_const,
+                                         name="should_run_bc")
+
+            def make_bc_apply_op():
+                bc_alpha_loss = get_alpha_loss_op(policy_t, log_pis_t)
+                bc_logp = action_dist_t.logp(train_batch[SampleBatch.ACTIONS])
+                bc_actor_loss = get_actor_loss_op(policy_t, log_pis_t, bc_logp)
+                return bc_alpha_loss, bc_actor_loss
+
+            return tf.cond(
+                should_run_bc,
+                true_fn=make_bc_apply_op,
+                false_fn=lambda: (tf.zeros(()), tf.zeros(())))
+        else:
+            return tf.zeros(()), tf.zeros(())
+
     # Discrete actions case.
     if model.discrete:
         # Get all action probs directly from pi and form their logp.
         log_pis_t = tf.nn.log_softmax(model.get_policy_output(model_out_t), -1)
         policy_t = tf.math.exp(log_pis_t)
+
+        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_t = action_dist_class(
+            model.get_policy_output(model_out_t), policy.model)
+        alpha_loss, actor_loss = run_bc_if_needed(policy_t, log_pis_t, action_dist_t)
+
         log_pis_tp1 = tf.nn.log_softmax(
             model.get_policy_output(model_out_tp1), -1)
         policy_tp1 = tf.math.exp(log_pis_tp1)
@@ -265,7 +332,7 @@ def sac_actor_critic_loss(
 
         # Actually selected Q-values (from the actions batch).
         one_hot = tf.one_hot(
-            train_batch[SampleBatch.ACTIONS], depth=q_t.shape.as_list()[-1])
+            tf.cast(train_batch[SampleBatch.ACTIONS], tf.int32), depth=q_t.shape.as_list()[-1])
         q_t_selected = tf.reduce_sum(q_t * one_hot, axis=-1)
         if policy.config["twin_q"]:
             twin_q_t_selected = tf.reduce_sum(twin_q_t * one_hot, axis=-1)
@@ -283,6 +350,9 @@ def sac_actor_critic_loss(
         policy_t = action_dist_t.sample() if not deterministic else \
             action_dist_t.deterministic_sample()
         log_pis_t = tf.expand_dims(action_dist_t.logp(policy_t), -1)
+
+        alpha_loss, actor_loss = run_bc_if_needed(policy_t, log_pis_t, action_dist_t)
+
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1), policy.model)
         policy_tp1 = action_dist_tp1.sample() if not deterministic else \
@@ -341,30 +411,25 @@ def sac_actor_critic_loss(
         critic_loss.append(
             tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
 
-    # Alpha- and actor losses.
-    # Note: In the papers, alpha is used directly, here we take the log.
-    # Discrete case: Multiply the action probs as weights with the original
-    # loss terms (no expectations needed).
-    if model.discrete:
-        alpha_loss = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.multiply(
-                    tf.stop_gradient(policy_t), -model.log_alpha *
-                    tf.stop_gradient(log_pis_t + model.target_entropy)),
-                axis=-1))
-        actor_loss = tf.reduce_mean(
-            tf.reduce_sum(
-                tf.multiply(
-                    # NOTE: No stop_grad around policy output here
-                    # (compare with q_t_det_policy for continuous case).
-                    policy_t,
-                    model.alpha * log_pis_t - tf.stop_gradient(q_t)),
-                axis=-1))
+    def make_alpha_actor_losses():
+        local_alpha_loss = get_alpha_loss_op(policy_t, log_pis_t)
+        if model.discrete:
+            local_actor_loss = get_actor_loss_op(policy_t, log_pis_t, q_t)
+        else:
+            local_actor_loss = get_actor_loss_op(policy_t, log_pis_t, q_t_det_policy)
+        return local_alpha_loss, local_actor_loss
+
+    if bc_iters:
+        # For policy gradient, update policy net one time v.s.
+        # update critic net `policy_delay` time(s).
+        bc_done = tf.math.greater_equal(policy.global_step, bc_iters_const,
+                                        name="bc_done")
+        alpha_loss, actor_loss = tf.cond(
+            bc_done,
+            true_fn=make_alpha_actor_losses,
+            false_fn=lambda: (alpha_loss, actor_loss))
     else:
-        alpha_loss = -tf.reduce_mean(
-            model.log_alpha *
-            tf.stop_gradient(log_pis_t + model.target_entropy))
-        actor_loss = tf.reduce_mean(model.alpha * log_pis_t - q_t_det_policy)
+        alpha_loss, actor_loss = make_alpha_actor_losses()
 
     # Save for stats function.
     policy.policy_t = policy_t
@@ -375,6 +440,14 @@ def sac_actor_critic_loss(
     policy.alpha_loss = alpha_loss
     policy.alpha_value = model.alpha
     policy.target_entropy = model.target_entropy
+    # Save for sub-classes usages
+    policy.model_out_t = model_out_t
+    policy.model_out_tp1 = model_out_tp1
+    policy.target_model_out_tp1 = target_model_out_tp1
+    policy.action_dist_class = action_dist_class
+    policy.q_t_selected = q_t_selected
+    if policy.config["twin_q"]:
+        policy.twin_q_t_selected = twin_q_t_selected
 
     # In a custom apply op we handle the losses separately, but return them
     # combined in one loss here.

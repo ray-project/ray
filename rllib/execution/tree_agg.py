@@ -1,3 +1,4 @@
+from __future__ import generator_stop
 import logging
 import platform
 from typing import List, Dict, Any

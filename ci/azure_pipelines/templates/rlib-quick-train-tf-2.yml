@@ -1,0 +1,38 @@
+# This template includes the steps of the rlib quick train (no learning) test job with TF 2 in travix.yml
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_RLLIB_FULL_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # script part
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=quick_train --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+    # Test everything that does not have any of the "main" labels:
+    # "learning_tests|quick_train|examples|tests_dir".
+    # Originally with ./ci/keep_alive
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+    # End Original script
+
+    exit 0
+  env:
+    RLLIB_TESTING: 1
+    RLLIB_QUICK_TRAIN_AND_MISC_TESTS: 1
+    # TODO (sven): Remove this after fixing rllib tests num_cpus.
+    RAY_USE_MULTIPROCESSING_CPU_COUNT: 1
+    TF_VERSION: 2.1.0
+    TFP_VERSION: 0.8
+    TORCH_VERSION: 1.6
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+  displayName: 'Run original rllib regression test job with TF 2'
+  timeoutInMinutes: 120

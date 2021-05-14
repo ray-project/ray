@@ -43,7 +43,7 @@ public class JobGraph implements Serializable {
    * Generate direct-graph(made up of a set of vertices and connected by edges) by current job graph
    * for simple log printing.
    *
-   * @return Digraph in string type.
+   * <p>Returns Digraph in string type.
    */
   public String generateDigraph() {
     StringBuilder digraph = new StringBuilder();

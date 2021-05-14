@@ -1,0 +1,39 @@
+# This template includes the steps of the general Ray tests
+# that are specified in the .travis.yml of the upstream repo.
+# This is the script phase that was added to test C++ unit test
+# with ASAN option enable, in one of the first parallel jobs
+# in the build matrix of the .travis.yml file.
+steps:
+- bash: |
+    echo Running script phase of the original travis.yml
+
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # TODO: [CI] remove after CI get stable
+    set -x
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original install part
+
+    . ./ci/travis/ci.sh init
+    . ./ci/travis/ci.sh build
+
+    # Start Original script part
+
+    # Run all C++ unit tests with ASAN enabled. ASAN adds too much overhead to run Python tests.
+    # NOTE: core_worker_test is out-of-date and should already covered by
+    # Python tests.
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -core_worker_test
+    # End Original script
+
+    exit 0
+  env:
+    BAZEL_CONFIG: 'asan'
+    PYTHONWARNINGS: 'ignore'
+    RAY_DEFAULT_BUILD: 1
+    TRAVIS: 'true'
+  displayName: 'Run original Ray ASAN tests'
+  timeoutInMinutes: 180

@@ -25,7 +25,8 @@ def ray_gdb_start():
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="This test requires Linux.")
+    reason="TODO(Edi): This test requires Linux.")
+# @pytest.mark.skip(reason="Too flaky.")
 def test_raylet_gdb(ray_gdb_start):
     # ray_gdb_start yields the expected process name
     ray.init(num_cpus=1)

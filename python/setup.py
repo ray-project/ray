@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # manually.
 
 SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
-SUPPORTED_BAZEL = (3, 2, 0)
+SUPPORTED_BAZEL = (3, 4, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
@@ -109,6 +109,7 @@ extras["rllib"] = extras["tune"] + [
     "opencv-python-headless<=4.3.0.36",
     "pyyaml",
     "scipy",
+    "pyrr==0.10.3",
 ]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))

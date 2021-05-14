@@ -1,3 +1,4 @@
+from __future__ import generator_stop
 from typing import List, Optional, Any
 import queue
 
@@ -10,7 +11,8 @@ def Concurrently(ops: List[LocalIterator],
                  *,
                  mode: str = "round_robin",
                  output_indexes: Optional[List[int]] = None,
-                 round_robin_weights: Optional[List[int]] = None
+                 round_robin_weights: Optional[List[int]] = None,
+                 strict: bool = False
                  ) -> LocalIterator[SampleBatchType]:
     """Operator that runs the given parent iterators concurrently.
 
@@ -28,6 +30,7 @@ def Concurrently(ops: List[LocalIterator],
             will cause as many items to be pulled as possible from the third
             iterator without blocking. This is only allowed in round robin
             mode.
+        strict (bool): whether all ops are required in order to yield.
 
     Examples:
         >>> sim_op = ParallelRollouts(...).for_each(...)
@@ -61,7 +64,8 @@ def Concurrently(ops: List[LocalIterator],
     output = ops[0].union(
         *ops[1:],
         deterministic=deterministic,
-        round_robin_weights=round_robin_weights)
+        round_robin_weights=round_robin_weights,
+        strict=strict)
 
     if output_indexes:
         output = (output.filter(lambda tup: tup[0] in output_indexes)

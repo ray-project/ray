@@ -5,7 +5,13 @@ on:
     branches-ignore:
       # Don't run CI for Dependabot branch pushes.
       - "dependabot/**"
+      - '**'
+    # branches:
+    #   - master
+    #   - releases/*
   pull_request:
+    branches-ignore:
+      - '**'
 
 env:
   # Git GITHUB_... variables are useful for translating Travis environment variables

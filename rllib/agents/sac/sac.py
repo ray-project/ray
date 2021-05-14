@@ -75,6 +75,8 @@ DEFAULT_CONFIG = with_common_config({
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
     "normalize_actions": True,
+    # Number of iterations to perform in the Behavior Cloning Pretraining
+    "bc_iters": None,
 
     # === Learning ===
     # Disable setting done=True at end of episode. This should be set to True
@@ -129,6 +131,9 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 0,
+    # Callable to be added in the store_ops part of the execution plan.
+    # The foreach transformation is used over the ParallelIterator.
+    "execution_plan_custom_store_ops": None,
 
     # === Parallelism ===
     # Whether to use a GPU for local optimization.
@@ -145,6 +150,12 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
+    # Which mode to use in the ParallelRollouts operator used to collect
+    # samples. For more details check the operator in rollout_ops module.
+    "parallel_rollouts_mode": "bulk_sync",
+    # This only applies if async mode is used (above config setting).
+    # Controls the max number of async requests in flight per actor
+    "parallel_rollouts_num_async": None,
 
     # Whether the loss should be calculated deterministically (w/o the
     # stochastic action sampling step). True only useful for cont. actions and

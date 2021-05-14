@@ -1,0 +1,33 @@
+# This template includes the steps of the 
+# in docs and examples
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # script part
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 doc/...
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...
+
+    # End Original script
+
+    exit 0
+  env:
+    DOC_TESTING: 1
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+  displayName: 'Run tests in Docs and Examples'
+  timeoutInMinutes: 180
+  # TODO: remove - we are allowing to continue on error because
+  # because some tests are very flaky in our agents
+  continueOnError: 'true'

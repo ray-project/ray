@@ -228,8 +228,11 @@ build_dashboard_front_end() {
   else
     (
       cd ray/new_dashboard/client
-
-      if [ -z "${BUILDKITE-}" ]; then
+      # In azure pipelines or github acions, we don't need to install node
+      if [ -x "$(command -v npm)" ]; then
+        echo "Node already installed"
+        npm -v
+      elif [ -z "${BUILDKITE-}" ]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
         nvm use --silent node
@@ -294,7 +297,7 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    keep_alive pip install -v -e .
+    pip install --force-reinstall -v -e .
   )
 }
 
@@ -378,9 +381,12 @@ lint_bazel() {
 lint_web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
-    set +x # suppress set -x since it'll get very noisy here
-
-    if [ -z "${BUILDKITE-}" ]; then
+    # In azure pipelines or github acions, we don't need to install node
+    if [ -x "$(command -v npm)" ]; then
+      echo "Node already installed"
+      npm -v
+    elif [ -z "${BUILDKITE-}" ]; then
+      set +x # suppress set -x since it'll get very noisy here
       . "${HOME}/.nvm/nvm.sh"
       nvm use --silent node
     fi

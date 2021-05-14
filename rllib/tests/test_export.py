@@ -33,10 +33,12 @@ CONFIGS = {
         "observation_filter": "MeanStdFilter",
     },
     "DDPG": {
+        "learning_starts": 20,
         "explore": False,
         "timesteps_per_iteration": 100,
     },
     "DQN": {
+        "learning_starts": 20,
         "explore": False,
     },
     "ES": {
@@ -54,6 +56,7 @@ CONFIGS = {
         "num_workers": 2,
     },
     "SAC": {
+        "learning_starts": 20,
         "explore": False,
     },
 }

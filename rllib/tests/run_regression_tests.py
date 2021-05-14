@@ -16,6 +16,7 @@
 #     args = ["BAZEL", "tuned_examples/regression_tests"]
 # )
 
+import logging
 import argparse
 import os
 from pathlib import Path
@@ -41,6 +42,15 @@ parser.add_argument(
     "--local-mode",
     action="store_true",
     help="Run ray in local mode for easier debugging.")
+parser.add_argument(
+    "--num-cpus",
+    type=int,
+    default=5,
+    help="The amount of CPU to use in ray init.")
+parser.add_argument(
+    "--debug",
+    action="store_true",
+    help="Runs all tests with DEBUG logging level.")
 
 # Obsoleted arg, use --framework=torch instead.
 parser.add_argument(
@@ -50,6 +60,10 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    logging_level = logging.INFO
+    if args.debug:
+        logging_level = logging.DEBUG
 
     # Bazel regression test mode: Get path to look for yaml files.
     # Get the path or single file to use.
@@ -96,7 +110,7 @@ if __name__ == "__main__":
         passed = False
         for i in range(3):
             try:
-                ray.init(num_cpus=5, local_mode=args.local_mode)
+                ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode, logging_level=logging_level)
                 trials = run_experiments(experiments, resume=False, verbose=2)
             finally:
                 ray.shutdown()

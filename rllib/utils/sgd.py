@@ -1,4 +1,5 @@
 """Utils for minibatch SGD across multiple RLlib policies."""
+from typing import Optional, Callable, List, Any
 
 import numpy as np
 import logging
@@ -13,13 +14,14 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 logger = logging.getLogger(__name__)
 
 
-def averaged(kv, axis=None):
+def averaged(kv, axis=None, dict_averaging_func: Optional[Callable[[str, List[dict]], Any]] = None):
     """Average the value lists of a dictionary.
 
     For non-scalar values, we simply pick the first value.
 
     Args:
         kv (dict): dictionary with values that are lists of floats.
+        dict_averaging_func: optional function averaging non-numeric (dictionary) arguments
 
     Returns:
         dictionary with single averaged float as values.
@@ -29,7 +31,10 @@ def averaged(kv, axis=None):
         if v[0] is not None and not isinstance(v[0], dict):
             out[k] = np.mean(v, axis=axis)
         else:
-            out[k] = v[0]
+            if dict_averaging_func is not None:
+                out[k] = dict_averaging_func(k, v)
+            else:
+                out[k] = v[0]
     return out
 
 

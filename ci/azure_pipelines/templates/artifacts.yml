@@ -1,0 +1,37 @@
+# This template includes the steps for collecting
+# logs and files generated during the build process
+
+steps:
+- task: ComponentGovernanceComponentDetection@0
+  inputs:
+    scanType: 'Register'
+    verbosity: 'Verbose'
+    dockerImagesToScan: ''
+    alertWarningLevel: 'Critical'
+    failOnAlert: false
+    ignoreDirectories: ''
+- bash: |
+    # Show explicitly which commands are currently running.
+    set -x
+
+    mkdir -p $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel
+
+    echo "Log files to copy:"
+    find $BAZEL_OUTPUTROOT -name '*.log'
+
+    sudo find $BAZEL_OUTPUTROOT -name '*.log' -exec cp --parents {} $BUILD_ARTIFACTSTAGINGDIRECTORY/bazel \;
+
+    sudo chmod 777 $BUILD_ARTIFACTSTAGINGDIRECTORY
+  displayName: 'Copy bazel output dir to staging'
+  timeoutInMinutes: 5
+  condition: always()
+  env:
+    BAZEL_OUTPUTROOT: '$(bazel.outputRoot)'
+- task: PublishBuildArtifacts@1
+  condition: always()
+  inputs:
+    pathToPublish: $(Build.ArtifactStagingDirectory)
+    artifactName: 'Logs for $(System.JobDisplayName)-$(System.JobAttempt)'
+  displayName: 'Publishing artifacts'
+  timeoutInMinutes: 5
+  continueOnError: true

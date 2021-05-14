@@ -1,0 +1,28 @@
+# This template includes the steps of the CPP worker job in travix.yml
+
+steps:
+  - bash: |
+      echo Running install phase of the original travis.yml
+  
+      # Set some variables to make the system looks like Travis
+      source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+  
+      # Start Original script
+  
+      # install part
+      . ./ci/travis/ci.sh init
+      . ./ci/travis/ci.sh build
+      
+      # script part
+      . ./ci/travis/ci.sh test_cpp
+  
+      # End Original script
+  
+      exit 0
+    env:
+      TESTSUITE: cpp_worker
+      PYTHONWARNINGS: 'ignore'
+      TRAVIS: 'true'
+    displayName: 'Run original CPP Worker job'
+    timeoutInMinutes: 120
+  

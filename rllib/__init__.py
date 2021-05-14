@@ -29,6 +29,7 @@ def _register_all():
     from ray.rllib.agents.trainer import Trainer, with_common_config
     from ray.rllib.agents.registry import ALGORITHMS, get_trainer_class
     from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
+    from ray.rllib.env.wrappers.moab_wrapper import ensure_moab_envs_register
 
     for key in list(ALGORITHMS.keys()) + list(CONTRIBUTED_ALGORITHMS.keys(
     )) + ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
@@ -52,6 +53,8 @@ def _register_all():
         assert key.startswith("contrib/")
         alias = key.split("/", 1)[1]
         register_trainable(alias, _see_contrib(alias))
+
+    ensure_moab_envs_register()
 
 
 _setup_logger()

@@ -95,8 +95,7 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Create JobWorker actors according to the physical plan.
    *
-   * @param executionGraph physical plan
-   * @return actor creation result
+   * @param executionGraph physical plan Returns actor creation result
    */
   public boolean createWorkers(ExecutionGraph executionGraph) {
     LOG.info("Begin creating workers.");
@@ -149,8 +148,7 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Build workers context.
    *
-   * @param executionGraph execution graph
-   * @return vertex to worker context map
+   * @param executionGraph execution graph Returns vertex to worker context map
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
       ExecutionGraph executionGraph) {

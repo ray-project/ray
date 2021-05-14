@@ -100,8 +100,11 @@ class SampleBatch(dict):
                 (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
             lengths.append(len_)
             if isinstance(v, list):
-                self[k] = np.array(v)
-
+                if len(v) == 0 or not isinstance(v[0], dict):
+                    self[k] = np.array(v, dtype=np.float32)
+                else:
+                    # If we have field of type dict, let's keep it as np.object
+                    self[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
 

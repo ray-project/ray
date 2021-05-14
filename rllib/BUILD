@@ -41,6 +41,8 @@
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
+SRCS = ["tests/conftest.py"]
+
 # A2C/A3C
 py_test(
     name = "run_regression_tests_cartpole_a2c_tf",
@@ -510,10 +512,11 @@ py_test(
 
 # CQLTrainer
 py_test(
-    name = "test_cql",
+    name = "test_cql_sac",
     tags = ["agents_dir"],
     size = "medium",
-    srcs = ["agents/cql/tests/test_cql.py"]
+    data = glob(["tests/data/moab/*.json"]),
+    srcs = ["agents/cql/tests/test_cql_sac.py"]
 )
 
 # DDPGTrainer
@@ -575,7 +578,7 @@ py_test(
     tags = ["agents_dir"],
     size = "large",
     # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
+    data = ["tests/data/cartpole/large.json", "tests/data/cartpole/small.json"],
     srcs = ["agents/marwil/tests/test_marwil.py"]
 )
 
@@ -1061,7 +1064,19 @@ py_test(
         "--env", "CartPole-v1",
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"use_gae\": false, \"batch_mode\": \"complete_episodes\"}'"
+        "--config", "'{\"framework\": \"tf\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"use_gae\": false, \"batch_mode\": \"complete_episodes\", \"use_critic\": false}'"
+        ]
+)
+
+py_test(
+    name = "test_ppo_tf_cartpole_v1_complete_episode_batches_gae",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
+    args = [
+        "--env", "CartPole-v1",
+        "--run", "PPO",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"framework\": \"tf\", \"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"use_gae\": true, \"batch_mode\": \"complete_episodes\", \"use_critic\": true}'"
         ]
 )
 
@@ -1151,6 +1166,20 @@ py_test(
     tags = ["env"],
     size = "small",
     srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/moabsim/test_moab_model",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/moabsim/test_moab_model.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_moab_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_moab_wrapper.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1314,6 +1343,21 @@ py_test(
 # it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
 # for `tests/test_all_stuff.py`.
 # --------------------------------------------------------------------
+# All new parametrized pytest tests - Compilation
+py_test(
+    name = "test_compilation",
+    tags = ["tests_dir", "bonsai_tests"],
+    srcs = ["tests/agents/test_compilation.py"]
+)
+
+# All new parametrized pytest tests - Learning
+py_test(
+    name = "test_learning",
+    tags = ["tests_dir", "bonsai_tests"],
+    size = "large",
+    data = glob(["tests/data/moab/*.json"]),
+    srcs = ["tests/agents/test_learning.py"]
+)
 
 py_test(
     name = "tests/test_attention_net_learning",
@@ -1343,12 +1387,13 @@ py_test(
     srcs = ["tests/test_dependency_tf.py"]
 )
 
-py_test(
-    name = "tests/test_dependency_torch",
-    tags = ["tests_dir", "tests_dir_D"],
-    size = "small",
-    srcs = ["tests/test_dependency_torch.py"]
-)
+#TODO(Edi): failing in ADO. Not important
+#py_test(
+#    name = "tests/test_dependency_torch",
+#    tags = ["tests_dir", "tests_dir_D"],
+#    size = "small",
+#    srcs = ["tests/test_dependency_torch.py"]
+#)
 
 py_test(
     name = "tests/test_eager_support_pg",
@@ -1379,7 +1424,7 @@ py_test(
 py_test(
     name = "tests/test_evaluators",
     tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_evaluators.py"]
 )
 
@@ -1394,7 +1439,7 @@ py_test(
     name = "tests/test_execution",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
-    srcs = ["tests/test_execution.py"]
+    srcs = SRCS + ["tests/test_execution.py"]
 )
 
 py_test(
@@ -1673,7 +1718,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )

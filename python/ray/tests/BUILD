@@ -38,7 +38,7 @@ py_test_module_list(
     "test_global_gc.py",
     "test_mldataset.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j"],
   deps = ["//:ray_lib"],

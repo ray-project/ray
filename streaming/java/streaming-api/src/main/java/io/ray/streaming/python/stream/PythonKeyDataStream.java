@@ -31,8 +31,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   /**
    * Apply a reduce function to this stream.
    *
-   * @param func The reduce function.
-   * @return A new DataStream.
+   * @param func The reduce function. Returns A new DataStream.
    */
   public PythonDataStream reduce(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);

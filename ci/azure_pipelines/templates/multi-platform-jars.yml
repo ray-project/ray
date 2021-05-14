@@ -1,0 +1,32 @@
+# This template includes the steps of the jars creation job in travix.yml
+
+steps:
+- bash: |
+    echo Running install phase of the original travis.yml
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original script
+
+    # install part
+    . ./ci/travis/ci.sh init RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
+
+    # script part
+    bash ./java/build-jar-multiplatform.sh multiplatform
+    # bash ./java/build-jar-multiplatform.sh deploy
+
+      # End Original script
+
+    exit 0
+  env:
+    MULTIPLATFORM_JARS: 1
+    RAY_INSTALL_JAVA: 1
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+  displayName: 'Run original streaming job'
+  timeoutInMinutes: 120
+  # TODO: remove - we are allowing to continue on error because
+  # These stream test are flaky in ADO and we are not relying in
+  # that functionality yet
+  continueOnError: 'true'

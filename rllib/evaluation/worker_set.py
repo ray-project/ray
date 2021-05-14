@@ -1,7 +1,7 @@
 import gym
 import logging
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, Generic, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -22,9 +22,11 @@ logger = logging.getLogger(__name__)
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
 
+# Generic type for custom RolloutWorker
+TRolloutWorker = TypeVar('TRolloutWorker', bound=RolloutWorker)
 
 @DeveloperAPI
-class WorkerSet:
+class WorkerSet(Generic[TRolloutWorker]):
     """Represents a set of RolloutWorkers.
 
     There must be one local worker copy, and zero or more remote workers.
@@ -38,7 +40,8 @@ class WorkerSet:
                  trainer_config: Optional[TrainerConfigDict] = None,
                  num_workers: int = 0,
                  logdir: Optional[str] = None,
-                 _setup: bool = True):
+                 _setup: bool = True,
+                 rollout_worker_cls: Type[TRolloutWorker] = RolloutWorker):
         """Create a new WorkerSet and initialize its workers.
 
         Args:
@@ -53,6 +56,7 @@ class WorkerSet:
             num_workers (int): Number of remote rollout workers to create.
             logdir (Optional[str]): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
+            rollout_worker_cls (Type): Class type used as RolloutWorker class.
         """
 
         if not trainer_config:
@@ -63,6 +67,7 @@ class WorkerSet:
         self._policy_class = policy_class
         self._remote_config = trainer_config
         self._logdir = logdir
+        self._rollout_worker_cls = rollout_worker_cls
 
         if _setup:
             self._local_config = merge_dicts(
@@ -88,7 +93,7 @@ class WorkerSet:
 
             # Always create a local worker.
             self._local_worker = self._make_worker(
-                cls=RolloutWorker,
+                cls=self._rollout_worker_cls,
                 env_creator=env_creator,
                 validate_env=validate_env,
                 policy_cls=self._policy_class,
@@ -125,7 +130,7 @@ class WorkerSet:
             "num_gpus": self._remote_config["num_gpus_per_worker"],
             "resources": self._remote_config["custom_resources_per_worker"],
         }
-        cls = RolloutWorker.as_remote(**remote_args).remote
+        cls = self._rollout_worker_cls.as_remote(**remote_args).remote
         self._remote_workers.extend([
             self._make_worker(
                 cls=cls,
@@ -313,7 +318,6 @@ class WorkerSet:
         else:
             extra_python_environs = config.get(
                 "extra_python_environs_for_worker", None)
-
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,

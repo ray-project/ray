@@ -39,8 +39,8 @@ Note that -f overrides all other trial-specific command-line options.
 """
 
 
-def create_parser(parser_creator=None):
-    parser = make_parser(
+def create_parser(parser_creator=None, pre_created_parser=None):
+    parser = pre_created_parser or make_parser(
         parser_creator=parser_creator,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Train a reinforcement learning agent.",
@@ -136,7 +136,7 @@ def create_parser(parser_creator=None):
     return parser
 
 
-def run(args, parser):
+def run(args, parser, callbacks = None, experiment_handler = None, shutdown = True):
     if args.config_file:
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)
@@ -160,6 +160,10 @@ def run(args, parser):
                 "upload_dir": args.upload_dir,
             }
         }
+
+    if experiment_handler:
+        for ex_name, ex in list(experiments.items()):
+            experiments[ex_name] = experiment_handler(ex_name, ex)
 
     verbose = 1
     for exp in experiments.values():
@@ -195,22 +199,23 @@ def run(args, parser):
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3  # Print details on trial result
 
-    if args.ray_num_nodes:
-        cluster = Cluster()
-        for _ in range(args.ray_num_nodes):
-            cluster.add_node(
-                num_cpus=args.ray_num_cpus or 1,
-                num_gpus=args.ray_num_gpus or 0,
-                object_store_memory=args.ray_object_store_memory)
-        ray.init(address=cluster.address)
-    else:
-        ray.init(
-            include_dashboard=not args.no_ray_ui,
-            address=args.ray_address,
-            object_store_memory=args.ray_object_store_memory,
-            num_cpus=args.ray_num_cpus,
-            num_gpus=args.ray_num_gpus,
-            local_mode=args.local_mode)
+    if not ray.is_initialized():
+        if args.ray_num_nodes:
+            cluster = Cluster()
+            for _ in range(args.ray_num_nodes):
+                cluster.add_node(
+                    num_cpus=args.ray_num_cpus or 1,
+                    num_gpus=args.ray_num_gpus or 0,
+                    object_store_memory=args.ray_object_store_memory)
+            ray.init(address=cluster.address)
+        else:
+            ray.init(
+                include_dashboard=not args.no_ray_ui,
+                address=args.ray_address,
+                object_store_memory=args.ray_object_store_memory,
+                num_cpus=args.ray_num_cpus,
+                num_gpus=args.ray_num_gpus,
+                local_mode=args.local_mode)
 
     if IS_NOTEBOOK:
         progress_reporter = JupyterNotebookReporter(
@@ -225,9 +230,12 @@ def run(args, parser):
         queue_trials=args.queue_trials,
         verbose=verbose,
         progress_reporter=progress_reporter,
-        concurrent=True)
+        concurrent=True,
+        callbacks=callbacks,
+    )
 
-    ray.shutdown()
+    if shutdown:
+        ray.shutdown()
 
 
 if __name__ == "__main__":

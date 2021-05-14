@@ -22,22 +22,25 @@ prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
 pyyaml
-redis >= 3.5.0
+redis==3.5.3
 requests
+urllib3
+pickle5==0.0.11
+h5py==2.10.0
 
 ## setup.py extras
-atari_py
+atari_py==0.2.6
 dm_tree
 flask
-gym[atari]
-lz4
-opencv-python-headless==4.3.0.36
-pandas==1.0.5
+gym[atari]==0.18.0
+lz4==3.1.3
+opencv-python-headless==4.5.2.52
+pandas==1.1.5
 scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic
+pydantic<1.8.1
 dataclasses; python_version < '3.7'
 starlette
 
@@ -51,16 +54,16 @@ cython==0.29.0
 dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
-gym
+gym==0.18.0
 gym-minigrid
 kubernetes
 lxml
-moto
+moto==1.3.8
 mypy
-networkx
+networkx==2.4.0
 numba
 # higher version of llvmlite breaks windows
-llvmlite==0.34.0
+llvmlite==0.36.0
 openpyxl
 pexpect
 Pillow; platform_system != "Windows"
@@ -71,11 +74,15 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow
+tensorflow==2.4.1
 testfixtures
 werkzeug
 xlrd
 starlette
-fastapi
 smart_open[s3]
-tqdm
+
+# Moab contrib
+pyrr==0.10.3
+
+cryptography==3.2.0
+idna==2.8.0

@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -138,7 +139,7 @@ class DiscreteLinearModel(TorchModelV2, nn.Module):
         assert 0 <= arm.item() < len(self.arms), \
             "Invalid arm: {}. It should be 0 <= arm < {}".format(
                 arm.item(), len(self.arms))
-        self.arms[arm].partial_fit(x, y)
+        self.arms[int(arm)].partial_fit(x, y)
 
     @override(ModelV2)
     def value_function(self):

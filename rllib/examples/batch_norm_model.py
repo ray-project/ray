@@ -41,6 +41,9 @@ if __name__ == "__main__":
         "framework": "torch" if args.torch else "tf",
     }
 
+    if args.run == "DDPG":
+        config["learning_starts"] = 100
+
     stop = {
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,

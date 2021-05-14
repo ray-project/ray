@@ -119,3 +119,31 @@ class _QueueRunner(threading.Thread):
                 self.enqueue(batch)
             except Exception:
                 logger.exception("Error reading from input")
+
+
+@PublicAPI
+class InMemoryInputReader(InputReader):
+    """Input object for loading experiences in policy evaluation
+    directly to a replay buffer.
+    """
+
+    @PublicAPI
+    @property
+    def size(self) -> int:
+        """Return the amount of sample batches hold in memory by
+        this reader.
+
+        Returns:
+            Amount of sample batches.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    @PublicAPI
+    def get_all(self):
+        """Return the all batches of experiences at once.
+
+        Returns:
+            List of SampleBatch or MultiAgentBatch read.
+        """
+        raise NotImplementedError

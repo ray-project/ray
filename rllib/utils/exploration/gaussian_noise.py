@@ -75,10 +75,10 @@ class GaussianNoise(Exploration):
 
         # The current timestep value (tf-var or python int).
         self.last_timestep = get_variable(
-            np.array(0, np.int64),
+            np.array(0, np.int32),
             framework=self.framework,
             tf_name="timestep",
-            dtype=np.int64)
+            dtype=np.int32)
 
         # Build the tf-info-op.
         if self.framework in ["tf2", "tf", "tfe"]:

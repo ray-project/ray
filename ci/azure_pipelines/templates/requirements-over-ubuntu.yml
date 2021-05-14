@@ -1,0 +1,262 @@
+# This template includes the basic steps needed for
+# setting up python in different jobs. The version
+# of python to use is expected in the environment
+# variable python.version
+steps:
+- script: |
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # Allow to debug the script
+    set -x
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Install apt-get packages.
+    sudo apt-get update
+    sudo apt-get -yq upgrade
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+        --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+        --no-install-recommends \
+        apt-utils \
+        curl \
+        jq \
+        unzip \
+        gnupg \
+        g++ \
+        git \
+        tzdata \
+        wget \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+        python \
+        python-dev \
+        python-pip \
+        python3 \
+        python3-dev \
+        python3-pip
+
+    # Install the open CV dependencies.
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+        --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+        libglib2.0-0
+
+    # Install RoboSchool prerequisites
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+        --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+        cmake \
+        libassimp-dev \
+        libpcre3-dev \
+        libqt5opengl5-dev \
+        patchelf \
+        qtbase5-dev
+
+    # Fix config permissions
+    mkdir -p "${HOME}"/.config
+    sudo chown -R "$(whoami)":"$(id -g -n)" "${HOME}"/.config
+  displayName: 'Install pre-requisites'
+- script: |
+    # Install nodejs so we can run the Javascript version of inkling compiler
+    curl -sL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+        --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+        nodejs
+
+    # Install NVM
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
+    NVM_HOME="${HOME}/.nvm"
+    if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
+      echo "NVM is not installed"
+      exit 1
+    fi
+  displayName: 'Install NodeJS'
+- script: |
+    # Install Bazelisk
+    echo "Install Bazelisk"
+    sudo npm install -g @bazel/bazelisk
+
+    mkdir -p ./bazel
+    sudo chmod -R 777 ./bazel
+    echo "Current dir: $(pwd)"
+    ls -larth ./bazel
+  displayName: 'Install Bazel'
+- script: |
+    # Install JDK
+    sudo apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+        --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+        --no-install-recommends \
+        openjdk-8-jdk \
+        openjdk-8-jre
+
+    javac -version
+  displayName: 'Use JDK 8'
+- script: |
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # Allow to debug the script
+    set -x
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    curl https://packages.microsoft.com/config/ubuntu/18.04/multiarch/prod.list > ./microsoft-prod.list
+    sudo cp ./microsoft-prod.list /etc/apt/sources.list.d/
+    curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+    sudo cp ./microsoft.gpg /etc/apt/trusted.gpg.d/
+
+    function IsInstalled {
+      dpkg -S $1 &> /dev/null
+    }
+    docker_package=moby
+    # Install Docker
+    ## Check to see if docker is already installed
+    echo "Determing if Docker ($docker_package) is installed"
+    if ! IsInstalled $docker_package; then
+        echo "Docker ($docker_package) was not found. Installing..."
+        sudo apt update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+            --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+            --no-install-recommends \
+            moby-engine \
+            moby-cli \
+            moby-buildx
+    else
+        echo "Docker ($docker_package) is already installed"
+    fi
+
+    USER="$(whoami)"
+    sudo gpasswd -a "${USER}" docker
+    sudo chmod ga+rw /var/run/docker.sock
+    # Ideally we should update group permissions so docker is available without logging out and back in: `newgrp - docker`
+    # And test docker: `docker run hello-world`
+    if [ -f "/home/${USER}/.docker" ]; then
+      sudo chown "${USER}":docker "/home/${USER}/.docker" -R
+      sudo chmod ga+rwx "${HOME}/.docker" -R
+    fi
+
+    # Run tests to determine that the software installed as expected
+    echo "Testing to make sure that script performed as expected, and basic scenarios work"
+    echo "Checking the docker-moby and moby-buildx"
+    if ! command -v docker; then
+        echo "docker was not installed"
+        exit 1
+    elif ! [[ $(docker buildx) ]]; then
+        echo "Docker-Buildx was not installed"
+        exit 1
+    else
+        echo "Docker-moby and Docker-buildx checking the successfull"
+        # Docker daemon takes time to come up after installing
+        sleep 10
+        set -e
+        docker info
+        set +e
+    fi
+
+    # Install docker-compose
+    URL=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.assets[].browser_download_url | select(contains("docker-compose-Linux-x86_64"))' | head -1)
+
+    # Install latest docker-compose from releases
+    sudo curl -L $URL -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+
+    # Run tests to determine that the software installed as expected
+    echo "Testing to make sure that script performed as expected, and basic scenarios work"
+    if ! command -v docker-compose; then
+        echo "docker-compose was not installed"
+        exit 1
+    fi
+  displayName: 'Install Docker'
+- script: |
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # Allow to debug the script
+    set -x
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Install gcc
+    function InstallClang {
+        version=$1
+
+        echo "Installing clang-$version..."
+        if [[ $version =~ 9 ]]; then
+          sudo ./llvm.sh $version
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+              --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+              --no-install-recommends \
+              "clang-format-$version"
+        else
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+              --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+              --no-install-recommends \
+              "clang-$version" \
+              "lldb-$version" \
+              "lld-$version" \
+              "clang-format-$version"
+        fi
+
+        # Run tests to determine that the software installed as expected
+        echo "Testing to make sure that script performed as expected, and basic scenarios work"
+        for cmd in clang-$version clang++-$version; do
+          if ! command -v $cmd; then
+            echo "$cmd was not installed"
+            exit 1
+          fi
+        done
+
+        echo "Showing clang-$version..."
+        echo "Clang $version ($(clang-$version --version | head -n 1 | cut -d ' ' -f 3 | cut -d '-' -f 1))"
+    }
+
+    # Download script for automatic installation
+    wget https://apt.llvm.org/llvm.sh
+    chmod +x llvm.sh
+
+    versions=(
+      "6.0"
+      "8"
+      "9"
+    )
+
+    for version in ${versions[*]}
+    do
+      InstallClang $version
+    done
+
+    rm llvm.sh
+
+    # Make Clang 9 default
+    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-9 100
+    sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-9 100
+    sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-9 100
+  displayName: 'Install GCC'
+- script: |
+    python -m pip install --upgrade pip
+    pip install --upgrade setuptools
+    pip install pytest pytest-azurepipelines
+    pip install wheel
+    pip install twine
+  displayName: 'Install dependencies'
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import platform
+      print(platform.platform())
+      try:
+        import wheel.pep425tags
+        print(wheel.pep425tags.get_impl_ver())
+        print(wheel.pep425tags.get_abi_tag())
+        print(wheel.pep425tags.get_platform(None))
+        tags = wheel.pep425tags.get_supported(None)
+        print(tags)
+        print(('cp36', 'cp36m', 'macosx_10_14_x86_64') in tags)
+      except Exception as ex:
+        print(ex)
+      print(platform.mac_ver())
+    failOnStderr: false
+  displayName: 'Print Python System info'
+  continueOnError: true

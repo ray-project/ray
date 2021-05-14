@@ -33,6 +33,7 @@ class TestReproducibility(unittest.TestCase):
                 ray.init()
                 register_env("PickLargest", env_creator)
                 config = {
+                    "learning_starts": 100,
                     "seed": 666 if trial in [0, 1] else 999,
                     "min_iter_time_s": 0,
                     "timesteps_per_iteration": 100,

@@ -192,7 +192,7 @@ class GANOperator(TrainingOperator):
         # self.device is set automatically
         real_cpu = batch[0].to(self.device)
         batch_size = real_cpu.size(0)
-        label = torch.full((batch_size, ), real_label, device=self.device)
+        label = torch.full((batch_size, ), real_label, device=self.device, dtype=torch.float)
         output = discriminator(real_cpu).view(-1)
         errD_real = self.criterion(output, label)
         errD_real.backward()

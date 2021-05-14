@@ -32,11 +32,13 @@ esac
 { git ls-files -s 2>/dev/null || true; } | (
   set +x
   missing_symlinks=()
+  set +x
   while read -r mode _ _ path; do
     if [ "${mode}" = 120000 ]; then
       test -L "${path}" || missing_symlinks+=("${paths}")
     fi
   done
+  set -x
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
     echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
@@ -47,7 +49,12 @@ esac
 export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"
 version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
-if [ "${OSTYPE}" = "msys" ]; then
+# In azure pipelines or github acions, we don't need to install bazel
+if [ -x "$(command -v bazel)" ]; then
+  echo 'Bazel is already installed'
+  bazel info
+  bazel --version
+elif [ "${OSTYPE}" = "msys" ]; then
   target="${MINGW_DIR-/usr}/bin/bazel.exe"
   mkdir -p "${target%/*}"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"

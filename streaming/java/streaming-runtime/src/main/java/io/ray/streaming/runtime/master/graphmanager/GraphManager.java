@@ -19,22 +19,21 @@ public interface GraphManager {
   /**
    * Build execution graph from job graph.
    *
-   * @param jobGraph logical plan of streaming job.
-   * @return physical plan of streaming job.
+   * @param jobGraph logical plan of streaming job. Returns physical plan of streaming job.
    */
   ExecutionGraph buildExecutionGraph(JobGraph jobGraph);
 
   /**
    * Get job graph.
    *
-   * @return the job graph.
+   * <p>Returns the job graph.
    */
   JobGraph getJobGraph();
 
   /**
    * Get execution graph.
    *
-   * @return the execution graph.
+   * <p>Returns the execution graph.
    */
   ExecutionGraph getExecutionGraph();
 }

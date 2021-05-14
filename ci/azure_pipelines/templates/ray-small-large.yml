@@ -1,0 +1,55 @@
+# This template includes the steps of the general Ray tests
+# that are specified in the .travis.yml of the upstream repo.
+# This is the default script phase that is reused by the first
+# two of the parallel jobs in the build matrix of the .travis.yml file.
+steps:
+- bash: |
+    echo Running script phase of the original travis.yml
+
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # TODO: [CI] remove after CI get stable
+    set -x
+
+    # Set some variables to make the system looks like Travis
+    source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+    # Start Original install part
+
+    . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
+    . ./ci/travis/ci.sh build
+
+    # Start Original script part
+
+    # cc bazel tests (w/o RLlib)
+    # NOTE: core_worker_test is out-of-date and should already covered by Python
+    # tests.
+    # Originally with ./ci/suppress_output
+    bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/... -core_worker_test
+
+    # ray serve tests
+    # Desabling this tests because is not working in ADO and is not required yet in Bonsai
+    # Originally with ./ci/keep_alive
+    # if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
+
+    # ray new dashboard tests
+    # Originally with ./ci/keep_alive
+    if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then bazel test python/ray/new_dashboard/...; fi
+
+    # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+    # Originally with ./ci/keep_alive
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
+    # NO MORE TESTS BELOW, keep them above.
+    # End Original script
+
+    exit 0
+  env:
+    SMALL_AND_LARGE_TESTS: 1
+    PYTHONWARNINGS: 'ignore'
+    RAY_DEFAULT_BUILD: 1
+    RAY_CYTHON_EXAMPLES: 1
+    RAY_USE_RANDOM_PORTS: 1
+    TRAVIS: 'true'
+  displayName: 'Run original Ray tests'
+  timeoutInMinutes: 240
