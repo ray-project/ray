@@ -705,9 +705,9 @@ class ActorClass:
             override_environment_variables = (
                 parsed_runtime_env.to_worker_env_vars(
                     override_environment_variables))
+            runtime_env_dict = parsed_runtime_env.get_parsed_dict()
         else:
-            parsed_runtime_env = runtime_support.RuntimeEnvDict({})
-
+            runtime_env_dict = {}
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -725,7 +725,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env=parsed_runtime_env,
+            runtime_env_dict=runtime_env_dict,
             override_environment_variables=override_environment_variables
             or dict())
 
