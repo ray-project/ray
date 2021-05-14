@@ -271,11 +271,10 @@ class ServeController:
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
-    async def deploy(
-            self, name: str, backend_config: BackendConfig,
-            replica_config: ReplicaConfig, python_methods: List[str],
-            version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
+    async def deploy(self, name: str, backend_config: BackendConfig,
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], prev_version: Optional[str], route_prefix: Optional[str]
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -293,7 +292,7 @@ class ServeController:
 
             backend_info = BackendInfo(
                 actor_def=ray.remote(
-                    create_backend_replica(g
+                    create_backend_replica(
                         name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
