@@ -91,10 +91,10 @@ class MultiCallbacks(DefaultCallbacks):
                 **kwargs)
 
     def on_postprocess_trajectory(
-        self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
-        agent_id: AgentID, policy_id: PolicyID,
-        policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
-        original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
+            self, *, worker: "RolloutWorker", episode: MultiAgentEpisode,
+            agent_id: AgentID, policy_id: PolicyID,
+            policies: Dict[PolicyID, Policy], postprocessed_batch: SampleBatch,
+            original_batches: Dict[AgentID, SampleBatch], **kwargs) -> None:
         for callback in self._callback_list:
             callback.on_postprocess_trajectory(
                 worker=worker,

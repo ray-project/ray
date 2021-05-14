@@ -15,18 +15,23 @@ from utils.typing import PolicyID
 @PublicAPI
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """
-    MemoryTrackingCallbacks can be used to trace and track memory usage in rollout workers.
+    MemoryTrackingCallbacks can be used to trace and track memory usage
+    in rollout workers.
 
-    The Memory Tracking Callbacks uses tracemalloc and psutil to track python allocations during rollouts, 
+    The Memory Tracking Callbacks uses tracemalloc and psutil to track
+    python allocations during rollouts,
     in training or evaluation.
 
-    The tracking data is logged to the custom_metrics of an episode and can therefore be viewed in tensorboard 
+    The tracking data is logged to the custom_metrics of an episode and
+    can therefore be viewed in tensorboard
     (or in WandB etc..)
 
-    Warning: This class is meant for debugging and should not be used in production code as tracemalloc incurs 
+    Warning: This class is meant for debugging and should not be used
+    in production code as tracemalloc incurs
     a significant slowdown in execution speed.
 
-    Add MemoryTrackingCallbacks callback to the tune config e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+    Add MemoryTrackingCallbacks callback to the tune config
+    e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
     """
 
     def __init__(self):
