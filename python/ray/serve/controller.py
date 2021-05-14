@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
-import inspect
-from typing import Dict, Any, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -31,7 +30,6 @@ from ray.serve.utils import logger
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
-CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
@@ -184,12 +182,6 @@ class ServeController:
             if endpoints is not None:
                 await self._update_http_proxy_deployment(endpoints)
 
-        # TODO(simon): Use GoalID mechanism for this so client can check for
-        # goal id and http_state complete the goal id.
-        # await self.http_state.ensure_http_route_exists(
-        #     endpoint, timeout_s=30)
-        # XXX: fix this!
-
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
 
@@ -208,11 +200,13 @@ class ServeController:
         async with self.write_lock:
             backend_info = BackendInfo(
                 worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                    backend_tag, replica_config.serialized_backend_def),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -240,7 +234,9 @@ class ServeController:
             backend_config=existing_info.backend_config.copy(
                 update=config_options.dict(exclude_unset=True)),
             replica_config=existing_info.replica_config)
-        return self.backend_state.deploy_backend(backend_tag, backend_info)
+        goal_id, _ = self.backend_state.deploy_backend(backend_tag,
+                                                       backend_info)
+        return goal_id
 
     async def update_backend_config(self, backend_tag: BackendTag,
                                     config_options: BackendConfig) -> GoalId:
@@ -264,33 +260,26 @@ class ServeController:
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for replica_dict in self.backend_state.get_running_replica_handles(
-            ).values():
-                for replica in replica_dict.values():
-                    ray.kill(replica, no_restart=True)
-            self.kv_store.delete(CHECKPOINT_KEY)
+            self.backend_state.shutdown()
+            self.endpoint_state.shutdown()
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, version: Optional[str],
-                     route_prefix: Optional[str]) -> Optional[GoalId]:
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], route_prefix: Optional[str]
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
-
-        python_methods = []
-        if inspect.isclass(replica_config.backend_def):
-            for method_name, _ in inspect.getmembers(
-                    replica_config.backend_def, inspect.isfunction):
-                python_methods.append(method_name)
 
         async with self.write_lock:
             backend_info = BackendInfo(
                 worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                    name, replica_config.serialized_backend_def),
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)
 
-            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            goal_id, updating = self.backend_state.deploy_backend(
+                name, backend_info)
             if name != HTTP_PROXY_DEPLOYMENT_NAME:
                 endpoint_info = EndpointInfo(
                     ALL_HTTP_METHODS,
@@ -303,8 +292,7 @@ class ServeController:
                     }))
                 if endpoints is not None:
                     await self._update_http_proxy_deployment(endpoints)
-
-            return goal_id
+            return goal_id, updating
 
     async def delete_deployment(self, name: str) -> Optional[GoalId]:
         async with self.write_lock:

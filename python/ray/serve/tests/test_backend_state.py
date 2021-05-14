@@ -311,11 +311,13 @@ def test_override_goals(mock_backend_state):
     backend_state, _, goal_manager = mock_backend_state
 
     b_info_1 = backend_info()
-    initial_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    initial_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
     assert not goal_manager.check_complete(initial_goal)
 
     b_info_2 = backend_info(num_replicas=2)
-    new_goal = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    new_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
     assert goal_manager.check_complete(initial_goal)
     assert not goal_manager.check_complete(new_goal)
 
@@ -324,10 +326,12 @@ def test_return_existing_goal(mock_backend_state):
     backend_state, _, goal_manager = mock_backend_state
 
     b_info_1 = backend_info(version="1")
-    initial_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    initial_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
     assert not goal_manager.check_complete(initial_goal)
 
-    new_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    new_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert not updating
     assert initial_goal == new_goal
     assert not goal_manager.check_complete(initial_goal)
 
@@ -356,7 +360,8 @@ def test_create_delete_single_replica(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info()
-    create_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     # Single replica should be created.
     backend_state.update()
@@ -464,7 +469,8 @@ def test_redeploy_same_version(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(
@@ -475,7 +481,8 @@ def test_redeploy_same_version(mock_backend_state):
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert not updating
     assert goal_1 == goal_2
     assert not goal_manager.check_complete(goal_1)
 
@@ -499,7 +506,9 @@ def test_redeploy_same_version(mock_backend_state):
     assert goal_manager.check_complete(goal_1)
 
     # Test redeploying after the initial deployment has finished.
-    same_version_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    same_version_goal, updating = backend_state.deploy_backend(
+        TEST_TAG, b_info_1)
+    assert not updating
     assert goal_manager.check_complete(same_version_goal)
     check_counts(
         backend_state,
@@ -518,14 +527,16 @@ def test_redeploy_no_version(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(version=None)
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
     assert goal_1 != goal_2
     assert goal_manager.check_complete(goal_1)
     assert not goal_manager.check_complete(goal_2)
@@ -557,7 +568,8 @@ def test_redeploy_no_version(mock_backend_state):
 
     # Now deploy a third version after the transition has finished.
     b_info_3 = backend_info(version="3")
-    goal_3 = backend_state.deploy_backend(TEST_TAG, b_info_3)
+    goal_3, updating = backend_state.deploy_backend(TEST_TAG, b_info_3)
+    assert updating
     assert not goal_manager.check_complete(goal_3)
 
     backend_state.update()
@@ -591,7 +603,8 @@ def test_redeploy_new_version(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(
@@ -603,7 +616,8 @@ def test_redeploy_new_version(mock_backend_state):
 
     # Test redeploying while the initial deployment is still pending.
     b_info_2 = backend_info(version="2")
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
     assert goal_1 != goal_2
     assert goal_manager.check_complete(goal_1)
     assert not goal_manager.check_complete(goal_2)
@@ -647,7 +661,8 @@ def test_redeploy_new_version(mock_backend_state):
 
     # Now deploy a third version after the transition has finished.
     b_info_3 = backend_info(version="3")
-    goal_3 = backend_state.deploy_backend(TEST_TAG, b_info_3)
+    goal_3, updating = backend_state.deploy_backend(TEST_TAG, b_info_3)
+    assert updating
     assert not goal_manager.check_complete(goal_3)
 
     backend_state.update()
@@ -793,7 +808,8 @@ def test_initial_deploy_no_throttling(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(num_replicas=10, version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(
@@ -820,7 +836,8 @@ def test_new_version_deploy_throttling(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(num_replicas=10, version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(
@@ -840,7 +857,8 @@ def test_new_version_deploy_throttling(mock_backend_state):
 
     # Now deploy a new version. Two old replicas should be stopped.
     b_info_2 = backend_info(num_replicas=10, version="2")
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
     backend_state.update()
     check_counts(
         backend_state,
@@ -1084,7 +1102,8 @@ def test_new_version_and_scale_down(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(num_replicas=10, version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(
@@ -1105,7 +1124,8 @@ def test_new_version_and_scale_down(mock_backend_state):
     # Now deploy a new version and scale down the number of replicas to 2.
     # First, 8 old replicas should be stopped to bring it down to the target.
     b_info_2 = backend_info(num_replicas=2, version="2")
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
     backend_state.update()
     check_counts(
         backend_state,
@@ -1246,7 +1266,8 @@ def test_new_version_and_scale_up(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(num_replicas=2, version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
@@ -1265,7 +1286,8 @@ def test_new_version_and_scale_up(mock_backend_state):
     # Now deploy a new version and scale up the number of replicas to 10.
     # 8 new replicas should be started.
     b_info_2 = backend_info(num_replicas=10, version="2")
-    goal_2 = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    goal_2, updating = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    assert updating
     backend_state.update()
     check_counts(
         backend_state,
@@ -1353,7 +1375,8 @@ def test_health_check(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1 = backend_info(num_replicas=2, version="1")
-    goal_1 = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_1, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    assert updating
 
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING, 2)])

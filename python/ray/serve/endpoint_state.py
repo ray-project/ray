@@ -32,6 +32,9 @@ class EndpointState:
         self._notify_route_table_changed()
         self._notify_traffic_policies_changed()
 
+    def shutdown(self):
+        self._kv_store.delete(CHECKPOINT_KEY)
+
     def _checkpoint(self):
         self._kv_store.put(
             CHECKPOINT_KEY,
