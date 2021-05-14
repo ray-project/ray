@@ -24,7 +24,8 @@ class JobConfig:
                  jvm_options=None,
                  code_search_path=None,
                  runtime_env=None,
-                 client_job=False):
+                 client_job=False,
+                 metadata=None):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -52,6 +53,10 @@ class JobConfig:
             f"{type(code_search_path)}"
         self.runtime_env = runtime_env or dict()
         self.client_job = client_job
+        self.metadata = metadata or {}
+
+    def set_metadata(self, key, value):
+        self.metadata[key] = value
 
     def serialize(self):
         """Serialize the struct into protobuf string"""
@@ -69,6 +74,8 @@ class JobConfig:
         job_config.code_search_path.extend(self.code_search_path)
         job_config.runtime_env.CopyFrom(self._get_proto_runtime())
         job_config.serialized_runtime_env = self.get_serialized_runtime_env()
+        for k, v in self.metadata.items():
+            job_config.metadata[k] = v
         return job_config
 
     def get_runtime_env_uris(self):

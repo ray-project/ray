@@ -1194,15 +1194,16 @@ def test_actor_timestamps(ray_start_regular):
         time.sleep(1)
         state_after_ending = ray.state.actors()[actor_id]
 
-        assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
 
         start_time = state_after_ending["StartTime"]
         end_time = state_after_ending["EndTime"]
         lapsed = end_time - start_time
 
-        assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
         assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
-
 
     def not_graceful_exit():
         actor = Foo.remote()
@@ -1214,13 +1215,15 @@ def test_actor_timestamps(ray_start_regular):
         time.sleep(1)
         state_after_ending = ray.state.actors()[actor_id]
 
-        assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
+        assert state_after_starting["StartTime"] == state_after_ending[
+            "StartTime"]
 
         start_time = state_after_ending["StartTime"]
         end_time = state_after_ending["EndTime"]
         lapsed = end_time - start_time
 
-        assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
+        assert end_time > start_time > 0, \
+            f"Start: {start_time}, End: {end_time}"
         assert 500 < lapsed < 1500, f"Start: {start_time}, End: {end_time}"
 
     graceful_exit()

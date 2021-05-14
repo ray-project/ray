@@ -2,6 +2,7 @@ import time
 import os
 
 import ray
+from ray.job_config import JobConfig
 from ray.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -144,6 +145,17 @@ ray.shutdown()
     assert 0 < lapsed < 2000, f"Job should've taken ~1s {finished}"
 
     assert prev_running["EndTime"] > prev_running["StartTime"] > 0
+
+
+def test_config_metadata(shutdown_only):
+    job_config = JobConfig(metadata={"abc": "xyz"})
+    job_config.set_metadata("xyz", "abc")
+
+    ray.init(job_config=job_config)
+
+    from_worker = ray.worker.global_worker.core_worker.get_job_config()
+
+    assert dict(from_worker.metadata) == job_config.metadata
 
 
 if __name__ == "__main__":
