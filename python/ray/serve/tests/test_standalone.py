@@ -271,7 +271,9 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+        assert len(
+            ray.get(controller._all_replica_handles.remote()).get(
+                HTTP_PROXY_DEPLOYMENT_NAME, {})) == 0
 
         # Test that the handle still works.
         @serve.deployment
