@@ -49,11 +49,12 @@ class CometLoggerCallback(LoggerCallback):
             # Don't log command line arguments.
             self.experiment_kwargs["parse_args"] = False
             # Don't log console output to avoid large messages & throttling.
-            self.experiment_kwargs["auto_output_logging"] = None
+            self.experiment_kwargs["auto_output_logging"] = False
             # Don't log git related data to avoid large messages & throttling.
             self.experiment_kwargs["log_git_metadata"] = False
             self.experiment_kwargs["log_git_patch"] = False
             experiment = experiment_cls(**self.experiment_kwargs)
+            import pdb; pdb.set_trace()
             self._trial_experiments[trial] = experiment
             # Set global experiment to None to allow for multiple experiments.
             comet_ml.config.set_global_experiment(None)
