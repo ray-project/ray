@@ -14,6 +14,7 @@ from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
     build_sac_model_and_action_dist, optimizer_fn, ComputeTDErrorMixin, \
     TargetNetworkMixin, setup_late_mixins, action_distribution_fn
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
@@ -348,7 +349,11 @@ def compute_gradients_fn(policy, postprocessed_batch):
     batches = [policy._lazy_tensor_dict(postprocessed_batch)]
     model = policy.model
     policy._loss(policy, model, policy.dist_class, batches[0])
-    return [None, dict()]
+    stats = {
+        LEARNER_STATS_KEY: policy._convert_to_non_torch_type(
+            cql_stats(policy, batches[0]))
+    }
+    return [None, stats]
 
 
 def apply_gradients_fn(policy, gradients):

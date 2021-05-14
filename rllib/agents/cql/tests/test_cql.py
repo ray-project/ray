@@ -4,8 +4,11 @@ import unittest
 
 import ray
 import ray.rllib.agents.cql as cql
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
+
+torch, _ = try_import_torch()
 
 
 class TestCQL(unittest.TestCase):
@@ -31,22 +34,9 @@ class TestCQL(unittest.TestCase):
         print("data_file={} exists={}".format(data_file,
                                               os.path.isfile(data_file)))
 
-        data_file = "/Users/sven/Dropbox/Projects/anyscale_projects/wildlife_studios/cql_issue/dataset_sample.json"
         config = cql.CQL_DEFAULT_CONFIG.copy()
-        #TODO
-        from ray.rllib.examples.env.random_env import RandomEnv
-        from gym.spaces import Box, Discrete
-        import numpy as np
-        #END TODO
-        config["env"] = RandomEnv#"Pendulum-v0"
-        config["env_config"] = {
-            "observation_space": Box(-1000.0, 1000.0, (47,), np.float32),
-            "action_space": Discrete(12),
-        }
+        config["env"] = "Pendulum-v0"
         config["input"] = [data_file]
-
-        #TODO
-        config["input_evaluation"] = ["is"]
 
         config["num_workers"] = 0  # Run locally.
         config["twin_q"] = True
@@ -56,89 +46,8 @@ class TestCQL(unittest.TestCase):
         config["rollout_fragment_length"] = 1
         config["train_batch_size"] = 10
 
-        config = {
-            "Q_model": {
-                "custom_model": None,
-                "custom_model_config": {},
-                "fcnet_activation": "relu",
-                "fcnet_hiddens": [
-                    256,
-                    256
-                ],
-                "post_fcnet_activation": None,
-                "post_fcnet_hiddens": []
-            },
-            "bc_iters": 20000,
-            "buffer_size": 1571951,
-            "compress_observations": False,
-            "env": RandomEnv,
-            "env_config": {
-                "action_space": Box(0.0, 100.0, (4,), np.float32),
-                "observation_space": Box(-1000.0, 1000.0, (47,), np.float32)
-            },
-            "evaluation_interval": 20000,
-            "evaluation_num_episodes": 20000,
-            "evaluation_num_workers": 0,
-            "explore": False,
-            "final_prioritized_replay_beta": 0.4,
-            "framework": "torch",
-            "grad_clip": None,
-            "ignore_worker_failures": True,
-            "initial_alpha": 1.0,
-            "input": [
-                data_file
-            ],
-            "input_evaluation": [
-                "is",
-                #"wis"
-            ],
-            "lagrangian": False,
-            "lagrangian_thresh": 5.0,
-            "learning_starts": 1500,
-            "log_level": "DEBUG",
-            "min_q_weight": 5.0,
-            "monitor": True,
-            "n_step": 1,
-            "no_done_at_end": False,
-            "normalize_actions": True,
-            "num_actions": 10,
-            "num_cpus_for_driver": 3,
-            "num_cpus_per_worker": 0,
-            "num_gpus": 0,
-            "num_gpus_per_worker": 0,
-            "num_workers": 0,
-            "optimization": {
-                "actor_learning_rate": 0.0003,
-                "critic_learning_rate": 0.0003,
-                "entropy_learning_rate": 0.0003
-            },
-            "policy_model": {
-                "custom_model": None,
-                "custom_model_config": {},
-                "fcnet_activation": "relu",
-                "fcnet_hiddens": [
-                    256,
-                    256
-                ],
-                "post_fcnet_activation": None,
-                "post_fcnet_hiddens": []
-            },
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_beta_annealing_timesteps": 20000,
-            "prioritized_replay_eps": 1e-06,
-            "rollout_fragment_length": 1,
-            "seed": 42,
-            "target_entropy": None,
-            "target_network_update_freq": 0,
-            "tau": 0.005,
-            "temperature": 0.5,
-            "timesteps_per_iteration": 100,
-            "train_batch_size": 256,
-            "training_intensity": None,
-            "twin_q": True,
-        }
+        # Switch on off-policy evaluation.
+        config["input_evaluation"] = ["is"]
 
         num_iterations = 2
 
@@ -146,8 +55,34 @@ class TestCQL(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch")):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
-                trainer.train()
+                print(trainer.train())
+
             check_compute_single_action(trainer)
+
+            # Get policy, model, and replay-buffer.
+            pol = trainer.get_policy()
+            cql_model = pol.model
+            from ray.rllib.agents.cql.cql import replay_buffer
+
+            # Example on how to do evaluation on the trained Trainer
+            # using the data from our buffer.
+            # Get a sample (MultiAgentBatch -> SampleBatch).
+            batch = replay_buffer.replay().policy_batches["default_policy"]
+            obs = torch.from_numpy(batch["obs"])
+            # Pass the observations through our model to get the
+            # features, which then to pass through the Q-head.
+            model_out, _ = cql_model({"obs": obs})
+            # The estimated Q-values from the (historic) actions in the batch.
+            q_values_old = cql_model.get_q_values(
+                model_out, torch.from_numpy(batch["actions"]))
+            # The estimated Q-values for the new actions computed
+            # by our trainer policy.
+            actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
+            q_values_new = cql_model.get_q_values(
+                model_out, torch.from_numpy(actions_new))
+            print(f"Q-val batch={q_values_old}")
+            print(f"Q-val policy={q_values_new}")
+
             trainer.stop()
 
 
