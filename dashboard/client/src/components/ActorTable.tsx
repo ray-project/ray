@@ -17,8 +17,8 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { Actor } from "../type/actor";
 import { Worker } from "../type/worker";
-import { longTextCut } from "../util/func";
 import { useFilter } from "../util/hook";
+import CopyableCollapse from "./CopyableCollapse";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
@@ -35,14 +35,6 @@ const ActorTable = ({
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
   const actorList = Object.values(actors || {})
-    .map((e) => ({
-      ...e,
-      functionDesc: Object.values(
-        e.taskSpec?.functionDescriptor?.javaFunctionDescriptor ||
-          e.taskSpec?.functionDescriptor?.pythonFunctionDescriptor ||
-          {},
-      ).join(" "),
-    }))
     .filter(filterFunc);
   const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
 
@@ -89,21 +81,6 @@ const ActorTable = ({
           }}
         />
         <TextField
-          style={{ margin: 8, width: 200 }}
-          label="Task Func Desc"
-          size="small"
-          InputProps={{
-            onChange: ({ target: { value } }) => {
-              changeFilter("functionDesc", value.trim());
-            },
-            endAdornment: (
-              <InputAdornment position="end">
-                <SearchOutlined />
-              </InputAdornment>
-            ),
-          }}
-        />
-        <TextField
           style={{ margin: 8, width: 120 }}
           label="Name"
           size="small"
@@ -137,10 +114,16 @@ const ActorTable = ({
           style={{ margin: 8, width: 120 }}
           label="Page Size"
           size="small"
+          defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
             },
+            endAdornment: (
+              <InputAdornment position="end">
+                Per Page
+              </InputAdornment>
+            ),
           }}
         />
       </div>
@@ -161,9 +144,11 @@ const ActorTable = ({
           <TableRow>
             {[
               "",
-              "ID(Num Restarts)",
+              "ID",
+              "Restart Times",
               "Name",
-              "Task Func Desc",
+              "Class",
+              "Function",
               "Job Id",
               "Pid",
               "IP",
@@ -181,7 +166,7 @@ const ActorTable = ({
           {list.map(
             ({
               actorId,
-              functionDesc,
+              functionDescriptor,
               jobId,
               pid,
               address,
@@ -212,15 +197,30 @@ const ActorTable = ({
               >
                 <TableCell
                   align="center"
-                  style={{
-                    color: Number(numRestarts) > 0 ? orange[500] : "inherit",
-                  }}
                 >
-                  {actorId}({numRestarts})
+                  <CopyableCollapse text={actorId} />
+                </TableCell>
+                <TableCell align="center" style={{
+                    color: Number(numRestarts) > 0 ? orange[500] : "inherit",
+                  }}>
+                {numRestarts}
                 </TableCell>
                 <TableCell align="center">{name}</TableCell>
                 <TableCell align="center">
-                  {longTextCut(functionDesc, 60)}
+                  {
+                    functionDescriptor?.javaFunctionDescriptor?.className
+                  }
+                  {
+                    functionDescriptor?.pythonFunctionDescriptor?.className
+                  }
+                </TableCell>
+                <TableCell align="center">
+                  {
+                    functionDescriptor?.javaFunctionDescriptor?.functionName
+                  }
+                  {
+                    functionDescriptor?.pythonFunctionDescriptor?.functionName
+                  }
                 </TableCell>
                 <TableCell align="center">{jobId}</TableCell>
                 <TableCell align="center">{pid}</TableCell>

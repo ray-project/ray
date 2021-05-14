@@ -21,6 +21,7 @@
     "@types/react-window": "^1.8.2",
     "axios": "^0.21.1",
     "classnames": "^2.2.6",
+    "copy-to-clipboard": "^3.3.1",
     "dayjs": "^1.9.4",
     "lodash": "^4.17.20",
     "lowlight": "^1.14.0",
@@ -126,5 +127,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8265"
+  "proxy": "http://100.82.253.32:8090"
 }
