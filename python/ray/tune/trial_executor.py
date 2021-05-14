@@ -168,7 +168,7 @@ class TrialExecutor:
     def on_no_available_trials(self, trial_runner):
         if self._queue_trials:
             return
-        for trial in trial_runner.get_live_trials():
+        for trial in trial_runner.get_trials():
             if trial.uses_placement_groups:
                 return
             if trial.status == Trial.PENDING:
