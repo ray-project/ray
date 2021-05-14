@@ -48,6 +48,11 @@ class CometLoggerCallback(LoggerCallback):
             experiment_cls = Experiment if self.online else OfflineExperiment
             # Don't log command line arguments.
             self.experiment_kwargs["parse_args"] = False
+            # Don't log console output to avoid large messages & throttling.
+            self.experiment_kwargs["auto_output_logging"] = None
+            # Don't log git related data to avoid large messages & throttling.
+            self.experiment_kwargs["log_git_metadata"] = False
+            self.experiment_kwargs["log_git_patch"] = False
             experiment = experiment_cls(**self.experiment_kwargs)
             self._trial_experiments[trial] = experiment
             # Set global experiment to None to allow for multiple experiments.
@@ -98,3 +103,9 @@ class CometLoggerCallback(LoggerCallback):
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._trial_experiments[trial].end()
+        del self._trial_experiments[trial]
+
+    def __del__(self):
+        for trial, experiment in self._trial_experiments.items():
+            experiment.end()
+        self._trial_experiments = {}

@@ -19,11 +19,12 @@ def tune_function(api_key=None, project_name=None):
         metric="loss",
         mode="min",
         callbacks=[
-            CometLoggerCallback(api_key=api_key, project_name=project_name,
+            CometLoggerCallback(api_key=api_key,
+                                project_name=project_name,
                                 tags=["comet_example"])
         ],
         config={
-            "mean": tune.grid_search([1, 2, 3, 4, 5]),
+            "mean": tune.grid_search([1, 2, 3]),
             "sd": tune.uniform(0.2, 0.8)
         })
     return analysis.best_config
@@ -48,4 +49,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     tune_function(args.api_key, args.project_name)
+
+
 
