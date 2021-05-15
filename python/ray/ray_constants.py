@@ -251,6 +251,8 @@ GCS_PORT_ENVIRONMENT_VARIABLE = "RAY_GCS_SERVER_PORT"
 
 HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 
+RAY_CLIENT_SERVER_PORT_REDIS_KEY = "ray_client_server_port"
+
 # Filename of "shim process" that sets up Python worker environment.
 # Should be kept in sync with kSetupWorkerFilename in
 # src/ray/common/constants.h.

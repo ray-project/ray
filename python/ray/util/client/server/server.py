@@ -697,6 +697,9 @@ def main():
             try:
                 if not redis_client:
                     redis_client = try_create_redis_client(args)
+                    redis_client.set(
+                        ray.ray_constants.RAY_CLIENT_SERVER_PORT_REDIS_KEY,
+                        args.port)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:
