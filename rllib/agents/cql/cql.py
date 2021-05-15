@@ -51,8 +51,6 @@ CQL_DEFAULT_CONFIG = merge_dicts(
 def validate_config(config: TrainerConfigDict):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
-    if config["framework"] == "tf":
-        raise ValueError("Tensorflow CQL not implemented yet!")
 
 
 replay_buffer = None
