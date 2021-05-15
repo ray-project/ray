@@ -8,8 +8,11 @@ from typing import Any, Dict, Optional, Tuple
 
 import ray
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray.ray_constants import RAY_CLIENT_SERVER_PORT_REDIS_KEY
+from ray.ray_constants import REDIS_DEFAULT_PASSWORD
 from ray.job_config import JobConfig
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.services import create_redis_client, find_redis_address
 from ray._private.utils import get_unused_port
 import ray.util.client.server as client_server
 import ray.util.client_connect
@@ -97,21 +100,45 @@ class _LocalClientBuilder(ClientBuilder):
         self._init_args["dashboard_port"] = port
         return self
 
+    def _create_local_cluster(self):
+        def ray_connect_handler(job_config=None):
+            with disable_client_hook():
+                if not ray.is_initialized():
+                    ray.init(job_config=job_config, **self._init_args)
+
+        port, _ = get_unused_port()
+        self.address = f"localhost:{port}"
+        logger.info(f"Creating a server on {self.address}")
+        self._server = client_server.serve(self.address, ray_connect_handler)
+        atexit.register(ray.shutdown, True)
+        atexit.register(self._server.grpc_server.stop, 0)
+
+    def _find_or_create_cluster(self):
+        redis_addresses = find_redis_address()
+        if len(redis_addresses) > 1:
+            raise ConnectionError(
+                f"Found multiple active Ray instances: {redis_addresses}.")
+
+        if len(redis_addresses) == 1:
+            address = redis_addresses.pop()
+            redis_client = create_redis_client(address, REDIS_DEFAULT_PASSWORD)
+            port = redis_client.get(RAY_CLIENT_SERVER_PORT_REDIS_KEY)
+            if port is not None:
+                self.address = "localhost:" + port.decode("UTF-8")
+                return
+            else:
+                logger.warning(
+                    f"Found cluster at: {address}, but unable to "
+                    "determine the Ray Client Server Port in Redis. "
+                    "Starting a new cluster instead.")
+
+        self._create_local_cluster()
+
     def connect(self) -> ClientInfo:
         if self.create_cluster_without_searching:
-
-            def ray_connect_handler(job_config=None):
-                with disable_client_hook():
-                    if not ray.is_initialized():
-                        ray.init(job_config=job_config, **self._init_args)
-
-            port, _ = get_unused_port()
-            self.address = f"localhost:{port}"
-            logger.info(f"Creating a server on {self.address}")
-            self._server = client_server.serve(self.address,
-                                               ray_connect_handler)
-            atexit.register(ray.shutdown, True)
-            atexit.register(self._server.grpc_server.stop, 0)
+            self._create_local_cluster()
+        else:
+            self._find_or_create_cluster()
         return super().connect()
 
 
