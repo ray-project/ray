@@ -282,8 +282,8 @@ install_dependencies() {
   pip install --no-clean dm-tree==0.1.5  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
-    # Remove this entire section once RLlib and Serve dependencies are fixed.
-    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
+    # Remove this entire section once Serve dependencies are fixed.
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
@@ -323,36 +323,39 @@ install_dependencies() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/rllib/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_tune.txt
     download_mnist
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_upstream.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/tune/requirements_upstream.txt
   fi
 
-  # Remove this entire section once RLlib and Serve dependencies are fixed.
-  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
-    # If CI has deemed that a different version of Tensorflow or Torch
+  # Remove this entire section once Serve dependencies are fixed.
+  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
+    # If CI has deemed that a different version of Torch
     # should be installed, then upgrade/downgrade to that specific version.
-    if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+    if [ -n "${TORCH_VERSION-}" ]; then
       case "${TORCH_VERSION-1.8.1}" in
         1.8.1) TORCHVISION_VERSION=0.9.1;;
         1.5) TORCHVISION_VERSION=0.6.0;;
         *) TORCHVISION_VERSION=0.5.0;;
       esac
-      pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-        torch=="${TORCH_VERSION-1.8.1}" torchvision=="${TORCHVISION_VERSION}" \
-        tensorflow=="${TF_VERSION-2.2.0}" gym
+      pip install --use-deprecated=legacy-resolver --upgrade torch=="${TORCH_VERSION-1.8.1}" torchvision=="${TORCHVISION_VERSION}"
     fi
+  fi
+
+  # RLlib testing with TF 1.x.
+  if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym
   fi
 
   # Additional Tune dependency for Horovod.
