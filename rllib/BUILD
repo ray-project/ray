@@ -1505,7 +1505,7 @@ py_test(
 py_test(
     name = "tests/test_nested_observation_spaces",
     main = "tests/test_nested_observation_spaces.py",
-    tags = ["tests_dir", "tests_dir_N"],
+    tags = ["tests_dir", "tests_dir_N", "flaky"],
     size = "small",
     srcs = ["tests/test_nested_observation_spaces.py"]
 )
@@ -2224,7 +2224,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_pg_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
 )
