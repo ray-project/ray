@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
-import inspect
-from typing import Dict, Any, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -32,7 +31,6 @@ from ray.serve.utils import logger
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
-CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
@@ -214,12 +212,15 @@ class ServeController:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -244,12 +245,14 @@ class ServeController:
                 raise ValueError(f"Backend {backend_tag} is not registered.")
 
             backend_info = BackendInfo(
-                worker_class=existing_info.worker_class,
+                actor_def=existing_info.actor_def,
                 version=existing_info.version,
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
                 replica_config=existing_info.replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -264,52 +267,38 @@ class ServeController:
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for proxy in self.http_state.get_http_proxy_handles().values():
-                ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_running_replica_handles(
-            ).values():
-                for replica in replica_dict.values():
-                    ray.kill(replica, no_restart=True)
-            self.kv_store.delete(CHECKPOINT_KEY)
+            self.backend_state.shutdown()
+            self.endpoint_state.shutdown()
+            self.http_state.shutdown()
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, version: Optional[str],
-                     route_prefix: Optional[str]) -> Optional[GoalId]:
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], route_prefix: Optional[str]
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            http_methods = ALL_HTTP_METHODS
-        else:
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
-
-        python_methods = []
-        if inspect.isclass(replica_config.backend_def):
-            for method_name, _ in inspect.getmembers(
-                    replica_config.backend_def, inspect.isfunction):
-                python_methods.append(method_name)
-
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)
 
-            goal_id = self.backend_state.deploy_backend(name, backend_info)
+            goal_id, updating = self.backend_state.deploy_backend(
+                name, backend_info)
             endpoint_info = EndpointInfo(
-                http_methods,
+                ALL_HTTP_METHODS,
                 route=route_prefix,
-                python_methods=python_methods)
+                python_methods=python_methods,
+                legacy=False)
             self.endpoint_state.update_endpoint(name, endpoint_info,
                                                 TrafficPolicy({
                                                     name: 1.0
                                                 }))
-            return goal_id
+            return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)

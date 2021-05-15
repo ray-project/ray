@@ -18,8 +18,12 @@ spec:
     additionalPrinterColumns:
       - name: status
         type: string
-        description: Running or Error
+        description: Updating, Running, Error, or AutoscalingExceptionRecovery
         jsonPath: .status.phase
+      - name: restarts
+        type: integer
+        description: Number of Ray cluster restarts triggered by autoscaler failure.
+        jsonPath: .status.autoscalerRetries
       - name: age
         type: date
         jsonPath: .metadata.creationTimestamp
@@ -34,8 +38,11 @@ spec:
             type: object
             properties:
               phase:
-                description: Running or Error
+                description: Updating, Running, Error, or AutoscalingExceptionRecovery
                 type: string
+              autoscalerRetries:
+                description: Number of Ray cluster restarts triggered by autoscaler failure.
+                type: integer
           spec:
             type: object
             required:
@@ -58,6 +65,22 @@ spec:
                 description: If a node is idle for this many minutes, it will be removed.
                 type: integer
                 minimum: 0
+              headServicePorts:
+                description: Optional list of ports to use for the Ray head service.
+                type: array
+                items:
+                  type: object
+                  required:
+                  - name
+                  - port
+                  - targetPort
+                  properties:
+                    name:
+                      type: string
+                    port:
+                      type: integer
+                    targetPort:
+                      x-kubernetes-int-or-string: true
               podTypes:
                 description: A list of Pod types on which to run Ray nodes, for multi-node-type autoscaling.
                 type: array

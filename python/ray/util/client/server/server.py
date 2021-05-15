@@ -5,11 +5,10 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 import os
-import sys
+import queue
 
 import threading
 from typing import Any
-from typing import List
 from typing import Dict
 from typing import Set
 from typing import Optional
@@ -23,14 +22,14 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.util.client.common import (GRPC_MAX_MESSAGE_SIZE,
-                                    CLIENT_SERVER_MAX_THREADS)
+from ray.util.client.common import (GRPC_OPTIONS, CLIENT_SERVER_MAX_THREADS)
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
 from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
@@ -88,9 +87,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def PrepRuntimeEnv(self, request,
                        context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
         job_config = ray.worker.global_worker.core_worker.get_job_config()
-        missing_uris = self._prepare_runtime_env(job_config.runtime_env)
-        if len(missing_uris) != 0:
-            raise grpc.RpcError(f"Missing uris: {missing_uris}")
+        try:
+            self._prepare_runtime_env(job_config.runtime_env)
+        except Exception as e:
+            raise grpc.RpcError(f"Prepare runtime env failed with {e}")
         return ray_client_pb2.PrepRuntimeEnvResponse()
 
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
@@ -160,11 +160,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
+        """Handle ClusterInfo requests that only return a json blob."""
         data = None
         if request.type == ray_client_pb2.ClusterInfoType.NODES:
             data = ray.nodes()
         elif request.type == ray_client_pb2.ClusterInfoType.IS_INITIALIZED:
             data = ray.is_initialized()
+        elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
+            data = ray.timeline()
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
@@ -248,6 +251,48 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 "Client requested termination without providing a valid "
                 "terminate_type")
         return ray_client_pb2.TerminateResponse(ok=True)
+
+    def _async_get_object(
+            self,
+            request,
+            client_id: str,
+            req_id: int,
+            result_queue: queue.Queue,
+            context=None) -> Optional[ray_client_pb2.GetResponse]:
+        """Attempts to schedule a callback to push the GetResponse to the
+        main loop when the desired object is ready. If there is some failure
+        in scheduling, a GetResponse will be immediately returned.
+        """
+        if request.id not in self.object_refs[client_id]:
+            return ray_client_pb2.GetResponse(valid=False)
+        try:
+            object_ref = self.object_refs[client_id][request.id]
+            logger.debug("async get: %s" % object_ref)
+            with disable_client_hook():
+
+                def send_get_response(result: Any) -> None:
+                    """Pushes a GetResponse to the main DataPath loop to send
+                    to the client. This is called when the object is ready
+                    on the server side."""
+                    try:
+                        serialized = dumps_from_server(result, client_id, self)
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=True, data=serialized)
+                    except Exception as e:
+                        get_resp = ray_client_pb2.GetResponse(
+                            valid=False, error=cloudpickle.dumps(e))
+
+                    resp = ray_client_pb2.DataResponse(
+                        get=get_resp, req_id=req_id)
+                    resp.req_id = req_id
+
+                    result_queue.put(resp)
+
+                object_ref._on_completed(send_get_response)
+                return None
+        except Exception as e:
+            return ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
 
     def GetObject(self, request, context=None):
         return self._get_object(request, "", context)
@@ -430,21 +475,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             kwargout[k] = convert_from_arg(kwarg_map[k], self)
         return argout, kwargout
 
-    def _prepare_runtime_env(self, job_runtime_env) -> List[str]:
+    def _prepare_runtime_env(self, job_runtime_env):
         """Download runtime environment to local node"""
-        missing_uris = []
         uris = job_runtime_env.uris
         from ray._private import runtime_env
         with disable_client_hook():
-            for uri in uris:
-                try:
-                    working_dir = runtime_env.fetch_package(uri)
-                    if working_dir:
-                        os.chdir(str(working_dir))
-                        sys.path.insert(0, str(working_dir))
-                except IOError:
-                    missing_uris.append(uri)
-        return missing_uris
+            working_dir = runtime_env.ensure_runtime_env_setup(uris)
+            if working_dir:
+                os.chdir(working_dir)
 
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
@@ -510,6 +548,13 @@ def decode_options(
         return None
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
+
+    if opts.get("placement_group", None):
+        # Placement groups in Ray client options are serialized as dicts.
+        # Convert the dict to a PlacementGroup.
+        opts["placement_group"] = PlacementGroup.from_dict(
+            opts["placement_group"])
+
     return opts
 
 
@@ -536,10 +581,7 @@ def serve(connection_str, ray_connect_handler=None):
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
-        options=[
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ])
+        options=GRPC_OPTIONS)
     task_servicer = RayletServicer(ray_connect_handler)
     data_servicer = DataServicer(task_servicer)
     logs_servicer = LogstreamServicer()
@@ -600,6 +642,21 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
+def try_create_redis_client(args):
+    if "redis-address" not in args:
+        possible = ray._private.services.find_redis_address()
+        if len(possible) != 1:
+            return None
+        address = possible.pop()
+    else:
+        address = args["redis-address"]
+    if args.redis_password is None:
+        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+    else:
+        password = args.redis_password
+    return ray._private.services.create_redis_client(address, password)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
@@ -620,6 +677,11 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
 
+    # This redis client is used for health checking. We can't use `internal_kv`
+    # because it requires `ray.init` to be called, which only connect handlers
+    # should do.
+    redis_client = None
+
     ray_connect_handler = create_ray_handler(args.redis_address,
                                              args.redis_password)
 
@@ -628,7 +690,21 @@ def main():
     server = serve(hostport, ray_connect_handler)
     try:
         while True:
-            time.sleep(1000)
+            health_report = {
+                "time": time.time(),
+            }
+
+            try:
+                if not redis_client:
+                    redis_client = try_create_redis_client(args)
+                redis_client.hset("healthcheck:ray_client_server", "value",
+                                  json.dumps(health_report))
+            except Exception as e:
+                logger.error("Failed to put health check.")
+                logger.exception(e)
+
+            time.sleep(1)
+
     except KeyboardInterrupt:
         server.stop(0)
 

@@ -64,20 +64,7 @@ class SampleBatch(dict):
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
 
-        self.seq_lens = kwargs.pop("_seq_lens", kwargs.pop("seq_lens", None))
-        if self.seq_lens is None and len(args) > 0 and isinstance(
-                args[0], dict):
-            self.seq_lens = args[0].pop("_seq_lens", args[0].pop(
-                "seq_lens", None))
-        if isinstance(self.seq_lens, list):
-            self.seq_lens = np.array(self.seq_lens, dtype=np.int32)
-
-        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
-        if self.max_seq_len is None and self.seq_lens is not None and \
-                not (tf and tf.is_tensor(self.seq_lens)) and \
-                len(self.seq_lens) > 0:
-            self.max_seq_len = max(self.seq_lens)
         self.zero_padded = kwargs.pop("_zero_padded", False)
         self.is_training = kwargs.pop("_is_training", None)
 
@@ -89,14 +76,25 @@ class SampleBatch(dict):
         self.added_keys = set()
         self.deleted_keys = set()
         self.intercepted_values = {}
-
         self.get_interceptor = None
+
+        # Clear out None seq-lens.
+        if self.get("seq_lens") is None or self.get("seq_lens") == []:
+            self.pop("seq_lens", None)
+        # Numpyfy seq_lens if list.
+        elif isinstance(self.get("seq_lens"), list):
+            self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
+
+        if self.max_seq_len is None and self.get("seq_lens") is not None and \
+                not (tf and tf.is_tensor(self["seq_lens"])) and \
+                len(self["seq_lens"]) > 0:
+            self.max_seq_len = max(self["seq_lens"])
 
         if self.is_training is None:
             self.is_training = self.pop("is_training", False)
 
         lengths = []
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = {k: v for k, v in self.items() if k != "seq_lens"}
         for k, v in copy_.items():
             assert isinstance(k, str), self
             len_ = len(v) if isinstance(
@@ -106,20 +104,12 @@ class SampleBatch(dict):
             if isinstance(v, list):
                 self[k] = np.array(v)
 
-        if not lengths:
-            raise ValueError("Empty sample batch")
-
-        if not self.dont_check_lens:
-            assert len(set(lengths)) == 1, \
-                "Data columns must be same length, but lens are " \
-                "{}".format(lengths)
-
-        if self.seq_lens is not None and \
-                not (tf and tf.is_tensor(self.seq_lens)) and \
-                len(self.seq_lens) > 0:
-            self.count = sum(self.seq_lens)
+        if self.get("seq_lens") is not None and \
+                not (tf and tf.is_tensor(self["seq_lens"])) and \
+                len(self["seq_lens"]) > 0:
+            self.count = sum(self["seq_lens"])
         else:
-            self.count = lengths[0]
+            self.count = lengths[0] if lengths else 0
 
     @PublicAPI
     def __len__(self):
@@ -151,8 +141,8 @@ class SampleBatch(dict):
                 if zero_padded:
                     assert s.max_seq_len == max_seq_len
                 concat_samples.append(s)
-                if s.seq_lens is not None:
-                    seq_lens.extend(s.seq_lens)
+                if s.get("seq_lens") is not None:
+                    seq_lens.extend(s["seq_lens"])
 
         out = {}
         for k in concat_samples[0].keys():
@@ -161,9 +151,8 @@ class SampleBatch(dict):
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
             out,
-            _seq_lens=np.array(seq_lens, dtype=np.int32),
+            seq_lens=seq_lens,
             _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True,
             _zero_padded=zero_padded,
             _max_seq_len=max_seq_len,
         )
@@ -212,8 +201,8 @@ class SampleBatch(dict):
                 if isinstance(v, np.ndarray) else v
                 for (k, v) in self.items()
             },
-            _seq_lens=self.seq_lens,
-            _dont_check_lens=self.dont_check_lens)
+            seq_lens=self.get("seq_lens"),
+        )
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
 
@@ -314,7 +303,7 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+        if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             if start < 0:
                 data = {
                     k: np.concatenate([
@@ -322,15 +311,18 @@ class SampleBatch(dict):
                             shape=(-start, ) + v.shape[1:], dtype=v.dtype),
                         v[0:end]
                     ])
-                    for k, v in self.items()
+                    for k, v in self.items() if k != "seq_lens"
                 }
             else:
-                data = {k: v[start:end] for k, v in self.items()}
+                data = {
+                    k: v[start:end]
+                    for k, v in self.items() if k != "seq_lens"
+                }
             # Fix state_in_x data.
             count = 0
             state_start = None
             seq_lens = None
-            for i, seq_len in enumerate(self.seq_lens):
+            for i, seq_len in enumerate(self["seq_lens"]):
                 count += seq_len
                 if count >= end:
                     state_idx = 0
@@ -341,7 +333,7 @@ class SampleBatch(dict):
                         data[state_key] = self[state_key][state_start:i + 1]
                         state_idx += 1
                         state_key = "state_in_{}".format(state_idx)
-                    seq_lens = list(self.seq_lens[state_start:i]) + [
+                    seq_lens = list(self["seq_lens"][state_start:i]) + [
                         seq_len - (count - end)
                     ]
                     if start < 0:
@@ -353,14 +345,13 @@ class SampleBatch(dict):
 
             return SampleBatch(
                 data,
-                _seq_lens=np.array(seq_lens, dtype=np.int32),
+                seq_lens=seq_lens,
                 _time_major=self.time_major,
-                _dont_check_lens=True)
+            )
         else:
             return SampleBatch(
                 {k: v[start:end]
                  for k, v in self.items()},
-                _seq_lens=None,
                 _is_training=self.is_training,
                 _time_major=self.time_major)
 
@@ -393,8 +384,9 @@ class SampleBatch(dict):
                 data. If False, leave `state_in_x` keys as-is.
         """
         for col in self.keys():
-            # Skip state in columns.
-            if exclude_states is True and col.startswith("state_in_"):
+            # Skip "state_in_..." columns and "seq_lens".
+            if (exclude_states is True and col.startswith("state_in_")) or \
+                    col == "seq_lens":
                 continue
 
             f = self[col]
@@ -405,7 +397,7 @@ class SampleBatch(dict):
             if f.shape[0] == max_seq_len:
                 continue
             # Generate zero-filled primer of len=max_seq_len.
-            length = len(self.seq_lens) * max_seq_len
+            length = len(self["seq_lens"]) * max_seq_len
             if f.dtype == np.object or f.dtype.type is np.str_:
                 f_pad = [None] * length
             else:
@@ -413,7 +405,7 @@ class SampleBatch(dict):
                 f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
             # Fill primer with data.
             f_pad_base = f_base = 0
-            for len_ in self.seq_lens:
+            for len_ in self["seq_lens"]:
                 f_pad[f_pad_base:f_pad_base + len_] = f[f_base:f_base + len_]
                 f_pad_base += max_seq_len
                 f_base += len_
@@ -451,7 +443,7 @@ class SampleBatch(dict):
         Returns:
             TensorType: The data under the given key.
         """
-        if not hasattr(self, key):
+        if not hasattr(self, key) and key in self:
             self.accessed_keys.add(key)
 
         # Backward compatibility for when "input-dicts" were used.
@@ -462,13 +454,6 @@ class SampleBatch(dict):
                     new="SampleBatch.is_training",
                     error=False)
             return self.is_training
-        elif key == "seq_lens":
-            if self.get_interceptor is not None and self.seq_lens is not None:
-                if "seq_lens" not in self.intercepted_values:
-                    self.intercepted_values["seq_lens"] = self.get_interceptor(
-                        self.seq_lens)
-                return self.intercepted_values["seq_lens"]
-            return self.seq_lens
 
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
@@ -485,12 +470,9 @@ class SampleBatch(dict):
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
-        if key == "seq_lens":
-            self.seq_lens = item
-            return
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
-        elif not hasattr(self, "added_keys"):
+        if not hasattr(self, "added_keys"):
             dict.__setitem__(self, key, item)
             return
 
@@ -558,12 +540,15 @@ class SampleBatch(dict):
     def _get_slice_indices(self, slice_size):
         i = 0
         slices = []
-        if self.seq_lens is not None and len(self.seq_lens) > 0:
+        if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
+            assert np.all(self["seq_lens"] < slice_size), \
+                "ERROR: `slice_size` must be larger than the max. seq-len " \
+                "in the batch!"
             start_pos = 0
             current_slize_size = 0
             idx = 0
-            while idx < len(self.seq_lens):
-                seq_len = self.seq_lens[idx]
+            while idx < len(self["seq_lens"]):
+                seq_len = self["seq_lens"][idx]
                 current_slize_size += seq_len
                 # Complete minibatch -> Append to slices.
                 if current_slize_size >= slice_size:
@@ -588,6 +573,71 @@ class SampleBatch(dict):
             deprecation_warning(
                 old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
         return self
+
+    # TODO: (sven) Experimental method.
+    def get_single_step_input_dict(self, view_requirements, index="last"):
+        """Creates single ts SampleBatch at given index from `self`.
+
+        For usage as input-dict for model calls.
+
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            SampleBatch: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
+
+        input_dict = {}
+        for view_col, view_req in view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
+                if view_req.shift_from is not None:
+                    data = self[view_col][-1]
+                    traj_len = len(self[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate(
+                            [data,
+                             self[data_col][-missing_at_end:]])[from_:to_]
+                    ])
+                # Single index.
+                else:
+                    data = self[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = self[data_col][index[0]:index[1] +
+                                          1 if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = self[data_col][
+                        index:index + 1 if index != -1 else None]
+
+        return SampleBatch(input_dict, seq_lens=np.array([1], dtype=np.int32))
 
 
 @PublicAPI

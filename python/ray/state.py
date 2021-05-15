@@ -41,9 +41,11 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.redis_address is not None:
+        if (self.redis_address is not None
+                and self.global_state_accessor is None):
             self._really_init_global_state()
 
+        # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
@@ -838,6 +840,7 @@ def objects(object_ref=None):
     return state.object_table(object_ref=object_ref)
 
 
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 

@@ -2,13 +2,16 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
-import uuid
+import asyncio
+import concurrent.futures
 import os
+import uuid
 import inspect
 from ray.util.inspect import is_cython
 import json
 import threading
 from typing import Any
+from typing import Callable
 from typing import List
 from typing import Dict
 from typing import Optional
@@ -23,6 +26,25 @@ from typing import Union
 #
 # Currently, this is 2GiB, the max for a signed int.
 GRPC_MAX_MESSAGE_SIZE = (2 * 1024 * 1024 * 1024) - 1
+
+# 30 seconds because ELB timeout is 60 seconds
+GRPC_KEEPALIVE_TIME_MS = 1000 * 30
+
+# 20 seconds (gRPC) default
+GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 20
+
+GRPC_OPTIONS = [
+    ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
+    ("grpc.keepalive_time_ms", GRPC_KEEPALIVE_TIME_MS),
+    ("grpc.keepalive_timeout_ms", GRPC_KEEPALIVE_TIMEOUT_MS),
+    ("grpc.keepalive_permit_without_calls", 1),
+    # Send an infinite number of pings
+    ("grpc.max_pings_without_data", 0),
+    ("grpc.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
+    # Allow many strikes
+    ("grpc.max_ping_strikes", 0)
+]
 
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
@@ -60,7 +82,50 @@ class ClientBaseRef:
 
 
 class ClientObjectRef(ClientBaseRef):
-    pass
+    def __await__(self):
+        return self.as_future().__await__()
+
+    def as_future(self) -> asyncio.Future:
+        return asyncio.wrap_future(self.future())
+
+    def future(self) -> concurrent.futures.Future:
+        fut = concurrent.futures.Future()
+
+        def set_value(data: Any) -> None:
+            """Schedules a callback to set the exception or result
+            in the Future."""
+
+            if isinstance(data, Exception):
+                fut.set_exception(data)
+            else:
+                fut.set_result(data)
+
+        self._on_completed(set_value)
+
+        # Prevent this object ref from being released.
+        fut.object_ref = self
+        return fut
+
+    def _on_completed(self, py_callback: Callable[[Any], None]) -> None:
+        """Register a callback that will be called after Object is ready.
+        If the ObjectRef is already ready, the callback will be called soon.
+        The callback should take the result as the only argument. The result
+        can be an exception object in case of task error.
+        """
+        from ray.util.client.client_pickler import loads_from_server
+
+        def deserialize_obj(resp: ray_client_pb2.DataResponse) -> None:
+            """Converts from a GetResponse proto to a python object."""
+            obj = resp.get
+            data = None
+            if not obj.valid:
+                data = loads_from_server(resp.get.error)
+            else:
+                data = loads_from_server(resp.get.data)
+
+            py_callback(data)
+
+        ray._register_callback(self, deserialize_obj)
 
 
 class ClientActorRef(ClientBaseRef):
@@ -307,6 +372,12 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
+
+    # If there's a non-null "placement_group" in `options`, convert the
+    # placement group to a dict so that `options` can be passed to json.dumps.
+    if options.get("placement_group", None):
+        options["placement_group"] = options["placement_group"].to_dict()
+
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str
 

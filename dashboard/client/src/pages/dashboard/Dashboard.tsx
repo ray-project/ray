@@ -20,13 +20,8 @@ import RayConfig from "./ray-config/RayConfig";
 import { dashboardActions } from "./state";
 import Tune from "./tune/Tune";
 
-const {
-  setNodeInfo,
-  setTuneAvailability,
-  setActorGroups,
-  setError,
-  setTab,
-} = dashboardActions;
+const { setNodeInfo, setTuneAvailability, setActorGroups, setError, setTab } =
+  dashboardActions;
 const useDashboardStyles = makeStyles((theme: Theme) =>
   createStyles({
     root: {

@@ -24,6 +24,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
@@ -34,10 +35,12 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client.h"
 #include "ray/pubsub/publisher.h"
+#include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
+#include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
@@ -73,6 +76,7 @@ struct CoreWorkerOptions {
         enable_logging(false),
         log_dir(""),
         install_failure_signal_handler(false),
+        interactive(false),
         node_ip_address(""),
         node_manager_port(0),
         raylet_ip_address(""),
@@ -115,6 +119,8 @@ struct CoreWorkerOptions {
   std::string log_dir;
   /// If false, will not call `RayLog::InstallFailureSignalHandler()`.
   bool install_failure_signal_handler;
+  /// Whether this worker is running in a tty.
+  bool interactive;
   /// IP address of the node.
   std::string node_ip_address;
   /// Port of the local raylet.
@@ -1181,6 +1187,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
+  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
+      std::make_pair<std::string, int>("", 0);
+  /// To protect accessing the `gcs_server_address_`.
+  absl::Mutex gcs_server_address_mutex_;
+  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
@@ -1218,8 +1230,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
-  // Server that handles pubsub operations of raylets / core workers.
-  std::shared_ptr<pubsub::Publisher> object_status_publisher_;
+  // A class to publish object status from other raylets/workers.
+  std::unique_ptr<pubsub::Publisher> object_status_publisher_;
+
+  // A class to subscribe object status from other raylets/workers.
+  std::unique_ptr<pubsub::Subscriber> object_status_subscriber_;
 
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
