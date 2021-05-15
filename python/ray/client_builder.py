@@ -119,24 +119,26 @@ class _LocalClientBuilder(ClientBuilder):
         of Ray Client Server. If this fails, a cluster is manually launched.
         """
         redis_addresses = find_redis_address()
-        if len(redis_addresses) > 1:
-            raise ConnectionError(
-                f"Found multiple active Ray instances: {redis_addresses}.")
-
-        if len(redis_addresses) == 1:
-            address = redis_addresses.pop()
+        candidates = set()
+        # NOTE If multiple Ray clusters are running locally (i.e. some launched
+        # via ray.client("local")), but only one has the Client Server address
+        # available in Redis, we will connect to that one.
+        for address in redis_addresses:
             redis_client = create_redis_client(address, REDIS_DEFAULT_PASSWORD)
             port = redis_client.get(RAY_CLIENT_SERVER_PORT_REDIS_KEY)
             if port is not None:
-                self.address = "localhost:" + port.decode("UTF-8")
-                return
-            else:
-                logger.warning(
-                    f"Found cluster at: {address}, but unable to "
-                    "determine the Ray Client Server Port in Redis. "
-                    "Starting a new cluster instead.")
-
-        self._create_local_cluster()
+                candidates.add("localhost:" + port.decode("UTF-8"))
+        if len(candidates) == 0:
+            logger.warning(
+                f"Found clusters at: {redis_addresses}, but was unable to "
+                "determine the Ray Client Server Port in Redis. "
+                "Starting a new cluster instead.")
+            self._create_local_cluster()
+        elif len(candidates) == 1:
+            self.address = candidates.pop()
+        else:
+            raise ConnectionError(
+                f"Found multiple Ray Client Servers: {candidates}.\n")
 
     def connect(self) -> ClientInfo:
         """
