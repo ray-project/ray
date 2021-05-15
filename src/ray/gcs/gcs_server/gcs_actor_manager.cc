@@ -777,11 +777,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   if (registered_actors_.count(actor_id) == 0) {
     return;
   }
-  actor->UpdateState(rpc::ActorTableData::ALIVE);
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_timestamp(time);
-  mutable_actor_table_data->set_start_time(time);
+  if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
+    mutable_actor_table_data->set_start_time(time);
+  }
+  actor->UpdateState(rpc::ActorTableData::ALIVE);
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
