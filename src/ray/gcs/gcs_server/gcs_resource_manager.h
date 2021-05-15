@@ -44,7 +44,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(instrumented_io_context &main_io_service,
                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                              std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                              bool redis_broadcast_enabled);
 
   virtual ~GcsResourceManager() {}
 
@@ -136,8 +137,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id Node id.
   /// \param request Request containing resource usage.
-  void UpdateNodeResourceUsage(const NodeID node_id,
-                               const rpc::ReportResourceUsageRequest &request);
+  void UpdateNodeResourceUsage(const NodeID &node_id,
+                               const rpc::ResourcesData &resources);
+
+  /// Process a new resource report from a node, independent of the rpc handler it came
+  /// from.
+  void UpdateFromResourceReport(const rpc::ResourcesData &data);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -145,6 +150,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
+  /// Move the lightweight heartbeat information for broadcast into the buffer. This
+  /// method MOVES the information, clearing an internal buffer, so it is NOT idempotent.
+  ///
+  /// \param buffer return parameter
+  void GetResourceUsageBatchForBroadcast(rpc::ResourceUsageBatchData &buffer)
+      LOCKS_EXCLUDED(resource_buffer_mutex_);
 
  private:
   /// Delete the scheduling resources of the specified node.
@@ -157,17 +169,28 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
+  /// Prelocked version of GetResourceUsageBatchForBroadcast. This is necessary for need
+  /// the functionality as part of a larger transaction.
+  void GetResourceUsageBatchForBroadcast_Locked(rpc::ResourceUsageBatchData &buffer)
+      EXCLUSIVE_LOCKS_REQUIRED(resource_buffer_mutex_);
+
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
-  /// A buffer containing resource usage received from node managers in the last tick.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_;
+
+  /// Protect the lightweight heartbeat deltas which are accessed by different threads.
+  absl::Mutex resource_buffer_mutex_;
+  /// A buffer containing the lightweight heartbeats since the last broadcast.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_
+      GUARDED_BY(resource_buffer_mutex_);
 
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  /// Whether or not to broadcast resource usage via redis.
+  const bool redis_broadcast_enabled_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.

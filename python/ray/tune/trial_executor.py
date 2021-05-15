@@ -278,10 +278,14 @@ class TrialExecutor:
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self, trial):
+    def cleanup(self, trial_runner):
         """Ensures that trials are cleaned up after stopping."""
         pass
 
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return False
+
+    def set_max_pending_trials(self, max_pending: int):
+        """Set the maximum number of allowed pending trials."""
+        pass

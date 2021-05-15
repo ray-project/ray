@@ -15,6 +15,7 @@ from ray.tune import TuneError
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -30,6 +31,8 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 
         self.tmpdir = tempfile.mkdtemp()
 
@@ -114,11 +117,10 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trials[2].status, Trial.RUNNING)
         self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgNotification(self):
         """Checks notification of trial to the Search Algorithm."""
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=4, num_gpus=2)
         experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
@@ -235,10 +237,9 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(search_alg.is_finished())
         self.assertTrue(runner.is_finished())
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testSearchAlgFinishes(self):
         """Empty SearchAlg changing state in `next_trials` does not crash."""
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         class FinishFastAlg(_MockSuggestionAlgorithm):
             _index = 0
@@ -295,7 +296,7 @@ class TrialRunnerTest3(unittest.TestCase):
                 def __init__(self, index):
                     self.index = index
                     self.returned_result = []
-                    super().__init__(metric="result", mode="max")
+                    super().__init__(metric="episode_reward_mean", mode="max")
 
                 def suggest(self, trial_id):
                     self.index += 1
@@ -506,10 +507,10 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testTrialNoSave(self):
         """Check that non-checkpointing trials are not saved."""
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         ray.init(num_cpus=3)
 
         runner = TrialRunner(
@@ -635,10 +636,9 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
         self.assertEqual(num_checkpoints(trial), 3)
 
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testUserCheckpoint(self):
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"  # Don't finish early
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
         runner = TrialRunner(
@@ -880,6 +880,51 @@ class SearchAlgorithmTest(unittest.TestCase):
         limiter2.on_trial_complete("test_1", {"result": 3})
         limiter2.on_trial_complete("test_2", {"result": 3})
         assert limiter2.suggest("test_3")["score"] == 3
+
+    def testBasicVariantLimiter(self):
+        search_alg = BasicVariantGenerator(max_concurrent=2)
+
+        experiment_spec = {
+            "run": "__fake",
+            "num_samples": 5,
+            "stop": {
+                "training_iteration": 1
+            }
+        }
+        search_alg.add_configurations({"test": experiment_spec})
+
+        trial1 = search_alg.next_trial()
+        self.assertTrue(trial1)
+
+        trial2 = search_alg.next_trial()
+        self.assertTrue(trial2)
+
+        # Returns None because of limiting
+        trial3 = search_alg.next_trial()
+        self.assertFalse(trial3)
+
+        # Finish trial, now trial 3 should be created
+        search_alg.on_trial_complete(trial1.trial_id, None, False)
+        trial3 = search_alg.next_trial()
+        self.assertTrue(trial3)
+
+        trial4 = search_alg.next_trial()
+        self.assertFalse(trial4)
+
+        search_alg.on_trial_complete(trial2.trial_id, None, False)
+        search_alg.on_trial_complete(trial3.trial_id, None, False)
+
+        trial4 = search_alg.next_trial()
+        self.assertTrue(trial4)
+
+        trial5 = search_alg.next_trial()
+        self.assertTrue(trial5)
+
+        search_alg.on_trial_complete(trial4.trial_id, None, False)
+
+        # Should also be None because search is finished
+        trial6 = search_alg.next_trial()
+        self.assertFalse(trial6)
 
     def testBatchLimiter(self):
         class TestSuggestion(Searcher):

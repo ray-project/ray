@@ -1,5 +1,5 @@
-Ray Logging
-===========
+Logging
+=======
 This document will explain Ray's logging system and its best practices.
 
 Driver logs

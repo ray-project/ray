@@ -116,8 +116,10 @@ def log_to_cli(config):
                        key,
                        head_src_key,
                        workers_src_key,
-                       allowed_tags=["default"],
+                       allowed_tags=None,
                        list_value=False):
+            if allowed_tags is None:
+                allowed_tags = ["default"]
 
             head_tags = {}
             workers_tags = {}
@@ -335,11 +337,7 @@ def _configure_key_pair(config):
             "No matching local key file for any of the key pairs in this "
             "account with ids from 0..{}. "
             "Consider deleting some unused keys pairs from your account.",
-            key_name)  # todo: err msg
-        raise ValueError(
-            "No matching local key file for any of the key pairs in this "
-            "account with ids from 0..{}. ".format(key_name) +
-            "Consider deleting some unused keys pairs from your account.")
+            key_name)
 
     cli_logger.doassert(
         os.path.exists(key_path), "Private key file " + cf.bold("{}") +
@@ -389,13 +387,8 @@ def _configure_subnet(config):
             "and trying this again.\n"
             "Note that the subnet must map public IPs "
             "on instance launch unless you set `use_internal_ips: true` in "
-            "the `provider` config.")  # todo: err msg
-        raise Exception(
-            "No usable subnets found, try manually creating an instance in "
-            "your specified region to populate the list of subnets "
-            "and trying this again. Note that the subnet must map public IPs "
-            "on instance launch unless you set 'use_internal_ips': True in "
-            "the 'provider' config.")
+            "the `provider` config.")
+
     if "availability_zone" in config["provider"]:
         azs = config["provider"]["availability_zone"].split(",")
         subnets = [s for s in subnets if s.availability_zone in azs]
@@ -405,15 +398,16 @@ def _configure_subnet(config):
                 "Choose a different availability zone or try "
                 "manually creating an instance in your specified region "
                 "to populate the list of subnets and trying this again.",
-                config["provider"]["availability_zone"])  # todo: err msg
-            raise Exception(
-                "No usable subnets matching availability zone {} "
-                "found. Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again.".
-                format(config["provider"]["availability_zone"]))
+                config["provider"]["availability_zone"])
 
-    subnet_ids = [s.subnet_id for s in subnets]
+    # Use subnets in only one VPC, so that _configure_security_groups only
+    # needs to create a security group in this one VPC. Otherwise, we'd need
+    # to set up security groups in all of the user's VPCs and set up networking
+    # rules to allow traffic between these groups.
+    # See https://github.com/ray-project/ray/pull/14868.
+    subnet_ids = [
+        s.subnet_id for s in subnets if s.vpc_id == subnets[0].vpc_id
+    ]
     if "SubnetIds" not in config["head_node"]:
         _set_config_info(head_subnet_src="default")
         config["head_node"]["SubnetIds"] = subnet_ids
@@ -634,7 +628,9 @@ def _update_inbound_rules(target_security_group, sgids, config):
     target_security_group.authorize_ingress(IpPermissions=ip_permissions)
 
 
-def _create_default_inbound_rules(sgids, extended_rules=[]):
+def _create_default_inbound_rules(sgids, extended_rules=None):
+    if extended_rules is None:
+        extended_rules = []
     intracluster_rules = _create_default_intracluster_inbound_rules(sgids)
     ssh_rules = _create_default_ssh_inbound_rules()
     merged_rules = itertools.chain(

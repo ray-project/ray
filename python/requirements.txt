@@ -21,6 +21,7 @@ opencensus
 prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
+pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
@@ -37,12 +38,14 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic<1.7
 dataclasses; python_version < '3.7'
 starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
+azure-common
+azure-mgmt-resource
+msrestazure
 boto3
 cython==0.29.0
 dataclasses; python_version < '3.7'
@@ -52,6 +55,7 @@ gym
 gym-minigrid
 kubernetes
 lxml
+modin
 moto
 mypy
 networkx
@@ -59,6 +63,8 @@ numba
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
+opentelemetry-api==1.0.0rc1
+opentelemetry-sdk==1.0.0rc1
 pexpect
 Pillow; platform_system != "Windows"
 pygments
@@ -68,10 +74,15 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow
+tensorflow==2.4.1
 testfixtures
 werkzeug
 xlrd
 starlette
+fastapi
 smart_open[s3]
 tqdm
+async-exit-stack
+async-generator
+# pyarrow v4.0.0 doesn't work in macOS
+pyarrow==3.0.0

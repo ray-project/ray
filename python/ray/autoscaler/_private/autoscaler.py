@@ -23,6 +23,7 @@ from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
+from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
@@ -115,6 +116,10 @@ class StandardAutoscaler:
             )
             node_launcher.daemon = True
             node_launcher.start()
+
+        # NodeTracker maintains soft state to track the number of recently
+        # failed nodes. It is best effort only.
+        self.node_tracker = NodeTracker()
 
         # Expand local file_mounts to allow ~ in the paths. This can't be done
         # earlier when the config is written since we might be on different
@@ -210,6 +215,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -228,6 +235,8 @@ class StandardAutoscaler:
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
+            for node in nodes_to_terminate:
+                self.node_tracker.untrack(node)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -241,16 +250,17 @@ class StandardAutoscaler:
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
-        nodes = self.workers()
+        if to_launch:
+            nodes = self.workers()
 
         # Process any completed updates
-        completed = []
+        completed_nodes = []
         for node_id, updater in self.updaters.items():
             if not updater.is_alive():
-                completed.append(node_id)
-        if completed:
-            nodes_to_terminate: List[NodeID] = []
-            for node_id in completed:
+                completed_nodes.append(node_id)
+        if completed_nodes:
+            failed_nodes = []
+            for node_id in completed_nodes:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
                     # Mark the node as active to prevent the node recovery
@@ -258,20 +268,35 @@ class StandardAutoscaler:
                     self.load_metrics.mark_active(
                         self.provider.internal_ip(node_id))
                 else:
-                    logger.error(f"StandardAutoscaler: {node_id}: Terminating "
-                                 "failed to setup/initialize node.")
-                    self.event_summarizer.add(
-                        "Removing {} nodes of type " +
-                        self._get_node_type(node_id) + " (launch failed).",
-                        quantity=1,
-                        aggregate=operator.add)
-                    nodes_to_terminate.append(node_id)
+                    failed_nodes.append(node_id)
                     self.num_failed_updates[node_id] += 1
+                    self.node_tracker.untrack(node_id)
                 del self.updaters[node_id]
-            if nodes_to_terminate:
-                self.provider.terminate_nodes(nodes_to_terminate)
 
-            nodes = self.workers()
+            if failed_nodes:
+                # Some nodes in failed_nodes may have been terminated
+                # during an update (for being idle after missing a heartbeat).
+                # Only terminate currently non terminated nodes.
+                non_terminated_nodes = self.workers()
+                nodes_to_terminate: List[NodeID] = []
+                for node_id in failed_nodes:
+                    if node_id in non_terminated_nodes:
+                        nodes_to_terminate.append(node_id)
+                        logger.error(f"StandardAutoscaler: {node_id}:"
+                                     " Terminating. Failed to setup/initialize"
+                                     " node.")
+                        self.event_summarizer.add(
+                            "Removing {} nodes of type " +
+                            self._get_node_type(node_id) + " (launch failed).",
+                            quantity=1,
+                            aggregate=operator.add)
+                    else:
+                        logger.warning(f"StandardAutoscaler: {node_id}:"
+                                       " Failed to update node."
+                                       " Node has already been terminated.")
+                if nodes_to_terminate:
+                    self.provider.terminate_nodes(nodes_to_terminate)
+                    nodes = self.workers()
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -593,7 +618,7 @@ class StandardAutoscaler:
         if TAG_RAY_USER_NODE_TYPE in node_tags:
             return node_tags[TAG_RAY_USER_NODE_TYPE]
         else:
-            return "unknown"
+            return "unknown_node_type"
 
     def _get_node_type_specific_fields(self, node_id: str,
                                        fields_key: str) -> Any:
@@ -649,6 +674,9 @@ class StandardAutoscaler:
                       node_resources, docker_config):
         logger.info(f"Creating new (spawn_updater) updater thread for node"
                     f" {node_id}.")
+        ip = self.provider.internal_ip(node_id)
+        node_type = self._get_node_type(node_id)
+        self.node_tracker.track(node_id, ip, node_type)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -720,6 +748,8 @@ class StandardAutoscaler:
         nodes = self.workers()
         if nodes:
             self.provider.terminate_nodes(nodes)
+            for node in nodes:
+                self.node_tracker.untrack(node)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
 
@@ -739,6 +769,7 @@ class StandardAutoscaler:
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
+        non_failed = set()
 
         for node_id in all_node_ids:
             ip = self.provider.internal_ip(node_id)
@@ -761,6 +792,7 @@ class StandardAutoscaler:
             is_active = self.load_metrics.is_active(ip)
             if is_active:
                 active_nodes[node_type] += 1
+                non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
@@ -770,12 +802,9 @@ class StandardAutoscaler:
                 is_pending = status in pending_states
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
-                else:
-                    # TODO (Alex): Failed nodes are now immediately killed, so
-                    # this list will almost always be empty. We should ideally
-                    # keep a cache of recently failed nodes and their startup
-                    # logs.
-                    failed_nodes.append((ip, node_type))
+                    non_failed.add(node_id)
+
+        failed_nodes = self.node_tracker.get_all_failed_node_info(non_failed)
 
         # The concurrent counter leaves some 0 counts in, so we need to
         # manually filter those out.

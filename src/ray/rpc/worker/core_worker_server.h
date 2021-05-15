@@ -32,7 +32,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete) \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope)         \
-  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction)          \
+  RPC_SERVICE_HANDLER(CoreWorkerService, SubscribeForObjectEviction)     \
+  RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForRefRemoved)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, AddObjectLocationOwner)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, RemoveObjectLocationOwner)      \
@@ -47,6 +48,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, DeleteSpilledObjects)           \
   RPC_SERVICE_HANDLER(CoreWorkerService, AddSpilledUrl)                  \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)              \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RunOnUtilWorker)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, Exit)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
@@ -54,7 +56,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(SubscribeForObjectEviction)     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForRefRemoved)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocationOwner)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocationOwner)      \
@@ -69,6 +72,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddSpilledUrl)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RunOnUtilWorker)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.

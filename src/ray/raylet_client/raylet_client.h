@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/buffer.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/status.h"
@@ -141,19 +142,23 @@ class DependencyWaiterInterface {
 };
 
 /// Inteface for getting resource reports.
-class ResourceRequestInterface {
+class ResourceTrackingInterface {
  public:
+  virtual void UpdateResourceUsage(
+      std::string &serialized_resource_usage_batch,
+      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
+
   virtual void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
 
-  virtual ~ResourceRequestInterface(){};
+  virtual ~ResourceTrackingInterface(){};
 };
 
 class RayletClientInterface : public PinObjectsInterface,
                               public WorkerLeaseInterface,
                               public DependencyWaiterInterface,
                               public ResourceReserveInterface,
-                              public ResourceRequestInterface {
+                              public ResourceTrackingInterface {
  public:
   virtual ~RayletClientInterface(){};
 
@@ -161,6 +166,9 @@ class RayletClientInterface : public PinObjectsInterface,
   /// \param callback Callback that will be called after raylet replied the system config.
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
+
+  virtual void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -233,7 +241,9 @@ class RayletClient : public RayletClientInterface {
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
-  ray::Status Disconnect();
+  ray::Status Disconnect(
+      rpc::WorkerExitType exit_type,
+      const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes);
 
   /// Tell the raylet which port this worker's gRPC server is listening on.
   ///
@@ -350,15 +360,6 @@ class RayletClient : public RayletClientInterface {
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Ask the raylet to restore the object of a given id.
-  /// \param object_id Object id that the remote raylet needs to restore.
-  /// \param object_url Object URL where the object is spilled.
-  /// \param spilled_node_id Node id of a node where the object is spilled.
-  void RestoreSpilledObject(
-      const ObjectID &object_id, const std::string &object_url,
-      const NodeID &spilled_node_id,
-      const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
@@ -408,7 +409,14 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
+  void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
+
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
+
+  void UpdateResourceUsage(
+      std::string &serialized_resource_usage_batch,
+      const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
 
   void RequestResourceReport(
       const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
@@ -421,6 +429,8 @@ class RayletClient : public RayletClientInterface {
   JobID GetJobID() const { return job_id_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
+
+  int64_t GetPinsInFlight() const { return pins_in_flight_.load(); }
 
  private:
   /// gRPC client to the raylet. Right now, this is only used for a couple
@@ -435,6 +445,9 @@ class RayletClient : public RayletClientInterface {
   ResourceMappingType resource_ids_;
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
+
+  /// The number of object ID pin RPCs currently in flight.
+  std::atomic<int64_t> pins_in_flight_{0};
 };
 
 }  // namespace raylet

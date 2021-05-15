@@ -6,6 +6,7 @@ import _thread
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
+import ray._private.runtime_env as runtime_support
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
@@ -21,7 +22,9 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-from ray._private.utils import get_conda_env_dir
+from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
+                                             _tracing_actor_method_invocation,
+                                             _inject_tracing_into_class)
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +70,7 @@ class ActorMethod:
     passed to a remote function. This avoids delays in GC of the actor.
 
     Attributes:
-        _actor: A handle to the actor.
+        _actor_ref: A weakref handle to the actor.
         _method_name: The name of the actor method.
         _num_returns: The default number of return values that the method
             invocation should return.
@@ -131,6 +134,7 @@ class ActorMethod:
 
         return FuncWrapper()
 
+    @_tracing_actor_method_invocation
     def _remote(self, args=None, kwargs=None, name="", num_returns=None):
         if num_returns is None:
             num_returns = self._num_returns
@@ -219,6 +223,7 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
+            method = inspect.unwrap(method)
             is_bound = (is_class_method(method)
                         or is_static_method(modified_class, method_name))
 
@@ -477,6 +482,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @_tracing_actor_creation
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -533,9 +539,8 @@ class ActorClass:
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children.  Currently supports the
-                key "conda_env", whose value should be a string which is the
-                name of the desired conda environment.
+                this actor or task and its children (see ``runtime_env.py`` for
+                more details).
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
@@ -696,13 +701,13 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            conda_env = runtime_env.get("conda_env")
-            if conda_env is not None:
-                conda_env_dir = get_conda_env_dir(conda_env)
-                if override_environment_variables is None:
-                    override_environment_variables = {}
-                override_environment_variables.update(PYTHONHOME=conda_env_dir)
-
+            parsed_runtime_env = runtime_support.RuntimeEnvDict(runtime_env)
+            override_environment_variables = (
+                parsed_runtime_env.to_worker_env_vars(
+                    override_environment_variables))
+            runtime_env_dict = parsed_runtime_env.get_parsed_dict()
+        else:
+            runtime_env_dict = {}
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -720,6 +725,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
+            runtime_env_dict=runtime_env_dict,
             override_environment_variables=override_environment_variables
             or dict())
 
@@ -1023,6 +1029,7 @@ def modify_class(cls):
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries):
     Class = modify_class(cls)
+    _inject_tracing_into_class(Class)
 
     if max_restarts is None:
         max_restarts = 0

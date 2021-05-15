@@ -24,8 +24,11 @@ extern "C" {
 namespace ray {
 namespace gcs {
 
-ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
+ServiceBasedGcsClient::ServiceBasedGcsClient(
+    const GcsClientOptions &options,
+    std::function<bool(std::pair<std::string, int> *)> get_gcs_server_address_func)
     : GcsClient(options),
+      get_server_address_func_(get_gcs_server_address_func),
       last_reconnect_timestamp_ms_(0),
       last_reconnect_address_(std::make_pair("", -1)) {}
 
@@ -38,8 +41,12 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   }
 
   // Connect to redis.
-  RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
-                                          options_.password_, options_.is_test_client_);
+  // We don't access redis shardings in GCS client, so we set `enable_sharding_conn` to
+  // false.
+  RedisClientOptions redis_client_options(
+      options_.server_ip_, options_.server_port_, options_.password_,
+      /*enable_sharding_conn=*/false, options_.enable_sync_conn_,
+      options_.enable_async_conn_, options_.enable_subscribe_conn_);
   redis_client_.reset(new RedisClient(redis_client_options));
   RAY_CHECK_OK(redis_client_->Connect(io_service));
 
@@ -47,15 +54,26 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   gcs_pub_sub_.reset(new GcsPubSub(redis_client_));
 
   // Get gcs service address.
-  get_server_address_func_ = [this](std::pair<std::string, int> *address) {
-    return GetGcsServerAddressFromRedis(
-        redis_client_->GetPrimaryContext()->sync_context(), address);
-  };
-  std::pair<std::string, int> address;
-  RAY_CHECK(GetGcsServerAddressFromRedis(
-      redis_client_->GetPrimaryContext()->sync_context(), &address,
-      RayConfig::instance().gcs_service_connect_retries()))
-      << "Failed to get gcs server address when init gcs client.";
+  if (get_server_address_func_) {
+    get_server_address_func_(&current_gcs_server_address_);
+    int i = 0;
+    while (current_gcs_server_address_.first.empty() &&
+           i < RayConfig::instance().gcs_service_connect_retries()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(
+          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
+      get_server_address_func_(&current_gcs_server_address_);
+      i++;
+    }
+  } else {
+    get_server_address_func_ = [this](std::pair<std::string, int> *address) {
+      return GetGcsServerAddressFromRedis(
+          redis_client_->GetPrimaryContext()->sync_context(), address);
+    };
+    RAY_CHECK(GetGcsServerAddressFromRedis(
+        redis_client_->GetPrimaryContext()->sync_context(), &current_gcs_server_address_,
+        RayConfig::instance().gcs_service_connect_retries()))
+        << "Failed to get gcs server address when init gcs client.";
+  }
 
   resubscribe_func_ = [this](bool is_pubsub_server_restarted) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -70,7 +88,8 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
   gcs_rpc_client_.reset(new rpc::GcsRpcClient(
-      address.first, address.second, *client_call_manager_,
+      current_gcs_server_address_.first, current_gcs_server_address_.second,
+      *client_call_manager_,
       [this](rpc::GcsServiceFailureType type) { GcsServiceFailureDetected(type); }));
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
@@ -82,12 +101,13 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   error_accessor_.reset(new ServiceBasedErrorInfoAccessor(this));
   worker_accessor_.reset(new ServiceBasedWorkerInfoAccessor(this));
   placement_group_accessor_.reset(new ServiceBasedPlacementGroupInfoAccessor(this));
-
+  internal_kv_accessor_ = std::make_unique<ServiceBasedInternalKVAccessor>(this);
   // Init gcs service address check timer.
   periodical_runner_.reset(new PeriodicalRunner(io_service));
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
-      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      "GcsClient.deadline_timer.check_gcs_service_address");
 
   is_connected_ = true;
 
@@ -103,6 +123,10 @@ void ServiceBasedGcsClient::Disconnect() {
   redis_client_->Disconnect();
   redis_client_.reset();
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
+}
+
+std::pair<std::string, int> ServiceBasedGcsClient::GetGcsServerAddress() {
+  return current_gcs_server_address_;
 }
 
 bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(

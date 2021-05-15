@@ -13,6 +13,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
 from ray.rllib.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
@@ -41,6 +42,15 @@ class TargetNetworkMixin:
             self.target_q_model.load_state_dict(self.model.state_dict())
 
         self.update_target = do_update
+
+        def set_weights(weights):
+            # Makes sure that whenever we restore weights for this policy's
+            # model, we sync the target network (from the main model)
+            # at the same time.
+            TorchPolicy.set_weights(self, weights)
+            self.update_target()
+
+        self.set_weights = set_weights
 
 
 def build_q_model_and_distribution(

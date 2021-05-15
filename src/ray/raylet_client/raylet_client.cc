@@ -88,9 +88,7 @@ raylet::RayletClient::RayletClient(
     const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
     std::string *serialized_job_config)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
-  // For C++14, we could use std::make_unique
-  conn_ = std::unique_ptr<raylet::RayletConnection>(
-      new raylet::RayletConnection(io_service, raylet_socket, -1, -1));
+  conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
@@ -125,11 +123,28 @@ raylet::RayletClient::RayletClient(
   *serialized_job_config = reply_message->serialized_job_config()->str();
 }
 
-Status raylet::RayletClient::Disconnect() {
+Status raylet::RayletClient::Disconnect(
+    rpc::WorkerExitType exit_type,
+    const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes) {
+  RAY_LOG(INFO) << "RayletClient::Disconnect, exit_type="
+                << rpc::WorkerExitType_Name(exit_type)
+                << ", has creation_task_exception_pb_bytes="
+                << (creation_task_exception_pb_bytes != nullptr);
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateDisconnectClient(
-      fbb, static_cast<int>(rpc::WorkerExitType::INTENDED_EXIT));
-  fbb.Finish(message);
+  flatbuffers::Offset<flatbuffers::Vector<uint8_t>>
+      creation_task_exception_pb_bytes_fb_vector;
+  if (creation_task_exception_pb_bytes != nullptr) {
+    creation_task_exception_pb_bytes_fb_vector =
+        fbb.CreateVector(creation_task_exception_pb_bytes->Data(),
+                         creation_task_exception_pb_bytes->Size());
+  }
+  protocol::DisconnectClientBuilder builder(fbb);
+  // Add to table builder here to avoid nested construction of flatbuffers
+  if (creation_task_exception_pb_bytes != nullptr) {
+    builder.add_creation_task_exception_pb(creation_task_exception_pb_bytes_fb_vector);
+  }
+  builder.add_disconnect_type(static_cast<int>(exit_type));
+  fbb.Finish(builder.Finish());
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
@@ -301,18 +316,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
-void raylet::RayletClient::RestoreSpilledObject(
-    const ObjectID &object_id, const std::string &object_url,
-    const NodeID &spilled_node_id,
-    const rpc::ClientCallback<rpc::RestoreSpilledObjectReply> &callback) {
-  RAY_CHECK(!spilled_node_id.IsNil());
-  rpc::RestoreSpilledObjectRequest request;
-  request.set_object_id(object_id.Binary());
-  request.set_object_url(object_url);
-  request.set_spilled_node_id(spilled_node_id.Binary());
-  grpc_client_->RestoreSpilledObject(request, callback);
-}
-
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
                                           bool disconnect_worker) {
   rpc::ReturnWorkerRequest request;
@@ -406,13 +409,28 @@ void raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  grpc_client_->PinObjectIDs(request, callback);
+  pins_in_flight_++;
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::PinObjectIDsReply &reply) {
+    pins_in_flight_--;
+    callback(status, reply);
+  };
+  grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
   grpc_client_->GlobalGC(request, callback);
+}
+
+void raylet::RayletClient::UpdateResourceUsage(
+
+    std::string &serialized_resource_usage_batch,
+    const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+  rpc::UpdateResourceUsageRequest request;
+  request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
+  grpc_client_->UpdateResourceUsage(request, callback);
 }
 
 void raylet::RayletClient::RequestResourceReport(
@@ -435,6 +453,12 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
+}
+
+void raylet::RayletClient::GetGcsServerAddress(
+    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
+  rpc::GetGcsServerAddressRequest request;
+  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray

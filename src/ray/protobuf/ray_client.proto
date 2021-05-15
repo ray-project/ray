@@ -103,6 +103,12 @@ message PutRequest {
 message PutResponse {
   // The reference ID for the data that the server has stored.
   bytes id = 1;
+
+  // Whether or not the put was successful.
+  bool valid = 2;
+
+  // An error blob (for example, an exception) on failure.
+  bytes error = 3;
 }
 
 // Requests data from the server.
@@ -111,6 +117,8 @@ message GetRequest {
   bytes id = 1;
   // Length of time to wait for data to be available, in seconds. Zero is no timeout.
   float timeout = 2;
+  // Whether to schedule this as a callback on the server side.
+  bool asynchronous = 3;
 }
 
 message GetResponse {
@@ -148,6 +156,7 @@ message ClusterInfoType {
     CLUSTER_RESOURCES = 2;
     AVAILABLE_RESOURCES = 3;
     RUNTIME_CONTEXT = 4;
+    TIMELINE = 5;
   }
 }
 
@@ -196,6 +205,14 @@ message TerminateResponse {
   bool ok = 1;
 }
 
+message KVExistsRequest {
+  bytes key = 1;
+}
+
+message KVExistsResponse {
+  bool exists = 1;
+}
+
 message KVGetRequest {
   bytes key = 1;
 }
@@ -229,7 +246,27 @@ message KVListResponse {
   repeated bytes keys = 1;
 }
 
+message InitRequest {
+  // job_config of ray.init
+  bytes job_config = 1;
+}
+
+message InitResponse {
+  bool ok = 1;
+  string msg = 2;
+}
+
+message PrepRuntimeEnvRequest {
+}
+
+message PrepRuntimeEnvResponse {
+}
+
 service RayletDriver {
+  rpc Init(InitRequest) returns (InitResponse) {
+  }
+  rpc PrepRuntimeEnv(PrepRuntimeEnvRequest) returns (PrepRuntimeEnvResponse) {
+  }
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
   rpc PutObject(PutRequest) returns (PutResponse) {
@@ -249,6 +286,8 @@ service RayletDriver {
   rpc KVDel(KVDelRequest) returns (KVDelResponse) {
   }
   rpc KVList(KVListRequest) returns (KVListResponse) {
+  }
+  rpc KVExists(KVExistsRequest) returns (KVExistsResponse) {
   }
 }
 
@@ -288,6 +327,8 @@ message DataRequest {
     PutRequest put = 3;
     ReleaseRequest release = 4;
     ConnectionInfoRequest connection_info = 5;
+    InitRequest init = 6;
+    PrepRuntimeEnvRequest prep_runtime_env = 7;
   }
 }
 
@@ -299,6 +340,8 @@ message DataResponse {
     PutResponse put = 3;
     ReleaseResponse release = 4;
     ConnectionInfoResponse connection_info = 5;
+    InitResponse init = 6;
+    PrepRuntimeEnvResponse prep_runtime_env = 7;
   }
 }
 

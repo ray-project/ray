@@ -61,7 +61,7 @@ bool QuotaAwarePolicy::SetClientQuota(Client *client, int64_t output_memory_quot
   // those objects will be lazily evicted on the next call
   cache_.AdjustCapacity(-output_memory_quota);
   per_client_cache_[client] =
-      std::unique_ptr<LRUCache>(new LRUCache(client->name, output_memory_quota));
+      std::make_unique<LRUCache>(client->name, output_memory_quota);
   return true;
 }
 
@@ -128,16 +128,6 @@ void QuotaAwarePolicy::RemoveObject(const ObjectID &object_id) {
     return;
   }
   EvictionPolicy::RemoveObject(object_id);
-}
-
-void QuotaAwarePolicy::RefreshObjects(const std::vector<ObjectID> &object_ids) {
-  for (const auto &object_id : object_ids) {
-    if (owned_by_client_.find(object_id) != owned_by_client_.end()) {
-      int64_t size = per_client_cache_[owned_by_client_[object_id]]->Remove(object_id);
-      per_client_cache_[owned_by_client_[object_id]]->Add(object_id, size);
-    }
-  }
-  EvictionPolicy::RefreshObjects(object_ids);
 }
 
 void QuotaAwarePolicy::ClientDisconnected(Client *client) {

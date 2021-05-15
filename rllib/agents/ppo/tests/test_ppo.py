@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import check, framework_iterator, \
     check_compute_single_action
 
 # Fake CartPole episode of n time steps.
-FAKE_BATCH = {
+FAKE_BATCH = SampleBatch({
     SampleBatch.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32),
@@ -35,7 +35,7 @@ FAKE_BATCH = {
     SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
     SampleBatch.EPS_ID: np.array([0, 0, 0]),
     SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
-}
+})
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -82,19 +82,23 @@ class TestPPO(unittest.TestCase):
         # Settings in case we use an LSTM.
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
+        # Use default-native keras models whenever possible.
+        config["model"]["_use_default_native_models"] = True
+
         config["train_batch_size"] = 128
         # Test with compression.
         config["compress_observations"] = True
-        num_iterations = 2
+        num_iterations = 1
 
         for _ in framework_iterator(config):
             for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
                     config["model"]["lstm_use_prev_reward"] = lstm
+
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
                         trainer.train()
@@ -110,7 +114,6 @@ class TestPPO(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        config["framework"] = "tf"
         # Mimic tuned_example for PPO CartPole.
         config["num_workers"] = 1
         config["lr"] = 0.0003
@@ -121,17 +124,19 @@ class TestPPO(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
         config["model"]["vf_share_layers"] = True
 
-        trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
-            if results["episode_reward_mean"] > 75.0:
-                learnt = True
-                break
-        assert learnt, "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print(results)
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "PPO multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -340,8 +345,9 @@ class TestPPO(unittest.TestCase):
                                policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
+            train_batch.set_get_interceptor(None)
             expected_rho = np.exp(expected_logp.detach().cpu().numpy() -
-                                  train_batch.get(SampleBatch.ACTION_LOGP))
+                                  train_batch[SampleBatch.ACTION_LOGP])
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().cpu().numpy())
             # Entropy-loss component.
@@ -364,19 +370,19 @@ class TestPPO(unittest.TestCase):
 
         # Policy loss component.
         pg_loss = np.minimum(
-            train_batch.get(Postprocessing.ADVANTAGES) * expected_rho,
-            train_batch.get(Postprocessing.ADVANTAGES) * np.clip(
+            train_batch[Postprocessing.ADVANTAGES] * expected_rho,
+            train_batch[Postprocessing.ADVANTAGES] * np.clip(
                 expected_rho, 1 - policy.config["clip_param"],
                 1 + policy.config["clip_param"]))
 
         # Value function loss component.
         vf_loss1 = np.power(
-            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
-        vf_clipped = train_batch.get(SampleBatch.VF_PREDS) + np.clip(
-            vf_outs - train_batch.get(SampleBatch.VF_PREDS),
+            vf_outs - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = train_batch[SampleBatch.VF_PREDS] + np.clip(
+            vf_outs - train_batch[SampleBatch.VF_PREDS],
             -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
         vf_loss2 = np.power(
-            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
+            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = np.maximum(vf_loss1, vf_loss2)
 
         # Overall loss.

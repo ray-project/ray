@@ -64,6 +64,14 @@ ray.cancel
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_actor-ref:
+
+
+ray.get_actor
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.get_actor
+
 .. _ray-get_gpu_ids-ref:
 
 ray.get_gpu_ids
@@ -172,16 +180,10 @@ get_current_placement_group
 Custom Metrics APIs
 -------------------
 
-Metric
-~~~~~~
+Counter
+~~~~~~~
 
-.. autoclass:: ray.util.metrics.Metric
-   :members:
-
-Count
-~~~~~
-
-.. autoclass:: ray.util.metrics.Count
+.. autoclass:: ray.util.metrics.Counter
    :members:
 
 Gauge

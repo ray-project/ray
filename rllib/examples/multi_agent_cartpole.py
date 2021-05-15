@@ -76,6 +76,10 @@ if __name__ == "__main__":
     }
     policy_ids = list(policies.keys())
 
+    def policy_mapping_fn(agent_id):
+        pol_id = random.choice(policy_ids)
+        return pol_id
+
     config = {
         "env": MultiAgentCartPole,
         "env_config": {
@@ -86,7 +90,7 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "multiagent": {
             "policies": policies,
-            "policy_mapping_fn": (lambda agent_id: random.choice(policy_ids)),
+            "policy_mapping_fn": policy_mapping_fn,
         },
         "framework": args.framework,
     }

@@ -167,7 +167,7 @@ def clear_dummy_actor():
 
 
 def reserve_resources(num_cpus, num_gpus, retries=20):
-    ip = ray.services.get_node_ip_address()
+    ip = ray.util.get_node_ip_address()
 
     reserved_cuda_device = None
 

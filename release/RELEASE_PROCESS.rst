@@ -2,7 +2,7 @@ Release Process
 ===============
 
 The following documents the Ray release process. Please use the
-`Release Checklist`_ to keep track of your progress, as it is meant
+`Release Checklist <RELEASE_CHECKLIST.md>`_ to keep track of your progress, as it is meant
 to be used alongside this process document. Also, please keep the
 team up-to-date on any major regressions or changes to the timeline
 via emails to the engineering@anyscale.com Google Group.
@@ -37,7 +37,7 @@ After Branch Cut
 
 2. **Update the release branch version:** Push a commit directly to the
    newly-created release branch that increments the Python package version in
-   ``python/ray/__init__.py``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
+   ``python/ray/__init__.py``, ``build-docker.sh``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
    `sample commit for bumping the release branch version`_.
 
 3. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
@@ -159,20 +159,17 @@ is generally the easiest way to run release tests.
    The following tests should be run.
 
    - ``data_processing_tests/workloads/streaming_shuffle.py`` run the 100GB streaming shuffle in a single node & fake 4 nodes cluster.
+   - ``data_processing_tests/workloads/dask_on_ray_large_scale_test.py`` runs the large scale dask on ray test in 250 nodes cluster.
 
    **IMPORTANT** Check if the workload scripts has terminated. If so, please record the result (both read/write bandwidth and the shuffle result) to the ``release_logs/data_processing_tests/[test_name]``.
-   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release.
+   Both shuffling runtime and read/write bandwidth shouldn't be decreasing more than 15% compared to the previous release. For the dask on ray test, just make sure it runs for at least 30 minutes without the driver crash.
 
 9. **Ray Tune release tests**
 
    General Ray Tune functionality is implicitly tested via RLLib and XGBoost release tests.
    We are in the process of introducing scalability envelopes for Ray Tune.
 
-   Of the seven existing tests, three are currently not reaching their target time.
-   These three tests (test_result_throughput_cluster, test_result_throughput_single_node, and
-   test_network_overhead) are marked in the release checklist and don't have to be run at this time.
-
-   The other release tests are expected to run through without errors and to pass within a pre-specified time.
+   Release tests are expected to run through without errors and to pass within a pre-specified time.
    The time is checked in the test function and the output will let you know if a run was fast enough and
    thus passed the test.
 
@@ -263,12 +260,8 @@ to proceed with the final stages of the release!
 
    .. code-block:: bash
 
-     # First install ray normally because installing from test.pypi.org won't
-     # be able to install some of the other dependencies.
-     pip install ray
-     pip uninstall ray
-
-     pip install --index-url https://test.pypi.org/simple/ ray
+     # Need to specify extra URL since some dependencies are not on test.pypi
+     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray
 
    Then start Python, make sure you can ``import ray`` and run some simple Ray
    scripts. Make sure that it is finding the version of Ray that you just
@@ -349,8 +342,7 @@ this is for OSX on Python 3.7)
 The AWS s3 file hierarchy for Ray wheels can be found `here <https://s3.console.aws.amazon.com/s3/buckets/ray-wheels/?region=us-west-2&tab=objects>`_
 in case you're having trouble with the above link.
 
-.. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/12856
-.. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/pull/12856/
+.. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/commit/c589de6bc888eb26c87647f5560d6b0b21fbe537
 .. _`GitHub release`: https://github.com/ray-project/ray/releases
 .. _`Ray Readthedocs version page`: https://readthedocs.org/projects/ray/versions/
 .. _`Ray Readthedocs advanced settings page`: https://readthedocs.org/dashboard/ray/advanced/

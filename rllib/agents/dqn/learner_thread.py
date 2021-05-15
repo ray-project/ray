@@ -54,8 +54,9 @@ class LearnerThread(threading.Thread):
                         td_error = info.get(
                             "td_error",
                             info[LEARNER_STATS_KEY].get("td_error"))
-                        prio_dict[pid] = (replay.policy_batches[pid].data.get(
-                            "batch_indexes"), td_error)
+                        prio_dict[pid] = (
+                            replay.policy_batches[pid].get("batch_indexes"),
+                            td_error)
                         self.stats[pid] = get_learner_stats(info)
                     self.grad_timer.push_units_processed(replay.count)
                 self.outqueue.put((ra, prio_dict, replay.count))

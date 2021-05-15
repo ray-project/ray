@@ -9,7 +9,8 @@ import time
 import traceback
 import warnings
 
-from ray.services import get_node_ip_address
+import ray
+from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
@@ -22,7 +23,6 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -215,9 +215,33 @@ class TrialRunner:
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
 
-        # Setting this to 0 still allows adding one new (pending) trial,
-        # but it will prevent us from trying to fill the trial list
-        self._max_pending_trials = 0  # Can be updated in `self.add_trial()`
+        # Set the number of maximum pending trials
+        max_pending_trials = os.getenv("TUNE_MAX_PENDING_TRIALS_PG", "auto")
+        if max_pending_trials == "auto":
+            # Auto detect
+            if isinstance(self._search_alg, BasicVariantGenerator):
+                # Use a minimum of 16 to trigger fast autoscaling
+                # Scale up to at most the number of available cluster CPUs
+                cluster_cpus = ray.cluster_resources().get("CPU", 1.)
+                self._max_pending_trials = max(16, int(cluster_cpus * 1.1))
+
+                if self._max_pending_trials > 128:
+                    logger.warning(
+                        f"The maximum number of pending trials has been "
+                        f"automatically set to the number of available "
+                        f"cluster CPUs, which is high "
+                        f"({self._max_pending_trials} CPUs/pending trials). "
+                        f"If you're running an experiment with a large number "
+                        f"of trials, this could lead to scheduling overhead. "
+                        f"In this case, consider setting the "
+                        f"`TUNE_MAX_PENDING_TRIALS_PG` environment variable "
+                        f"to the desired maximum number of concurrent trials.")
+            else:
+                self._max_pending_trials = 1
+        else:
+            # Manual override
+            self._max_pending_trials = int(max_pending_trials)
+        self.trial_executor.set_max_pending_trials(self._max_pending_trials)
 
         self._metric = metric
 
@@ -557,9 +581,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        if trial.uses_placement_groups:
-            self._max_pending_trials = TUNE_MAX_PENDING_TRIALS_PG
-
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -1139,7 +1160,7 @@ class TrialRunner:
         self.trial_executor.stop_trial(trial, error=error, error_msg=error_msg)
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup()
+        self.trial_executor.cleanup(self)
 
     def __getstate__(self):
         """Gets state for trial.

@@ -4,11 +4,11 @@ from ray import serve
 import requests
 
 ray.init(address="auto")
-client = serve.connect()
 
 logger = logging.getLogger("ray")
 
 
+@serve.deployment
 class Counter:
     def __init__(self):
         self.count = 0
@@ -19,8 +19,7 @@ class Counter:
         return {"count": self.count}
 
 
-client.create_backend("my_backend", Counter)
-client.create_endpoint("my_endpoint", backend="my_backend", route="/counter")
+Counter.deploy()
 
 for i in range(10):
-    requests.get("http://127.0.0.1:8000/counter")
+    requests.get("http://127.0.0.1:8000/Counter")

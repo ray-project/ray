@@ -3,7 +3,7 @@ import gym
 import logging
 import numpy as np
 import os
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 import ray.experimental.tf_utils
@@ -19,6 +19,9 @@ from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -137,13 +140,28 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+
+        # Log device and worker index.
+        if tfv == 2:
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info("TFPolicy (worker={}) running on GPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info("TFPolicy (worker={}) running on CPU.".format(
+                    worker_idx if worker_idx > 0 else "local"))
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
+            self.view_requirements[
+                SampleBatch.INFOS].used_for_compute_actions = False
 
-        assert model is None or isinstance(model, ModelV2), \
-            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
-            "You passed in {}.".format(model)
+        assert model is None or isinstance(model, (ModelV2, tf.keras.Model)), \
+            "Model classes for TFPolicy other than `ModelV2|tf.keras.Model` " \
+            "not allowed! You passed in {}.".format(model)
         self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
@@ -212,7 +230,10 @@ class TFPolicy(Policy):
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
-        return self.model.variables()
+        if isinstance(self.model, tf.keras.Model):
+            return self.model.variables
+        else:
+            return self.model.variables()
 
     def get_placeholder(self, name) -> "tf1.placeholder":
         """Returns the given action or loss input placeholder by name.
@@ -266,7 +287,7 @@ class TFPolicy(Policy):
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
-        if self.model:
+        if self.model and not isinstance(self.model, tf.keras.Model):
             self._loss = self.model.custom_loss(loss, self._loss_input_dict)
             self._stats_fetches.update({
                 "model": self.model.metrics() if isinstance(
@@ -874,7 +895,7 @@ class TFPolicy(Policy):
                                               **fetches[LEARNER_STATS_KEY])
         return fetches
 
-    def _get_loss_inputs_dict(self, train_batch, shuffle):
+    def _get_loss_inputs_dict(self, train_batch: SampleBatch, shuffle: bool):
         """Return a feed dict from a batch.
 
         Args:
@@ -884,9 +905,10 @@ class TFPolicy(Policy):
                 applying minibatch SGD after getting the outputs.
 
         Returns:
-            feed dict of data
+            Feed dict of data.
         """
 
+        # Get batch ready for RNNs, if applicable.
         if not isinstance(train_batch,
                           SampleBatch) or not train_batch.zero_padded:
             pad_batch_to_sequences_of_same_size(
@@ -897,14 +919,10 @@ class TFPolicy(Policy):
                 feature_keys=list(self._loss_input_dict_no_rnn.keys()),
                 view_requirements=self.view_requirements,
             )
-        else:
-            train_batch["seq_lens"] = train_batch.seq_lens
-
-        # Get batch ready for RNNs, if applicable.
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch["is_training"] = True
+        train_batch.is_training = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
@@ -928,19 +946,31 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
+        self._lr_schedule = None
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=lr, trainable=False)
         else:
-            self.lr_schedule = PiecewiseSchedule(
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = tf1.get_variable(
+                "lr", initializer=self._lr_schedule.value(0), trainable=False)
+            if self.framework == "tf":
+                self._lr_placeholder = tf1.placeholder(
+                    dtype=tf.float32, name="lr")
+                self._lr_update = self.cur_lr.assign(
+                    self._lr_placeholder, read_value=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(LearningRateSchedule, self).on_global_var_update(global_vars)
-        self.cur_lr.load(
-            self.lr_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+        if self._lr_schedule is not None:
+            new_val = self._lr_schedule.value(global_vars["timestep"])
+            if self.framework == "tf":
+                self._sess.run(
+                    self._lr_update, feed_dict={self._lr_placeholder: new_val})
+            else:
+                self.cur_lr.assign(new_val, read_value=False)
 
     @override(TFPolicy)
     def optimizer(self):

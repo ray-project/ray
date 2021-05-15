@@ -1,6 +1,5 @@
 #include "ray/object_manager/plasma/connection.h"
 
-#include "ray/object_manager/format/object_manager_generated.h"
 #ifndef _WIN32
 #include "ray/object_manager/plasma/fling.h"
 #endif
@@ -11,8 +10,6 @@
 namespace plasma {
 
 using ray::Status;
-
-namespace fb = ray::object_manager::protocol;
 
 std::ostream &operator<<(std::ostream &os, const std::shared_ptr<Client> &client) {
   os << std::to_string(client->GetNativeHandle());

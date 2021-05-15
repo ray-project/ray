@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private.cluster_utils
+import ray.cluster_utils
 from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
                             put_object, wait_for_condition,
                             new_scheduler_enabled)
@@ -540,7 +540,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 def _all_actors_dead():
     return all(actor["State"] == ray.gcs_utils.ActorTableData.DEAD
-               for actor in list(ray.actors().values()))
+               for actor in list(ray.state.actors().values()))
 
 
 def test_kill_actor_immediately_after_creation(ray_start_regular):
