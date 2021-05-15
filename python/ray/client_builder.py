@@ -114,6 +114,10 @@ class _LocalClientBuilder(ClientBuilder):
         atexit.register(self._server.grpc_server.stop, 0)
 
     def _find_or_create_cluster(self):
+        """
+        Searches for a local cluster, and looks in redis for the port
+        of Ray Client Server. If this fails, a cluster is manually launched.
+        """
         redis_addresses = find_redis_address()
         if len(redis_addresses) > 1:
             raise ConnectionError(
@@ -135,6 +139,14 @@ class _LocalClientBuilder(ClientBuilder):
         self._create_local_cluster()
 
     def connect(self) -> ClientInfo:
+        """
+        Connects to a local Ray cluster.
+        If address="local":
+            Always create a new local cluster.
+        If address="None"
+           Search for a locally running cluster with the Ray Client Server
+           running or create one.
+        """
         if self.create_cluster_without_searching:
             self._create_local_cluster()
         else:
