@@ -70,7 +70,9 @@ def test_hybrid_policy(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
+	# `block_task` ensures that scheduled tasks do not return until all are running.
     block_task = Semaphore.remote(0)
+    # `block_driver` ensures that the driver does not allow tasks to continue until all are running.
     block_driver = Semaphore.remote(0)
 
     # Add the memory resource because the cpu will be released in the ray.get
