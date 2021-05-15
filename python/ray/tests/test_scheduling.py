@@ -76,7 +76,6 @@ def test_hybrid_policy(ray_start_cluster):
     # Add the memory resource because the cpu will be released in the ray.get
     @ray.remote(num_cpus=1, memory=1)
     def get_node():
-        # Sleep to avoid lease reuse.
         ray.get(block_driver.release.remote())
         ray.get(block_task.acquire.remote())
         return ray.worker.global_worker.current_node_id
