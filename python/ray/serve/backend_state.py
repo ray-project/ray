@@ -99,7 +99,7 @@ class ActorReplicaWrapper:
         except ValueError:
             logger.debug("Starting replica '{}' for backend '{}'.".format(
                 self._replica_tag, self._backend_tag))
-            self._actor_handle = ray.remote(backend_info.worker_class).options(
+            self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
                 placement_group=self._placement_group,
