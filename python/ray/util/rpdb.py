@@ -197,7 +197,8 @@ def connect_ray_pdb(host=None,
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
-    host = urllib.request.urlopen("https://checkip.amazonaws.com").read().decode().strip()
+    host = urllib.request.urlopen(
+        "https://checkip.amazonaws.com").read().decode().strip()
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
@@ -243,12 +244,16 @@ def post_mortem():
 
 
 def connect_pdb_client(host, port):
-    local_host = urllib.request.urlopen("https://checkip.amazonaws.com").read().decode().strip()
+    local_host = urllib.request.urlopen(
+        "https://checkip.amazonaws.com").read().decode().strip()
     if os.environ.get("RAY_DEBUG_SSH_COMMAND") and host != local_host:
         cmd = os.environ["RAY_DEBUG_SSH_COMMAND"].format(host=host, port=port)
         p = subprocess.Popen(
             cmd,
-            universal_newlines=True, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            universal_newlines=True,
+            shell=True, stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
         stat = p.poll()
         while stat is None:
             stat = p.poll()
@@ -265,7 +270,6 @@ def connect_pdb_client(host, port):
         except ConnectionRefusedError:
             import time
             time.sleep(0.1)
-
 
     while True:
         # Get the list of sockets which are readable.

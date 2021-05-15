@@ -142,16 +142,16 @@ def test_ray_client_debugger(call_ray_stop_only):
     ray.init(num_cpus=2)
 
     with ray_start_client_server() as ray:
+
         @ray.remote
         def f():
             ray.util.pdb.set_trace()
+
         f.remote()
 
-        p = pexpect.spawn(
-            "python -c 'import ray; "
-            "ray.util.connect(\"localhost:50051\"); "
-            "ray.util.rpdb.run_debug_loop()'"
-        )
+        p = pexpect.spawn("python -c 'import ray; "
+                          "ray.util.connect(\"localhost:50051\"); "
+                          "ray.util.rpdb.run_debug_loop()'")
         p.expect("Enter breakpoint index or press enter to refresh: ")
         p.sendline("0")
         p.expect("(Pdb)")
