@@ -9,10 +9,10 @@ from typing import Dict, List, Tuple, Type, Union
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, \
-    validate_spaces
-from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, stats, \
-    build_sac_model_and_action_dist, optimizer_fn, ComputeTDErrorMixin, \
-    TargetNetworkMixin, setup_late_mixins, action_distribution_fn
+    stats, validate_spaces, ComputeTDErrorMixin, TargetNetworkMixin
+from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, \
+    build_sac_model_and_action_dist, optimizer_fn, \
+    setup_late_mixins, action_distribution_fn
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
@@ -21,13 +21,15 @@ from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import get_variable, \
+    try_import_tf, try_import_tfp
 from ray.rllib.utils.torch_ops import apply_grad_clipping, atanh, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -309,13 +311,10 @@ def cql_optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
     policy.cur_iter = 0
     opt_list = optimizer_fn(policy, config)
     if config["lagrangian"]:
-        log_alpha_prime = nn.Parameter(
-            tf.zeros(1, requires_grad=True).float())
-        policy.model.register_parameter("log_alpha_prime", log_alpha_prime)
-        policy.alpha_prime_optim = torch.optim.Adam(
-            params=[policy.model.log_alpha_prime],
-            lr=config["optimization"]["critic_learning_rate"],
-            eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
+        policy.model.log_alpha_prime = get_variable(
+            0.0, framework="tf", trainable=True, tf_name="log_alpha_prime")
+        policy.alpha_prime_optim = tf.keras.optimizers.Adam(
+            learning_rate=config["optimization"]["critic_learning_rate"],
         )
         return tuple([policy.actor_optim] + policy.critic_optims +
                      [policy.alpha_optim] + [policy.alpha_prime_optim])
@@ -326,18 +325,13 @@ def cql_setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
                           action_space: gym.spaces.Space,
                           config: TrainerConfigDict) -> None:
     setup_late_mixins(policy, obs_space, action_space, config)
-    if config["lagrangian"]:
-        policy.model.log_alpha_prime = policy.model.log_alpha_prime.to(
-            policy.device)
 
 
 def compute_gradients_fn(policy, postprocessed_batch):
     batches = [policy._lazy_tensor_dict(postprocessed_batch)]
-    model = policy.model
-    policy._loss(policy, model, policy.dist_class, batches[0])
+    policy._loss(policy, policy.model, policy.dist_class, batches[0])
     stats = {
-        LEARNER_STATS_KEY: policy._convert_to_non_torch_type(
-            cql_stats(policy, batches[0]))
+        LEARNER_STATS_KEY: cql_stats(policy, batches[0])
     }
     return [None, stats]
 

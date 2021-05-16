@@ -14,7 +14,7 @@ torch, _ = try_import_torch()
 class TestCQL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -51,8 +51,8 @@ class TestCQL(unittest.TestCase):
 
         num_iterations = 2
 
-        # Test for tf framework (torch not implemented yet).
-        for _ in framework_iterator(config, frameworks=("torch")):
+        # Test for tf/torch frameworks.
+        for _ in framework_iterator(config):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 print(trainer.train())
