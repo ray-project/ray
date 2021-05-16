@@ -17,7 +17,8 @@ To run this script against a local Unity3D engine:
 
 3) Then run this script (you will have to press Play in your Unity editor
    at some point to start the game and the learning process):
-$ python unity3d_env_local.py --env 3DBall --stop-reward [..] [--torch]?
+$ python unity3d_env_local.py --env 3DBall --stop-reward [..]
+  [--framework=torch]?
 """
 
 import argparse

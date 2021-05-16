@@ -4,7 +4,7 @@ This example shows:
   - using a custom environment with Repeated / struct observations
   - using a custom model to view the batched list observations
 
-For PyTorch / TF eager mode, use the --torch and --eager flags.
+For PyTorch / TF eager mode, use the `--framework=[torch|tf2|tfe]` flag.
 """
 
 import argparse
