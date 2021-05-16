@@ -277,6 +277,8 @@ message JobConfig {
   repeated string code_search_path = 4;
   // Runtime environment to run the code
   RuntimeEnv runtime_env = 5;
+  // Serialized JSON string of the parsed runtime environment dict for this job.
+  string serialized_runtime_env = 6;
 }
 
 message JobTableData {

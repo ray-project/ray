@@ -166,6 +166,9 @@ class RayletClientInterface : public PinObjectsInterface,
   /// \param callback Callback that will be called after raylet replied the system config.
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
+
+  virtual void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
 };
 
 namespace raylet {
@@ -406,6 +409,9 @@ class RayletClient : public RayletClientInterface {
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
+  void GetGcsServerAddress(
+      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
+
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   void UpdateResourceUsage(
@@ -441,7 +447,7 @@ class RayletClient : public RayletClientInterface {
   std::unique_ptr<RayletConnection> conn_;
 
   /// The number of object ID pin RPCs currently in flight.
-  std::atomic_int64_t pins_in_flight_{0};
+  std::atomic<int64_t> pins_in_flight_{0};
 };
 
 }  // namespace raylet

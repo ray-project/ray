@@ -2,6 +2,7 @@ import asyncio
 import itertools
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
+import random
 
 from ray.actor import ActorHandle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
@@ -116,8 +117,10 @@ class ReplicaSet:
             del self.in_flight_queries[removed_replica_handle]
 
         if len(added) > 0 or len(removed) > 0:
-            self.replica_iterator = itertools.cycle(
-                self.in_flight_queries.keys())
+            # Shuffle the keys to avoid synchronization across clients.
+            handles = list(self.in_flight_queries.keys())
+            random.shuffle(handles)
+            self.replica_iterator = itertools.cycle(handles)
             logger.debug(
                 f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
