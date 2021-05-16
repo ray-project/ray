@@ -178,7 +178,7 @@ struct Invoker {
   template <typename R, typename F, typename... Args>
   static absl::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> Call(
       const F &f, std::tuple<Args...> args) {
-    CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
+    CallInternal<R>(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackVoid();
   }
 
@@ -186,14 +186,13 @@ struct Invoker {
   static absl::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> Call(
       const F &f, std::tuple<Args...> args) {
     auto r =
-        CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
+        CallInternal<R>(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackReturnValue(r);
   }
 
-  template <typename F, size_t... I, typename... Args>
-  static absl::result_of_t<F(Args...)> CallInternal(const F &f,
-                                                    const absl::index_sequence<I...> &,
-                                                    std::tuple<Args...> args) {
+  template <typename R, typename F, size_t... I, typename... Args>
+  static R CallInternal(const F &f, const absl::index_sequence<I...> &,
+                        std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
     return f(((typename std::tuple_element<I, ArgsTuple>::type)std::get<I>(args))...);
@@ -202,23 +201,22 @@ struct Invoker {
   template <typename R, typename F, typename Self, typename... Args>
   static absl::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> CallMember(
       const F &f, Self *self, std::tuple<Args...> args) {
-    CallMemberInternal(f, self, absl::make_index_sequence<sizeof...(Args)>{},
-                       std::move(args));
+    CallMemberInternal<R>(f, self, absl::make_index_sequence<sizeof...(Args)>{},
+                          std::move(args));
     return PackVoid();
   }
 
   template <typename R, typename F, typename Self, typename... Args>
   static absl::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> CallMember(
       const F &f, Self *self, std::tuple<Args...> args) {
-    auto r = CallMemberInternal(f, self, absl::make_index_sequence<sizeof...(Args)>{},
-                                std::move(args));
+    auto r = CallMemberInternal<R>(f, self, absl::make_index_sequence<sizeof...(Args)>{},
+                                   std::move(args));
     return PackReturnValue(r);
   }
 
-  template <typename F, typename Self, size_t... I, typename... Args>
-  static boost::callable_traits::return_type_t<F> CallMemberInternal(
-      const F &f, Self *self, const absl::index_sequence<I...> &,
-      std::tuple<Args...> args) {
+  template <typename R, typename F, typename Self, size_t... I, typename... Args>
+  static R CallMemberInternal(const F &f, Self *self, const absl::index_sequence<I...> &,
+                              std::tuple<Args...> args) {
     (void)args;
     using ArgsTuple = boost::callable_traits::args_t<F>;
     return (self->*f)(
