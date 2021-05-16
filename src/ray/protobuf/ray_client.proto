@@ -391,6 +391,7 @@ message RemoveServerRequest {
 }
 
 message RemoveServerResponse {
+  bool success = 1;
 }
 
 service ServerCoordinator {
