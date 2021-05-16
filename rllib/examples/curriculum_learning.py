@@ -26,12 +26,36 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=50)
-parser.add_argument("--stop-timesteps", type=int, default=200000)
-parser.add_argument("--stop-reward", type=float, default=10000.0)
+parser.add_argument(
+    "--run",
+    type=str,
+    default="PPO",
+    help="The RLlib-registered algorithm to use.")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=50,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=200000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=10000.0,
+    help="Reward at which we stop training.")
 
 
 def curriculum_fn(train_results: dict, task_settable_env: TaskSettableEnv,
@@ -57,11 +81,11 @@ def curriculum_fn(train_results: dict, task_settable_env: TaskSettableEnv,
     # Level 2: Expect rewards between 1.0 and 10.0, etc..
     # We will thus raise the level/task each time we hit a new power of 10.0
     new_task = int(np.log10(train_results["episode_reward_mean"]) + 2.1)
-    # Clamp between valit values, just in case:
+    # Clamp between valid values, just in case:
     new_task = max(min(new_task, 5), 1)
     print(f"Worker #{env_ctx.worker_index} vec-idx={env_ctx.vector_index}"
           f"\nR={train_results['episode_reward_mean']}"
-          f"\nSeting env to task={new_task}")
+          f"\nSetting env to task={new_task}")
     return new_task
 
 

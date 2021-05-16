@@ -151,7 +151,6 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
-    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -198,7 +197,6 @@ All RLlib trainers are compatible with the :ref:`Tune API <tune-60-seconds>`. Th
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
-            "eager": False,
         },
     )
 
@@ -390,7 +388,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the policy
     >>> from ray.rllib.agents.ppo import PPOTrainer
-    >>> trainer = PPOTrainer(env="CartPole-v0", config={"eager": True, "num_workers": 0})
+    >>> trainer = PPOTrainer(env="CartPole-v0", config={"framework": "tf2", "num_workers": 0})
     >>> policy = trainer.get_policy()
     <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
@@ -445,7 +443,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
     # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
-    >>> trainer = DQNTrainer(env="CartPole-v0", config={"eager": True})
+    >>> trainer = DQNTrainer(env="CartPole-v0", config={"framework": "tf2"})
     >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
@@ -779,9 +777,42 @@ Policy losses are defined over the ``post_batch`` data, so you can mutate that i
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
-Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
+In Curriculum learning, the environment can be set to different difficulties (or "tasks") to allow for learning to progress through controlled phases
+(from easy to more difficult). RLlib comes with a basic curriculum learning API utilizing the
+`TaskSettableEnv <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__ environment API.
+Your environment only needs to implement the `set_task` and `get_task` methods for this to work. You can then define an `env_task_fn` in your config,
+which receives the last training results and returns a new task for the env to be set to:
 
-Approach 1: Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function:
+.. code-block:: python
+
+    from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+
+    class MyEnv(TaskSettableEnv):
+        def get_task(self):
+            return self.current_difficulty
+
+        def set_task(self, task):
+            self.current_difficulty = task
+
+    def curriculum_fn(train_results, task_settable_env, env_ctx):
+        # Very simple curriculum function.
+        current_task = task_settable_env.get_task()
+        new_task = current_task + 1
+        return new_task
+
+    # Setup your Trainer's config like so:
+    config = {
+        "env": MyEnv,
+        "env_task_fn": curriculum_fn,
+    }
+    # Train using `tune.run` or `Trainer.train()` and the above config stub.
+    # ...
+
+There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
+
+Use the Trainer API and update the environment between calls to ``train()``. This example shows the trainer being run inside a Tune function.
+This is basically the same as what the built-in `env_task_fn` API described above already does under the hood, but allows you to do even more
+customizations to your training loop.
 
 .. code-block:: python
 
@@ -795,14 +826,14 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
             result = trainer.train()
             reporter(**result)
             if result["episode_reward_mean"] > 200:
-                phase = 2
+                task = 2
             elif result["episode_reward_mean"] > 100:
-                phase = 1
+                task = 1
             else:
-                phase = 0
+                task = 0
             trainer.workers.foreach_worker(
                 lambda ev: ev.foreach_env(
-                    lambda env: env.set_phase(phase)))
+                    lambda env: env.set_task(task)))
 
     num_gpus = 0
     num_workers = 2
@@ -819,7 +850,7 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
         ),
     )
 
-Approach 2: Use the callbacks API to update the environment on new training results:
+You could also use RLlib's callbacks API to update the environment on new training results:
 
 .. code-block:: python
 
@@ -829,15 +860,15 @@ Approach 2: Use the callbacks API to update the environment on new training resu
     def on_train_result(info):
         result = info["result"]
         if result["episode_reward_mean"] > 200:
-            phase = 2
+            task = 2
         elif result["episode_reward_mean"] > 100:
-            phase = 1
+            task = 1
         else:
-            phase = 0
+            task = 0
         trainer = info["trainer"]
         trainer.workers.foreach_worker(
             lambda ev: ev.foreach_env(
-                lambda env: env.set_phase(phase)))
+                lambda env: env.set_task(task)))
 
     ray.init()
     tune.run(
@@ -874,7 +905,7 @@ Eager Mode
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
-``"eager": True`` / ``"eager_tracing": True`` config options or using
+``"framework": "[tf2|tfe]"`` / ``"eager_tracing": True`` config options or using
 ``rllib train --eager [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.

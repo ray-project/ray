@@ -190,7 +190,10 @@ def build_trainer(
 
             # Check `env_task_fn` for possible update of the env's task.
             if self.config["env_task_fn"] is not None:
-                assert callable(self.config["env_task_fn"])
+                if not callable(self.config["env_task_fn"]):
+                    raise ValueError(
+                        "`env_task_fn` must be None or a callable taking "
+                        "[train_results, env, env_ctx] as args!")
 
                 def fn(env, env_context, task_fn):
                     new_task = task_fn(res, env, env_context)
