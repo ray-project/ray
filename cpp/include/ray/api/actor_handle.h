@@ -64,7 +64,7 @@ ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
         "Function not found. Please use RAY_REMOTE to register this function.");
   }
   ptr.function_name = std::move(function_name);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, ptr);
+  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, std::move(ptr));
 }
 
 }  // namespace api

@@ -31,7 +31,7 @@ TaskCaller<F>::TaskCaller() {}
 
 template <typename F>
 TaskCaller<F>::TaskCaller(RayRuntime *runtime, RemoteFunctionHolder ptr)
-    : runtime_(runtime), ptr_(ptr) {}
+    : runtime_(runtime), ptr_(std::move(ptr)) {}
 
 template <typename F>
 template <typename... Args>

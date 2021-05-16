@@ -155,7 +155,7 @@ inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
         "Function not found. Please use RAY_REMOTE to register this function.");
   }
   ptr.function_name = std::move(function_name);
-  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), ptr);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), std::move(ptr));
 }
 
 template <typename FuncType>
@@ -170,7 +170,7 @@ inline ActorCreator<FuncType> Ray::CreateActorInternal(FuncType &create_func) {
 
   ptr.function_name = std::move(function_name);
 
-  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), ptr);
+  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), std::move(ptr));
 }
 
 /// Normal task.

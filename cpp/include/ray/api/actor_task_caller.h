@@ -17,10 +17,10 @@ class ActorTaskCaller {
 
   ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionHolder ptr,
                   std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
-      : runtime_(runtime), id_(id), ptr_(ptr), args_(std::move(args)) {}
+      : runtime_(runtime), id_(id), ptr_(std::move(ptr)), args_(std::move(args)) {}
 
   ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionHolder ptr)
-      : runtime_(runtime), id_(id), ptr_(ptr) {}
+      : runtime_(runtime), id_(id), ptr_(std::move(ptr)) {}
 
   template <typename... Args>
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);

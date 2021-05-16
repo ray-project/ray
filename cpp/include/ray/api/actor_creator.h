@@ -16,7 +16,7 @@ class ActorCreator {
   ActorCreator() {}
 
   ActorCreator(RayRuntime *runtime, RemoteFunctionHolder ptr)
-      : runtime_(runtime), ptr_(ptr) {}
+      : runtime_(runtime), ptr_(std::move(ptr)) {}
 
   template <typename... Args>
   ActorHandle<GetActorType<F>> Remote(Args &&... args);
