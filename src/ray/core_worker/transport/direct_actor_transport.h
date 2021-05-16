@@ -279,7 +279,7 @@ class InboundRequest {
 
   InboundRequest(std::function<void(rpc::SendReplyCallback)> accept_callback,
                  std::function<void(rpc::SendReplyCallback)> reject_callback,
-                 std::function<void(rpc::SendReplyCallback, rpc::Address)> steal_callback,
+                 std::function<void(rpc::SendReplyCallback)> steal_callback,
                  rpc::SendReplyCallback send_reply_callback, TaskID task_id,
                  bool has_dependencies)
       : accept_callback_(std::move(accept_callback)),
@@ -291,13 +291,11 @@ class InboundRequest {
 
   void Accept() { accept_callback_(std::move(send_reply_callback_)); }
   void Cancel() { reject_callback_(std::move(send_reply_callback_)); }
-  // TODO(gabrieleoliaro): remove the thief_addr from the Steal arguments. It is only
-  // needed in the callback for logging/debugging.
-  void Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+  void Steal(rpc::StealTasksReply *reply) {
     reply->add_stolen_tasks_ids(task_id.Binary());
     RAY_CHECK(TaskID::FromBinary(reply->stolen_tasks_ids(reply->stolen_tasks_ids_size() -
                                                          1)) == task_id);
-    steal_callback_(std::move(send_reply_callback_), thief_addr);
+    steal_callback_(std::move(send_reply_callback_));
   }
 
   bool CanExecute() const { return !has_pending_dependencies_; }
@@ -307,7 +305,7 @@ class InboundRequest {
  private:
   std::function<void(rpc::SendReplyCallback)> accept_callback_;
   std::function<void(rpc::SendReplyCallback)> reject_callback_;
-  std::function<void(rpc::SendReplyCallback, rpc::Address)> steal_callback_;
+  std::function<void(rpc::SendReplyCallback)> steal_callback_;
   rpc::SendReplyCallback send_reply_callback_;
 
   ray::TaskID task_id;
@@ -388,18 +386,17 @@ class BoundedExecutor {
 /// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
  public:
-  virtual void Add(
-      int64_t seq_no, int64_t client_processed_up_to,
-      std::function<void(rpc::SendReplyCallback)> accept_request,
-      std::function<void(rpc::SendReplyCallback)> reject_request,
-      rpc::SendReplyCallback send_reply_callback,
-      std::function<void(rpc::SendReplyCallback, rpc::Address)> steal_request = nullptr,
-      TaskID task_id = TaskID::Nil(),
-      const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
+  virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
+                   std::function<void(rpc::SendReplyCallback)> accept_request,
+                   std::function<void(rpc::SendReplyCallback)> reject_request,
+                   rpc::SendReplyCallback send_reply_callback,
+                   std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
+                   TaskID task_id = TaskID::Nil(),
+                   const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
-  virtual size_t Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) = 0;
+  virtual size_t Steal(rpc::StealTasksReply *reply) = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
@@ -436,14 +433,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
   }
 
   /// Add a new actor task's callbacks to the worker queue.
-  void Add(
-      int64_t seq_no, int64_t client_processed_up_to,
-      std::function<void(rpc::SendReplyCallback)> accept_request,
-      std::function<void(rpc::SendReplyCallback)> reject_request,
-      rpc::SendReplyCallback send_reply_callback,
-      std::function<void(rpc::SendReplyCallback, rpc::Address)> steal_request = nullptr,
-      TaskID task_id = TaskID::Nil(),
-      const std::vector<rpc::ObjectReference> &dependencies = {}) {
+  void Add(int64_t seq_no, int64_t client_processed_up_to,
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback,
+           std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
+           TaskID task_id = TaskID::Nil(),
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
     RAY_CHECK(seq_no != -1);
 
@@ -472,7 +468,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  size_t Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+  size_t Steal(rpc::StealTasksReply *reply) {
     RAY_CHECK(false) << "Cannot steal actor tasks";
     // The return instruction will never be executed, but we need to include it
     // nonetheless because this is a non-void function.
@@ -595,15 +591,14 @@ class NormalSchedulingQueue : public SchedulingQueue {
   }
 
   /// Add a new task's callbacks to the worker queue.
-  void Add(
-      int64_t seq_no, int64_t client_processed_up_to,
-      std::function<void(rpc::SendReplyCallback)> accept_request,
-      std::function<void(rpc::SendReplyCallback)> reject_request,
-      rpc::SendReplyCallback send_reply_callback,
-      std::function<void(rpc::SendReplyCallback, rpc::Address)> steal_request = nullptr,
-      TaskID task_id = TaskID::Nil(),
+  void Add(int64_t seq_no, int64_t client_processed_up_to,
+           std::function<void(rpc::SendReplyCallback)> accept_request,
+           std::function<void(rpc::SendReplyCallback)> reject_request,
+           rpc::SendReplyCallback send_reply_callback,
+           std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
+           TaskID task_id = TaskID::Nil(),
 
-      const std::vector<rpc::ObjectReference> &dependencies = {}) {
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
     absl::MutexLock lock(&mu_);
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
@@ -616,18 +611,24 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
   /// Steal up to max_tasks tasks by removing them from the queue and responding to the
   /// owner.
-  size_t Steal(rpc::Address thief_addr, rpc::StealTasksReply *reply) {
+  size_t Steal(rpc::StealTasksReply *reply) {
     size_t tasks_stolen = 0;
 
     absl::MutexLock lock(&mu_);
+
+    if (pending_normal_tasks_.size() <= 1) {
+      RAY_LOG(DEBUG) << "We don't have enough tasks to steal, so we return early!";
+      return tasks_stolen;
+    }
+
     size_t half = pending_normal_tasks_.size() / 2;
 
     for (tasks_stolen = 0; tasks_stolen < half; tasks_stolen++) {
-      assert(!pending_normal_tasks_.empty());
+      RAY_CHECK(!pending_normal_tasks_.empty());
       InboundRequest tail = pending_normal_tasks_.back();
       pending_normal_tasks_.pop_back();
       int stolen_task_ids = reply->stolen_tasks_ids_size();
-      tail.Steal(thief_addr, reply);
+      tail.Steal(reply);
       RAY_CHECK(reply->stolen_tasks_ids_size() == stolen_task_ids + 1);
     }
 

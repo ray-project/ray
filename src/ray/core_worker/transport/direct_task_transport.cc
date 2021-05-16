@@ -274,19 +274,16 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
         RAY_CHECK(thief_entry.WorkerIsStealing());
 
         // Compute number of tasks stolen
-        int64_t number_of_tasks_stolen = reply.number_of_tasks_stolen();
-        int n_stolen_task_ids = reply.stolen_tasks_ids_size();
-        RAY_CHECK((int64_t)n_stolen_task_ids == number_of_tasks_stolen);
-
+        int number_of_tasks_stolen = reply.stolen_tasks_ids_size();
         RAY_LOG(DEBUG) << "We stole " << number_of_tasks_stolen << " tasks "
                        << "from worker: " << victim_wid;
+
+        thief_entry.SetWorkerDoneStealing();
 
         // If we didn't steal anything, we can return the worker to the Raylet
         if (number_of_tasks_stolen == 0) {
           RAY_LOG(DEBUG) << "No tasks were actually stolen from victim: "
                          << victim_addr.worker_id;
-
-          thief_entry.SetWorkerDoneStealing();
 
           if (thief_entry.tasks_in_flight == 0) {
             RAY_LOG(DEBUG)
@@ -295,83 +292,28 @@ void CoreWorkerDirectTaskSubmitter::StealTasksIfNeeded(
             ReturnWorker(thief_addr, was_error, scheduling_key);
           }
         } else {
-          bool found_pseudo_thief = false;
-          rpc::Address pseudo_thief = thief_addr.ToProto();
-
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-
+          // push all tasks to the front of the queue
           for (int64_t i = 0; i < number_of_tasks_stolen; i++) {
             // Get the task_id of the stolen task, and obtain the corresponding task_spec
             // from the TaskManager
             TaskID stolen_task_id = TaskID::FromBinary(reply.stolen_tasks_ids(i));
+            RAY_CHECK(task_finisher_->GetTaskSpec(stolen_task_id));
             auto stolen_task_spec = *(task_finisher_->GetTaskSpec(stolen_task_id));
-            assert(stolen_task_spec);
 
             // delete the stolen task from the executing_tasks map if it is still there.
             executing_tasks_.erase(stolen_task_id);
+
+            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
             // Add the task to the queue
             RAY_LOG(DEBUG) << "Adding stolen task " << stolen_task_spec.TaskId()
                            << " back to the queue (of current size="
                            << scheduling_key_entry.task_queue.size() << ")!";
-            scheduling_key_entry.task_queue.push_back(stolen_task_spec);
-
-            // Ordinarily, the thief's pipeline does not get filled between the moment
-            // when stealing starts and the moment when the victim responds with the
-            // stolen tasks. However, the thief's pipeline can fill if the owner's task
-            // queue receives new tasks after one of its workers has started stealing, and
-            // these tasks are sent to the thief. In this case, we find another worker
-            // (which we will designate as a pseudo-thief) whose pipeline is not full, and
-            // send the stolen tasks to that worker instead.
-            if (!thief_entry.PipelineToWorkerFull(max_tasks_in_flight_per_worker_)) {
-              // call OnWorkerIdle to ship the task to the thief
-              OnWorkerIdle(thief_addr, scheduling_key, /*error=*/false,
-                           thief_entry.assigned_resources);
-            } else {
-              // if the thief's pipeline is full, either find a new pseudo-thief, or send
-              // the stolen task to most recently used.
-
-              // If we have already found a pseudo thief, no need to look for another one
-              if (found_pseudo_thief &&
-                  worker_to_lease_entry_.find(rpc::WorkerAddress(pseudo_thief)) !=
-                      worker_to_lease_entry_.end()) {
-                auto &recipient_entry =
-                    worker_to_lease_entry_[rpc::WorkerAddress(pseudo_thief)];
-                if (!recipient_entry.PipelineToWorkerFull(
-                        max_tasks_in_flight_per_worker_)) {
-                  OnWorkerIdle(rpc::WorkerAddress(pseudo_thief), scheduling_key, false,
-                               recipient_entry.assigned_resources);
-                } else {
-                  // If the pseudo-thief's pipeline has become full, we will need to look
-                  // for a new one at the next iteration
-                  found_pseudo_thief = false;
-                }
-              } else {
-                // Find a worker with a number of tasks in flight that is less than the
-                // maximum value (max_tasks_in_flight_per_worker_) and call OnWorkerIdle
-                // to send tasks to that worker
-                for (auto active_worker_addr : scheduling_key_entry.active_workers) {
-                  RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
-                            worker_to_lease_entry_.end());
-                  auto &recipient_entry = worker_to_lease_entry_[active_worker_addr];
-                  if (!recipient_entry.PipelineToWorkerFull(
-                          max_tasks_in_flight_per_worker_)) {
-                    found_pseudo_thief = true;
-                    pseudo_thief = active_worker_addr.ToProto();
-                    OnWorkerIdle(active_worker_addr, scheduling_key, false,
-                                 recipient_entry.assigned_resources);
-                    // If we find a worker with a non-full pipeline, all we need to do is
-                    // to submit the new task to the worker in question by calling
-                    // OnWorkerIdle once. We don't need to worry about other tasks in the
-                    // queue because the queue cannot have other tasks in it if there are
-                    // active workers with non-full pipelines.
-                    break;
-                  }
-                }
-              }
-            }
+            scheduling_key_entry.task_queue.push_front(stolen_task_spec);
           }
-          thief_entry.SetWorkerDoneStealing();
+          // call OnWorkerIdle to ship the task to the thief
+          OnWorkerIdle(thief_addr, scheduling_key, /*error=*/false,
+                       thief_entry.assigned_resources);
         }
       }));
 }
@@ -511,10 +453,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto &task_queue = scheduling_key_entry.task_queue;
   // Check if the task queue is empty. If that is the case, it only makes sense to
   // consider requesting a new worker if work stealing is enabled, and there is at least a
-  // worker with stealable tasks
+  // worker with stealable tasks. If work stealing is not enabled, or there is no tasks
+  // that we can steal from existing workers, we don't need a new worker because we don't
+  // have any tasks to execute on that worker.
   if (task_queue.empty()) {
-    if (!work_stealing_ || scheduling_key_entry.total_tasks_in_flight <=
-                               scheduling_key_entry.active_workers.size()) {
+    // If any worker has more than one task in flight, then that task can be stolen.
+    bool stealable_tasks = scheduling_key_entry.total_tasks_in_flight <=
+                           scheduling_key_entry.active_workers.size();
+    if (!work_stealing_ || stealable_tasks) {
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
@@ -652,9 +598,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
-          }
-
-          if (reply.task_stolen()) {
+          } else if (reply.task_stolen()) {
+            // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
+            // in the StealTasks callback within StealTasksIfNeeded. So we don't need to
+            // do anything here.
             return;
           }
         }
