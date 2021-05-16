@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 
 import grpc
 
@@ -32,3 +32,12 @@ metadata: List[Tuple[str, str]] = None) -> int:
     server_stub = ray_client_pb2_grpc.ServerCoordinatorStub(channel)
     resp = server_stub.ChooseServer(ray_client_pb2.ServerCoordinatorRequest(), metadata=metadata)
     return resp.port
+
+
+def get_disconnect_handler(coordinator_conn_str: str) -> Callable[int, None]:
+    def disconnect(port: int):
+        channel = grpc.insecure_channel(coordinator_conn_str)
+        grpc.channel_ready_future(channel).result(timeout=INITIAL_TIMEOUT_SEC)
+        coordinator_stub = ray_client_pb2_grpc.ServerCoordinatorStub(channel)
+        coordinator_stub.RemoveStub(ray_client_pb2.RemoveServerRequest(port=port))
+    return disconnect
