@@ -362,6 +362,14 @@ class SquashedGaussian(TFActionDistribution):
             axis=-1)
         return log_prob
 
+    def sample_logp(self):
+        z = self.distr.sample()
+        actions = self._squash(z)
+        return actions, tf.reduce_sum(
+            self.distr.log_prob(z) -
+            tf.math.log(1 - actions * actions + SMALL_NUMBER),
+            axis=-1)
+
     @override(ActionDistribution)
     def entropy(self) -> TensorType:
         raise ValueError("Entropy not defined for SquashedGaussian!")

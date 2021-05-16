@@ -8,11 +8,11 @@ from typing import Dict, List, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.sac.sac_tf_policy import postprocess_trajectory, \
-    stats, validate_spaces, ComputeTDErrorMixin, TargetNetworkMixin
-from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class, \
-    build_sac_model_and_action_dist, optimizer_fn, \
-    setup_late_mixins, action_distribution_fn
+from ray.rllib.agents.sac.sac_tf_policy import \
+    get_distribution_inputs_and_class, build_sac_model, \
+    postprocess_trajectory, setup_late_mixins, stats, validate_spaces, \
+    ActorCriticOptimizerMixin, ComputeTDErrorMixin, TargetNetworkMixin
+#from ray.rllib.agents.sac.sac_torch_policy import _get_dist_class
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
@@ -21,9 +21,10 @@ from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import get_variable, \
     try_import_tf, try_import_tfp
-from ray.rllib.utils.torch_ops import apply_grad_clipping, atanh, \
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
@@ -90,10 +91,10 @@ def cql_loss(policy: Policy, model: ModelV2,
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
-    policy_optimizer = policy._optimizers[0]
-    critic1_optimizer = policy._optimizers[1]
-    critic2_optimizer = policy._optimizers[2]
-    alpha_optimizer = policy._optimizers[3]
+    #policy_optimizer = policy._actor_optimizer
+    #critic1_optimizer = policy._optimizers[1]
+    #critic2_optimizer = policy._optimizers[2]
+    #alpha_optimizer = policy._optimizers[3]
 
     model_out_t, _ = model({
         "obs": obs,
@@ -110,21 +111,20 @@ def cql_loss(policy: Policy, model: ModelV2,
         "is_training": True,
     }, [], None)
 
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
-    action_dist_t = action_dist_class(
+    action_dist_t = policy.dist_class(
         model.get_policy_output(model_out_t), policy.model)
     policy_t, log_pis_t = action_dist_t.sample_logp()
     log_pis_t = tf.expand_dims(log_pis_t, -1)
 
     # Unlike original SAC, Alpha and Actor Loss are computed first.
     # Alpha Loss
-    alpha_loss = -(model.log_alpha *
-                   (log_pis_t + model.target_entropy).detach()).mean()
+    alpha_loss = - tf.reduce_mean(
+        model.log_alpha * tf.stop_gradient(log_pis_t + model.target_entropy))
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
-        alpha_optimizer.zero_grad()
-        alpha_loss.backward()
-        alpha_optimizer.step()
+    #if obs.shape[0] == policy.config["train_batch_size"]:
+    #    alpha_optimizer.zero_grad()
+    #    alpha_loss.backward()
+    #    alpha_optimizer.step()
 
     # Policy Loss (Either Behavior Clone Loss or SAC Loss)
     alpha = tf.math.exp(model.log_alpha)
@@ -133,11 +133,12 @@ def cql_loss(policy: Policy, model: ModelV2,
         if twin_q:
             twin_q_ = model.get_twin_q_values(model_out_t, policy_t)
             min_q = tf.math.minimum(min_q, twin_q_)
-        actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
+        actor_loss = tf.reduce_mean(
+            tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
 
         def bc_log(model, obs, actions):
-            z = atanh(actions)
+            z = tf.math.atanh(actions)
             logits = model.get_policy_output(obs)
             mean, log_std = tf.split(logits, 2, axis=-1)
             # Mean Clamping for Stability
@@ -145,24 +146,25 @@ def cql_loss(policy: Policy, model: ModelV2,
             log_std = tf.clip_by_value(
                 log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
             std = tf.math.exp(log_std)
-            normal_dist = torch.distributions.Normal(mean, std)
+            normal_dist = tfp.distributions.Normal(mean, std)
             return tf.reduce_sum(
                 normal_dist.log_prob(z) -
                 tf.math.log(1 - actions * actions + SMALL_NUMBER),
                 axis=-1)
 
         bc_logp = bc_log(model, model_out_t, actions)
-        actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
+        actor_loss = tf.reduce_mean(
+            tf.stop_gradient(alpha) * log_pis_t - bc_logp)
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
-        policy_optimizer.zero_grad()
-        actor_loss.backward(retain_graph=True)
-        policy_optimizer.step()
+    #if obs.shape[0] == policy.config["train_batch_size"]:
+    #    policy._actor_optimizer.zero_grad()
+    #    actor_loss.backward(retain_graph=True)
+    #    policy_optimizer.step()
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
-    action_dist_tp1 = action_dist_class(
+    action_dist_tp1 = policy.dist_class(
         model.get_policy_output(model_out_tp1), policy.model)
     policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
 
@@ -183,12 +185,12 @@ def cql_loss(policy: Policy, model: ModelV2,
         q_tp1 = tf.math.minimum(q_tp1, twin_q_tp1)
 
     q_tp1_best = tf.squeeze(input=q_tp1, axis=-1)
-    q_tp1_best_masked = (1.0 - terminals.float()) * q_tp1_best
+    q_tp1_best_masked = (1.0 - tf.cast(terminals, tf.float32)) * q_tp1_best
 
     # compute RHS of bellman equation
-    q_t_target = (
+    q_t_target = tf.stop_gradient(
         rewards +
-        (discount**policy.config["n_step"]) * q_tp1_best_masked).detach()
+        (discount ** policy.config["n_step"]) * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped), for priority replay buffer
     base_td_error = tf.math.abs(q_t_selected - q_t_target)
@@ -203,13 +205,13 @@ def cql_loss(policy: Policy, model: ModelV2,
         critic_loss_2 = tf.keras.losses.MSE(twin_q_t_selected, q_t_target)
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
-    rand_actions = convert_to_torch_tensor(
-        torch.FloatTensor(actions.shape[0] * num_actions,
-                          actions.shape[-1]).uniform_(action_low, action_high),
-        policy.device)
-    curr_actions, curr_logp = policy_actions_repeat(model, action_dist_class,
+    rand_actions, _ = policy._random_action_generator.get_exploration_action(
+        action_distribution=policy.dist_class(tf.tile(action_dist_tp1.inputs, (num_actions, 1)), model),
+        timestep=0, explore=True
+    )
+    curr_actions, curr_logp = policy_actions_repeat(model, policy.dist_class,
                                                     model_out_t, num_actions)
-    next_actions, next_logp = policy_actions_repeat(model, action_dist_class,
+    next_actions, next_logp = policy_actions_repeat(model, policy.dist_class,
                                                     model_out_tp1, num_actions)
 
     q1_rand = q_values_repeat(model, model_out_t, rand_actions)
@@ -225,22 +227,22 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     random_density = np.log(0.5**curr_actions.shape[-1])
     cat_q1 = tf.concat([
-        q1_rand - random_density, q1_next_actions - next_logp.detach(),
-        q1_curr_actions - curr_logp.detach()
+        q1_rand - random_density, q1_next_actions - tf.stop_gradient(next_logp),
+        q1_curr_actions - tf.stop_gradient(curr_logp)
     ], 1)
     if twin_q:
         cat_q2 = tf.concat([
-            q2_rand - random_density, q2_next_actions - next_logp.detach(),
-            q2_curr_actions - curr_logp.detach()
+            q2_rand - random_density, q2_next_actions - tf.stop_gradient(next_logp),
+            q2_curr_actions - tf.stop_gradient(curr_logp)
         ], 1)
 
-    min_qf1_loss_ = tf.reduce_logsumexp(
-        cat_q1 / cql_temp, axis=1).mean() * min_q_weight * cql_temp
-    min_qf1_loss = min_qf1_loss_ - (q_t.mean() * min_q_weight)
+    min_qf1_loss_ = tf.reduce_mean(tf.reduce_logsumexp(
+        cat_q1 / cql_temp, axis=1)) * min_q_weight * cql_temp
+    min_qf1_loss = min_qf1_loss_ - (tf.reduce_mean(q_t) * min_q_weight)
     if twin_q:
-        min_qf2_loss_ = tf.reduce_logsumexp(
-            cat_q2 / cql_temp, axis=1).mean() * min_q_weight * cql_temp
-        min_qf2_loss = min_qf2_loss_ - (twin_q_t.mean() * min_q_weight)
+        min_qf2_loss_ = tf.reduce_mean(tf.reduce_logsumexp(
+            cat_q2 / cql_temp, axis=1)) * min_q_weight * cql_temp
+        min_qf2_loss = min_qf2_loss_ - (tf.reduce_mean(twin_q_t) * min_q_weight)
 
     if use_lagrange:
         alpha_prime = tf.clip_by_value(
@@ -260,14 +262,14 @@ def cql_loss(policy: Policy, model: ModelV2,
     if twin_q:
         critic_loss.append(critic_loss_2 + min_qf2_loss)
 
-    if obs.shape[0] == policy.config["train_batch_size"]:
-        critic1_optimizer.zero_grad()
-        critic_loss[0].backward(retain_graph=True)
-        critic1_optimizer.step()
+    #if obs.shape[0] == policy.config["train_batch_size"]:
+    #    critic1_optimizer.zero_grad()
+    #    critic_loss[0].backward(retain_graph=True)
+    #    critic1_optimizer.step()
 
-        critic2_optimizer.zero_grad()
-        critic_loss[1].backward(retain_graph=False)
-        critic2_optimizer.step()
+    #    critic2_optimizer.zero_grad()
+    #    critic_loss[1].backward(retain_graph=False)
+    #    critic2_optimizer.step()
 
     # Save for stats function.
     policy.q_t = q_t_selected
@@ -306,38 +308,47 @@ def cql_stats(policy: Policy,
     return sac_dict
 
 
-def cql_optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
-        Tuple[LocalOptimizer]:
+def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                       action_space: gym.spaces.Space,
+                       config: TrainerConfigDict) -> None:
+    """Call mixin classes' constructors before Policy's initialization.
+
+    Adds the necessary optimizers to the given Policy.
+
+    Args:
+        policy (Policy): The Policy object.
+        obs_space (gym.spaces.Space): The Policy's observation space.
+        action_space (gym.spaces.Space): The Policy's action space.
+        config (TrainerConfigDict): The Policy's config.
+    """
     policy.cur_iter = 0
-    opt_list = optimizer_fn(policy, config)
+    ActorCriticOptimizerMixin.__init__(policy, config)
     if config["lagrangian"]:
         policy.model.log_alpha_prime = get_variable(
             0.0, framework="tf", trainable=True, tf_name="log_alpha_prime")
         policy.alpha_prime_optim = tf.keras.optimizers.Adam(
             learning_rate=config["optimization"]["critic_learning_rate"],
         )
-        return tuple([policy.actor_optim] + policy.critic_optims +
-                     [policy.alpha_optim] + [policy.alpha_prime_optim])
-    return opt_list
-
-
-def cql_setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
-                          action_space: gym.spaces.Space,
-                          config: TrainerConfigDict) -> None:
-    setup_late_mixins(policy, obs_space, action_space, config)
+    # Generic random action generator for calculating CQL-loss.
+    policy._random_action_generator = Random(
+        policy.action_space, model=None, framework="tf2",
+        policy_config=policy.config, num_workers=0, worker_index=0)
 
 
 def compute_gradients_fn(policy, postprocessed_batch):
     batches = [policy._lazy_tensor_dict(postprocessed_batch)]
-    policy._loss(policy, policy.model, policy.dist_class, batches[0])
+    losses = policy._loss(policy, policy.model, policy.dist_class, batches[0])
     stats = {
         LEARNER_STATS_KEY: cql_stats(policy, batches[0])
     }
-    return [None, stats]
+    return [losses, stats]
 
 
-def apply_gradients_fn(policy, gradients):
-    return
+def apply_gradients_fn(policy, optimizer, grads_and_vars):
+    clip_val = policy.config.get("grad_clip")
+    return [(tf.clip_by_norm(g, clip_val) if clip_val is not None else g, v)
+            for (g, v) in grads_and_vars if g is not None]
+
 
 
 # Build a child class of `TFPolicy`, given the custom functions defined
@@ -346,15 +357,15 @@ CQLTFPolicy = build_tf_policy(
     name="CQLTFPolicy",
     loss_fn=cql_loss,
     get_default_config=lambda: ray.rllib.agents.cql.cql.CQL_DEFAULT_CONFIG,
+    validate_spaces=validate_spaces,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
-    extra_grad_process_fn=apply_grad_clipping,
-    optimizer_fn=cql_optimizer_fn,
-    validate_spaces=validate_spaces,
-    before_loss_init=cql_setup_late_mixins,
-    make_model_and_action_dist=build_sac_model_and_action_dist,
-    mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
-    action_distribution_fn=action_distribution_fn,
+    before_init=setup_early_mixins,
+    before_loss_init=setup_late_mixins,
+    make_model=build_sac_model,
+    mixins=[ActorCriticOptimizerMixin, TargetNetworkMixin,
+            ComputeTDErrorMixin],
+    action_distribution_fn=get_distribution_inputs_and_class,
     compute_gradients_fn=compute_gradients_fn,
     apply_gradients_fn=apply_gradients_fn,
 )

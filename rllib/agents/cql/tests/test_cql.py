@@ -52,7 +52,7 @@ class TestCQL(unittest.TestCase):
         num_iterations = 2
 
         # Test for tf/torch frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="tf2"):#TODO
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 print(trainer.train())

@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Type, List
 
 from ray.actor import ActorHandle
+from ray.rllib.agents.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.agents.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights
 from ray.rllib.agents.sac.sac import SACTrainer, \
@@ -197,7 +198,7 @@ CQLTrainer = SACTrainer.with_updates(
     name="CQL",
     default_config=CQL_DEFAULT_CONFIG,
     validate_config=validate_config,
-    default_policy=CQLTorchPolicy,
+    default_policy=CQLTFPolicy,
     get_policy_class=get_policy_class,
     after_init=after_init,
     execution_plan=execution_plan,
