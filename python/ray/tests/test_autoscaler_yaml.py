@@ -455,20 +455,22 @@ class AutoscalingConfigTest(unittest.TestCase):
 
         with patch("ray.autoscaler._private.gcp.config._list_subnets",
                    mock_list_subnets):
-            gcp.config._configure_subnet(
-                config_subnets_configured_post, compute="mock_compute")
+            config_subnets_configured_post = gcp.config._configure_subnet(
+                config_subnets_configured, compute="mock_compute")
             # List subnets wasn't called
             assert list_subnets_counter == 0
-            gcp.config._configure_subnet(
-                config_subnets_worker_configured_post, compute="mock_compute")
+            config_subnets_worker_configured_post = gcp.config\
+                ._configure_subnet(
+                    config_subnets_worker_configured, compute="mock_compute")
             # List subnets was called
             assert list_subnets_counter == 1
-            gcp.config._configure_subnet(
-                config_subnets_head_configured_post, compute="mock_compute")
+            config_subnets_head_configured_post = gcp.config._configure_subnet(
+                config_subnets_head_configured, compute="mock_compute")
             # List subnets was called
             assert list_subnets_counter == 2
-            gcp.config._configure_subnet(
-                config_subnets_no_type_configured_post, compute="mock_compute")
+            config_subnets_no_type_configured_post = gcp.config.\
+                _configure_subnet(
+                    config_subnets_no_type_configured, compute="mock_compute")
             # List subnets was called
             assert list_subnets_counter == 3
 

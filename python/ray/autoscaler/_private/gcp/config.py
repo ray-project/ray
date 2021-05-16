@@ -170,7 +170,7 @@ def construct_clients_from_provider_config(provider_config):
 
 
 def bootstrap_gcp(config):
-
+    config = copy.deepcopy(config)
     check_legacy_fields(config)
     # Used internally to store head IAM role.
     config["head_node"] = {}
@@ -193,6 +193,8 @@ def _configure_project(config, crm):
     buckets, users, and instances under projects. This is different from
     aws ec2 where everything is global.
     """
+    config = copy.deepcopy(config)
+
     project_id = config["provider"].get("project_id")
     assert config["provider"]["project_id"] is not None, (
         "'project_id' must be set in the 'provider' section of the autoscaler"
@@ -224,6 +226,8 @@ def _configure_iam_role(config, crm, iam):
 
     TODO: Allow the name/id of the service account to be configured
     """
+    config = copy.deepcopy(config)
+
     email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
         account_id=DEFAULT_SERVICE_ACCOUNT_ID,
         project_id=config["provider"]["project_id"])
@@ -270,6 +274,7 @@ def _configure_key_pair(config, compute):
       [USERNAME] is the user for the SSH key, specified in the config.
       [KEY_VALUE] is the public SSH key value.
     """
+    config = copy.deepcopy(config)
 
     if "ssh_private_key" in config["auth"]:
         return config
@@ -358,6 +363,7 @@ def _configure_key_pair(config, compute):
 
 def _configure_subnet(config, compute):
     """Pick a reasonable subnet if not specified by the config."""
+    config = copy.deepcopy(config)
 
     node_configs = [
         node_type["node_config"]
