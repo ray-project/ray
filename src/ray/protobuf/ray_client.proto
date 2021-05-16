@@ -376,3 +376,27 @@ service RayletLogStreamer {
   rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
   }
 }
+
+
+message ServerCoordinatorRequest {
+}
+
+message ServerCoordinatorResponse {
+  // Hostname where a RayClient Server will be running.
+  int64 port = 1;
+}
+
+message RemoveServerRequest {
+  int64 port = 1; 
+}
+
+message RemoveServerResponse {
+}
+
+service ServerCoordinator {
+  rpc ChooseServer(ServerCoordinatorRequest) returns (ServerCoordinatorResponse) {
+  }
+  
+  rpc RemoveServer(RemoveServerRequest) returns (RemoveServerResponse) {
+  }
+}
