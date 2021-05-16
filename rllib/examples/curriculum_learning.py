@@ -107,7 +107,7 @@ if __name__ == "__main__":
         "env_task_fn": curriculum_fn,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {
