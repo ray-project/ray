@@ -1,12 +1,12 @@
 from typing import Optional, Dict, TYPE_CHECKING
 
-from agents.callbacks import DefaultCallbacks
-from env.base_env import BaseEnv
-from evaluation.episode import MultiAgentEpisode
-from policy.policy import Policy
-from policy.sample_batch import SampleBatch
-from utils.annotations import PublicAPI
-from utils.typing import PolicyID, AgentID
+from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.typing import PolicyID, AgentID
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
