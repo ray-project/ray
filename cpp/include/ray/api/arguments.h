@@ -22,7 +22,7 @@ class Arguments {
  public:
   template <typename ArgType>
   static void WrapArgsImpl(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                           ArgType &arg) {
+                           ArgType &&arg) {
     static_assert(!is_object_ref<ArgType>::value, "ObjectRef can not be wrapped");
 
     msgpack::sbuffer buffer = Serializer::Serialize(arg);
@@ -44,8 +44,9 @@ class Arguments {
 
   template <typename... OtherArgTypes>
   static void WrapArgs(std::vector<std::unique_ptr<::ray::TaskArg>> *task_args,
-                       OtherArgTypes &... args) {
-    (void)std::initializer_list<int>{(WrapArgsImpl(task_args, args), 0)...};
+                       OtherArgTypes &&... args) {
+    (void)std::initializer_list<int>{
+        (WrapArgsImpl(task_args, std::forward<OtherArgTypes>(args)), 0)...};
     /// Silence gcc warning error.
     (void)task_args;
   }

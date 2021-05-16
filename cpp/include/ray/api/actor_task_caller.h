@@ -23,7 +23,7 @@ class ActorTaskCaller {
       : runtime_(runtime), id_(id), ptr_(ptr) {}
 
   template <typename... Args>
-  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args);
+  ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
  private:
   RayRuntime *runtime_;
@@ -37,11 +37,11 @@ class ActorTaskCaller {
 template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
-    Args... args) {
+    Args &&... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
   StaticCheck<F, Args...>();
 
-  Arguments::WrapArgs(&args_, args...);
+  Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->CallActor(ptr_, id_, args_);
   return ObjectRef<ReturnType>(returned_object_id);
 }
