@@ -4,6 +4,7 @@ import grpc
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
+from queue import Queue
 import os
 import queue
 
@@ -572,7 +573,7 @@ class ClientServerHandle:
         return getattr(self.grpc_server, attr)
 
 
-def serve(connection_str, ray_connect_handler=None):
+def serve(connection_str, ray_connect_handler=None) -> ClientServerHandle:
     def default_connect_handler(job_config: JobConfig = None):
         with disable_client_hook():
             if not ray.is_initialized():
@@ -655,6 +656,62 @@ def try_create_redis_client(args):
     else:
         password = args.redis_password
     return ray._private.services.create_redis_client(address, password)
+
+
+
+class CoordinatorServicer(ray_client_pb2_grpc.ServerCoordinatorServicer):
+    def __init__(self, hostname, min_port, max_port, ray_connect_handler=None):
+        self.hostname = hostname
+        self.available_ports = set(range(min_port, max_port))
+        self.ray_connect_handler = ray_connect_handler
+        self.port_lock = threading.Lock()
+        self.servers: Dict[int, ClientServerHandle] = dict()
+        self.servers_to_kill = Queue()
+
+
+    def _shutdown_server(self) -> None:
+        for port in iter(self.self.servers_to_kill.get):
+            server_to_kill = None
+            with self.port_lock:
+                server_to_kill = self.servers.pop(port)
+            server_to_kill.stop(0)
+            with self.port_lock:
+                logger.debug(f"Port will be added back to pool: {port}")
+                self.available_ports.add(port)
+
+    
+    def ChooseServer(self, request: ray_client_pb2.ServerCoordinatorRequest, context=None) -> ray_client_pb2.ServerCoordinatorResponse:
+        resp = None
+        with self.port_lock:
+            selected_port = self.available_ports.pop()
+            logger.debug(f"Allocating port: {selected_port}")
+            resp = ray_client_pb2.ServerCoordinatorResponse(port=selected_port)
+            self.servers = serve(f"{self.hostname}:{selected_port}", self.ray_connect_handler)
+        return resp
+
+
+    def RemoveServer(self, request: ray_client_pb2.RemoveServerRequest, context=None) -> ray_client_pb2.RemoveServerResponse:
+        with self.port_lock:
+            returned_port = request.port
+            logger.debug(f"Port has been returned: {returned_port}")
+            self.servers_to_kill.put(returned_port)
+            return ray_client_pb2.RemoveServerResponse()
+
+
+
+def serve_coordinator_server(connection_str: str,
+                             min_port: int,
+                             max_port: int,
+                             ray_connect_handler=None):
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
+        options=GRPC_OPTIONS)
+    coordinator_servicer = CoordinatorServicer(connection_str.split(":")[0], min_port, max_port)
+    ray_client_pb2_grpc.add_ServerCoordinatorServicer_to_server(
+        coordinator_servicer, server)
+    server.add_insecure_port(connection_str)
+    server.start()
+    return server
 
 
 def main():
