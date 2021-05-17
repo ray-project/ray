@@ -58,6 +58,13 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
                                       std::function<void(Status)> done_callback) {
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());
+
+  auto time = current_sys_time_ms();
+  job_table_data.set_timestamp(time);
+  job_table_data.set_end_time(time);
+  job_table_data.set_is_dead(true);
+  job_table_data.set_driver_ip_address("");
+  job_table_data.set_driver_pid(-1);
   auto on_done = [this, job_id, job_table_data, done_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
@@ -71,7 +78,6 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  job_table_data.set_end_time(current_sys_time_ms());
   Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
@@ -88,7 +94,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   };
 
   Status status = gcs_table_storage_->JobTable().Get(
-      job_id, [this, job_id, send_reply](
+                                                     job_id, [this, job_id, send_reply, reply, send_reply_callback](
                   Status status, const boost::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);

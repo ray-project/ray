@@ -272,6 +272,7 @@ class GlobalState:
             job_info["Timestamp"] = entry.timestamp
             job_info["StartTime"] = entry.start_time
             job_info["EndTime"] = entry.end_time
+            job_info["IsDead"] = entry.is_dead
             results.append(job_info)
 
         return results
