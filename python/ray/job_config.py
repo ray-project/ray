@@ -90,7 +90,7 @@ class JobConfig:
             self._cached_pb.serialized_runtime_env = \
                 self.get_serialized_runtime_env()
             for k, v in self.metadata.items():
-                job_config.metadata[k] = v
+                self._cached_pb.metadata[k] = v
         return self._cached_pb
 
     def get_runtime_env_uris(self):
