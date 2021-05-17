@@ -1505,8 +1505,8 @@ py_test(
 py_test(
     name = "tests/test_nested_observation_spaces",
     main = "tests/test_nested_observation_spaces.py",
-    tags = ["tests_dir", "tests_dir_N", "flaky"],
-    size = "small",
+    tags = ["tests_dir", "tests_dir_N"],
+    size = "medium",
     srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
@@ -1865,6 +1865,15 @@ py_test(
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
     args = ["--framework=torch"],
+)
+
+py_test(
+    name = "examples/curriculum_learning",
+    main = "examples/curriculum_learning.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/curriculum_learning.py"],
+    args = ["--as-test", "--stop-reward=800.0"]
 )
 
 py_test(
