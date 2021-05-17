@@ -86,6 +86,29 @@ RAY_REMOTE(&DummyObject::Add, &DummyObject::Concat1, &DummyObject::Concat2);
 RAY_REMOTE(PlusOne, Concat1, Concat2, Concat3);
 RAY_REMOTE(PlusTwo, VoidFuncNoArgs, VoidFuncWithArgs, ExceptionFunc);
 
+struct Base {
+  static Base *FactoryCreate() { return new Base(); }
+  virtual int Foo() { return 1; }
+  virtual int Bar() { return 2; }
+  virtual ~Base() {}
+};
+
+struct Base1 {
+  static Base1 *FactoryCreate() { return new Base1(); }
+  virtual int Foo() { return 3; }
+  virtual int Bar() { return 4; }
+  virtual ~Base1() {}
+};
+RAY_REMOTE(Base::FactoryCreate, &Base::Foo, &Base::Bar);
+RAY_REMOTE(Base1::FactoryCreate, &Base1::Foo, &Base1::Bar);
+
+struct Derived : public Base {
+  static Derived *FactoryCreate() { return new Derived(); }
+  int Foo() override { return 10; }
+  int Bar() override { return 20; }
+};
+RAY_REMOTE(Derived::FactoryCreate);
+
 TEST(RayApiTest, DuplicateRegister) {
   bool r = FunctionManager::Instance().RegisterRemoteFunction("Return", Return);
   EXPECT_TRUE(r);
@@ -135,6 +158,25 @@ TEST(RayApiTest, ReferenceArgs) {
   auto r4 = actor.Task(&DummyObject::Concat1).Remote("a", "b");
   auto r5 = actor.Task(&DummyObject::Concat2).Remote(str, "b");
   EXPECT_EQ(*(r4.Get()), *(r5.Get()));
+}
+
+TEST(RayApiTest, VirtualFunctions) {
+  ActorHandle<Base> actor = Ray::Actor(Base::FactoryCreate).Remote();
+  auto r = actor.Task(&Base::Foo).Remote();
+  auto r1 = actor.Task(&Base::Bar).Remote();
+  ActorHandle<Base1> actor1 = Ray::Actor(Base1::FactoryCreate).Remote();
+  auto r2 = actor1.Task(&Base1::Foo).Remote();
+  auto r3 = actor1.Task(&Base1::Bar).Remote();
+  EXPECT_EQ(*(r.Get()), 1);
+  EXPECT_EQ(*(r1.Get()), 2);
+  EXPECT_EQ(*(r2.Get()), 3);
+  EXPECT_EQ(*(r3.Get()), 4);
+
+  ActorHandle<Derived> derived = Ray::Actor(Derived::FactoryCreate).Remote();
+  auto r4 = derived.Task(&Base::Foo).Remote();
+  auto r5 = derived.Task(&Base::Bar).Remote();
+  EXPECT_EQ(*(r4.Get()), 10);
+  EXPECT_EQ(*(r5.Get()), 20);
 }
 
 TEST(RayApiTest, CallWithObjectRef) {

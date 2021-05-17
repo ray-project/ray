@@ -18,6 +18,7 @@
 
 #include <boost/callable_traits.hpp>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -262,7 +263,9 @@ class FunctionManager {
   template <typename Function>
   absl::enable_if_t<std::is_member_function_pointer<Function>::value, bool>
   RegisterRemoteFunction(std::string const &name, const Function &f) {
-    auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
+    using Self = boost::callable_traits::class_of_t<Function>;
+    auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
+    auto pair = mem_func_to_key_map_.emplace(std::move(key), name);
     if (!pair.second) {
       throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
     }
@@ -276,9 +279,23 @@ class FunctionManager {
   }
 
   template <typename Function>
-  std::string GetFunctionName(const Function &f) {
+  absl::enable_if_t<!std::is_member_function_pointer<Function>::value, std::string>
+  GetFunctionName(const Function &f) {
     auto it = func_ptr_to_key_map_.find(GetAddress(f));
     if (it == func_ptr_to_key_map_.end()) {
+      return "";
+    }
+
+    return it->second;
+  }
+
+  template <typename Function>
+  absl::enable_if_t<std::is_member_function_pointer<Function>::value, std::string>
+  GetFunctionName(const Function &f) {
+    using Self = boost::callable_traits::class_of_t<Function>;
+    auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
+    auto it = mem_func_to_key_map_.find(key);
+    if (it == mem_func_to_key_map_.end()) {
       return "";
     }
 
@@ -342,6 +359,7 @@ class FunctionManager {
                                       const std::vector<std::shared_ptr<RayObject>> &)>>
       map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
+  std::map<std::pair<std::string, std::string>, std::string> mem_func_to_key_map_;
 };
 }  // namespace internal
 }  // namespace ray
