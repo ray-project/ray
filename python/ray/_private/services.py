@@ -31,6 +31,11 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 
+# The number of seconds to wait for the Raylet to start. This is normally
+# fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
+# (a few GB/s) to populate all the pages on Raylet startup.
+RAYLET_START_WAIT_TIME_S = 120
+
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -290,7 +295,7 @@ def get_address_info_from_redis_helper(redis_address,
 
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
-                                num_retries=5,
+                                num_retries=RAYLET_START_WAIT_TIME_S,
                                 redis_password=None,
                                 log_warning=True):
     counter = 0
