@@ -81,6 +81,7 @@ if [ "${TRAVIS-}" = true ]; then
 fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
+  echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
