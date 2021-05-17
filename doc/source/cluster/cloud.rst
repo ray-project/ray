@@ -148,7 +148,7 @@ The cluster launcher can also be used to start Ray clusters on an existing Kuber
             # out the command that can be used to get a remote shell into the head node.
             $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-            # List the pods running in the cluster. You shoud only see one head node
+            # List the pods running in the cluster. You should only see one head node
             # until you start running an application, at which point worker nodes
             # should be started. Don't forget to include the Ray namespace in your
             # 'kubectl' commands ('ray' by default).

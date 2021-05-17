@@ -15,8 +15,7 @@ class RuntimeContext(object):
     def get(self):
         """Get a dictionary of the current context.
 
-        Fields that are not available (e.g., actor ID inside a task) won't be
-        included in the field.
+
 
         Returns:
             dict: Dictionary of the current context.
@@ -24,6 +23,7 @@ class RuntimeContext(object):
         context = {
             "job_id": self.job_id,
             "node_id": self.node_id,
+            "namespace": self.namespace,
         }
         if self.worker.mode == ray.worker.WORKER_MODE:
             if self.task_id is not None:
@@ -112,6 +112,11 @@ class RuntimeContext(object):
                  worker. Current mode: {self.worker.mode}")
         actor_id = self.worker.actor_id
         return actor_id if not actor_id.is_nil() else None
+
+    @property
+    def namespace(self):
+        job_config = ray.worker.global_worker.core_worker.get_job_config()
+        return job_config.ray_namespace
 
     @property
     def was_current_actor_reconstructed(self):
