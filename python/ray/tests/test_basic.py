@@ -166,11 +166,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-def _user_setup_func():
-    import ray._private.runtime_env as runtime_env
-    runtime_env.VAR = "hello world"
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_user_setup_function():
     script = """
@@ -185,9 +180,10 @@ print("local", ray._private.runtime_env.VAR)
 
 
 """
+
     out = run_string_as_driver(
         script,
-        {"RAY_USER_SETUP_FUNCTION": "ray.tests.test_basic._user_setup_func"})
+        {"RAY_USER_SETUP_FUNCTION": "ray.test_utils.set_setup_func"})
     (remote_out, local_out) = out.strip().split("\n")[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
