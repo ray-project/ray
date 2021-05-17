@@ -338,14 +338,14 @@ class CoreWorkerProcess {
   absl::Mutex gcs_server_address_mutex_;
   std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
 
-  /// The IO service used by GCS client.
-  instrumented_io_context io_service_;
+  /// The shared IO service used by GCS client.
+  instrumented_io_context shared_io_service_;
 
-  /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  /// Keeps the shared_io_service_ alive.
+  boost::asio::io_service::work shared_io_work_;
 
   // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
+  std::thread shared_io_thread_;
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;

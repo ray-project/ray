@@ -112,7 +112,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
               : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())),
-      io_work_(io_service_) {
+      shared_io_work_(shared_io_service_) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -171,10 +171,10 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
         return false;
       });
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  RAY_CHECK_OK(gcs_client_->Connect(shared_io_service_));
   shared_actor_info_accessor_ = std::make_shared<SharedActorInfoAccessor>(gcs_client_);
 
-  io_thread_ = std::thread([this]() { RunIOService(); });
+  shared_io_thread_ = std::thread([this]() { RunIOService(); });
 
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
@@ -221,9 +221,9 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
   gcs_client_->Disconnect();
-  io_service_.stop();
-  if (io_thread_.joinable()) {
-    io_thread_.join();
+  shared_io_service_.stop();
+  if (shared_io_thread_.joinable()) {
+    shared_io_thread_.join();
   }
   gcs_server_address_updater_.reset();
   if (options_.enable_logging) {
@@ -387,16 +387,8 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
 }
 
 void CoreWorkerProcess::RunIOService() {
-#ifndef _WIN32
-  // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, NULL);
-#endif
   SetThreadName("io");
-  io_service_.run();
+  shared_io_service_.run();
 }
 
 CoreWorker::CoreWorker(
