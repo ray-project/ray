@@ -1124,7 +1124,8 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            job_config=None):
+            job_config=None,
+            runtime_env_hash=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1138,6 +1139,7 @@ def connect(node,
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1233,7 +1235,6 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
-    runtime_env_hash = 0  # TODO(architkulkarni)
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,

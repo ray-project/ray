@@ -295,6 +295,14 @@ Process WorkerPool::StartWorkerProcess(
                                   worker_command_args.begin() + 3);
       }
     }
+
+    WorkerCacheKey env = {
+        dynamic_options, override_environment_variables,
+        serialized_runtime_env};  // TODO: ensure hash is 0 if serialized_runtime_env is
+                                  // "{}"" or ""
+    int runtime_env_hash = env.IntHash();
+    std::string runtime_env_hash_str = std::to_string(runtime_env_hash);
+    worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);
   }
 
   // We use setproctitle to change python worker process title,
@@ -661,7 +669,6 @@ void WorkerPool::PopDeleteWorker(
 
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
-  RAY_LOG(ERROR) << "PushWorker";
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
@@ -832,6 +839,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     }
     WorkerCacheKey env = {dynamic_options, task_spec.OverrideEnvironmentVariables(),
                           task_spec.SerializedRuntimeEnv()};
+    int runtime_env_hash = env.IntHash();
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -845,8 +853,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         continue;
       }
       // Skip if the runtime env doesn't match.
-      auto it2 = state.workers_to_envs.find(it->first->GetProcess());
-      if (it2 == state.workers_to_envs.end() || !(it2->second == env)) {
+      if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
         continue;
       }
 
@@ -866,9 +873,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                                 task_spec.JobId(), dynamic_options,
                                 task_spec.SerializedRuntimeEnv(),
                                 task_spec.OverrideEnvironmentVariables());
-      if (proc.IsValid()) {
-        state.workers_to_envs[proc] = env;
-      }
     }
   }
 

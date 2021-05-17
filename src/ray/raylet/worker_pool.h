@@ -42,7 +42,7 @@ using WorkerCommandMap =
 
 /// \struct WorkerCacheKey
 ///
-/// Struct used as a cache key for workers. The dynamic_options and
+/// Struct used to cache workers, keyed by runtime_env. The dynamic_options and
 /// override_environment_variables will be unified into runtime_env in the future.
 struct WorkerCacheKey {
   std::vector<std::string> dynamic_options;
@@ -56,25 +56,37 @@ struct WorkerCacheKey {
            serialized_runtime_env == k.serialized_runtime_env;
   }
 
+  bool EnvIsEmpty() const {
+    return dynamic_options.size() == 0 && override_environment_variables.size() == 0 &&
+           (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+  }
   std::size_t Hash() const {
     // Cache the hash value.
     if (!hash_) {
-      for (auto &str : dynamic_options) {
-        boost::hash_combine(hash_, str);
-      }
+      if (EnvIsEmpty()) {
+        // It's useful to have the same predetermined value for both unspecified and empty
+        // runtime envs.
+        hash_ = 0;
+      } else {
+        for (auto &str : dynamic_options) {
+          boost::hash_combine(hash_, str);
+        }
 
-      std::vector<std::pair<std::string, std::string>> elems(
-          override_environment_variables.begin(), override_environment_variables.end());
-      std::sort(elems.begin(), elems.end());
-      for (auto &pair : elems) {
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
+        std::vector<std::pair<std::string, std::string>> elems(
+            override_environment_variables.begin(), override_environment_variables.end());
+        std::sort(elems.begin(), elems.end());
+        for (auto &pair : elems) {
+          boost::hash_combine(hash_, pair.first);
+          boost::hash_combine(hash_, pair.second);
+        }
 
-      boost::hash_combine(hash_, serialized_runtime_env);
+        boost::hash_combine(hash_, serialized_runtime_env);
+      }
     }
     return hash_;
   }
+
+  int IntHash() const { return (int)Hash(); }
 };
 
 struct WorkerCacheKeyHasher {
