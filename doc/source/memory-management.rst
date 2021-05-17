@@ -322,7 +322,7 @@ If you only want to display cluster-wide spill stats, use ``ray memory --stats-o
 Preallocating object store memory
 ---------------------------------
 
-By default, object store memory is lazily requested from the object system. However, for more consistent performance, and to avoid SIGBUS errors should there be insufficient memory space in ``/dev/shm``, you can tell Ray to preallocate all pages used by the object store on startup. You can do this by setting the env var ``RAY_PREALLOCATE_PLASMA_MEMORY=1``. Note that it takes some time to preallocate the memory (a few GB/s), which may slow down Ray startup.
+By default, object store memory pages are lazily requested from the operating system. However, for more consistent performance, and to avoid SIGBUS errors should there be insufficient memory space in ``/dev/shm``, you can tell Ray to preallocate all pages used by the object store on startup. You can do this by setting the env var ``RAY_PREALLOCATE_PLASMA_MEMORY=1``. Note that it takes some time to preallocate the memory (a few GB/s), which may slow down Ray startup.
 
 
 Memory Aware Scheduling
