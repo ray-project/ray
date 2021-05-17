@@ -111,7 +111,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())),
+      io_work_(io_service_) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -140,6 +141,40 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
+
+  // Begin to get gcs server address from raylet.
+  gcs_server_address_updater_ = std::unique_ptr<GcsServerAddressUpdater>(
+      new GcsServerAddressUpdater(options_.raylet_ip_address, options_.node_manager_port,
+                                  [this](std::string ip, int port) {
+                                    absl::MutexLock lock(&gcs_server_address_mutex_);
+                                    gcs_server_address_.first = ip;
+                                    gcs_server_address_.second = port;
+                                  }));
+
+  // Initialize gcs client.
+  // As the synchronous and the asynchronous context of redis client is not used in this
+  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
+  // `enable_async_conn` as false.
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
+      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
+      options_.gcs_options.password_,
+      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
+      /*enable_subscribe_conn=*/true);
+  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(
+      gcs_options, [this](std::pair<std::string, int> *address) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        if (gcs_server_address_.second != 0) {
+          address->first = gcs_server_address_.first;
+          address->second = gcs_server_address_.second;
+          return true;
+        }
+        return false;
+      });
+
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  shared_actor_info_accessor_ = std::make_shared<SharedActorInfoAccessor>(gcs_client_);
+
+  io_thread_ = std::thread([this]() { RunIOService(); });
 
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
@@ -185,6 +220,12 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
+  gcs_client_->Disconnect();
+  io_service_.stop();
+  if (io_thread_.joinable()) {
+    io_thread_.join();
+  }
+  gcs_server_address_updater_.reset();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
@@ -285,7 +326,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
 std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   auto worker = std::make_shared<CoreWorker>(
       options_,
-      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
+      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom(),
+      gcs_client_, shared_actor_info_accessor_);
   RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
@@ -344,7 +386,23 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
   core_worker_process.reset();
 }
 
-CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
+void CoreWorkerProcess::RunIOService() {
+#ifndef _WIN32
+  // Block SIGINT and SIGTERM so they will be handled by the main thread.
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
+  SetThreadName("io");
+  io_service_.run();
+}
+
+CoreWorker::CoreWorker(
+    const CoreWorkerOptions &options, const WorkerID &worker_id,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor)
     : options_(options),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
@@ -353,6 +411,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       periodical_runner_(io_service_),
+      gcs_client_(gcs_client),
+      shared_actor_info_accessor_(shared_actor_info_accessor),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -426,36 +486,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 << rpc_address_.port() << ", worker ID " << worker_context_.GetWorkerID()
                 << ", raylet " << local_raylet_id;
 
-  // Begin to get gcs server address from raylet.
-  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
-      options_.raylet_ip_address, options_.node_manager_port,
-      [this](std::string ip, int port) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        gcs_server_address_.first = ip;
-        gcs_server_address_.second = port;
-      });
-
-  // Initialize gcs client.
-  // As the synchronous and the asynchronous context of redis client is not used in this
-  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
-  // `enable_async_conn` as false.
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
-      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
-      options_.gcs_options.password_,
-      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
-      /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(
-      gcs_options, [this](std::pair<std::string, int> *address) {
-        absl::MutexLock lock(&gcs_server_address_mutex_);
-        if (gcs_server_address_.second != 0) {
-          address->first = gcs_server_address_.first;
-          address->second = gcs_server_address_.second;
-          return true;
-        }
-        return false;
-      });
-
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs();
 
   // Register a callback to monitor removed nodes.
@@ -630,8 +660,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                 task_argument_waiter_);
   }
 
-  actor_manager_ = std::make_unique<ActorManager>(gcs_client_, direct_actor_submitter_,
-                                                  reference_counter_);
+  actor_manager_ =
+      std::make_unique<ActorManager>(worker_id, direct_actor_submitter_,
+                                     reference_counter_, shared_actor_info_accessor_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
@@ -720,6 +751,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 }
 
 void CoreWorker::Shutdown() {
+  // Cancel subscritions for this worker so that further actor notifications won't be
+  // triggered, otherwise SIGSEGV would occur because CoreWorker has been destroyed.
+  shared_actor_info_accessor_->OnWorkerShutdown(GetWorkerID());
   io_service_.stop();
   if (options_.worker_type == WorkerType::WORKER) {
     task_execution_service_.stop();
@@ -845,9 +879,6 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 void CoreWorker::WaitForShutdown() {
   if (io_thread_.joinable()) {
     io_thread_.join();
-  }
-  if (gcs_client_) {
-    gcs_client_->Disconnect();
   }
   if (options_.worker_type == WorkerType::WORKER) {
     RAY_CHECK(task_execution_service_.stopped());

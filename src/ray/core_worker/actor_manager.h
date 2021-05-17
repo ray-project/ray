@@ -17,6 +17,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shared_actor_info_accessor.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client.h"
 
@@ -76,12 +77,14 @@ class DefaultActorCreator : public ActorCreatorInterface {
 class ActorManager {
  public:
   explicit ActorManager(
-      std::shared_ptr<gcs::GcsClient> gcs_client,
+      const WorkerID worker_id,
       std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter,
-      std::shared_ptr<ReferenceCounterInterface> reference_counter)
-      : gcs_client_(gcs_client),
+      std::shared_ptr<ReferenceCounterInterface> reference_counter,
+      std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor)
+      : worker_id_(worker_id),
         direct_actor_submitter_(direct_actor_submitter),
-        reference_counter_(reference_counter) {}
+        reference_counter_(reference_counter),
+        shared_actor_info_accessor_(shared_actor_info_accessor) {}
 
   ~ActorManager() = default;
 
@@ -179,8 +182,7 @@ class ActorManager {
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
 
-  /// GCS client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  const WorkerID worker_id_;
 
   /// Interface to submit tasks directly to other actors.
   std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
@@ -188,6 +190,9 @@ class ActorManager {
   /// Used to keep track of actor handle reference counts.
   /// All actor handle related ref counting logic should be included here.
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+
+  // The shared actor info accessor to avoid duplicate subscriptions.
+  std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor_;
 
   mutable absl::Mutex mutex_;
 

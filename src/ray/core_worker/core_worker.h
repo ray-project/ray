@@ -29,6 +29,7 @@
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/shared_actor_info_accessor.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -306,6 +307,9 @@ class CoreWorkerProcess {
   /// \return Void.
   void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(worker_map_mutex_);
 
+  /// Run the io_service_ event loop. This should be called in a background thread.
+  void RunIOService();
+
   /// The various options.
   const CoreWorkerOptions options_;
 
@@ -325,6 +329,27 @@ class CoreWorkerProcess {
 
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
+
+  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
+      std::make_pair<std::string, int>("", 0);
+  /// To protect accessing the `gcs_server_address_`.
+  absl::Mutex gcs_server_address_mutex_;
+  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
+
+  /// The IO service used by GCS client.
+  instrumented_io_context io_service_;
+
+  /// Keeps the io_service_ alive.
+  boost::asio::io_service::work io_work_;
+
+  // Thread that runs a boost::asio service to process IO events.
+  std::thread io_thread_;
+
+  // Client to the GCS shared by core worker interfaces.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  // The shared actor info accessor to avoid duplicate subscriptions.
+  std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor_;
 };
 
 /// The root class that contains all the core and language-independent functionalities
@@ -336,7 +361,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
-  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id,
+             std::shared_ptr<gcs::GcsClient> gcs_client,
+             std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1185,14 +1212,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Whether or not this worker is connected to the raylet and GCS.
   bool connected_ = false;
 
-  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
-      std::make_pair<std::string, int>("", 0);
-  /// To protect accessing the `gcs_server_address_`.
-  absl::Mutex gcs_server_address_mutex_;
-  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  // The shared actor info accessor to avoid duplicate subscriptions.
+  std::shared_ptr<SharedActorInfoAccessor> shared_actor_info_accessor_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
