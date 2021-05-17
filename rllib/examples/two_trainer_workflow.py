@@ -159,7 +159,7 @@ if __name__ == "__main__":
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "framework": args.framework,
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {
