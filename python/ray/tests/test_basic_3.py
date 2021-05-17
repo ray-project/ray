@@ -17,18 +17,21 @@ import ray
 
 logger = logging.getLogger(__name__)
 
+
 def test_auto_global_gc(shutdown_only):
     # 100MB
     ray.init(num_cpus=1, object_store_memory=100 * 1024 * 1024)
-    # Disable gc
+
     @ray.remote
     class Test:
         def __init__(self):
             self.collected = False
             import gc
             gc.disable()
+
             def gc_called(phase, info):
                 self.collected = True
+
             gc.callbacks.append(gc_called)
 
         def circular_ref(self):
@@ -47,17 +50,18 @@ def test_auto_global_gc(shutdown_only):
 
         def collected(self):
             return self.collected
+
     test = Test.remote()
     # 60MB
     for i in range(3):
-        a = ray.get(test.circular_ref.remote())
+        ray.get(test.circular_ref.remote())
     time.sleep(2)
-    assert False == ray.get(test.collected.remote())
+    assert not ray.get(test.collected.remote())
     # 80MB
     for _ in range(1):
-        a = ray.get(test.circular_ref.remote())
+        ray.get(test.circular_ref.remote())
     time.sleep(2)
-    assert True == ray.get(test.collected.remote())
+    assert ray.get(test.collected.remote())
 
 
 def test_many_fractional_resources(shutdown_only):

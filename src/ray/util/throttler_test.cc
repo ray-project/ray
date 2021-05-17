@@ -20,14 +20,18 @@
 #include "ray/util/throttler.h"
 
 TEST(ThrottlerTest, BasicTest) {
-  ray::Throttler throttler(5 * 1e9);
-  EXPECT_FALSE(throttler.AbleToRun());
-  sleep(5);
+  int64_t now = 100;
+  ray::Throttler throttler(5, [&now] {
+    return now;
+  });
   EXPECT_TRUE(throttler.AbleToRun());
+  now += 5;
+  EXPECT_TRUE(throttler.AbleToRun());
+  now += 1;
   EXPECT_FALSE(throttler.AbleToRun());
-  sleep(5);
+  now += 4;
   throttler.RunNow();
   EXPECT_FALSE(throttler.AbleToRun());
-  sleep(5);
+  now += 5;
   EXPECT_TRUE(throttler.AbleToRun());
 }
