@@ -230,9 +230,7 @@ def build_eager_tf_policy(
 
     if gradients_fn is not None:
         deprecation_warning(
-            old="gradients_fn",
-            new="compute_gradients_fn",
-            error=False)
+            old="gradients_fn", new="compute_gradients_fn", error=False)
         compute_gradients_fn = gradients_fn
 
     class eager_policy_cls(base):
@@ -737,8 +735,9 @@ def build_eager_tf_policy(
                         return list(
                             zip(self.tape.gradient(loss, var_list), var_list))
 
-                grads_and_vars = compute_gradients_fn(
-                    self, OptimizerWrapper(tape), loss)
+                grads_and_vars = compute_gradients_fn(self,
+                                                      OptimizerWrapper(tape),
+                                                      loss)
             else:
                 grads_and_vars = list(
                     zip(tape.gradient(loss, variables), variables))

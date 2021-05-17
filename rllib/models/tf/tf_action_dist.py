@@ -349,7 +349,7 @@ class SquashedGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x: TensorType) -> TensorType:
         # Unsquash values (from [low,high] to ]-inf,inf[)
-        unsquashed_values = self._unsquash(x)
+        unsquashed_values = tf.cast(self._unsquash(x), self.inputs.dtype)
         # Get log prob of unsquashed values from our Normal.
         log_prob_gaussian = self.distr.log_prob(unsquashed_values)
         # For safety reasons, clamp somehow, only then sum up.

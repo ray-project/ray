@@ -75,7 +75,6 @@ def build_tf_policy(
         obs_include_prev_action_reward=DEPRECATED_VALUE,
         extra_action_fetches_fn=None,  # Use `extra_action_out_fn`.
         gradients_fn=None,  # Use `compute_gradients_fn`.
-
 ) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
@@ -201,9 +200,7 @@ def build_tf_policy(
 
     if gradients_fn is not None:
         deprecation_warning(
-            old="gradients_fn",
-            new="compute_gradients_fn",
-            error=False)
+            old="gradients_fn", new="compute_gradients_fn", error=False)
         compute_gradients_fn = gradients_fn
 
     class policy_cls(base):
