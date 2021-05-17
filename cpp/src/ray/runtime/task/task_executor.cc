@@ -154,6 +154,7 @@ Status TaskExecutor::ExecuteTask(
   }
 
   if (task_type != TaskType::ACTOR_CREATION_TASK) {
+    results->resize(1, nullptr);
     size_t data_size = data->size();
     auto &result_id = return_ids[0];
     auto result = (*results)[0];

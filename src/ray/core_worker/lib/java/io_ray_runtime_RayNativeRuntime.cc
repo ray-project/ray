@@ -162,6 +162,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
               [](JNIEnv *env, jobject java_native_ray_object) {
                 return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
               });
+          results->resize(return_objects.size(), nullptr);
           for (size_t i = 0; i < return_objects.size(); i++) {
             auto &result_id = return_ids[i];
             size_t data_size =
