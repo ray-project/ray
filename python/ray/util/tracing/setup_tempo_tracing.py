@@ -1,5 +1,4 @@
-# This file is intended to set up tracing for the product. This sets up an
-# OTLP exporter to export traces to Grafana Tempo.
+# This file is intended for examples exporting traces to a local OTLP listener
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter  # noqa
