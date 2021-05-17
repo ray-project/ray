@@ -43,7 +43,7 @@ torch==1.8.1+cpu;sys_platform!="darwin"
 torchvision==0.9.1+cpu;sys_platform!="darwin"
 
 
-transformers==4.3.2
+transformers==4.6.0
 wandb==0.10.29
 xgboost==1.3.3
 zoopt==0.4.1
