@@ -12,7 +12,7 @@ from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists,
                                           _internal_kv_initialized)
 from ray._private.utils import BaseModel
-from typing import List, Tuple, Optional, Callable, Dict, Any
+from typing import List, Tuple, Optional, Callable, Dict, Any, Union
 from urllib.parse import urlparse
 import os
 import sys
@@ -63,7 +63,7 @@ class RuntimeEnv(BaseModel):
     # Examples:
     #     {"image": "anyscale/ray-ml:nightly-py38-cpu", **run_options}
     # TODO(architkulkarni) support docker
-    docker: dict = {}
+    docker: Union[dict, str] = {}
     # Environment variables to set.
     # Examples:
     #     {"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}

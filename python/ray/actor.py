@@ -701,7 +701,7 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
         if runtime_env:
-            parsed_runtime_env = runtime_support.RuntimeEnv(runtime_env)
+            parsed_runtime_env = runtime_support.RuntimeEnv(**runtime_env)
             override_environment_variables = (
                 parsed_runtime_env.to_worker_env_vars(
                     override_environment_variables))
