@@ -1288,6 +1288,19 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "grpc_based_resource_broadcaster_test",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
@@ -1370,7 +1383,6 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    tags = ["flaky"],
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
@@ -1863,6 +1875,7 @@ filegroup(
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",

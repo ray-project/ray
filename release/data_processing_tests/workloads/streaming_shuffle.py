@@ -39,7 +39,7 @@ def display_spilling_info(address):
                                    ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     raylet = state.node_table()[0]
     memory_summary = ray.internal.internal_api.memory_summary(
-        raylet["NodeManagerAddress"], raylet["NodeManagerPort"])
+        f"{raylet['NodeManagerAddress']}:{raylet['NodeManagerPort']}")
     for line in memory_summary.split("\n"):
         if "Spilled" in line:
             print(line)

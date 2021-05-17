@@ -34,12 +34,17 @@ void GcsInternalKVManager::HandleInternalKVPut(
 void GcsInternalKVManager::HandleInternalKVDel(
     const rpc::InternalKVDelRequest &request, rpc::InternalKVDelReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  std::vector<std::string> cmd = {"HDEL", request.key(), "value"};
+  InternalKVDelAsync(request.key(), [reply, send_reply_callback](int deleted_num) {
+    reply->set_deleted_num(deleted_num);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  });
+}
+
+void GcsInternalKVManager::InternalKVDelAsync(const std::string &key,
+                                              std::function<void(int)> cb) {
+  std::vector<std::string> cmd = {"HDEL", key, "value"};
   RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
-      cmd, [reply, send_reply_callback](auto redis_reply) {
-        reply->set_deleted_num(redis_reply->ReadAsInteger());
-        GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-      }));
+      cmd, [cb](auto redis_reply) { cb(redis_reply->ReadAsInteger()); }));
 }
 
 void GcsInternalKVManager::HandleInternalKVExists(

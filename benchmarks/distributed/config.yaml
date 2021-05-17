@@ -12,6 +12,7 @@ provider:
 auth:
     ssh_user: ubuntu
 
+
 available_node_types:
     head_node:
         node_config:
@@ -42,8 +43,13 @@ head_node_type: head_node
 
 worker_default_node_type: worker_node
 
+file_mounts: {
+    "~/benchmarks": "."
+}
+
 setup_commands:
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip uninstall -y ray
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.3.0/197fa3eff0526d7fb825a33278702f9c952d31c5/ray-1.3.0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip install tqdm
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 

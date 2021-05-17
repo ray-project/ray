@@ -140,6 +140,7 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_backend_worker # memory error
       -python/ray/tests:test_actor_advanced # timeout
@@ -176,7 +177,7 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_k8s_operator_mock
+      -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
     )
   fi
