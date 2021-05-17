@@ -582,6 +582,9 @@ class SampleBatch(dict):
                     self.max_seq_len
                 # Complete minibatch -> Append to data_slices.
                 if current_slize_size >= slice_size:
+                    end_idx = idx + 1
+                    # We are not zero-padded yet; all sequences are
+                    # back-to-back.
                     if not self.zero_padded:
                         data_slices.append((start_pos, start_pos + slice_size))
                         start_pos += slice_size
@@ -589,11 +592,12 @@ class SampleBatch(dict):
                             overhead = current_slize_size - slice_size
                             start_pos -= (seq_len - overhead)
                             idx -= 1
+                    # We are already zero-padded: Cut in chunks of max_seq_len.
                     else:
                         data_slices.append((start_pos, actual_slice_idx))
                         start_pos = actual_slice_idx
 
-                    data_slices_states.append((start_idx, idx + 1))
+                    data_slices_states.append((start_idx, end_idx))
                     current_slize_size = 0
                     start_idx = idx + 1
                 idx += 1

@@ -257,6 +257,10 @@ def chop_into_sequences(*,
         if seq_len:
             seq_lens.append(seq_len)
         seq_lens = np.array(seq_lens, dtype=np.int32)
+    elif sum(seq_lens) != len(feature_columns[0]):
+        assert sum(seq_lens) > len(feature_columns[0])
+        seq_lens[-1] = len(feature_columns[0]) - sum(seq_lens[:-1])
+
     assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
