@@ -13,6 +13,7 @@ from botocore.config import Config
 import botocore
 
 from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
+from ray.autoscaler._private.util import check_legacy_fields
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
@@ -192,7 +193,7 @@ def log_to_cli(config: Dict[str, Any]) -> None:
 def bootstrap_aws(config):
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
-    _check_legacy_fields(config)
+    check_legacy_fields(config)
 
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
@@ -215,26 +216,6 @@ def bootstrap_aws(config):
     _check_ami(config)
 
     return config
-
-
-def _check_legacy_fields(config: Dict[str, Any]) -> None:
-    # log warning if non-empty head_node field
-    if "head_node" in config and config["head_node"]:
-        cli_logger.warning(
-            "The `head_node` field is deprecated and will be ignored. "
-            "Use `head_node_type` and `available_node_types` instead.")
-    # log warning if non-empty worker_nodes field
-    if "worker_nodes" in config and config["worker_nodes"]:
-        cli_logger.warning(
-            "The `worker_nodes` field is deprecated and will be ignored."
-            "Use `available_node_types` instead.")
-    if "available_node_types" not in config:
-        cli_logger.error("`available_node_types` not specified in config")
-        raise ValueError("`available_node_types` not specified in config")
-    if "head_node_type" not in config:
-        cli_logger.error("`head_node_type` not specified in config")
-        raise ValueError("`head_node_type` not specified in config")
-
 
 def _configure_iam_role(config):
     head_node_type = config["head_node_type"]
