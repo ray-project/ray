@@ -84,8 +84,7 @@ must be launched in a Helm release separate from the release used to launch the 
 To enable launching with multiple Ray Clusters, the Ray Helm chart includes two flags:
 
 - ``operatorOnly``: Start the Operator without launching a Ray cluster.
-- ``clusterOnly``: Create a RayCluster custom resource without installing the Operator.\
-(If the Operator has already been installed, a new Ray cluster will be launched.)
+- ``clusterOnly``: Create a RayCluster custom resource without installing the Operator. \(If the Operator has already been installed, a new Ray cluster will be launched.)
 
 The following commands will install the Operator and two Ray Clusters in
 three separate Helm releases:
