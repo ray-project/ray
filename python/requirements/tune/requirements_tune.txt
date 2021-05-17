@@ -18,7 +18,7 @@ kubernetes==12.0.1
 lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
 matplotlib==3.4.2; python_version >= '3.7'
-mlflow==1.16.0
+mlflow==1.17.0
 mxnet==1.8.0.post0
 nevergrad==0.4.2.post5
 optuna==2.6.0
