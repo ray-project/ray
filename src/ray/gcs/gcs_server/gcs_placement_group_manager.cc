@@ -212,8 +212,8 @@ PlacementGroupID GcsPlacementGroupManager::GetPlacementGroupIDByName(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
     std::shared_ptr<GcsPlacementGroup> placement_group) {
-  RAY_LOG(INFO) << "Failed to create placement group " << placement_group->GetName()
-                << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
+  RAY_LOG(DEBUG) << "Failed to create placement group " << placement_group->GetName()
+                 << ", id: " << placement_group->GetPlacementGroupID() << ", try again.";
   // We will attempt to schedule this placement_group once an eligible node is
   // registered.
   auto state = placement_group->GetState();
@@ -289,12 +289,12 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::CreatePlacementGroupReply *reply,
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
-  RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
+  RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
                                            placement_group](Status status) {
     if (status.ok()) {
-      RAY_LOG(INFO) << "Finished registering placement group, "
-                    << placement_group->DebugString();
+      RAY_LOG(DEBUG) << "Finished registering placement group, "
+                     << placement_group->DebugString();
     } else {
       RAY_LOG(INFO) << "Failed to register placement group, "
                     << placement_group->DebugString() << ", cause: " << status.message();

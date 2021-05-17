@@ -77,8 +77,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     message="Invalid config, could not load YAML.")
 
             payload = {
-                "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"]
+                "min_workers": cfg.get("min_workers", "unspecified"),
+                "max_workers": cfg.get("max_workers", "unspecified")
             }
 
             try:

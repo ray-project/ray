@@ -98,7 +98,7 @@ Test that it works by running the following commands from your local machine:
     # out the command that can be used to get a remote shell into the head node.
     $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-    # List the pods running in the cluster. You shoud only see one head node
+    # List the pods running in the cluster. You should only see one head node
     # until you start running an application, at which point worker nodes
     # should be started. Don't forget to include the Ray namespace in your
     # 'kubectl' commands ('ray' by default).
@@ -429,11 +429,13 @@ The head node pod's ``metadata`` should have a ``label`` matching the service's 
 
 - The Ray Kubernetes Operator automatically configures a default service exposing ports 10001 and 8265 \
   on the head node pod. The Operator also adds the relevant label to the head node pod's configuration. \
-  If this default service does not suit your use case, you can modify the service or create a new one, \
+  If this default service does not suit your use case, you can override the default port settings by configuring \
+  the field ``headServicePorts`` in your `RayCluster custom resource <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml>`__. \
+  Alternatively, you can modify the service or create a new one, \
   for example by using the tools ``kubectl edit``, ``kubectl create``, or ``kubectl apply``.
 
 - The Ray Cluster launcher does not automatically configure a service targeting the head node. A \
-  head node service can be specified in the cluster launching config's ``provider.services`` field. The example cluster lauching \
+  head node service can be specified in the cluster launching config's ``provider.services`` field. The example cluster launching \
   config `example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ includes \
   the :ref:`above <svc-example>` service configuration as an example.
 

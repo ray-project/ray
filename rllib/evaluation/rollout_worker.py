@@ -48,6 +48,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
+    from ray.rllib.agents.callbacks import DefaultCallbacks
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
@@ -964,6 +965,24 @@ class RolloutWorker(ParallelIteratorWorker):
             return [func(self.async_env)]
         else:
             return [func(e) for e in envs]
+
+    @DeveloperAPI
+    def foreach_env_with_context(
+            self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
+        """Apply the given function to each underlying env instance."""
+
+        if self.async_env is None:
+            return []
+
+        envs = self.async_env.get_unwrapped()
+        if not envs:
+            return [func(self.async_env, self.env_context)]
+        else:
+            ret = []
+            for i, e in enumerate(envs):
+                ctx = self.env_context.copy_with_overrides(vector_index=i)
+                ret.append(func(e, ctx))
+            return ret
 
     @DeveloperAPI
     def get_policy(

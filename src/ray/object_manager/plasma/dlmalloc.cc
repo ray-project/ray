@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma.h"
 
 namespace plasma {
@@ -62,6 +63,10 @@ int fake_munmap(void *, int64_t);
 #undef DEBUG
 #endif
 
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
 constexpr int GRANULARITY_MULTIPLIER = 2;
 
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
@@ -73,10 +78,11 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
                               (DWORD)(uint64_t)size, NULL);
-  RAY_CHECK(*handle != NULL) << "Failed to create buffer during mmap";
+  RAY_CHECK(*handle != NULL) << "CreateFileMapping() failed. GetLastError() = "
+                             << GetLastError();
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
   if (*pointer == NULL) {
-    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
+    RAY_LOG(ERROR) << "MapViewOfFile() failed. GetLastError() = " << GetLastError();
   }
 }
 #else
@@ -107,7 +113,15 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // MAP_POPULATE can be used to pre-populate the page tables for this memory region
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
-  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, *fd, 0);
+  auto flags = MAP_SHARED;
+  if (RayConfig::instance().preallocate_plasma_memory()) {
+    if (!MAP_POPULATE) {
+      RAY_LOG(FATAL) << "MAP_POPULATE is not supported on this platform.";
+    }
+    RAY_LOG(INFO) << "Preallocating all plasma memory using MAP_POPULATE.";
+    flags |= MAP_POPULATE;
+  }
+  *pointer = mmap(NULL, size, PROT_READ | PROT_WRITE, flags, *fd, 0);
   if (*pointer == MAP_FAILED) {
     RAY_LOG(ERROR) << "mmap failed with error: " << std::strerror(errno);
     if (errno == ENOMEM && plasma_config->hugepages_enabled) {

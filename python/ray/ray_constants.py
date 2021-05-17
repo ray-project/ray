@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 def env_integer(key, default):
     if key in os.environ:
-        return int(os.environ[key])
+        value = os.environ[key]
+        if value.isdigit():
+            return int(os.environ[key])
+
+        logger.debug(f"Found {key} in environment, but value must "
+                     f"be an integer. Got: {value}. Returning "
+                     f"provided default {default}.")
+        return default
     return default
 
 
@@ -40,6 +47,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # If a user does not specify a port for the primary Ray service,
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
+
+RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265

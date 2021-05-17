@@ -11,6 +11,7 @@ import time
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.env_context import EnvContext
@@ -123,6 +124,11 @@ COMMON_CONFIG: TrainerConfigDict = {
     "env": None,
     # Arguments to pass to the env creator.
     "env_config": {},
+    # A callable taking the last train results, the base env and the env
+    # context as args and returning a new task to set the env to.
+    # The env must be a `TaskSettableEnv` sub-class for this to work.
+    # See `examples/curriculum_learning.py` for an example.
+    "env_task_fn": None,
     # If True, try to render the environment on the local worker or on worker
     # 1 (if num_workers > 0). For vectorized envs, this usually means that only
     # the first sub-environment will be rendered.
@@ -213,7 +219,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Whether to run evaluation in parallel to a Trainer.train() call
     # using threading. Default=False.
     # E.g. evaluation_interval=2 -> For every other training iteration,
-    # the Trainer.train() and Trainer._evaluate() calls run in parallel.
+    # the Trainer.train() and Trainer.evaluate() calls run in parallel.
     # Note: This is experimental. Possible pitfalls could be race conditions
     # for weight synching at the beginning of the evaluation loop.
     "evaluation_parallel_to_training": False,
@@ -238,7 +244,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer._evaluate() method to see the default implementation. The
+    # Trainer.evaluate() method to see the default implementation. The
     # trainer guarantees all eval workers have the latest policy state before
     # this function is called.
     "custom_eval_function": None,
@@ -678,7 +684,7 @@ class Trainer(Trainable):
 
             self.env_creator = lambda env_config: normalize(inner(env_config))
 
-        Trainer._validate_config(self.config)
+        self._validate_config(self.config, trainer_obj_or_none=self)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -703,6 +709,9 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
 
             # Evaluation setup.
+            self.evaluation_workers = None
+            self.evaluation_metrics = {}
+            # Do automatic evaluation from time to time.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
@@ -711,7 +720,8 @@ class Trainer(Trainable):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(evaluation_config)
+                self._validate_config(
+                    evaluation_config, trainer_obj_or_none=self)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -721,14 +731,16 @@ class Trainer(Trainable):
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
-
+                # Create a separate evaluation worker set for evaluation.
+                # If evaluation_num_workers=0, use the evaluation set's local
+                # worker for evaluation, otherwise, use its remote workers
+                # (parallelized evaluation).
                 self.evaluation_workers = self._make_workers(
                     env_creator=self.env_creator,
                     validate_env=None,
                     policy_class=self._policy_class,
                     config=evaluation_config,
                     num_workers=self.config["evaluation_num_workers"])
-                self.evaluation_metrics = {}
 
     @override(Trainable)
     def cleanup(self):
@@ -790,8 +802,15 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
+    # TODO: (sven) Deprecate in favor of Trainer.evaluate().
     @DeveloperAPI
     def _evaluate(self) -> dict:
+        deprecation_warning(
+            "Trainer._evaluate", "Trainer.evaluate", error=False)
+        return self.evaluate()
+
+    @PublicAPI
+    def evaluate(self) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
         Note that this default implementation does not do anything beyond
@@ -799,9 +818,11 @@ class Trainer(Trainable):
         """
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
-        # Sync weights to the evaluation WorkerSet.
-        self._sync_weights_to_workers(worker_set=self.evaluation_workers)
-        self._sync_filters_if_needed(self.evaluation_workers)
+
+        if self.evaluation_workers is not None:
+            # Sync weights to the evaluation WorkerSet.
+            self._sync_weights_to_workers(worker_set=self.evaluation_workers)
+            self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
             logger.info("Running custom eval function {}".format(
@@ -814,9 +835,35 @@ class Trainer(Trainable):
         else:
             logger.info("Evaluating current policy for {} episodes.".format(
                 self.config["evaluation_num_episodes"]))
-            if self.config["evaluation_num_workers"] == 0:
+            metrics = None
+            # No evaluation worker set ->
+            # Do evaluation using the local worker. Expect error due to the
+            # local worker not having an env.
+            if self.evaluation_workers is None:
+                try:
+                    for _ in range(self.config["evaluation_num_episodes"]):
+                        self.workers.local_worker().sample()
+                    metrics = collect_metrics(self.workers.local_worker())
+                except ValueError as e:
+                    if "RolloutWorker has no `input_reader` object" in \
+                            e.args[0]:
+                        raise ValueError(
+                            "Cannot evaluate w/o an evaluation worker set in "
+                            "the Trainer or w/o an env on the local worker!\n"
+                            "Try one of the following:\n1) Set "
+                            "`evaluation_interval` >= 0 to force creating a "
+                            "separate evaluation worker set.\n2) Set "
+                            "`create_env_on_driver=True` to force the local "
+                            "(non-eval) worker to have an environment to "
+                            "evaluate on.")
+                    else:
+                        raise e
+
+            # Evaluation worker set only has local worker.
+            elif self.config["evaluation_num_workers"] == 0:
                 for _ in range(self.config["evaluation_num_episodes"]):
                     self.evaluation_workers.local_worker().sample()
+            # Evaluation worker set has n remote workers.
             else:
                 num_rounds = int(
                     math.ceil(self.config["evaluation_num_episodes"] /
@@ -831,9 +878,10 @@ class Trainer(Trainable):
                         w.sample.remote()
                         for w in self.evaluation_workers.remote_workers()
                     ])
-
-            metrics = collect_metrics(self.evaluation_workers.local_worker(),
-                                      self.evaluation_workers.remote_workers())
+            if metrics is None:
+                metrics = collect_metrics(
+                    self.evaluation_workers.local_worker(),
+                    self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
     @DeveloperAPI
@@ -1098,7 +1146,7 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def collect_metrics(self,
-                        selected_workers: List["ActorHandle"] = None) -> dict:
+                        selected_workers: List[ActorHandle] = None) -> dict:
         """Collects metrics from the remote workers of this agent.
 
         This is the same data as returned by a call to train().
@@ -1138,7 +1186,8 @@ class Trainer(Trainable):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    def _validate_config(config: PartialTrainerConfigDict):
+    def _validate_config(config: PartialTrainerConfigDict,
+                         trainer_obj_or_none: Optional["Trainer"] = None):
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1172,8 +1221,24 @@ class Trainer(Trainable):
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
         # otherwise: TFMultiGPU (if supported by the algo's execution plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            config["simple_optimizer"] = \
-                framework != "tf" or len(config["multiagent"]["policies"]) > 0
+            # Non-TF: Must use simple optimizer.
+            if framework != "tf":
+                config["simple_optimizer"] = True
+            # TF + Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies).
+            elif len(config["multiagent"]["policies"]) > 0:
+                from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                default_policy_cls = None if trainer_obj_or_none is None else \
+                    getattr(trainer_obj_or_none, "_policy_class", None)
+                if any((p[0] or default_policy_cls) is None or not issubclass(
+                        p[0] or default_policy_cls, DynamicTFPolicy)
+                       for p in config["multiagent"]["policies"].values()):
+                    config["simple_optimizer"] = True
+                else:
+                    config["simple_optimizer"] = False
+            else:
+                config["simple_optimizer"] = False
+
         # User manually set simple-optimizer to False -> Error if not tf.
         elif simple_optim_setting is False:
             if framework in ["tfe", "tf2", "torch"]:
@@ -1321,12 +1386,12 @@ class Trainer(Trainable):
         return state
 
     def __setstate__(self, state: dict):
-        if "worker" in state:
+        if "worker" in state and hasattr(self, "workers"):
             self.workers.local_worker().restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
-        if "optimizer" in state:
+        if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
 
     @staticmethod
@@ -1347,3 +1412,6 @@ class Trainer(Trainable):
             "{} is an invalid env specification. ".format(env_object) +
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
+
+    def __repr__(self):
+        return self._name
