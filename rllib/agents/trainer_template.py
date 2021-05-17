@@ -1,4 +1,5 @@
 import concurrent.futures
+from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -163,9 +164,9 @@ def build_trainer(
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
             # self._iteration will be 0.
-            evaluate_this_iter = self.config["evaluation_interval"] and \
-                                 (self._iteration + 1) % \
-                                 self.config["evaluation_interval"] == 0
+            evaluate_this_iter = \
+                self.config["evaluation_interval"] and \
+                (self._iteration + 1) % self.config["evaluation_interval"] == 0
 
             # No evaluation necessary.
             if not evaluate_this_iter:
@@ -186,6 +187,23 @@ def build_trainer(
                     assert isinstance(evaluation_metrics, dict), \
                         "_evaluate() needs to return a dict."
                     res.update(evaluation_metrics)
+
+            # Check `env_task_fn` for possible update of the env's task.
+            if self.config["env_task_fn"] is not None:
+                if not callable(self.config["env_task_fn"]):
+                    raise ValueError(
+                        "`env_task_fn` must be None or a callable taking "
+                        "[train_results, env, env_ctx] as args!")
+
+                def fn(env, env_context, task_fn):
+                    new_task = task_fn(res, env, env_context)
+                    cur_task = env.get_task()
+                    if cur_task != new_task:
+                        env.set_task(new_task)
+
+                fn = partial(fn, task_fn=self.config["env_task_fn"])
+                self.workers.foreach_env_with_context(fn)
+
             return res
 
         @override(Trainer)
