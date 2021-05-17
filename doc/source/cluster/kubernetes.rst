@@ -167,7 +167,7 @@ is to forward the Ray Client server port:
 
   $ kubectl -n ray port-forward service/example-cluster-ray-head 10001:10001
 
-Then open a new shell and try out a `sample program`_:
+Then open a new shell and try out a `sample Ray program`_:
 
 .. code-block:: shell
 
