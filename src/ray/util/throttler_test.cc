@@ -21,9 +21,7 @@
 
 TEST(ThrottlerTest, BasicTest) {
   int64_t now = 100;
-  ray::Throttler throttler(5, [&now] {
-    return now;
-  });
+  ray::Throttler throttler(5, [&now] { return now; });
   EXPECT_TRUE(throttler.AbleToRun());
   now += 5;
   EXPECT_TRUE(throttler.AbleToRun());

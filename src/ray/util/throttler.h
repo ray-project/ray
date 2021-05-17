@@ -14,16 +14,15 @@
 
 #pragma once
 
-#include "absl/time/clock.h"
-#include <iostream>
 #include <functional>
+#include <iostream>
+#include "absl/time/clock.h"
 namespace ray {
 
 class Throttler {
  public:
-  explicit Throttler(int64_t interval_ns,
-                     std::function<int()> now = nullptr) :
-      last_run_ns_(0), interval_ns_(interval_ns), now_(now) {}
+  explicit Throttler(int64_t interval_ns, std::function<int()> now = nullptr)
+      : last_run_ns_(0), interval_ns_(interval_ns), now_(now) {}
 
   bool AbleToRun() {
     auto now = Now();
