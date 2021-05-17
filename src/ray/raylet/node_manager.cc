@@ -1222,7 +1222,8 @@ void NodeManager::DisconnectClient(
                       << task_id << " Worker ID: " << worker->WorkerId()
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
-                      << " Worker port: " << worker->Port();
+                      << " Worker port: " << worker->Port()
+                      << " Worker PID: " << worker->GetProcess().GetId();
         auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
                                                         current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
