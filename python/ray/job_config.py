@@ -29,15 +29,19 @@ class JobConfig:
             self.worker_env = dict()
         else:
             self.worker_env = worker_env
+        import ray._private.runtime_env as runtime_support
         if runtime_env:
-            import ray._private.runtime_env as runtime_support
-            # Remove working_dir rom the dict here, since that needs to be
+            # Remove working_dir from the dict here, since that needs to be
             # uploaded to the GCS after the job starts.
             without_dir = dict(runtime_env)
             if "working_dir" in without_dir:
                 del without_dir["working_dir"]
-            parsed = runtime_support.RuntimeEnvDict(without_dir)
-            self.worker_env = parsed.to_worker_env_vars(self.worker_env)
+            self._parsed_runtime_env = runtime_support.RuntimeEnvDict(
+                without_dir)
+            self.worker_env = self._parsed_runtime_env.to_worker_env_vars(
+                self.worker_env)
+        else:
+            self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -64,13 +68,18 @@ class JobConfig:
         job_config.jvm_options.extend(self.jvm_options)
         job_config.code_search_path.extend(self.code_search_path)
         job_config.runtime_env.CopyFrom(self._get_proto_runtime())
+        job_config.serialized_runtime_env = self.get_serialized_runtime_env()
         return job_config
 
     def get_runtime_env_uris(self):
         """Get the uris of runtime environment"""
-        if self.runtime_env.get("working_dir_uri"):
-            return [self.runtime_env.get("working_dir_uri")]
+        if self.runtime_env.get("uris"):
+            return self.runtime_env.get("uris")
         return []
+
+    def get_serialized_runtime_env(self) -> str:
+        """Return the JSON-serialized parsed runtime env dict"""
+        return self._parsed_runtime_env.serialize()
 
     def _get_proto_runtime(self):
         from ray.core.generated.common_pb2 import RuntimeEnv

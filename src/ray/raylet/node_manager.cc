@@ -109,7 +109,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   std::stringstream buffer;
   const auto owner_worker_id =
       WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-  const auto owner_node_id = WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+  const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
   buffer << "leased_worker Lease " << worker->WorkerId() << " owned by "
          << owner_worker_id << " / " << owner_node_id;
   return buffer.str();
@@ -131,7 +131,8 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
   last_heartbeat_at_ms_ = current_time_ms();
   heartbeat_runner_->RunFnPeriodically(
       [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      "NodeManager.deadline_timer.heartbeat");
 }
 
 HeartbeatSender::~HeartbeatSender() {
@@ -281,7 +282,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       << "max_task_args_memory_fraction must be a nonzero fraction.";
   int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
                                  RayConfig::instance().max_task_args_memory_fraction();
-  RAY_CHECK(max_task_args_memory > 0);
+  if (max_task_args_memory <= 0) {
+    RAY_LOG(WARNING)
+        << "Max task args should be a fraction of the object store capacity, but object "
+           "store capacity is zero or negative. Allowing task args to use 100% of the "
+           "local object store. This can cause ObjectStoreFullErrors if the tasks' "
+           "return values are greater than the remaining capacity.";
+    max_task_args_memory = 0;
+  }
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -396,24 +404,29 @@ ray::Status NodeManager::RegisterGcs() {
         DumpDebugState();
         WarnResourceDeadlock();
       },
-      RayConfig::instance().debug_dump_period_milliseconds());
+      RayConfig::instance().debug_dump_period_milliseconds(),
+      "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
   last_metrics_recorded_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_ms_);
+                                       record_metrics_period_ms_,
+                                       "NodeManager.deadline_timer.record_metrics");
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
-        RayConfig::instance().free_objects_period_milliseconds());
+        RayConfig::instance().free_objects_period_milliseconds(),
+        "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically([this] { ReportResourceUsage(); },
-                                       report_resources_period_ms_);
+  periodical_runner_.RunFnPeriodically(
+      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
+      "NodeManager.deadline_timer.report_resource_usage");
   // Start the timer that gets object manager profiling information and sends it
   // to the GCS.
   periodical_runner_.RunFnPeriodically(
       [this] { GetObjectManagerProfileInfo(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds());
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
   const auto asio_stats_print_interval_ms =
@@ -424,7 +437,8 @@ ray::Status NodeManager::RegisterGcs() {
         [this] {
           RAY_LOG(INFO) << "Event loop stats:\n\n" << io_service_.StatsString() << "\n\n";
         },
-        asio_stats_print_interval_ms);
+        asio_stats_print_interval_ms,
+        "NodeManager.deadline_timer.print_event_loop_stats");
   }
 
   return ray::Status::OK();
@@ -466,7 +480,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  runtime_env_manager_.AddUriReference(job_id.Hex(), job_data.config().runtime_env());
+  runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -492,7 +506,7 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       KillWorker(worker);
     }
   }
-  runtime_env_manager_.RemoveUriReference(job_id.Hex());
+  runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
 void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
@@ -507,7 +521,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
 
   // Set the global gc bit on the outgoing heartbeat message.
   if (should_global_gc_) {
-    resources_data.set_should_global_gc(true);
     resources_data.set_should_global_gc(true);
     should_global_gc_ = false;
   }
@@ -694,6 +707,9 @@ void NodeManager::WarnResourceDeadlock() {
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
   }
+  // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
+  // tasks are never be scheduled.
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::GetObjectManagerProfileInfo() {
@@ -799,8 +815,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     auto &worker = pair.second;
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    const auto owner_node_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
@@ -1191,7 +1206,7 @@ void NodeManager::DisconnectClient(
       }
 
       if (worker->IsDetachedActor()) {
-        runtime_env_manager_.RemoveUriReference(actor_id.Hex());
+        runtime_env_manager_.RemoveURIReference(actor_id.Hex());
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
@@ -1449,6 +1464,15 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
+void NodeManager::HandleUpdateResourceUsage(
+    const rpc::UpdateResourceUsageRequest &request, rpc::UpdateResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  ResourceUsageBatchData batch;
+  batch.ParseFromString(request.serialized_resource_usage_batch());
+  ResourceUsageBatchReceived(batch);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleRequestResourceReport(
     const rpc::RequestResourceReportRequest &request,
     rpc::RequestResourceReportReply *reply, rpc::SendReplyCallback send_reply_callback) {
@@ -1656,10 +1680,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
       !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
-
-  if (cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker)) {
-    worker->MarkBlocked();
-  }
+  cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker);
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
@@ -1674,9 +1695,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (worker->IsBlocked()) {
-    if (cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker)) {
-      worker->MarkUnblocked();
-    }
+    cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker);
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
@@ -1776,7 +1795,7 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    runtime_env_manager_.AddUriReference(actor_id.Hex(), job_config->runtime_env());
+    runtime_env_manager_.AddURIReference(actor_id.Hex(), job_config->runtime_env());
     ;
   }
 }
@@ -2003,6 +2022,15 @@ void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &reque
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   reply->set_system_config(initial_config_.raylet_config);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetGcsServerAddress(
+    const rpc::GetGcsServerAddressRequest &request, rpc::GetGcsServerAddressReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto address = gcs_client_->GetGcsServerAddress();
+  reply->set_ip(address.first);
+  reply->set_port(address.second);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

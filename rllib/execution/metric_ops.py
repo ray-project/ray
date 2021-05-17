@@ -1,6 +1,7 @@
 from typing import Any, List, Dict
 import time
 
+from ray.actor import ActorHandle
 from ray.util.iter import LocalIterator
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
@@ -12,7 +13,7 @@ def StandardMetricsReporting(
         train_op: LocalIterator[Any],
         workers: WorkerSet,
         config: dict,
-        selected_workers: List["ActorHandle"] = None) -> LocalIterator[dict]:
+        selected_workers: List[ActorHandle] = None) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
     Args:
@@ -62,7 +63,7 @@ class CollectMetrics:
                  workers: WorkerSet,
                  min_history: int = 100,
                  timeout_seconds: int = 180,
-                 selected_workers: List["ActorHandle"] = None):
+                 selected_workers: List[ActorHandle] = None):
         self.workers = workers
         self.episode_history = []
         self.to_be_collected = []
@@ -80,7 +81,7 @@ class CollectMetrics:
         orig_episodes = list(episodes)
         missing = self.min_history - len(episodes)
         if missing > 0:
-            episodes.extend(self.episode_history[-missing:])
+            episodes = self.episode_history[-missing:] + episodes
             assert len(episodes) <= self.min_history
         self.episode_history.extend(orig_episodes)
         self.episode_history = self.episode_history[-self.min_history:]

@@ -345,11 +345,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
-  /// \return The id of the process that we started if it's positive,
-  /// otherwise it means we didn't start a process.
+  /// \param serialized_runtime_env The runtime environment for the started worker
+  /// process. \return The id of the process that we started if it's positive, otherwise
+  /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
+      const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -404,11 +406,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the task with dynamic options by the pid of
+    /// A map for looking up the task with dynamic options by the pid of the pending
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
+    /// A map for looking up tasks with existing dedicated worker processes (processes
+    /// with a specially installed environment) so the processes can be reused.
+    std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

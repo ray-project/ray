@@ -1,3 +1,5 @@
+import concurrent.futures
+from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type
 
@@ -159,19 +161,49 @@ def build_trainer(
 
         @override(Trainer)
         def step(self):
-            res = next(self.train_exec_impl)
-
             # self._iteration gets incremented after this function returns,
             # meaning that e. g. the first time this function is called,
-            # self._iteration will be 0. We check `self._iteration+1` in the
-            # if-statement below to reflect that the first training iteration
-            # is already over.
-            if (self.config["evaluation_interval"] and (self._iteration + 1) %
-                    self.config["evaluation_interval"] == 0):
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                res.update(evaluation_metrics)
+            # self._iteration will be 0.
+            evaluate_this_iter = \
+                self.config["evaluation_interval"] and \
+                (self._iteration + 1) % self.config["evaluation_interval"] == 0
+
+            # No evaluation necessary.
+            if not evaluate_this_iter:
+                res = next(self.train_exec_impl)
+            # We have to evaluate in this training iteration.
+            else:
+                # No parallelism.
+                if not self.config["evaluation_parallel_to_training"]:
+                    res = next(self.train_exec_impl)
+                # Kick off evaluation-loop (and parallel train() call,
+                # if requested).
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    eval_future = executor.submit(self.evaluate)
+                    # Parallelism.
+                    if self.config["evaluation_parallel_to_training"]:
+                        res = next(self.train_exec_impl)
+                    evaluation_metrics = eval_future.result()
+                    assert isinstance(evaluation_metrics, dict), \
+                        "_evaluate() needs to return a dict."
+                    res.update(evaluation_metrics)
+
+            # Check `env_task_fn` for possible update of the env's task.
+            if self.config["env_task_fn"] is not None:
+                if not callable(self.config["env_task_fn"]):
+                    raise ValueError(
+                        "`env_task_fn` must be None or a callable taking "
+                        "[train_results, env, env_ctx] as args!")
+
+                def fn(env, env_context, task_fn):
+                    new_task = task_fn(res, env, env_context)
+                    cur_task = env.get_task()
+                    if cur_task != new_task:
+                        env.set_task(new_task)
+
+                fn = partial(fn, task_fn=self.config["env_task_fn"])
+                self.workers.foreach_env_with_context(fn)
+
             return res
 
         @override(Trainer)
@@ -213,6 +245,9 @@ def build_trainer(
                 ... True
             """
             return build_trainer(**dict(original_kwargs, **overrides))
+
+        def __repr__(self):
+            return self._name
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name

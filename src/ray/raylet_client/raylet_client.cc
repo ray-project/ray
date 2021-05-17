@@ -409,13 +409,28 @@ void raylet::RayletClient::PinObjectIDs(
   for (const ObjectID &object_id : object_ids) {
     request.add_object_ids(object_id.Binary());
   }
-  grpc_client_->PinObjectIDs(request, callback);
+  pins_in_flight_++;
+  auto rpc_callback = [this, callback = std::move(callback)](
+                          Status status, const rpc::PinObjectIDsReply &reply) {
+    pins_in_flight_--;
+    callback(status, reply);
+  };
+  grpc_client_->PinObjectIDs(request, rpc_callback);
 }
 
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
   grpc_client_->GlobalGC(request, callback);
+}
+
+void raylet::RayletClient::UpdateResourceUsage(
+
+    std::string &serialized_resource_usage_batch,
+    const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
+  rpc::UpdateResourceUsageRequest request;
+  request.set_serialized_resource_usage_batch(serialized_resource_usage_batch);
+  grpc_client_->UpdateResourceUsage(request, callback);
 }
 
 void raylet::RayletClient::RequestResourceReport(
@@ -438,6 +453,12 @@ void raylet::RayletClient::GetSystemConfig(
     const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) {
   rpc::GetSystemConfigRequest request;
   grpc_client_->GetSystemConfig(request, callback);
+}
+
+void raylet::RayletClient::GetGcsServerAddress(
+    const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) {
+  rpc::GetGcsServerAddressRequest request;
+  grpc_client_->GetGcsServerAddress(request, callback);
 }
 
 }  // namespace ray

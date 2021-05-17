@@ -14,6 +14,18 @@ spec:
   idleTimeoutMinutes: 5
   # Specify the pod type for the ray head node (as configured below).
   headPodType: head-node
+  # Optionally, configure ports for the Ray head service.
+  # The ports specified below are the defaults.
+  headServicePorts:
+    - name: client
+      port: 10001
+      targetPort: 10001
+    - name: dashboard
+      port: 8265
+      targetPort: 8265
+    - name: ray-serve
+      port: 8000
+      targetPort: 8000
   # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
   - name: head-node
@@ -25,8 +37,8 @@ spec:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster-ray-head-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-head-
       spec:
         restartPolicy: Never
 
@@ -76,13 +88,13 @@ spec:
     maxWorkers: 3
     # User-specified custom resources for use by Ray.
     # (Ray detects CPU and GPU from pod spec resource requests and limits, so no need to fill those here.)
-    rayResources: {"foo": 1, "bar": 1}
+    rayResources: {"example-resource-a": 1, "example-resource-b": 1}
     podConfig:
       apiVersion: v1
       kind: Pod
       metadata:
-        # Automatically generates a name for the pod with this prefix.
-        generateName: example-cluster-ray-worker-
+        # The operator automatically prepends the cluster name to this field.
+        generateName: ray-worker-
       spec:
         restartPolicy: Never
         volumes:

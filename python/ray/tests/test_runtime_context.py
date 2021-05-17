@@ -79,6 +79,7 @@ def test_get_context_dict(ray_start_regular):
             assert context_dict["job_id"] == job_id
             assert context_dict["actor_id"] is not None
             assert context_dict["task_id"] is not None
+            assert context_dict["actor_id"] != "not an ActorID"
 
     a = Actor.remote()
     ray.get(a.check.remote(context_dict["node_id"], context_dict["job_id"]))

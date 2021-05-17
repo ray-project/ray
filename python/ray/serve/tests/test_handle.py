@@ -8,7 +8,7 @@ from ray import serve
 @pytest.mark.asyncio
 async def test_async_handle_serializable(serve_instance):
     @serve.deployment
-    def f(_):
+    def f():
         return "hello"
 
     f.deploy()
@@ -29,7 +29,7 @@ async def test_async_handle_serializable(serve_instance):
 
 def test_sync_handle_serializable(serve_instance):
     @serve.deployment
-    def f(_):
+    def f():
         return "hello"
 
     f.deploy()
@@ -46,7 +46,7 @@ def test_sync_handle_serializable(serve_instance):
 def test_handle_in_endpoint(serve_instance):
     @serve.deployment
     class Endpoint1:
-        def __call__(self, starlette_request):
+        def __call__(self, *args):
             return "hello"
 
     @serve.deployment
@@ -91,11 +91,11 @@ def test_handle_http_args(serve_instance):
     }
 
     resp_web = requests.post(
-        "http://127.0.0.1:8000/Endpoint?arg1=1&arg2=2",
+        "http://127.0.0.1:8000/Endpoint/?arg1=1&arg2=2",
         headers=ground_truth["headers"],
         json=ground_truth["json"]).json()
 
-    handle = Endpoint.get_handle()
+    handle = serve.get_handle("Endpoint")
     resp_handle = ray.get(
         handle.options(
             http_method=ground_truth["method"],
@@ -117,13 +117,13 @@ def test_handle_inject_starlette_request(serve_instance):
 
     @serve.deployment(name="wrapper")
     def wrapper_model(web_request):
-        handle = echo_request_type.get_handle()
+        handle = serve.get_handle("echo")
         return ray.get(handle.remote(web_request))
 
     wrapper_model.deploy()
 
-    for route in ["/echo", "/wrapper"]:
-        resp = requests.get(f"http://127.0.0.1:8000{route}")
+    for route in ["echo", "wrapper"]:
+        resp = requests.get(f"http://127.0.0.1:8000/{route}")
         request_type = resp.text
         assert request_type == "<class 'starlette.requests.Request'>"
 
@@ -134,13 +134,13 @@ def test_handle_option_chaining(serve_instance):
 
     @serve.deployment
     class MultiMethod:
-        def method_a(self, _):
+        def method_a(self):
             return "method_a"
 
-        def method_b(self, _):
+        def method_b(self):
             return "method_b"
 
-        def __call__(self, _):
+        def __call__(self):
             return "__call__"
 
     MultiMethod.deploy()
@@ -165,6 +165,38 @@ def test_repeated_get_handle_cached(serve_instance):
 
     handle_sets = {serve.get_handle("m") for _ in range(100)}
     assert len(handle_sets) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync", [True, False])
+@pytest.mark.parametrize("serve_request", [True, False])
+async def test_args_kwargs(serve_instance, sync, serve_request):
+    @serve.deployment
+    async def f(*args, **kwargs):
+        if serve_request:
+            req = args[0]
+            assert await req.body() == "hi"
+            assert req.query_params["kwarg1"] == 1
+            assert req.query_params["kwarg2"] == "2"
+        else:
+            assert args[0] == "hi"
+            assert kwargs["kwarg1"] == 1
+            assert kwargs["kwarg2"] == "2"
+
+    f.deploy()
+
+    handle = serve.get_handle(
+        "f", sync=sync, _internal_use_serve_request=serve_request)
+
+    def call():
+        return handle.remote("hi", kwarg1=1, kwarg2="2")
+
+    if sync:
+        obj_ref = call()
+    else:
+        obj_ref = await call()
+
+    ray.get(obj_ref)
 
 
 if __name__ == "__main__":

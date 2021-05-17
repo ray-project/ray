@@ -240,9 +240,20 @@ struct GcsServerMocker {
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
 
-    /// ResourceRequestInterface
+    void GetGcsServerAddress(
+        const ray::rpc::ClientCallback<ray::rpc::GetGcsServerAddressReply> &callback)
+        override {}
+
+    /// ResourceUsageInterface
     void RequestResourceReport(
         const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
+    /// ResourceUsageInterface
+    void UpdateResourceUsage(
+        std::string &address,
+        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
       RAY_CHECK(false) << "Unused";
     };
 

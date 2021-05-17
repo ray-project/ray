@@ -1,22 +1,18 @@
 import inspect
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
-from pydantic.dataclasses import dataclass
+
+from ray import cloudpickle as cloudpickle
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
-
-
-@dataclass
-class BackendMetadata:
-    is_asgi_app: bool = False
-    path_prefix: Optional[str] = None
-    autoscaling_config: Optional[Dict[str, Any]] = None
 
 
 class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
+
+    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
@@ -35,7 +31,6 @@ class BackendConfig(BaseModel):
             for shutdown. Defaults to 20s.
     """
 
-    internal_metadata: BackendMetadata = BackendMetadata()
     num_replicas: PositiveInt = 1
     max_concurrent_queries: Optional[int] = None
     user_config: Any = None
@@ -61,8 +56,19 @@ class BackendConfig(BaseModel):
 
 class ReplicaConfig:
     def __init__(self, backend_def, *init_args, ray_actor_options=None):
-        self.backend_def = backend_def
-        self.is_asgi_app = hasattr(backend_def, "_serve_asgi_app")
+        # Validate that backend_def is an import path, function, or class.
+        if isinstance(backend_def, str):
+            pass
+        elif inspect.isfunction(backend_def):
+            if len(init_args) != 0:
+                raise ValueError(
+                    "init_args not supported for function backend.")
+        elif not inspect.isclass(backend_def):
+            raise TypeError(
+                "Backend must be a function or class, it is {}.".format(
+                    type(backend_def)))
+
+        self.serialized_backend_def = cloudpickle.dumps(backend_def)
         self.init_args = init_args
         if ray_actor_options is None:
             self.ray_actor_options = {}
@@ -73,17 +79,6 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-        # Validate that backend_def is an import path, function, or class.
-        if isinstance(self.backend_def, str):
-            pass
-        elif inspect.isfunction(self.backend_def):
-            if len(self.init_args) != 0:
-                raise ValueError(
-                    "init_args not supported for function backend.")
-        elif not inspect.isclass(self.backend_def):
-            raise TypeError(
-                "Backend must be a function or class, it is {}.".format(
-                    type(self.backend_def)))
 
         if "placement_group" in self.ray_actor_options:
             raise ValueError("Providing placement_group for backend actors "

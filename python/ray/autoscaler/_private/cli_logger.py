@@ -57,7 +57,7 @@ except ModuleNotFoundError:
     warnings.warn(
         "Not all Ray CLI dependencies were found. "
         "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-        "only be usable via `pip install 'ray[cluster]'`. Please "
+        "only be usable via `pip install 'ray[default]'`. Please "
         "update your install command.", FutureWarning)
 
     # We mock Colorful to restrict the colors used for consistency
@@ -610,7 +610,10 @@ class _CliLogger():
         exc_cls = click.ClickException
         if self.pretty:
             exc_cls = SilentClickException
-        raise exc_cls("Exiting due to cli_logger.abort()")
+
+        if msg is None:
+            msg = "Exiting due to cli_logger.abort()"
+        raise exc_cls(msg)
 
     def doassert(self, val: bool, msg: str, *args: Any, **kwargs: Any):
         """Handle assertion without throwing a scary exception.

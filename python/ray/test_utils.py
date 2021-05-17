@@ -8,6 +8,7 @@ import sys
 import time
 import socket
 import math
+import traceback
 from typing import Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
@@ -236,7 +237,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
-                _ for _ in ray.actors().values()
+                _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state
         ]) >= num_actors:
             return
@@ -246,11 +247,11 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.actors(actor_id)
+        actor_status = ray.state.actors(actor_id)
         if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
@@ -282,7 +283,8 @@ def wait_until_succeeded_without_exception(func,
                                            exceptions,
                                            *args,
                                            timeout_ms=1000,
-                                           retry_interval_ms=100):
+                                           retry_interval_ms=100,
+                                           raise_last_ex=False):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -292,6 +294,7 @@ def wait_until_succeeded_without_exception(func,
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_last_ex: Raise the last exception when timeout.
 
     Return:
         Whether exception occurs within a timeout.
@@ -302,13 +305,20 @@ def wait_until_succeeded_without_exception(func,
 
     time_elapsed = 0
     start = time.time()
+    last_ex = None
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
-        except exceptions:
+        except exceptions as ex:
+            last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
+    if raise_last_ex:
+        ex_stack = traceback.format_exception(
+            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else []
+        ex_stack = "".join(ex_stack)
+        raise Exception(f"Timed out while testing, {ex_stack}")
     return False
 
 

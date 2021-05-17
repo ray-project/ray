@@ -27,7 +27,7 @@ class TestMARWIL(unittest.TestCase):
     def test_marwil_compilation_and_learning_from_offline_file(self):
         """Test whether a MARWILTrainer can be built with all frameworks.
 
-        And learns from a historic-data file.
+        Learns from a historic-data file.
         To generate this data, first run:
         $ ./train.py --run=PPO --env=CartPole-v0 \
           --stop='{"timesteps_total": 50000}' \
@@ -57,7 +57,7 @@ class TestMARWIL(unittest.TestCase):
             for i in range(num_iterations):
                 eval_results = trainer.train().get("evaluation")
                 if eval_results:
-                    print("iter={} R={}".format(
+                    print("iter={} R={} ".format(
                         i, eval_results["episode_reward_mean"]))
                     # Learn until some reward is reached on an actual live env.
                     if eval_results["episode_reward_mean"] > min_reward:

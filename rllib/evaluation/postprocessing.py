@@ -119,8 +119,9 @@ def compute_gae_for_sample_batch(
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
         # Create an input dict according to the Model's requirements.
-        input_dict = policy.model.get_input_dict(sample_batch, index="last")
-        last_r = policy._value(**input_dict, seq_lens=input_dict.seq_lens)
+        input_dict = sample_batch.get_single_step_input_dict(
+            policy.model.view_requirements, index="last")
+        last_r = policy._value(**input_dict)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.

@@ -6,6 +6,7 @@ file_mounts:
 available_node_types:
     head_node:
         resources: {}
+        max_workers: 0
         node_config:
             ImageId: latest_dlami
             InstanceType: t1.micro

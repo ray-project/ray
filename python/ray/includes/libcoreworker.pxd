@@ -82,6 +82,7 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::WorkerContext":
         c_bool CurrentActorIsAsync()
+        const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::ActorHandle":
@@ -235,6 +236,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
+        c_bool interactive
         c_string node_ip_address
         int node_manager_port
         c_string raylet_ip_address
