@@ -153,14 +153,15 @@ Status TaskExecutor::ExecuteTask(
     }
   }
 
+  results->resize(return_ids.size(), nullptr);
   if (task_type != TaskType::ACTOR_CREATION_TASK) {
-    results->resize(1, nullptr);
     size_t data_size = data->size();
     auto &result_id = return_ids[0];
-    auto result = (*results)[0];
+    auto result_ptr = &(*results)[0];
     RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), &result));
+        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), result_ptr));
 
+    auto result = *result_ptr;
     if (result != nullptr) {
       if (result->HasData()) {
         memcpy(result->GetData()->Data(), data->data(), data_size);
