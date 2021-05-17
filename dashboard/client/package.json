@@ -21,7 +21,6 @@
     "@types/react-window": "^1.8.2",
     "axios": "^0.21.1",
     "classnames": "^2.2.6",
-    "copy-to-clipboard": "^3.3.1",
     "dayjs": "^1.9.4",
     "lodash": "^4.17.20",
     "lowlight": "^1.14.0",
@@ -39,7 +38,7 @@
   "devDependencies": {
     "eslint-plugin-import": "^2.20.1",
     "eslint-plugin-prefer-arrow": "^1.1.7",
-    "prettier": "2.3.0"
+    "prettier": "^2.0.2"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -48,8 +47,8 @@
     "eject": "react-scripts eject",
     "lint": "npm run eslint && npm run prettier",
     "lint-fix": "npm run prettier -- --write && npm run eslint -- --fix",
-    "prettier": "prettier -c src",
-    "eslint": "eslint \"src/**\""
+    "prettier": "./node_modules/.bin/prettier -c src/",
+    "eslint": "./node_modules/.bin/eslint \"src/**\""
   },
   "eslintConfig": {
     "ignorePatterns": [
@@ -127,5 +126,5 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://100.82.253.32:8090"
+  "proxy": "http://localhost:8265"
 }
