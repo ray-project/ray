@@ -150,7 +150,7 @@ class Worker : public WorkerInterface {
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
-  size_t GetRuntimeEnvHash() const;
+  int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
   void MarkDetachedActor();
