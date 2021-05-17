@@ -1201,13 +1201,13 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
+
+py_test(
+    name = "evaluation/tests/test_evaluation",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_evaluation.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_rollout_worker",
@@ -1215,6 +1215,14 @@ py_test(
     size = "medium",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
+
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
 
 
 # --------------------------------------------------------------------
@@ -1403,13 +1411,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_evaluators",
-    tags = ["tests_dir", "tests_dir_E"],
-    size = "medium",
-    srcs = ["tests/test_evaluators.py"]
-)
-
-py_test(
     name = "tests/test_exec_api",
     tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
@@ -1505,7 +1506,7 @@ py_test(
     name = "tests/test_nested_observation_spaces",
     main = "tests/test_nested_observation_spaces.py",
     tags = ["tests_dir", "tests_dir_N"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_nested_observation_spaces.py"]
 )
 
@@ -1747,7 +1748,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1756,7 +1757,7 @@ py_test(
     name = "examples/cartpole_lstm_impala_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--framework=torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1765,7 +1766,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1783,7 +1784,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
 )
@@ -1792,7 +1793,7 @@ py_test(
     name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["examples", "examples_C"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action",  "--use-prev-reward", "--num-cpus=4"]
 )
@@ -1864,6 +1865,15 @@ py_test(
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
     args = ["--framework=torch"],
+)
+
+py_test(
+    name = "examples/curriculum_learning",
+    main = "examples/curriculum_learning.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/curriculum_learning.py"],
+    args = ["--as-test", "--stop-reward=800.0"]
 )
 
 py_test(
@@ -2223,7 +2233,7 @@ py_test(
     name = "examples/parametric_actions_cartpole_pg_torch",
     main = "examples/parametric_actions_cartpole.py",
     tags = ["examples", "examples_P"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--torch", "--stop-reward=60.0", "--run=PG"]
 )

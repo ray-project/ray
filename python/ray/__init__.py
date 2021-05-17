@@ -94,6 +94,8 @@ from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import util  # noqa: E402
+# We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
+from ray.client_builder import client, ClientBuilder  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
@@ -106,6 +108,8 @@ __all__ = [
     "actor",
     "available_resources",
     "cancel",
+    "client",
+    "ClientBuilder",
     "cluster_resources",
     "get",
     "get_actor",

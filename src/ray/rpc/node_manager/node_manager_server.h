@@ -40,7 +40,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)  \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles)   \
-  RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig)
+  RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -122,6 +123,10 @@ class NodeManagerServiceHandler {
   virtual void HandleGetSystemConfig(const GetSystemConfigRequest &request,
                                      GetSystemConfigReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetGcsServerAddress(const GetGcsServerAddressRequest &request,
+                                         GetGcsServerAddressReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
