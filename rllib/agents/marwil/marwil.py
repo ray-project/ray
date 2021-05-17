@@ -13,7 +13,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 DEFAULT_CONFIG = with_common_config({
     # You should override this to point to an offline dataset (see agent.py).
     "input": "sampler",
-    # Use importance sampling estimators for reward
+    # Use importance sampling estimators for reward.
     "input_evaluation": ["is", "wis"],
 
     # If true, use the Generalized Advantage Estimator (GAE)

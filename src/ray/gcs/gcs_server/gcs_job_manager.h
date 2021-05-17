@@ -33,6 +33,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
         gcs_pub_sub_(std::move(gcs_pub_sub)),
         runtime_env_manager_(runtime_env_manager) {}
 
+  void Initialize(const GcsInitData &gcs_init_data);
+
   void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
 
@@ -51,12 +53,18 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
+  std::string GetRayNamespace(const JobID &job_id) const;
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
+
+  /// A cached mapping from job id to namespace.
+  std::unordered_map<JobID, std::string> ray_namespaces_;
+
   ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);
 };

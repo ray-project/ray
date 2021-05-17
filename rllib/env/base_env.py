@@ -203,14 +203,6 @@ class BaseEnv:
         return []
 
     @PublicAPI
-    def stop(self) -> None:
-        """Releases all resources used."""
-
-        for env in self.get_unwrapped():
-            if hasattr(env, "close"):
-                env.close()
-
-    # Experimental method.
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         """Tries to render the environment.
 
@@ -221,6 +213,14 @@ class BaseEnv:
 
         # By default, do nothing.
         pass
+
+    @PublicAPI
+    def stop(self) -> None:
+        """Releases all resources used."""
+
+        for env in self.get_unwrapped():
+            if hasattr(env, "close"):
+                env.close()
 
 
 # Fixed agent identifier when there is only the single agent in the env
@@ -450,6 +450,15 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     @override(BaseEnv)
     def get_unwrapped(self) -> List[EnvType]:
         return [state.env for state in self.env_states]
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        if env_id is not None:
+            assert isinstance(env_id, int)
+            self.envs[env_id].render()
+        else:
+            for e in self.envs:
+                e.render()
 
 
 class _MultiAgentEnvState:

@@ -6,7 +6,7 @@ from ray import serve
 def test_new_driver(serve_instance):
     script = """
 import ray
-ray.init(address="{}")
+ray.init(address="{}", namespace="")
 
 from ray import serve
 
