@@ -1325,6 +1325,7 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
+    job_id = ray.worker.current_job_id
     if _internal_kv_get(f"{job_id}:tracing_startup_hook"):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
