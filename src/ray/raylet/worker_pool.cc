@@ -296,10 +296,8 @@ Process WorkerPool::StartWorkerProcess(
       }
     }
 
-    WorkerCacheKey env = {
-        dynamic_options, override_environment_variables,
-        serialized_runtime_env};  // TODO: ensure hash is 0 if serialized_runtime_env is
-                                  // "{}"" or ""
+    WorkerCacheKey env = {dynamic_options, override_environment_variables,
+                          serialized_runtime_env};
     int runtime_env_hash = env.IntHash();
     std::string runtime_env_hash_str = std::to_string(runtime_env_hash);
     worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);

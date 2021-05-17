@@ -60,6 +60,7 @@ struct WorkerCacheKey {
     return dynamic_options.size() == 0 && override_environment_variables.size() == 0 &&
            (serialized_runtime_env == "" || serialized_runtime_env == "{}");
   }
+
   std::size_t Hash() const {
     // Cache the hash value.
     if (!hash_) {

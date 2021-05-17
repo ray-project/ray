@@ -131,8 +131,7 @@ table RegisterClientRequest {
   // The job ID if the client is a driver, otherwise it should be NIL.
   job_id: string;
   // The hash of the runtime env for this worker.
-  // TODO(architkulkarni): Avoid casting size_t to ulong
-  runtime_env_hash: ulong;
+  runtime_env_hash: int;
   // Language of this worker.
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;

@@ -184,7 +184,7 @@ struct CoreWorkerOptions {
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
-  std::size_t runtime_env_hash;
+  int runtime_env_hash;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.

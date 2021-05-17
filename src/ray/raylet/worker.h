@@ -118,7 +118,7 @@ class Worker : public WorkerInterface {
  public:
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
-  Worker(const JobID &job_id, const size_t runtime_env_hash, const WorkerID &worker_id,
+  Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
          const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
@@ -233,7 +233,7 @@ class Worker : public WorkerInterface {
   /// Job ID for the worker's current assigned task.
   JobID assigned_job_id_;
   /// The hash of the worker's assigned runtime env.
-  std::size_t runtime_env_hash_;
+  int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is

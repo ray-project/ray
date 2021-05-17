@@ -26,7 +26,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const JobID &job_id, size_t runtime_env_hash, const WorkerID &worker_id,
+Worker::Worker(const JobID &job_id, int runtime_env_hash, const WorkerID &worker_id,
                const Language &language, rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,

@@ -229,7 +229,7 @@ class RayletClient : public RayletClientInterface {
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id,
-               const std::size_t &runtime_env_hash, const Language &language,
+               const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
                int *port, std::string *serialized_job_config);
 
