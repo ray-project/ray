@@ -12,13 +12,7 @@ def _mock_objective(config):
 
 class SearchSpaceTest(unittest.TestCase):
     def setUp(self):
-        pass
-
-    def tearDown(self):
-        pass
-
-    def testTuneSampleAPI(self):
-        config = {
+        self.config = {
             "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
             "uniform": tune.uniform(-5, -1),
             "quniform": tune.quniform(3.2, 5.4, 0.2),
@@ -32,58 +26,83 @@ class SearchSpaceTest(unittest.TestCase):
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
         }
-        for _, (_, generated) in zip(
-                range(1000), generate_variants({
-                    "config": config
-                })):
-            out = generated["config"]
 
-            self.assertAlmostEqual(out["func"], out["uniform"] * 0.01)
+    def tearDown(self):
+        pass
 
-            self.assertGreaterEqual(out["uniform"], -5)
-            self.assertLess(out["uniform"], -1)
+    def _testTuneSampleAPI(self, configs, ignore=None):
+        ignore = ignore or []
+        for out in configs:
+            if "func" not in ignore:
+                self.assertAlmostEqual(out["func"], out["uniform"] * 0.01)
 
-            self.assertGreaterEqual(out["quniform"], 3.2)
-            self.assertLessEqual(out["quniform"], 5.4)
-            self.assertAlmostEqual(out["quniform"] / 0.2,
-                                   round(out["quniform"] / 0.2))
+            if "uniform" not in ignore:
+                self.assertGreaterEqual(out["uniform"], -5)
+                self.assertLess(out["uniform"], -1)
 
-            self.assertGreaterEqual(out["loguniform"], 1e-4)
-            self.assertLess(out["loguniform"], 1e-2)
+            if "quniform" not in ignore:
+                self.assertGreaterEqual(out["quniform"], 3.2)
+                self.assertLessEqual(out["quniform"], 5.4)
+                self.assertAlmostEqual(out["quniform"] / 0.2,
+                                       round(out["quniform"] / 0.2))
 
-            self.assertGreaterEqual(out["qloguniform"], 1e-4)
-            self.assertLessEqual(out["qloguniform"], 1e-1)
-            self.assertAlmostEqual(out["qloguniform"] / 5e-5,
-                                   round(out["qloguniform"] / 5e-5))
+            if "loguniform" not in ignore:
+                self.assertGreaterEqual(out["loguniform"], 1e-4)
+                self.assertLess(out["loguniform"], 1e-2)
 
-            self.assertIn(out["choice"], [2, 3, 4])
+            if "qloguniform" not in ignore:
+                self.assertGreaterEqual(out["qloguniform"], 1e-4)
+                self.assertLessEqual(out["qloguniform"], 1e-1)
+                self.assertAlmostEqual(out["qloguniform"] / 5e-5,
+                                       round(out["qloguniform"] / 5e-5))
 
-            self.assertGreaterEqual(out["randint"], -9)
-            self.assertLess(out["randint"], 15)
-            self.assertTrue(isinstance(out["randint"], int))
+            if "choice" not in ignore:
+                self.assertIn(out["choice"], [2, 3, 4])
 
-            self.assertGreaterEqual(out["lograndint"], 1)
-            self.assertLess(out["lograndint"], 10)
-            self.assertTrue(isinstance(out["lograndint"], int))
+            if "randint" not in ignore:
+                self.assertGreaterEqual(out["randint"], -9)
+                self.assertLess(out["randint"], 15)
+                self.assertTrue(isinstance(out["randint"], int))
 
-            self.assertGreaterEqual(out["qrandint"], -21)
-            self.assertLessEqual(out["qrandint"], 12)
-            self.assertEqual(out["qrandint"] % 3, 0)
-            self.assertTrue(isinstance(out["qrandint"], int))
+            if "lograndint" not in ignore:
+                self.assertGreaterEqual(out["lograndint"], 1)
+                self.assertLess(out["lograndint"], 10)
+                self.assertTrue(isinstance(out["lograndint"], int))
 
-            self.assertGreaterEqual(out["qlograndint"], 2)
-            self.assertLessEqual(out["qlograndint"], 20)
-            self.assertEqual(out["qlograndint"] % 2, 0)
-            self.assertTrue(isinstance(out["qlograndint"], int))
+            if "qrandint" not in ignore:
+                self.assertGreaterEqual(out["qrandint"], -21)
+                self.assertLessEqual(out["qrandint"], 12)
+                self.assertEqual(out["qrandint"] % 3, 0)
+                self.assertTrue(isinstance(out["qrandint"], int))
 
-            # Very improbable
-            self.assertGreater(out["randn"], 0)
-            self.assertLess(out["randn"], 20)
+            if "qlograndint" not in ignore:
+                self.assertGreaterEqual(out["qlograndint"], 2)
+                self.assertLessEqual(out["qlograndint"], 20)
+                self.assertEqual(out["qlograndint"] % 2, 0)
+                self.assertTrue(isinstance(out["qlograndint"], int))
 
-            self.assertGreater(out["qrandn"], 0)
-            self.assertLess(out["qrandn"], 20)
-            self.assertAlmostEqual(out["qrandn"] / 0.2,
-                                   round(out["qrandn"] / 0.2))
+            if "randn" not in ignore:
+                # Very improbable
+                self.assertGreater(out["randn"], 0)
+                self.assertLess(out["randn"], 20)
+
+            if "qrandn" not in ignore:
+                self.assertGreater(out["qrandn"], 0)
+                self.assertLess(out["qrandn"], 20)
+                self.assertAlmostEqual(out["qrandn"] / 0.2,
+                                       round(out["qrandn"] / 0.2))
+
+    def testTuneVariant(self):
+        config = self.config.copy()
+
+        def config_generator():
+            for _, (_, generated) in zip(
+                    range(1000), generate_variants({
+                        "config": config
+                    })):
+                yield generated["config"]
+
+        self._testTuneSampleAPI(config_generator())
 
     def testBoundedFloat(self):
         bounded = tune.sample.Float(-4.2, 8.3)
@@ -294,6 +313,29 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testSampleAx(self):
+        from ray.tune.suggest.ax import AxSearch
+        from ax.service.ax_client import AxClient
+
+        ignore = [
+            "func", "randn", "qrandn", "quniform", "qloguniform", "qrandint",
+            "qlograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        client1 = AxClient(enforce_sequential_optimization=False)
+        searcher1 = AxSearch(
+            ax_client=client1, space=config, metric="a", mode="max")
+
+        def config_generator():
+            for i in range(50):
+                yield searcher1.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
@@ -353,6 +395,31 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBayesOpt(self):
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+
+        ignore = [
+            "func", "choice", "randint", "lograndint", "randn", "qrandn",
+            "quniform", "qloguniform", "qrandint", "qlograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = BayesOptSearch(
+            space=config,
+            metric="a",
+            mode="max",
+            skip_duplicate=False,
+            random_search_steps=1000)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertBOHB(self):
         from ray.tune.suggest.bohb import TuneBOHB
