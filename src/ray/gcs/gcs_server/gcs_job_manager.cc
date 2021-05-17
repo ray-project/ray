@@ -94,7 +94,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
   };
 
   Status status = gcs_table_storage_->JobTable().Get(
-                                                     job_id, [this, job_id, send_reply, reply, send_reply_callback](
+      job_id, [this, job_id, send_reply, reply, send_reply_callback](
                   Status status, const boost::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
