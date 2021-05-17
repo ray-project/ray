@@ -90,10 +90,6 @@ struct WorkerCacheKey {
   int IntHash() const { return (int)Hash(); }
 };
 
-struct WorkerCacheKeyHasher {
-  std::size_t operator()(const WorkerCacheKey &k) const { return k.Hash(); }
-};
-
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -364,14 +360,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
       bool filter_dead_drivers = false) const;
 
-  /// Whether there is a pending worker for the given env.
-  /// Note that this is only used for tasks that require a dedicated worker.
+  /// Whether there is a pending worker for the given task.
+  /// Note that, this is only used for actor creation task with dynamic options.
   /// And if the worker registered but isn't assigned a task,
   /// the worker also is in pending state, and this'll return true.
   ///
   /// \param language The required language.
-  /// \param env The env that we want to query.
-  bool HasPendingWorkerForEnv(const Language &language, const WorkerCacheKey &env);
+  /// \param task_id The task that we want to query.
+  bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
 
   /// Get the set of active object IDs from all workers in the worker pool.
   /// \return A set containing the active object IDs.
@@ -439,12 +435,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The idle worker pool for tasks that need a dedicated worker: an actor creation
-    /// task with dynamic worker options, or any task with environment variable overrides,
-    /// or any task with a specified RuntimeEnv.
-    std::unordered_multimap<WorkerCacheKey, std::shared_ptr<WorkerInterface>,
-                            WorkerCacheKeyHasher>
-        idle_dedicated_workers;
+    /// The pool of dedicated workers for actor creation tasks
+    /// with dynamic worker options (prefix or suffix worker command.)
+    std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
     /// The pool of idle non-actor workers.
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     // States for io workers used for python util functions.
@@ -464,13 +457,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<Process, int> starting_worker_processes;
-    /// A map for looking up the env of a worker by the pid of the pending
+    /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, WorkerCacheKey> dedicated_workers_to_envs;
-    /// A map for speeding up looking up the pending worker for the given env.
-    std::unordered_multimap<WorkerCacheKey, Process, WorkerCacheKeyHasher>
-        envs_to_pending_workers;
-    std::unordered_map<Process, WorkerCacheKey> workers_to_envs;
+    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
+    /// A map for speeding up looking up the pending worker for the given task.
+    std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
