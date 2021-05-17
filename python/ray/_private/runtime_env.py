@@ -60,6 +60,9 @@ class RuntimeEnvDict:
     """
 
     def __init__(self, runtime_env_json: dict):
+        if sys.platform == "win32":
+            raise NotImplementedError("runtime_env is currently not supported "
+                                      "on Windows.")
         # Simple dictionary with all options validated. This will always
         # contain all supported keys; values will be set to None if unspecified
         self._dict = {}
