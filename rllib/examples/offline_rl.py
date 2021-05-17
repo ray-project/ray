@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     # Check, whether we can learn from the given file in `num_iterations`
     # iterations, up to a reward of `min_reward`.
-    num_iterations = 50
+    num_iterations = 5
     min_reward = -300
 
     # Test for torch framework (tf not implemented yet).
@@ -99,17 +99,39 @@ if __name__ == "__main__":
         raise ValueError("CQLTrainer did not reach {} reward from expert "
                          "offline data!".format(min_reward))
 
+    # Get policy, model, and replay-buffer.
+    pol = trainer.get_policy()
+    cql_model = pol.model
+    from ray.rllib.agents.cql.cql import replay_buffer
+
     # If you would like to query CQL's learnt Q-function for arbitrary
     # (cont.) actions, do the following:
     obs_batch = torch.from_numpy(np.random.random(size=(5, 3)))
     action_batch = torch.from_numpy(np.random.random(size=(5, 1)))
-
-    cql_model = trainer.get_policy().model
-    q_values = cql_model.get_q_values([obs_batch], [action_batch])
+    q_values = cql_model.get_q_values(obs_batch, action_batch)
     # If you are using the "twin_q", there'll be 2 Q-networks and
     # we usually consider the min of the 2 outputs, like so:
-    twin_q_values = cql_model.get_twin_q_values([obs_batch], [action_batch])
+    twin_q_values = cql_model.get_twin_q_values(obs_batch, action_batch)
     final_q_values = torch.min(q_values, twin_q_values)
     print(final_q_values)
+
+    # Example on how to do evaluation on the trained Trainer
+    # using the data from our buffer.
+    # Get a sample (MultiAgentBatch -> SampleBatch).
+    batch = replay_buffer.replay().policy_batches["default_policy"]
+    obs = torch.from_numpy(batch["obs"])
+    # Pass the observations through our model to get the
+    # features, which then to pass through the Q-head.
+    model_out, _ = cql_model({"obs": obs})
+    # The estimated Q-values from the (historic) actions in the batch.
+    q_values_old = cql_model.get_q_values(model_out,
+                                          torch.from_numpy(batch["actions"]))
+    # The estimated Q-values for the new actions computed
+    # by our trainer policy.
+    actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
+    q_values_new = cql_model.get_q_values(model_out,
+                                          torch.from_numpy(actions_new))
+    print(f"Q-val batch={q_values_old}")
+    print(f"Q-val policy={q_values_new}")
 
     trainer.stop()

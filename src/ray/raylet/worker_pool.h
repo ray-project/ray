@@ -345,13 +345,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
-  /// \param runtime_env The runtime environment for the started worker process.
-  /// \return The id of the process that we started if it's positive,
-  /// otherwise it means we didn't start a process.
+  /// \param serialized_runtime_env The runtime environment for the started worker
+  /// process. \return The id of the process that we started if it's positive, otherwise
+  /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
-      const ray::RuntimeEnv &runtime_env = ray::RuntimeEnv(),
+      const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.

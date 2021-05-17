@@ -57,7 +57,7 @@ class TestMARWIL(unittest.TestCase):
             for i in range(num_iterations):
                 eval_results = trainer.train().get("evaluation")
                 if eval_results:
-                    print("iter={} R={}".format(
+                    print("iter={} R={} ".format(
                         i, eval_results["episode_reward_mean"]))
                     # Learn until some reward is reached on an actual live env.
                     if eval_results["episode_reward_mean"] > min_reward:
