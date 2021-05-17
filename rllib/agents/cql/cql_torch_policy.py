@@ -93,6 +93,7 @@ def cql_loss(policy: Policy, model: ModelV2,
     critic1_optimizer = policy._optimizers[1]
     critic2_optimizer = policy._optimizers[2]
     alpha_optimizer = policy._optimizers[3]
+    alpha_prime_optimizer = policy._optimizers[4]
 
     model_out_t, _ = model({
         "obs": obs,
@@ -286,12 +287,17 @@ def cql_loss(policy: Policy, model: ModelV2,
     policy.log_alpha_value = model.log_alpha
     policy.alpha_value = alpha
     policy.target_entropy = model.target_entropy
-    # CQL Stats
+    # CQL Stats.
     policy.cql_loss = cql_loss
     if use_lagrange:
         policy.log_alpha_prime_value = model.log_alpha_prime[0]
         policy.alpha_prime_value = alpha_prime
         policy.alpha_prime_loss = alpha_prime_loss
+
+        if obs.shape[0] == policy.config["train_batch_size"]:
+            alpha_prime_optimizer.zero_grad()
+            alpha_prime_loss.backward()
+            alpha_prime_optimizer.step()
 
     # Return all loss terms corresponding to our optimizers.
     if use_lagrange:

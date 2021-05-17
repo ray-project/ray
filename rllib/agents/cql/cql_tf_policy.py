@@ -295,12 +295,12 @@ class ActorCriticOptimizerMixin(SACActorCriticOptimizerMixin):
             if config["framework"] in ["tf2", "tfe"]:
                 self._alpha_prime_optimizer = tf.keras.optimizers.Adam(
                     learning_rate=config["optimization"][
-                        "entropy_learning_rate"])
+                        "critic_learning_rate"])
             # Static graph mode.
             else:
                 self._alpha_prime_optimizer = tf1.train.AdamOptimizer(
                     learning_rate=config["optimization"][
-                        "entropy_learning_rate"])
+                        "critic_learning_rate"])
 
 
 def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
