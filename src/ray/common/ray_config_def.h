@@ -50,7 +50,7 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, true)
+RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
 
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
@@ -421,7 +421,7 @@ RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
 /// The maximum number of objects to publish for each publish calls.
-RAY_CONFIG(uint64_t, publish_batch_size, 5000)
+RAY_CONFIG(int, publish_batch_size, 5000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.
