@@ -21,7 +21,6 @@ from _trainable import timed_tune_run
 
 def main():
     os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "100"  # Tweak
-    os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "100"  # Tweak
 
     ray.init(address="auto")
 
