@@ -340,5 +340,27 @@ def test_http_head_only(ray_cluster):
     assert cpu_per_nodes == {4, 4}
 
 
+def test_serve_shutdown(ray_shutdown):
+    serve.start(detached=True)
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
+
+    serve.shutdown()
+    serve.start(detached=True)
+
+    assert len(serve.list_deployments()) == 0
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

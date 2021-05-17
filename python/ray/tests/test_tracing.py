@@ -179,6 +179,12 @@ def test_tracing_async_actor_start_workflow(cleanup_dirs,
     assert async_actor_helper()
 
 
+def test_wrapping(ray_start_init_tracing):
+    @ray.remote
+    def f(**_kwargs):
+        pass
+
+
 if __name__ == "__main__":
     import sys
 
