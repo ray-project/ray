@@ -21,7 +21,7 @@ namespace ray {
 class Throttler {
  public:
   explicit Throttler(uint64_t interval_ns)
-      : last_run_ns_(absl::GetCurrentTimeNanos()), interval_ns_(interval_ns) {}
+      : last_run_ns_(0), interval_ns_(interval_ns) {}
 
   bool AbleToRun() {
     auto now = absl::GetCurrentTimeNanos();
@@ -33,8 +33,6 @@ class Throttler {
   }
 
   void RunNow() { last_run_ns_ = absl::GetCurrentTimeNanos(); }
-
-  uint64_t LastRunTime() const { return last_run_ns_; }
 
  private:
   uint64_t last_run_ns_;

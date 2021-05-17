@@ -698,6 +698,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// When plasma storage usage is high, we'll run gc to reduce it.
   double high_plasma_storage_usage_ = 1.0;
 
+  /// the timestampe local gc run
+  uint64_t local_gc_run_time_ns_;
+
   /// Throttler for local gc
   Throttler local_gc_throttler_;
 

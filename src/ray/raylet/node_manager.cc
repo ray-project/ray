@@ -251,6 +251,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           std::make_shared<pubsub::Subscriber>(self_node_id_, config.node_manager_address,
                                                config.node_manager_port,
                                                worker_rpc_pool_)),
+      high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
+      local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -535,8 +537,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
-  if ((should_local_gc_ || (absl::GetCurrentTimeNanos() -
-                            local_gc_throttler_.LastRunTime()) > local_gc_interval_ns_) &&
+  if ((should_local_gc_ || (absl::GetCurrentTimeNanos() - local_gc_run_time_ns_ > local_gc_interval_ns_)) &&
       local_gc_throttler_.AbleToRun()) {
     DoLocalGC();
     should_local_gc_ = false;
@@ -586,6 +587,7 @@ void NodeManager::DoLocalGC() {
           }
         });
   }
+  local_gc_run_time_ns_ = absl::GetCurrentTimeNanos();
 }
 
 void NodeManager::HandleRequestObjectSpillage(

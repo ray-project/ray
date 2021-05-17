@@ -265,6 +265,9 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
+/// The threshold to trigger a global gc
+RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 
