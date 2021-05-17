@@ -51,6 +51,7 @@ cython==0.29.0
 dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
+google-api-python-client
 gym
 gym-minigrid
 kubernetes
