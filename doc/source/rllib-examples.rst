@@ -86,8 +86,9 @@ Training Workflows
 
 - `Custom training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__:
    Example of how to use Tune's support for custom training functions to implement custom training workflows.
-- `Curriculum learning <rllib-training.html#example-curriculum-learning>`__:
-   Example of how to adjust the configuration of an environment over time.
+- `Curriculum learning with the TaskSettableEnv API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum_learning.py>`__:
+   Example of how to advance the environment through different phases (tasks) over time.
+   Also see the `curriculum learning how-to <rllib-training.html#example-curriculum-learning>`__ from the documentation here.
 - `Custom logger <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_logger.py>`__:
    How to setup a custom Logger object in RLlib.
 - `Custom metrics <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__:
