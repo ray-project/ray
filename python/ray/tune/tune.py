@@ -75,7 +75,6 @@ def run(
         mode: Optional[str] = None,
         stop: Union[None, Mapping, Stopper, Callable[[str, Mapping],
                                                      bool]] = None,
-        result_buffer_length: Optional[int] = None,
         time_budget_s: Union[None, int, float, datetime.timedelta] = None,
         config: Optional[Dict[str, Any]] = None,
         resources_per_trial: Union[None, Mapping[str, Union[
@@ -176,8 +175,6 @@ def run(
             ``ray.tune.Stopper``, which allows users to implement
             custom experiment-wide stopping (i.e., stopping an entire Tune
             run based on some time constraint).
-        result_buffer_length (int): Maximum number of results to buffer.
-            If set, env var 'TUNE_RESULT_BUFFER_LENGTH' will be ignored.
         time_budget_s (int|float|datetime.timedelta): Global time budget in
             seconds after which all trials are stopped. Can also be a
             ``datetime.timedelta`` object.
@@ -307,7 +304,6 @@ def run(
                 metric,
                 mode,
                 stop,
-                result_buffer_length,
                 time_budget_s,
                 config,
                 resources_per_trial,
@@ -382,9 +378,7 @@ def run(
         num_samples = sys.maxsize
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        queue_trials=queue_trials,
-        result_buffer_length=result_buffer_length)
+        reuse_actors=reuse_actors, queue_trials=queue_trials)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
