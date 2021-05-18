@@ -173,5 +173,5 @@ MARWILTFPolicy = build_tf_policy(
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
     before_loss_init=setup_mixins,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     mixins=[ValueNetworkMixin])
