@@ -384,8 +384,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   NodeID local_raylet_id;
   int assigned_port;
   std::string serialized_job_config = options_.serialized_job_config;
-  // TODO(architkulkarni): Add runtime env to this, ray.worker.connect in default_worker,
-  // add argument in default worker
   local_raylet_client_ = std::make_shared<raylet::RayletClient>(
       io_service_, std::move(grpc_client), options_.raylet_socket, GetWorkerID(),
       options_.worker_type, worker_context_.GetCurrentJobID(), options_.runtime_env_hash,

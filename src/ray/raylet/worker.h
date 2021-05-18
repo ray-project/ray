@@ -232,8 +232,10 @@ class Worker : public WorkerInterface {
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
   JobID assigned_job_id_;
-  /// The hash of the worker's assigned runtime env.
-  int runtime_env_hash_;
+  /// The hash of the worker's assigned runtime env.  We use this in the worker
+  /// pool to cache and reuse workers with the same runtime env, because
+  /// installing runtime envs from scratch can be slow.
+  const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is

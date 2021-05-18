@@ -40,54 +40,45 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
-/// \struct WorkerCacheKey
+/// \class WorkerCacheKey
 ///
-/// Struct used to cache workers, keyed by runtime_env. The dynamic_options and
-/// override_environment_variables will be unified into runtime_env in the future.
-struct WorkerCacheKey {
-  std::vector<std::string> dynamic_options;
-  std::unordered_map<std::string, std::string> override_environment_variables;
-  std::string serialized_runtime_env;
+/// Class used to cache workers, keyed by runtime_env.
+class WorkerCacheKey {
+ public:
+  /// Create a cache key with the given environment variable overrides and serialized
+  /// runtime_env.
+  ///
+  /// \param override_environment_variables The environment variable overrides set in this
+  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
+  /// worker.
+  WorkerCacheKey(
+      const std::unordered_map<std::string, std::string> override_environment_variables,
+      const std::string serialized_runtime_env);
+
+  bool operator==(const WorkerCacheKey &k) const;
+
+  /// Check if this worker's environment is empty (the default).
+  ///
+  /// \return true if there are no environment variables set and the runtime env is the
+  /// empty string (protobuf default) or a JSON-serialized empty dict.
+  bool EnvIsEmpty() const;
+
+  /// Get the hash for this worker's environment.
+  ///
+  /// \return The hash of the override_environment_variables and the serialized
+  /// runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
+
+ private:
+  const std::unordered_map<std::string, std::string> override_environment_variables;
+  const std::string serialized_runtime_env;
   mutable std::size_t hash_ = 0;
-
-  bool operator==(const WorkerCacheKey &k) const {
-    return dynamic_options == k.dynamic_options &&
-           override_environment_variables == k.override_environment_variables &&
-           serialized_runtime_env == k.serialized_runtime_env;
-  }
-
-  bool EnvIsEmpty() const {
-    return dynamic_options.size() == 0 && override_environment_variables.size() == 0 &&
-           (serialized_runtime_env == "" || serialized_runtime_env == "{}");
-  }
-
-  std::size_t Hash() const {
-    // Cache the hash value.
-    if (!hash_) {
-      if (EnvIsEmpty()) {
-        // It's useful to have the same predetermined value for both unspecified and empty
-        // runtime envs.
-        hash_ = 0;
-      } else {
-        for (auto &str : dynamic_options) {
-          boost::hash_combine(hash_, str);
-        }
-
-        std::vector<std::pair<std::string, std::string>> elems(
-            override_environment_variables.begin(), override_environment_variables.end());
-        std::sort(elems.begin(), elems.end());
-        for (auto &pair : elems) {
-          boost::hash_combine(hash_, pair.first);
-          boost::hash_combine(hash_, pair.second);
-        }
-
-        boost::hash_combine(hash_, serialized_runtime_env);
-      }
-    }
-    return hash_;
-  }
-
-  int IntHash() const { return (int)Hash(); }
 };
 
 /// \class WorkerPoolInterface

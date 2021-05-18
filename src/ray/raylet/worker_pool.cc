@@ -296,10 +296,8 @@ Process WorkerPool::StartWorkerProcess(
       }
     }
 
-    WorkerCacheKey env = {dynamic_options, override_environment_variables,
-                          serialized_runtime_env};
-    int runtime_env_hash = env.IntHash();
-    std::string runtime_env_hash_str = std::to_string(runtime_env_hash);
+    WorkerCacheKey env = {override_environment_variables, serialized_runtime_env};
+    const std::string runtime_env_hash_str = std::to_string(env.IntHash());
     worker_command_args.push_back("--runtime-env-hash=" + runtime_env_hash_str);
   }
 
@@ -868,13 +866,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Find an available worker which is already assigned to this job and which has
     // the specified runtime env.
     // Try to pop the most recently pushed worker.
-    std::vector<std::string> dynamic_options = {};
-    if (task_spec.IsActorCreationTask()) {
-      dynamic_options = task_spec.DynamicWorkerOptions();
-    }
-    WorkerCacheKey env = {dynamic_options, task_spec.OverrideEnvironmentVariables(),
-                          task_spec.SerializedRuntimeEnv()};
-    int runtime_env_hash = env.IntHash();
+    const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
+                                task_spec.SerializedRuntimeEnv()};
+    const int runtime_env_hash = env.IntHash();
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -906,7 +900,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
       proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
+                                task_spec.JobId(), {}, /* dynamic_options */
                                 task_spec.SerializedRuntimeEnv(),
                                 task_spec.OverrideEnvironmentVariables());
     }
@@ -930,6 +924,8 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
       !(task_spec.SerializedRuntimeEnv() == "{}" ||
         task_spec.SerializedRuntimeEnv() == "")) {
     return;  // Not handled.
+    // TODO(architkulkarni): We'd eventually like to prestart workers with the same
+    // runtime env to improve initial startup performance.
   }
 
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
@@ -1192,6 +1188,46 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   }
   UNREACHABLE;
 }
+
+WorkerCacheKey::WorkerCacheKey(
+    const std::unordered_map<std::string, std::string> override_environment_variables,
+    const std::string serialized_runtime_env)
+    : override_environment_variables(override_environment_variables),
+      serialized_runtime_env(serialized_runtime_env) {}
+
+bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  return Hash() == k.Hash();
+}
+
+bool WorkerCacheKey::EnvIsEmpty() const {
+  return override_environment_variables.size() == 0 &&
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+}
+
+std::size_t WorkerCacheKey::Hash() const {
+  // Cache the hash value.
+  if (!hash_) {
+    if (EnvIsEmpty()) {
+      // It's useful to have the same predetermined value for both unspecified and empty
+      // runtime envs.
+      hash_ = 0;
+    } else {
+      std::vector<std::pair<std::string, std::string>> env_vars(
+          override_environment_variables.begin(), override_environment_variables.end());
+
+      std::sort(env_vars.begin(), env_vars.end());
+      for (auto &pair : env_vars) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+
+      boost::hash_combine(hash_, serialized_runtime_env);
+    }
+  }
+  return hash_;
+}
+
+int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 }  // namespace raylet
 
