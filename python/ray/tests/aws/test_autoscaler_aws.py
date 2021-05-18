@@ -12,7 +12,7 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_RULES, DEFAULT_SG_WITH_NAME, \
     DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES, \
-    DEFAULT_KEY_PAIR
+    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
@@ -20,6 +20,8 @@ def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
     This test validates that when bootstrap_aws populates the SubnetIds field,
     all of the subnets used belong to the same VPC, and that a SecurityGroup
     in that VPC is correctly configured.
+
+    Also validates that head IAM role is correctly filled.
     """
     stubs.configure_iam_role_default(iam_client_stub)
     stubs.configure_key_pair_default(ec2_client_stub)
@@ -201,7 +203,7 @@ def test_subnet_given_head_and_worker_sg(iam_client_stub, ec2_client_stub):
     ec2_client_stub.assert_no_pending_responses()
 
 
-def test_fills_out_amis(iam_client_stub, ec2_client_stub):
+def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
     # Setup stubs to mock out boto3
     stubs.configure_iam_role_default(iam_client_stub)
     stubs.configure_key_pair_default(ec2_client_stub)
@@ -228,6 +230,45 @@ def test_fills_out_amis(iam_client_stub, ec2_client_stub):
     for node_type in defaults_filled["available_node_types"].values():
         node_config = node_type["node_config"]
         assert node_config.get("ImageId") == ami
+
+    # Correctly configured IAM role
+    assert (config["head_node"]["IamInstanceProfile"] == {
+        "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
+    })
+    # Workers of the head's type do not get the IAM role.
+    head_type = config["head_node_type"]
+    assert "IamInstanceProfile" not in config["available_node_types"][
+        head_type]
+
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+
+
+def test_iam_already_configured(iam_client_stub, ec2_client_stub):
+    """
+    Checks that things work as expected when IAM role is supplied by user.
+    """
+    stubs.configure_key_pair_default(ec2_client_stub)
+    stubs.describe_a_security_group(ec2_client_stub, DEFAULT_SG)
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    config = helpers.load_aws_example_config_file("example-full.yaml")
+    head_node_config = config["available_node_types"]["ray.head.default"][
+        "node_config"]
+    worker_node_config = config["available_node_types"]["ray.worker.default"][
+        "node_config"]
+
+    head_node_config["IamInstanceProfile"] = "mock_profile"
+
+    # Pass in SG for stub to work
+    head_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+    worker_node_config["SecurityGroupIds"] = ["sg-1234abcd"]
+
+    defaults_filled = bootstrap_aws(config)
+    filled_head = defaults_filled["available_node_types"]["ray.head.default"][
+        "node_config"]
+    assert filled_head["IamInstanceProfile"] == "mock_profile"
+    assert "IamInstanceProfile" not in defaults_filled["head_node"]
 
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()

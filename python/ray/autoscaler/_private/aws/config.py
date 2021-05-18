@@ -172,8 +172,8 @@ def log_to_cli(config: Dict[str, Any]) -> None:
         # head_node_config is the head_node_type's config,
         # config["head_node"] is a field that gets applied only to the actual
         # head node (and not workers of the head's node_type)
-        assert ("IamInstanceProfile" in head_node_config or
-                "IamInstanceProfile" in config["head_node"])
+        assert ("IamInstanceProfile" in head_node_config
+                or "IamInstanceProfile" in config["head_node"])
         if "IamInstanceProfile" in head_node_config:
             # If the user manually configured the role we're here.
             IamProfile = head_node_config["IamInstanceProfile"]
