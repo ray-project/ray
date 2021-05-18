@@ -182,7 +182,7 @@ class WorkerPoolTest : public ::testing::Test {
         ClientConnection::Create(client_handler, message_handler, std::move(socket),
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ =
-        std::make_shared<Worker>(job_id, WorkerID::FromRandom(), language, worker_type,
+        std::make_shared<Worker>(job_id, 0, WorkerID::FromRandom(), language, worker_type,
                                  "127.0.0.1", client, client_call_manager_);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);

@@ -48,7 +48,7 @@ from ray.util.iter import ParallelIteratorWorker
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.observation_function import ObservationFunction
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
 
 # Generic type var for foreach_* methods.
 T = TypeVar("T")
@@ -356,7 +356,7 @@ class RolloutWorker(ParallelIteratorWorker):
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
-            from ray.rllib.agents.callbacks import DefaultCallbacks
+            from ray.rllib.agents.callbacks import DefaultCallbacks  # noqa
             self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
@@ -482,20 +482,39 @@ class RolloutWorker(ParallelIteratorWorker):
         self.policy_map: Dict[PolicyID, Policy] = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
-        # set numpy and python seed
+        # Set Python random, numpy, env, and torch/tf seeds.
         if seed is not None:
-            np.random.seed(seed)
+            # Python random module.
             random.seed(seed)
+            # Numpy.
+            np.random.seed(seed)
+            # Gym.env.
             if not hasattr(self.env, "seed"):
                 logger.info("Env doesn't support env.seed(): {}".format(
                     self.env))
             else:
                 self.env.seed(seed)
-            try:
-                assert torch is not None
+
+            # Torch.
+            if torch and policy_config.get("framework") == "torch":
                 torch.manual_seed(seed)
-            except AssertionError:
-                logger.info("Could not seed torch")
+                # See https://github.com/pytorch/pytorch/issues/47672.
+                cuda_version = torch.version.cuda
+                if cuda_version is not None and float(
+                        torch.version.cuda) >= 10.2:
+                    os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+                else:
+                    # Not all Operations support this.
+                    torch.use_deterministic_algorithms(True)
+                # This is only for Convolution no problem.
+                torch.backends.cudnn.deterministic = True
+            # Tf2.x.
+            elif tf and policy_config.get("framework") == "tf2":
+                tf.random.set_seed(seed)
+            # Tf-eager.
+            elif tf1 and policy_config.get("framework") == "tfe":
+                tf1.set_random_seed(seed)
+
         if _has_tensorflow_graph(policy_dict) and not (
                 tf1 and tf1.executing_eagerly()):
             if not tf1:
