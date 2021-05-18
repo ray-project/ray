@@ -98,7 +98,8 @@ struct CoreWorkerOptions {
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
         metrics_agent_port(-1),
-        connect_on_start(true) {}
+        connect_on_start(true),
+        runtime_env_hash(0) {}
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   WorkerType worker_type;
@@ -182,6 +183,8 @@ struct CoreWorkerOptions {
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
+  /// The hash of the runtime env for this worker.
+  int runtime_env_hash;
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
