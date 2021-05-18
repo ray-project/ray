@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 import ray
 from ray.tests.conftest import (file_system_object_spilling_config,
-                                mock_distributed_fs_object_spilling_config,
-                                slow_spilling_config)
+                                mock_distributed_fs_object_spilling_config)
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
