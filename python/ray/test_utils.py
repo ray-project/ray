@@ -537,3 +537,8 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"

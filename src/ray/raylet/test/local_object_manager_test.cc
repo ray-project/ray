@@ -36,11 +36,13 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  void SubcribeObject(
-      const rpc::Address &owner_address, const ObjectID &object_id,
+  void Subscribe(
+      const rpc::ChannelType channel_type, const rpc::Address &owner_address,
+      const std::string &key_id_binary,
       pubsub::SubscriptionCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
-    callbacks.push_back(std::make_pair(object_id, subscription_callback));
+    callbacks.push_back(
+        std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
   }
 
   bool PublishObjectEviction() {
@@ -49,16 +51,21 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     }
     auto object_id = callbacks.front().first;
     auto callback = callbacks.front().second;
-    callback(object_id);
+    auto msg = rpc::PubMessage();
+    msg.set_key_id(object_id.Binary());
+    msg.set_channel_type(channel_type_);
+    auto *object_eviction_msg = msg.mutable_worker_object_eviction_message();
+    object_eviction_msg->set_object_id(object_id.Binary());
+    callback(msg);
     callbacks.pop_front();
     return true;
   }
 
-  MOCK_METHOD2(UnsubscribeObject,
-               bool(const rpc::Address &publisher_address, const ObjectID &object_id));
+  MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
+                                 const rpc::Address &publisher_address,
+                                 const std::string &key_id_binary));
 
-  bool AssertNoLeak() const override { return true; }
-
+  rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
 };
 
@@ -319,24 +326,25 @@ class LocalObjectManagerTest : public ::testing::Test {
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
         max_fused_object_count_(15),
-        manager(manager_node_id_, "address", 1234, free_objects_batch_size,
-                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                /*automatic_object_delete_enabled=*/true,
-                /*max_io_workers=*/2,
-                /*min_spilling_size=*/0,
-                /*is_external_storage_type_fs=*/true,
-                /*max_fused_object_count*/ max_fused_object_count_,
-                /*on_objects_freed=*/
-                [&](const std::vector<ObjectID> &object_ids) {
-                  for (const auto &object_id : object_ids) {
-                    freed.insert(object_id);
-                  }
-                },
-                /*is_plasma_object_spillable=*/
-                [&](const ray::ObjectID &object_id) {
-                  return unevictable_objects_.count(object_id) == 0;
-                },
-                /*core_worker_subscriber=*/subscriber_),
+        manager(
+            manager_node_id_, "address", 1234, free_objects_batch_size,
+            /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+            /*automatic_object_delete_enabled=*/true,
+            /*max_io_workers=*/2,
+            /*min_spilling_size=*/0,
+            /*is_external_storage_type_fs=*/true,
+            /*max_fused_object_count*/ max_fused_object_count_,
+            /*on_objects_freed=*/
+            [&](const std::vector<ObjectID> &object_ids) {
+              for (const auto &object_id : object_ids) {
+                freed.insert(object_id);
+              }
+            },
+            /*is_plasma_object_spillable=*/
+            [&](const ray::ObjectID &object_id) {
+              return unevictable_objects_.count(object_id) == 0;
+            },
+            /*core_worker_subscriber=*/subscriber_),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize("object_spilling_config,YQ==");
   }
@@ -390,7 +398,7 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
@@ -951,7 +959,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1002,7 +1010,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 
@@ -1060,7 +1068,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   // Everything is evicted except the last object. In this case, ref count is still > 0.
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1071,7 +1079,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   // The last reference is deleted.
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
   EXPECT_CALL(*subscriber_,
-              UnsubscribeObject(_, object_ids[free_objects_batch_size - 1]));
+              Unsubscribe(_, _, object_ids[free_objects_batch_size - 1].Binary()));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1123,7 +1131,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   // Every object has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
   // // Now, deletion queue would process only the first object. Everything else won't be
@@ -1196,7 +1204,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   // Every reference has gone out of scope.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-    EXPECT_CALL(*subscriber_, UnsubscribeObject(_, object_ids[i]));
+    EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
 

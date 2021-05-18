@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/malloc.h"
-
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "ray/object_manager/plasma/malloc.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>
@@ -78,10 +78,11 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   *handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,
                               (DWORD)((uint64_t)size >> (CHAR_BIT * sizeof(DWORD))),
                               (DWORD)(uint64_t)size, NULL);
-  RAY_CHECK(*handle != NULL) << "Failed to create buffer during mmap";
+  RAY_CHECK(*handle != NULL) << "CreateFileMapping() failed. GetLastError() = "
+                             << GetLastError();
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, (size_t)size);
   if (*pointer == NULL) {
-    RAY_LOG(ERROR) << "MapViewOfFile failed with error: " << GetLastError();
+    RAY_LOG(ERROR) << "MapViewOfFile() failed. GetLastError() = " << GetLastError();
   }
 }
 #else
