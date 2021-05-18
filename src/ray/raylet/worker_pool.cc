@@ -1214,7 +1214,8 @@ std::size_t WorkerCacheKey::Hash() const {
     } else {
       std::vector<std::pair<std::string, std::string>> env_vars(
           override_environment_variables.begin(), override_environment_variables.end());
-
+      // The environment doesn't depend the order of the variables, so the hash should not
+      // either.  Sort the variables so different permutations yield the same hash.
       std::sort(env_vars.begin(), env_vars.end());
       for (auto &pair : env_vars) {
         boost::hash_combine(hash_, pair.first);
