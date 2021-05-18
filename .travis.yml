@@ -207,7 +207,6 @@ matrix:
         - bash ./java/build-jar-multiplatform.sh multiplatform
         - bash ./java/build-jar-multiplatform.sh deploy
       cache: false
-  allow_failures:
     - os: osx
       osx_image: xcode7
       env:
