@@ -1,10 +1,9 @@
 
 #include "task_executor.h"
 
-#include <ray/api/exec_funcs.h>
-
 #include <memory>
 
+#include <ray/api/exec_funcs.h>
 #include "../../util/address_helper.h"
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"

@@ -15,10 +15,10 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
-
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"

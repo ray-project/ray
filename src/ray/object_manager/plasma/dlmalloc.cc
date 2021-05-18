@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "ray/object_manager/plasma/malloc.h"
+
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "ray/object_manager/plasma/malloc.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>

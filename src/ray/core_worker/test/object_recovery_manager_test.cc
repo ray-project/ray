@@ -16,6 +16,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -117,29 +118,28 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
             rpc::Address(), publisher_.get(), subscriber_.get(),
             /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
-        manager_(
-            rpc::Address(),
-            [&](const std::string &ip, int port) { return raylet_client_; },
-            raylet_client_,
-            [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
-              object_directory_->AsyncGetLocations(object_id, callback);
-              return Status::OK();
-            },
-            task_resubmitter_, ref_counter_, memory_store_,
-            [&](const ObjectID &object_id, bool pin_object) {
-              RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
-              failed_reconstructions_[object_id] = pin_object;
+        manager_(rpc::Address(),
+                 [&](const std::string &ip, int port) { return raylet_client_; },
+                 raylet_client_,
+                 [&](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+                   object_directory_->AsyncGetLocations(object_id, callback);
+                   return Status::OK();
+                 },
+                 task_resubmitter_, ref_counter_, memory_store_,
+                 [&](const ObjectID &object_id, bool pin_object) {
+                   RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
+                   failed_reconstructions_[object_id] = pin_object;
 
-              std::string meta =
-                  std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-              auto metadata =
-                  const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-              auto meta_buffer =
-                  std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-              auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
-              RAY_CHECK(memory_store_->Put(data, object_id));
-            },
-            /*lineage_reconstruction_enabled=*/true) {}
+                   std::string meta =
+                       std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+                   auto metadata = const_cast<uint8_t *>(
+                       reinterpret_cast<const uint8_t *>(meta.data()));
+                   auto meta_buffer =
+                       std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+                   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+                   RAY_CHECK(memory_store_->Put(data, object_id));
+                 },
+                 /*lineage_reconstruction_enabled=*/true) {}
 
   NodeID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;

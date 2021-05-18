@@ -15,11 +15,11 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
-
 #include <boost/any.hpp>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/common.pb.h"
