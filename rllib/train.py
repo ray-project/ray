@@ -173,7 +173,7 @@ def run(args, parser):
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
             abs_inputs = [
-                rllib_dir.absolute().joinpath(i)
+                str(rllib_dir.absolute().joinpath(i))
                 if not os.path.exists(i) else i for i in inputs
             ]
             if not isinstance(input_, list):
