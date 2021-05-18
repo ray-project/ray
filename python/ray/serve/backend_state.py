@@ -171,6 +171,9 @@ class ActorReplicaWrapper:
 
         Currently, this just removes the placement group.
         """
+        if not USE_PLACEMENT_GROUP:
+            return
+
         try:
             ray.util.remove_placement_group(
                 ray.util.get_placement_group(self._placement_group_name))
