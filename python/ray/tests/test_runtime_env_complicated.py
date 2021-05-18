@@ -193,7 +193,11 @@ def test_conda_create_task(shutdown_only):
         "conda": {
             "dependencies": [
                 f"python={python_micro_version_dots}", "pip", {
-                    "pip": [nightly_url, "pip-install-test==0.5"]
+                    "pip": [
+                        nightly_url, "pip-install-test==0.5",
+                        "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
                 }
             ]
         }
@@ -222,7 +226,11 @@ def test_conda_create_job_config(shutdown_only):
         "conda": {
             "dependencies": [
                 f"python={python_micro_version_dots}", "pip", {
-                    "pip": [nightly_url, "pip-install-test==0.5"]
+                    "pip": [
+                        nightly_url, "pip-install-test==0.5",
+                        "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
                 }
             ]
         }
