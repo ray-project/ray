@@ -51,6 +51,7 @@ cython==0.29.0
 dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
+google-api-python-client
 gym
 gym-minigrid
 kubernetes
@@ -74,7 +75,7 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow==2.4.1
+tensorflow
 testfixtures
 werkzeug
 xlrd

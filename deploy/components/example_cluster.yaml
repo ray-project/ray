@@ -52,7 +52,7 @@ spec:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -61,6 +61,7 @@ spec:
           - containerPort: 6379  # Redis port
           - containerPort: 10001  # Used by Ray Client
           - containerPort: 8265  # Used by Ray Dashboard
+          - containerPort: 8000 # Used by Ray Serve
 
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
@@ -104,7 +105,7 @@ spec:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
           # This volume allocates shared memory for Ray to use for its plasma
