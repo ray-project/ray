@@ -199,8 +199,9 @@ class ServeController:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    backend_tag, replica_config.serialized_backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
@@ -229,7 +230,7 @@ class ServeController:
             raise ValueError(f"Backend {backend_tag} is not registered.")
 
         backend_info = BackendInfo(
-            worker_class=existing_info.worker_class,
+            actor_def=existing_info.actor_def,
             version=existing_info.version,
             backend_config=existing_info.backend_config.copy(
                 update=config_options.dict(exclude_unset=True)),
@@ -272,8 +273,9 @@ class ServeController:
 
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    name, replica_config.serialized_backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)

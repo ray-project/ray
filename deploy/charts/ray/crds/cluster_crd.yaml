@@ -105,7 +105,13 @@ spec:
                       # TODO (dmitri): Validate that values are integers [patternProperties not supported by OpenAPI v3.0]
                       x-kubernetes-preserve-unknown-fields: true
                     setupCommands:
-                      description: Commands to run before starting the Ray runtime.
+                      description: Alias for workerSetupCommands
+                      type: array
+                      items:
+                        type: string
+                        description: shell command
+                    workerSetupCommands:
+                      description: Commands to run before starting the Ray runtime for workers of this podType.
                       type: array
                       items:
                         type: string
@@ -4297,8 +4303,6 @@ spec:
                           required:
                           - containers
                           type: object
-
-                            
               headPodType:
                 description: Specifies the head node type.
                 type: string
@@ -4308,7 +4312,7 @@ spec:
                 items:
                   type: string
                   description: shell command
-              workerStartRayCommands: 
+              workerStartRayCommands:
                 description: Commands to start Ray on worker nodes.
                 type: array
                 items:

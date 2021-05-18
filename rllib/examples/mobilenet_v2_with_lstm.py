@@ -21,7 +21,11 @@ cnn_shape = (4, 4, 3)
 cnn_shape_torch = (3, 224, 224)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=0.0)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
@@ -32,7 +36,7 @@ if __name__ == "__main__":
     # Register our custom model.
     ModelCatalog.register_custom_model(
         "my_model", TorchMobileV2PlusRNNModel
-        if args.torch else MobileV2PlusRNNModel)
+        if args.framework == "torch" else MobileV2PlusRNNModel)
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -43,12 +47,15 @@ if __name__ == "__main__":
     # Configure our Trainer.
     config = {
         "env": RandomEnv,
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
         "model": {
             "custom_model": "my_model",
             # Extra config passed to the custom model's c'tor as kwargs.
             "custom_model_config": {
-                "cnn_shape": cnn_shape_torch if args.torch else cnn_shape,
+                # By default, torch CNNs use "channels-first",
+                # tf "channels-last".
+                "cnn_shape": cnn_shape_torch
+                if args.framework == "torch" else cnn_shape,
             },
             "max_seq_len": 20,
             "vf_share_layers": True,
@@ -62,7 +69,8 @@ if __name__ == "__main__":
             "observation_space": Box(
                 0.0,
                 1.0,
-                shape=cnn_shape_torch if args.torch else cnn_shape,
+                shape=cnn_shape_torch
+                if args.framework == "torch" else cnn_shape,
                 dtype=np.float32)
         },
     }
