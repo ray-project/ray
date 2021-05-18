@@ -585,7 +585,7 @@ void GcsPlacementGroupManager::CollectStats() const {
 
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
-  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(io_context_, [this] { Tick(); }, 5000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
