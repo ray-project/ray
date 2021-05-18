@@ -8,6 +8,7 @@ import json
 
 routes = dashboard_utils.ClassMethodRouteTable
 
+
 class LogicalViewHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
@@ -19,15 +20,15 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         job_data = await self.get_job_info()
         actor_data = await self.get_actor_info()
         snapshot = {
-            "jobs":  job_data,
+            "jobs": job_data,
             "actors": actor_data,
         }
-        return dashboard_utils.rest_response(success=True, message="hello", snapshot=snapshot)
+        return dashboard_utils.rest_response(
+            success=True, message="hello", snapshot=snapshot)
 
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(
-            request, timeout=5)
+        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
 
         jobs = {}
         for job_table_entry in reply.job_info_list:
@@ -36,8 +37,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
                 "env_vars": dict(job_table_entry.config.worker_env),
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": dict(job_table_entry.config.metadata),
-                "runtime_env":
-                    json.loads(job_table_entry.config.serialized_runtime_env),
+                "runtime_env": json.loads(
+                    job_table_entry.config.serialized_runtime_env),
             }
             entry = {
                 "is_dead": job_table_entry.is_dead,
@@ -64,7 +65,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
                     actor_table_entry.state),
                 "name": actor_table_entry.name,
                 "namespace": actor_table_entry.ray_namespace,
-                # TODO (Alex): Include runtime env here.
+                # TODO (Alex): Include runtime env here once we have a
+                # serialized_runtime_env per job.
                 "runtime_env": {},
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
@@ -76,5 +78,6 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel)
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel)
+        self._gcs_actor_info_stub = \
+            gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
+                self._dashboard_head.aiogrpc_gcs_channel)
