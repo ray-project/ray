@@ -3,6 +3,7 @@ import time
 from abc import ABC
 from collections import defaultdict
 from enum import Enum
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray.cloudpickle as pickle
@@ -33,7 +34,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
-USE_PLACEMENT_GROUP = False
+USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "0") == "1"
 
 
 class ActorReplicaWrapper:
@@ -83,8 +84,8 @@ class ActorReplicaWrapper:
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
 
-        # Feature flagging because of placement doesn't handle newly
-        # added nodes.
+        # Feature flagging because of placement groups doesn't handle
+        # newly added nodes.
         # https://github.com/ray-project/ray/issues/15801
         if USE_PLACEMENT_GROUP:
             try:
