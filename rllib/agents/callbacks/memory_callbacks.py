@@ -67,6 +67,6 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         worker_rss = process.memory_info().rss
         worker_data = process.memory_info().data
         worker_vms = process.memory_info().vms
-        episode.custom_metrics[f"tracemalloc/worker/rss"] = worker_rss
-        episode.custom_metrics[f"tracemalloc/worker/data"] = worker_data
-        episode.custom_metrics[f"tracemalloc/worker/vms"] = worker_vms
+        episode.custom_metrics["tracemalloc/worker/rss"] = worker_rss
+        episode.custom_metrics["tracemalloc/worker/data"] = worker_data
+        episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
