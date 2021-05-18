@@ -12,6 +12,7 @@ atari-impala:
     stop:
         timesteps_total: 30000000
     config:
+        num_cpus_for_driver: 0
         rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 128

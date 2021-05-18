@@ -27,6 +27,17 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
+HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
+    " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
+    " avoid spawning worker nodes of type `{node_type}`, explicitly set" \
+    " `max_workers: 0` for `{node_type}`.\n"\
+    "Note that `max_workers: 0` was the default value prior to Ray 1.3.0."\
+    " Your current version is Ray {version}.\n"\
+    "See the docs for more information:\n"\
+    "https://docs.ray.io/en/master/cluster/config.html"\
+    "#cluster-configuration-node-max-workers\n"\
+    "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +107,32 @@ def validate_config(config: Dict[str, Any]) -> None:
             raise ValueError(
                 "The specified global `max_workers` is smaller than the "
                 "sum of `min_workers` of all the available node types.")
+
+
+def check_legacy_fields(config: Dict[str, Any]) -> None:
+    """For use in providers that have completed the migration to
+    available_node_types.
+
+    Warns user that head_node and worker_nodes fields are being ignored.
+    Throws an error if available_node_types and head_node_type aren't
+    specified.
+    """
+    # log warning if non-empty head_node field
+    if "head_node" in config and config["head_node"]:
+        cli_logger.warning(
+            "The `head_node` field is deprecated and will be ignored. "
+            "Use `head_node_type` and `available_node_types` instead.")
+    # log warning if non-empty worker_nodes field
+    if "worker_nodes" in config and config["worker_nodes"]:
+        cli_logger.warning(
+            "The `worker_nodes` field is deprecated and will be ignored."
+            "Use `available_node_types` instead.")
+    if "available_node_types" not in config:
+        cli_logger.error("`available_node_types` not specified in config")
+        raise ValueError("`available_node_types` not specified in config")
+    if "head_node_type" not in config:
+        cli_logger.error("`head_node_type` not specified in config")
+        raise ValueError("`head_node_type` not specified in config")
 
 
 def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -215,8 +252,21 @@ def fill_node_type_max_workers(config):
     with the only upper constraint coming from the global max_workers.
     """
     assert "max_workers" in config, "Global max workers should be set."
-    for node_type in config["available_node_types"].values():
-        node_type.setdefault("max_workers", config["max_workers"])
+    node_types = config["available_node_types"]
+    for node_type_name in node_types:
+        node_type_data = node_types[node_type_name]
+
+        # Log a warning if head node type's max_workers is absent.
+        if (node_type_name == config["head_node_type"]
+                and "max_workers" not in node_type_data):
+            cli_logger.warning(
+                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
+                    node_type=node_type_name,
+                    max_workers=config["max_workers"],
+                    version=ray.__version__))
+
+        # The key part of this function:
+        node_type_data.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):

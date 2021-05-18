@@ -82,6 +82,7 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::WorkerContext":
         c_bool CurrentActorIsAsync()
+        const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::ActorHandle":
@@ -129,12 +130,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
-        CRayStatus AllocateReturnObjects(
-            const c_vector[CObjectID] &object_ids,
-            const c_vector[size_t] &data_sizes,
-            const c_vector[shared_ptr[CBuffer]] &metadatas,
-            const c_vector[c_vector[CObjectID]] &contained_object_ids,
-            c_vector[shared_ptr[CRayObject]] *return_objects)
+        CRayStatus AllocateReturnObject(
+            const CObjectID &object_id,
+            const size_t &data_size,
+            const shared_ptr[CBuffer] &metadata,
+            const c_vector[CObjectID] &contained_object_id,
+            shared_ptr[CRayObject] *return_object)
+        CRayStatus SealReturnObject(
+            const CObjectID& return_id,
+            shared_ptr[CRayObject] return_object
+        )
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
@@ -235,6 +240,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool enable_logging
         c_string log_dir
         c_bool install_failure_signal_handler
+        c_bool interactive
         c_string node_ip_address
         int node_manager_port
         c_string raylet_ip_address
@@ -280,6 +286,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string serialized_job_config
         int metrics_agent_port
         c_bool connect_on_start
+        int runtime_env_hash
 
     cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
         @staticmethod

@@ -42,6 +42,14 @@ py_test(
 )
 
 py_test(
+    name = "test_http_prefix_matching",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_routes",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -163,7 +171,7 @@ py_test(
     name = "test_router",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
     deps = [":serve_lib"],
 )
 

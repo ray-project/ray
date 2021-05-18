@@ -374,7 +374,6 @@ def test_connect_with_disconnected_node(shutdown_only):
     p.close()
 
 
-@pytest.mark.skip(reason="Temporarily disabled due to flakyniess.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 5,

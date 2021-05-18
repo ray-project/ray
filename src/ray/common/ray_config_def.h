@@ -101,6 +101,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// Whether to re-populate plasma memory. This avoids memory allocation failures
+/// at runtime (SIGBUS errors creating new objects), however it will use more memory
+/// upfront and can slow down Ray startup.
+/// See also: https://github.com/ray-project/ray/issues/14182
+RAY_CONFIG(bool, preallocate_plasma_memory,
+           getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != nullptr &&
+               getenv("RAY_PREALLOCATE_PLASMA_MEMORY") != std::string("0"))
+
 /// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
 /// uniform random from the valid options. The other mode is more likely to spill back
 /// many tasks to the same node.
@@ -248,6 +256,8 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
+// Feature flag to use grpc instead of redis for resource broadcast.
+RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -271,7 +281,7 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
@@ -405,7 +415,7 @@ RAY_CONFIG(int64_t, asio_stats_print_interval_ms, -1)
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
 /// The maximum number of objects to publish for each publish calls.
-RAY_CONFIG(uint64_t, publish_batch_size, 5000)
+RAY_CONFIG(int, publish_batch_size, 5000)
 
 /// The time where the subscriber connection is timed out in milliseconds.
 /// This is for the pubsub module.

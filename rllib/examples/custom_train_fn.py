@@ -17,7 +17,7 @@ parser.add_argument("--torch", action="store_true")
 
 
 def my_train_fn(config, reporter):
-    # Train for 100 iterations with high LR
+    # Train for n iterations with high LR
     agent1 = PPOTrainer(env="CartPole-v0", config=config)
     for _ in range(10):
         result = agent1.train()
@@ -27,7 +27,7 @@ def my_train_fn(config, reporter):
     state = agent1.save()
     agent1.stop()
 
-    # Train for 100 iterations with low LR
+    # Train for n iterations with low LR
     config["lr"] = 0.0001
     agent2 = PPOTrainer(env="CartPole-v0", config=config)
     agent2.restore(state)

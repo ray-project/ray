@@ -11,6 +11,7 @@ def connect(conn_str: str,
             metadata: List[Tuple[str, str]] = None,
             connection_retries: int = 3,
             job_config: JobConfig = None,
+            namespace: str = None,
             *,
             ignore_version: bool = False) -> Dict[str, Any]:
     if ray.is_connected():
@@ -31,10 +32,10 @@ def connect(conn_str: str,
         secure=secure,
         metadata=metadata,
         connection_retries=connection_retries,
+        namespace=namespace,
         ignore_version=ignore_version)
 
 
 def disconnect():
-    if not ray.is_connected():
-        raise RuntimeError("Ray Client is currently disconnected.")
+    """Disconnects from server; is idempotent."""
     return ray.disconnect()

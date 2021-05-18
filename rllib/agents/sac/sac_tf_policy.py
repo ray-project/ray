@@ -290,10 +290,12 @@ def sac_actor_critic_loss(
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+        q_t = model.get_q_values(
+            model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
-                model_out_t, train_batch[SampleBatch.ACTIONS])
+                model_out_t,
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
 
         # Q-values for current policy in given current state.
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
@@ -678,7 +680,7 @@ SACTFPolicy = build_tf_policy(
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[

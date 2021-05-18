@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-04-09"
+CURRENT_PROTOCOL_VERSION = "2021-04-19"
 
 
 class RayAPIStub:
@@ -33,6 +33,7 @@ class RayAPIStub:
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
+                namespace: str = None,
                 *,
                 ignore_version: bool = False) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -62,6 +63,10 @@ class RayAPIStub:
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
 
+        if namespace is not None:
+            job_config = job_config or JobConfig()
+            job_config.set_ray_namespace(namespace)
+
         try:
             self.client_worker = Worker(
                 conn_str,
@@ -85,9 +90,8 @@ class RayAPIStub:
         regular worker's serialization_context mechanism.
         """
         import ray.serialization_addons
-        from ray.util.client.ray_client_helpers import (
-            RayClientSerializationContext)
-        ctx = RayClientSerializationContext()
+        from ray.util.serialization import StandaloneSerializationContext
+        ctx = StandaloneSerializationContext()
         ray.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any],

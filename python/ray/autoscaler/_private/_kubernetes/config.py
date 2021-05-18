@@ -61,11 +61,20 @@ def bootstrap_kubernetes(config):
             "Exposing external IP addresses for ray containers isn't "
             "currently supported. Please set "
             "'use_internal_ips' to false.")
-    namespace = _configure_namespace(config["provider"])
-    _configure_autoscaler_service_account(namespace, config["provider"])
-    _configure_autoscaler_role(namespace, config["provider"])
-    _configure_autoscaler_role_binding(namespace, config["provider"])
+
+    if config["provider"].get("_operator"):
+        namespace = config["provider"]["namespace"]
+    else:
+        namespace = _configure_namespace(config["provider"])
+
     _configure_services(namespace, config["provider"])
+
+    if not config["provider"].get("_operator"):
+        # These steps are unecessary when using the Operator.
+        _configure_autoscaler_service_account(namespace, config["provider"])
+        _configure_autoscaler_role(namespace, config["provider"])
+        _configure_autoscaler_role_binding(namespace, config["provider"])
+
     return config
 
 

@@ -111,6 +111,9 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+std::string TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->serialized_runtime_env();
+}
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);
   return sched_cls_id_;
