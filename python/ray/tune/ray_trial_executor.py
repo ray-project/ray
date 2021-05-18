@@ -142,6 +142,7 @@ class RayTrialExecutor(TrialExecutor):
     def __init__(self,
                  queue_trials: bool = False,
                  reuse_actors: bool = False,
+                 result_buffer_length: Optional[int] = None,
                  refresh_period: Optional[float] = None,
                  wait_for_placement_group: Optional[float] = None):
         super(RayTrialExecutor, self).__init__(queue_trials)
@@ -184,7 +185,8 @@ class RayTrialExecutor(TrialExecutor):
         self.pg_recon_interval = float(
             os.environ.get("TUNE_PLACEMENT_GROUP_RECON_INTERVAL", "5"))
 
-        self._buffer_length = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
+        self._buffer_length = result_buffer_length or int(
+            os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
         self._buffer_min_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
         self._buffer_max_time_s = float(

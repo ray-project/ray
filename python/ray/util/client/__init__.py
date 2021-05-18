@@ -33,6 +33,7 @@ class RayAPIStub:
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 connection_retries: int = 3,
+                namespace: str = None,
                 *,
                 ignore_version: bool = False) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -61,6 +62,10 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
+
+        if namespace is not None:
+            job_config = job_config or JobConfig()
+            job_config.set_ray_namespace(namespace)
 
         try:
             self.client_worker = Worker(

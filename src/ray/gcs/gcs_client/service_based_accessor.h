@@ -76,7 +76,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
 
   Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
