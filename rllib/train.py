@@ -14,6 +14,7 @@ from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
 from ray.rllib.utils import force_list
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 try:
@@ -98,6 +99,12 @@ def create_parser(parser_creator=None):
         default="",
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
+    # This will override any framework setting found in a yaml file.
+    parser.add_argument(
+        "--framework",
+        choices=["tf", "tf2", "tfe", "torch"],
+        default=None,
+        help="The DL framework specifier.")
     parser.add_argument(
         "-v", action="store_true", help="Whether to use INFO level logging.")
     parser.add_argument(
@@ -106,14 +113,6 @@ def create_parser(parser_creator=None):
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
-    parser.add_argument(
-        "--torch",
-        action="store_true",
-        help="Whether to use PyTorch (instead of tf) as the DL framework.")
-    parser.add_argument(
-        "--eager",
-        action="store_true",
-        help="Whether to attempt to enable TF eager execution.")
     parser.add_argument(
         "--trace",
         action="store_true",
@@ -134,6 +133,17 @@ def create_parser(parser_creator=None):
         type=str,
         help="If specified, use config options from this file. Note that this "
         "overrides any trial-specific options set via flags above.")
+
+    # Obsolete: Use --framework=torch|tf2|tfe instead!
+    parser.add_argument(
+        "--torch",
+        action="store_true",
+        help="Whether to use PyTorch (instead of tf) as the DL framework.")
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+
     return parser
 
 
@@ -187,9 +197,13 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
 
         if args.torch:
+            deprecation_warning("--torch", "--framework=torch")
             exp["config"]["framework"] = "torch"
         elif args.eager:
+            deprecation_warning("--eager", "--framework=[tf2|tfe]")
             exp["config"]["framework"] = "tfe"
+        elif args.framework is not None:
+            exp["config"]["framework"] = args.framework
 
         if args.trace:
             if exp["config"]["framework"] not in ["tf2", "tfe"]:
