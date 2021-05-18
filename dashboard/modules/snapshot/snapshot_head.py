@@ -50,6 +50,18 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
 
         return jobs
 
+    def _get_actor_class(self, actor_table_entry_pb):
+        function_descriptor = actor_table_entry_pb.task_spec.\
+            function_descriptor
+
+        if function_descriptor.HasField("python_function_descriptor"):
+            return function_descriptor.python_function_descriptor.class_name
+        elif function_descriptor.HasField("java_descriptor"):
+            return function_descriptor.java_function_descriptor.class_name
+        # # TODO (Alex): We need to store some info about the C++ class name to
+        # # do this for C++.
+        return "N/A"
+
     async def get_actor_info(self):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
@@ -60,17 +72,20 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             actor_id = actor_table_entry.actor_id.hex()
             entry = {
                 "job_id": actor_table_entry.job_id.hex(),
-                # TODO (Alex): Replace this number with the enum string
                 "state": gcs_pb2.ActorTableData.ActorState.Name(
                     actor_table_entry.state),
                 "name": actor_table_entry.name,
                 "namespace": actor_table_entry.ray_namespace,
-                # TODO (Alex): Include runtime env here once we have a
-                # serialized_runtime_env per job.
-                "runtime_env": {},
+                "runtime_env": actor_table_entry.task_spec.
+                serialized_runtime_env,
                 "start_time": actor_table_entry.start_time,
                 "end_time": actor_table_entry.end_time,
                 "is_detached": actor_table_entry.is_detached,
+                "resources": dict(
+                    actor_table_entry.task_spec.required_resources),
+                "actor_class": self._get_actor_class(actor_table_entry),
+                "ip_address": actor_table_entry.address.ip_address,
+                "port": actor_table_entry.address.port,
             }
             actors[actor_id] = entry
         return actors
