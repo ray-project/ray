@@ -3,7 +3,7 @@ import queue
 import threading
 import traceback
 
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
 
 import ray.cloudpickle as pickle
@@ -134,6 +134,7 @@ def _make_handler(rollout_worker, samples_queue, metrics_queue):
         def __init__(self, *a, **kw):
             super().__init__(*a, **kw)
 
+        @override(SimpleHTTPRequestHandler)
         def do_POST(self):
             content_len = int(self.headers.get("Content-Length"), 0)
             raw_body = self.rfile.read(content_len)
