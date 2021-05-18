@@ -72,7 +72,8 @@ def get_or_create_conda_env(conda_env_path, base_dir=None):
     Args:
         conda_env_path: Path to a conda environment YAML file.
         base_dir (str, optional): Directory to install the environment into via
-            the --prefix option to conda create.
+            the --prefix option to conda create.  If not specified, will
+            install into the default conda directory (e.g. ~/anaconda3/envs)
     Returns:
         The name of the env, or the path to the env if base_dir is specified.
             In either case, the return value should be valid to pass in to
@@ -83,42 +84,39 @@ def get_or_create_conda_env(conda_env_path, base_dir=None):
         exec_cmd([conda_path, "--help"], throw_on_error=False)
     except EnvironmentError:
         raise ValueError(
-            "Could not find Conda executable at {0}. "
+            f"Could not find Conda executable at {conda_path}. "
             "Ensure Conda is installed as per the instructions at "
             "https://conda.io/projects/conda/en/latest/"
             "user-guide/install/index.html. "
             "You can also configure Ray to look for a specific "
-            "Conda executable by setting the {1} environment variable "
-            "to the path of the Conda executable".format(
-                conda_path, RAY_CONDA_HOME))
-    (_, stdout, _) = exec_cmd([conda_path, "env", "list", "--json"])
+            f"Conda executable by setting the {RAY_CONDA_HOME} "
+            "environment variable to the path of the Conda executable.")
+    _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
 
-    project_env_name = _get_conda_env_name(conda_env_path)
+    env_name = _get_conda_env_name(conda_env_path)
     if base_dir:
-        project_env_name = f"{base_dir}/{project_env_name}"
-        if project_env_name not in envs:
-            logger.info("=== Creating conda environment %s ===",
-                        project_env_name)
+        env_name = f"{base_dir}/{env_name}"
+        if env_name not in envs:
+            logger.info("=== Creating conda environment %s ===", env_name)
             exec_cmd(
                 [
                     conda_path, "env", "create", "--file", conda_env_path,
-                    "--prefix", project_env_name
+                    "--prefix", env_name
                 ],
                 stream_output=True)
-        return project_env_name
+        return env_name
     else:
         env_names = [os.path.basename(env) for env in envs]
-        if project_env_name not in env_names:
-            logger.info("=== Creating conda environment %s ===",
-                        project_env_name)
+        if env_name not in env_names:
+            logger.info("=== Creating conda environment %s ===", env_name)
             exec_cmd(
                 [
-                    conda_path, "env", "create", "-n", project_env_name,
-                    "--file", conda_env_path
+                    conda_path, "env", "create", "-n", env_name, "--file",
+                    conda_env_path
                 ],
                 stream_output=True)
-        return project_env_name
+        return env_name
 
 
 class ShellCommandException(Exception):

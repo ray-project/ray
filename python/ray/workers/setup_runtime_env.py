@@ -49,7 +49,10 @@ def setup(input_args):
                 try_to_create_directory(conda_dir)
                 conda_yaml_path = os.path.join(conda_dir, "environment.yml")
                 with open(conda_yaml_path, "w") as file:
-                    yaml.dump(runtime_env["conda"], file)
+                    # Sort keys because we hash based on the file contents,
+                    # and we don't want the hash to depend on the order
+                    # of the dependencies.
+                    yaml.dump(runtime_env["conda"], file, sort_keys=True)
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
                 if os.path.exists(conda_yaml_path):
