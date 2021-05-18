@@ -168,6 +168,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             data = ray.is_initialized()
         elif request.type == ray_client_pb2.ClusterInfoType.TIMELINE:
             data = ray.timeline()
+        elif request.type == ray_client_pb2.ClusterInfoType.PING:
+            data = {}
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
