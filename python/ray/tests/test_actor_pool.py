@@ -159,7 +159,7 @@ def test_multiple_returns(init):
     while pool.has_next():
         assert pool.get_next(timeout=None) == [1, 2]
 
-        
+
 def test_pop_idle(init):
     @ray.remote
     class MyActor:
