@@ -702,7 +702,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale or if you specified a "
-        << "runtime_env for this task or actor that takes time to install.";
+        << "runtime_env for this task or actor because it takes time to install.";
     auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
