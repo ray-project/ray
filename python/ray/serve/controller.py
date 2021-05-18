@@ -282,6 +282,11 @@ class ServeController:
         async with self.write_lock:
             if prev_version is not None:
                 existing_backend_info = self.backend_state.get_backend(name)
+                if (existing_backend_info is None
+                        or not existing_backend_info.version):
+                    raise ValueError(
+                        "prev_version '{}' is specified but "
+                        "there is no existing deployment".format(prev_version))
                 if existing_backend_info.version != prev_version:
                     raise ValueError("prev_version '{}' does not match with "
                                      "the existing version '{}'".format(

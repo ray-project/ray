@@ -1084,6 +1084,8 @@ class Deployment:
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
+        if not (prev_version is None or isinstance(prev_version, str)):
+            raise TypeError("prev_version must be a string.")
         if not (init_args is None or isinstance(init_args, tuple)):
             raise TypeError("init_args must be a tuple.")
         if route_prefix is not None:
@@ -1310,6 +1312,7 @@ def deployment(func_or_class: Callable) -> Deployment:
 @overload
 def deployment(name: Optional[str] = None,
                version: Optional[str] = None,
+               prev_version: Optional[str] = None,
                num_replicas: Optional[int] = None,
                init_args: Optional[Tuple[Any]] = None,
                ray_actor_options: Optional[Dict] = None,
@@ -1323,6 +1326,7 @@ def deployment(
         _func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
         version: Optional[str] = None,
+        prev_version: Optional[str] = None,
         num_replicas: Optional[int] = None,
         init_args: Optional[Tuple[Any]] = None,
         route_prefix: Optional[str] = None,
@@ -1340,6 +1344,11 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
+        prev_version (Optional[str]): Version of the existing deployment which
+            is used as a precondition for the next deployment. If prev_version
+            does not match with the existing deployment's version, the
+            deployment will fail. If not provided, deployment procedure will
+            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this backend. Defaults to 1.
         init_args (Optional[Tuple]): Arguments to be passed to the class
@@ -1391,6 +1400,7 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
+            prev_version=prev_version,
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
