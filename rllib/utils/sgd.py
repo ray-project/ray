@@ -5,7 +5,6 @@ import logging
 from collections import defaultdict
 import random
 
-from ray.util import log_once
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -45,7 +44,7 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size):
+def minibatches(samples, sgd_minibatch_size, shuffle=True):
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
@@ -63,18 +62,24 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    # Replace with `if samples["seq_lens"]` check.
-    if "state_in_0" in samples or "state_out_0" in samples:
-        if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not time-shuffling RNN data for SGD.")
-    else:
+    if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
 
-    slices = samples._get_slice_indices(sgd_minibatch_size)
-    random.shuffle(slices)
+    all_slices = samples._get_slice_indices(sgd_minibatch_size)
+    data_slices, state_slices = all_slices
 
-    for i, j in slices:
-        yield samples.slice(i, j)
+    if len(state_slices) == 0:
+        if shuffle:
+            random.shuffle(data_slices)
+        for i, j in data_slices:
+            yield samples.slice(i, j)
+    else:
+        all_slices = list(zip(data_slices, state_slices))
+        if shuffle:
+            # Make sure to shuffle data and states while linked together.
+            random.shuffle(all_slices)
+        for (i, j), (si, sj) in all_slices:
+            yield samples.slice(i, j, si, sj)
 
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,

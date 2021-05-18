@@ -13,24 +13,6 @@ std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
-void RuntimeEnv::Update(RuntimeEnv runtime_env) {
-  if (runtime_env.conda_env_name != "") {
-    conda_env_name = runtime_env.conda_env_name;
-  }
-}
-
-rpc::RuntimeEnv RuntimeEnv::GetMessage() const {
-  rpc::RuntimeEnv message;
-  message.set_conda_env_name(conda_env_name);
-  return message;
-}
-
-RuntimeEnv RuntimeEnv::FromProto(rpc::RuntimeEnv message) {
-  return RuntimeEnv(message.conda_env_name());
-}
-
-bool RuntimeEnv::IsEmpty() const { return conda_env_name == ""; }
-
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
   absl::MutexLock lock(&mutex_);
@@ -129,8 +111,8 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-ray::RuntimeEnv TaskSpecification::RuntimeEnv() const {
-  return ray::RuntimeEnv::FromProto(message_->runtime_env());
+std::string TaskSpecification::SerializedRuntimeEnv() const {
+  return message_->serialized_runtime_env();
 }
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);

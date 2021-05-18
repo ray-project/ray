@@ -410,5 +410,20 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["redis_address"])
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_partial_retval_allocation():
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote(num_returns=4)
+    def f():
+        return [np.zeros(50 * 1024 * 1024, dtype=np.uint8) for _ in range(4)]
+
+    ret = f.remote()
+    for obj in ret:
+        obj = ray.get(obj)
+        print(obj.size)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

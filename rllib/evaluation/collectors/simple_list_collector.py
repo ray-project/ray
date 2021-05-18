@@ -653,9 +653,6 @@ class SimpleListCollector(SampleCollector):
                     "of all live agents when setting done[__all__] to "
                     "True. Alternatively, set no_done_at_end=True to "
                     "allow this.")
-            # If (only this?) agent is done, erase its buffer entirely.
-            if pre_batch[SampleBatch.DONES][-1]:
-                del self.agent_collectors[(episode_id, agent_id)]
 
             other_batches = pre_batches.copy()
             del other_batches[agent_id]
@@ -700,10 +697,9 @@ class SimpleListCollector(SampleCollector):
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
 
-            # If episode is done, delete all of its agents -> policy
-            # mappings.
             if is_done:
                 del self.agent_key_to_policy_id[agent_key]
+                del self.agent_collectors[agent_key]
 
         if policy_collector_group:
             env_steps = self.episode_steps[episode_id]
