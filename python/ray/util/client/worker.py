@@ -9,6 +9,7 @@ import time
 import uuid
 from collections import defaultdict
 from typing import Any
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Tuple
@@ -33,7 +34,7 @@ from ray.util.client.common import ClientActorClass
 from ray.util.client.common import ClientRemoteFunc
 from ray.util.client.common import ClientActorRef
 from ray.util.client.common import ClientObjectRef
-from ray.util.client.common import GRPC_MAX_MESSAGE_SIZE
+from ray.util.client.common import GRPC_OPTIONS
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 
@@ -83,17 +84,13 @@ class Worker:
         self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
 
-        grpc_options = [
-            ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
-            ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
-        ]
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
-                conn_str, credentials, options=grpc_options)
+                conn_str, credentials, options=GRPC_OPTIONS)
         else:
             self.channel = grpc.insecure_channel(
-                conn_str, options=grpc_options)
+                conn_str, options=GRPC_OPTIONS)
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -165,6 +162,12 @@ class Worker:
             "ray_commit": data.ray_commit,
             "protocol_version": data.protocol_version,
         }
+
+    def register_callback(
+            self, ref: ClientObjectRef,
+            callback: Callable[[ray_client_pb2.DataResponse], None]) -> None:
+        req = ray_client_pb2.GetRequest(id=ref.id, asynchronous=True)
+        self.data_client.RegisterGetCallback(req, callback)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -274,7 +277,7 @@ class Worker:
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
-            "timeout": timeout if timeout else -1,
+            "timeout": timeout if (timeout is not None) else -1,
             "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
@@ -457,7 +460,7 @@ class Worker:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 (old_dir, runtime_env.PKG_DIR) = (runtime_env.PKG_DIR, tmp_dir)
                 # Generate the uri for runtime env
-                runtime_env.rewrite_working_dir_uri(job_config)
+                runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
                     job_config=pickle.dumps(job_config))
                 init_resp = self.data_client.Init(init_req)
@@ -511,6 +514,10 @@ class Worker:
     def _get_converted(self, key: str) -> "ClientStub":
         """Given a UUID, return the converted object"""
         return self._converted[key]
+
+    def _converted_key_exists(self, key: str) -> bool:
+        """Check if a key UUID is present in the store of converted objects."""
+        return key in self._converted
 
 
 def make_client_id() -> str:

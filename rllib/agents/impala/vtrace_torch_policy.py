@@ -156,7 +156,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions, dim=1)
 
     # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
-    policy.loss = VTraceLoss(
+    loss = VTraceLoss(
         actions=_make_time_major(loss_actions, drop_last=True),
         actions_logp=_make_time_major(
             action_dist.logp(actions), drop_last=True),
@@ -181,7 +181,11 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    return policy.loss.total_loss
+    # Store loss object only for multi-GPU tower 0.
+    if policy.device == values.device:
+        policy.loss = loss
+
+    return loss.total_loss
 
 
 def make_time_major(policy, seq_lens, tensor, drop_last=False):

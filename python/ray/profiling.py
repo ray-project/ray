@@ -1,4 +1,5 @@
 import ray
+import os
 
 
 class _NullLogSpan:
@@ -11,6 +12,7 @@ class _NullLogSpan:
         pass
 
 
+PROFILING_ENABLED = "RAY_DISABLE_PROFILING" not in os.environ
 NULL_LOG_SPAN = _NullLogSpan()
 
 
@@ -23,7 +25,7 @@ def profile(event_type, extra_data=None):
 
     .. code-block:: python
 
-        with ray.profile("custom event", extra_data={'key': 'value'}):
+        with ray.profiling.profile("custom event", extra_data={'key': 'val'}):
             # Do some computation here.
 
     Optionally, a dictionary can be passed as the "extra_data" argument, and
@@ -44,6 +46,8 @@ def profile(event_type, extra_data=None):
     Returns:
         An object that can profile a span of time via a "with" statement.
     """
+    if not PROFILING_ENABLED:
+        return NULL_LOG_SPAN
     worker = ray.worker.global_worker
     if worker.mode == ray.worker.LOCAL_MODE:
         return NULL_LOG_SPAN

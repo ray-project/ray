@@ -1,10 +1,11 @@
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 import warnings
 
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 
 torch, nn = try_import_torch()
 
@@ -39,7 +40,8 @@ def apply_grad_clipping(policy, optimizer, loss):
 
 
 def atanh(x):
-    return 0.5 * torch.log((1 + x) / (1 - x))
+    return 0.5 * torch.log(
+        (1 + x).clamp(min=SMALL_NUMBER) / (1 - x).clamp(min=SMALL_NUMBER))
 
 
 def convert_to_non_torch_type(stats):

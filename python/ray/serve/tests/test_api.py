@@ -549,15 +549,23 @@ def test_variable_routes(serve_instance):
 
     # Test multiple variables and test type conversion
     serve.create_endpoint(
-        "complex", backend="f", route="/api/{user_id:int}/{number:float}")
+        "complex",
+        backend="f",
+        route="/api/{user_id:int}/{number:float}",
+        methods=["POST"])
 
     assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
         "username": "scaly"
     }
 
-    assert requests.get("http://127.0.0.1:8000/api/23/12.345").json() == {
+    assert requests.post("http://127.0.0.1:8000/api/23/12.345").json() == {
         "user_id": 23,
         "number": 12.345
+    }
+
+    assert requests.get("http://127.0.0.1:8000/-/routes").json() == {
+        "/api/{username}": ["basic", ["GET"]],
+        "/api/{user_id:int}/{number:float}": ["complex", ["POST"]]
     }
 
 

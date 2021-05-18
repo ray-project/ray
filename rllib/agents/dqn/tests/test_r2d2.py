@@ -36,7 +36,7 @@ class TestR2D2(unittest.TestCase):
         config["lr"] = 5e-4
         config["exploration_config"]["epsilon_timesteps"] = 100000
 
-        num_iterations = 2
+        num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
         for _ in framework_iterator(config):

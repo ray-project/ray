@@ -13,6 +13,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
+from ray.rllib.utils import force_list
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 try:
@@ -166,12 +167,19 @@ def run(args, parser):
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
         # NOTE: Some of our yaml files don't have a `config` section.
-        if exp.get("config", {}).get("input") and \
-                not os.path.exists(exp["config"]["input"]):
+        input_ = exp.get("config", {}).get("input")
+        if input_ and input_ != "sampler":
+            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
-            exp["config"]["input"] = str(input_file)
+            abs_inputs = [
+                str(rllib_dir.absolute().joinpath(i))
+                if not os.path.exists(i) else i for i in inputs
+            ]
+            if not isinstance(input_, list):
+                abs_inputs = abs_inputs[0]
+
+            exp["config"]["input"] = abs_inputs
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")

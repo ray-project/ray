@@ -33,7 +33,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             num_cpus=1,
             object_store_memory=100 * MB,
             _system_config={
-                # This test uses ray.objects(), which only works with the
+                # This test uses ray.state.objects(), which only works with the
                 # GCS-based object directory
                 "ownership_based_object_directory_enabled": False,
             })
@@ -68,7 +68,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.objects()) <= 12
+                assert len(ray.state.objects()) <= 12
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -100,7 +100,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
         ray.init(
             num_cpus=2,
             _system_config={
-                # This test uses ray.objects(), which only works with the
+                # This test uses ray.state.objects(), which only works with the
                 # GCS-based object directory
                 "ownership_based_object_directory_enabled": False,
             })
@@ -144,7 +144,7 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 if self.verbose:
                     print("Iteration", self.iter_)
                     print("=" * 10)
-                    print("Number of objects: ", len(ray.objects()))
+                    print("Number of objects: ", len(ray.state.objects()))
                     print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20

@@ -38,7 +38,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -46,7 +46,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster_searcher.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -278,7 +278,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "flaky"],
 )
 
 py_test(
@@ -663,7 +663,7 @@ py_test(
     size = "medium",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "exclusive", "example"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -682,7 +682,7 @@ py_test(
     size = "large",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["flaky", "exclusive", "example"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 

@@ -118,6 +118,10 @@ class PlacementGroupFactory:
 
         self._bind()
 
+    @property
+    def head_cpus(self):
+        return self._bundles[0].get("CPU", None)
+
     def _bind(self):
         sig = signature(placement_group)
         try:
@@ -399,6 +403,11 @@ class PlacementGroupManager:
 
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None
+
+        if num_cpus is None:
+            # If the placement group specifically set the number
+            # of CPUs to 0, use this.
+            num_cpus = pgf.head_cpus
 
         logger.debug(f"For trial {trial} use pg {pg.id}")
 

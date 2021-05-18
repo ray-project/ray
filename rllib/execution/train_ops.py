@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 import math
-import tree
+import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
@@ -131,7 +131,8 @@ class TrainTFMultiGPU:
             num_gpus = 1
         type_ = "cpu" if _fake_gpus else "gpu"
         self.devices = [
-            "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
+            "/{}:{}".format(type_, 0 if _fake_gpus else i)
+            for i in range(int(math.ceil(num_gpus)))
         ]
 
         # Total batch size (all towers). Make sure it is dividable by
@@ -225,7 +226,7 @@ class TrainTFMultiGPU:
 
                         batch_fetches_all_towers.append(
                             tree.map_structure_with_path(
-                                lambda p, *s: self._all_tower_reduce(p, *s),
+                                lambda p, *s: all_tower_reduce(p, *s),
                                 *(batch_fetches["tower_{}".format(tower_num)]
                                   for tower_num in range(len(self.devices)))))
 
@@ -251,15 +252,16 @@ class TrainTFMultiGPU:
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
 
-    def _all_tower_reduce(self, path, *tower_data):
-        """Reduces stats across towers based on their stats-dict paths."""
-        if len(path) == 1 and path[0] == "td_error":
-            return np.concatenate(tower_data, axis=0)
-        elif path[-1].startswith("min_"):
-            return np.nanmin(tower_data)
-        elif path[-1].startswith("max_"):
-            return np.nanmax(tower_data)
-        return np.nanmean(tower_data)
+
+def all_tower_reduce(path, *tower_data):
+    """Reduces stats across towers based on their stats-dict paths."""
+    if len(path) == 1 and path[0] == "td_error":
+        return np.concatenate(tower_data, axis=0)
+    elif path[-1].startswith("min_"):
+        return np.nanmin(tower_data)
+    elif path[-1].startswith("max_"):
+        return np.nanmax(tower_data)
+    return np.nanmean(tower_data)
 
 
 class ComputeGradients:

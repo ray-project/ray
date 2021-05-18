@@ -4,7 +4,7 @@ min_workers: 0
 max_workers: 0
 
 docker:
-    image: anyscale/ray-ml:latest-gpu
+    image: anyscale/ray-ml:nightly-gpu
     container_name: ray_container
     pull_before_run: True
 
@@ -19,26 +19,18 @@ provider:
 auth:
     ssh_user: ubuntu
 
-head_node:
-    InstanceType: p2.xlarge  # Cheaper 1GPU K80 instance
+available_node_types:
+    gpu_ondemand:
+        node_config:
+            InstanceType: p2.xlarge
+        resources: {"CPU": 4, "GPU": 1}
+        min_workers: 0
+        max_workers: 0
 
-    # Set primary volume to 25 GiB
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
+head_node_type: gpu_ondemand
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1 curl unzip gcc python3-dev
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - sudo apt update
+    - sudo apt-get install -y libglib2.0-0 libcudnn8=8.0.5.39-1+cuda11.0 curl unzip gcc python3-dev
+    - pip install -U {{env["RAY_WHEEL"]}}

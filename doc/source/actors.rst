@@ -369,7 +369,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 Named Actors
 ------------
 
-An actor can be given a globally unique name.
+An actor can be given a unique name within their :ref:`namespace <namespaces-guide>`.
 This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to

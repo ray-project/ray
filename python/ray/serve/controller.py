@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
-import inspect
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -11,6 +10,7 @@ from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
+    EndpointInfo,
     EndpointTag,
     GoalId,
     NodeId,
@@ -21,7 +21,6 @@ from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
     RESERVED_VERSION_TAG,
-    WILDCARD_PATH_SUFFIX,
 )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
@@ -32,7 +31,6 @@ from ray.serve.utils import logger
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
-CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
@@ -177,7 +175,7 @@ class ServeController:
             endpoint: str,
             traffic_dict: Dict[str, float],
             route: Optional[str],
-            methods: List[str],
+            methods: Set[str],
     ) -> None:
         """Create a new endpoint with the specified route and methods.
 
@@ -191,8 +189,9 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.endpoint_state.create_endpoint(endpoint, route, methods,
-                                                TrafficPolicy(traffic_dict))
+            self.endpoint_state.create_endpoint(
+                endpoint, EndpointInfo(methods, route=route),
+                TrafficPolicy(traffic_dict))
 
         # TODO(simon): Use GoalID mechanism for this so client can check for
         # goal id and http_state complete the goal id.
@@ -213,12 +212,15 @@ class ServeController:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     async def delete_backend(self,
                              backend_tag: BackendTag,
@@ -243,12 +245,14 @@ class ServeController:
                 raise ValueError(f"Backend {backend_tag} is not registered.")
 
             backend_info = BackendInfo(
-                worker_class=existing_info.worker_class,
+                actor_def=existing_info.actor_def,
                 version=existing_info.version,
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
                 replica_config=existing_info.replica_config)
-            return self.backend_state.deploy_backend(backend_tag, backend_info)
+            goal_id, _ = self.backend_state.deploy_backend(
+                backend_tag, backend_info)
+            return goal_id
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
@@ -263,58 +267,38 @@ class ServeController:
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for proxy in self.http_state.get_http_proxy_handles().values():
-                ray.kill(proxy, no_restart=True)
-            for replica_dict in self.backend_state.get_running_replica_handles(
-            ).values():
-                for replica in replica_dict.values():
-                    ray.kill(replica, no_restart=True)
-            self.kv_store.delete(CHECKPOINT_KEY)
+            self.backend_state.shutdown()
+            self.endpoint_state.shutdown()
+            self.http_state.shutdown()
 
     async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, version: Optional[str],
-                     route_prefix: Optional[str]) -> Optional[GoalId]:
-        if route_prefix is None:
-            route_prefix = f"/{name}"
-
-        if replica_config.is_asgi_app:
-            # When the backend is asgi application, we want to proxy it
-            # with a prefixed path as well as proxy all HTTP methods.
-            # {wildcard:path} is used so HTTPProxy's Starlette router can match
-            # arbitrary path.
-            if route_prefix.endswith("/"):
-                route_prefix = route_prefix[:-1]
-            http_route = route_prefix + WILDCARD_PATH_SUFFIX
-            http_methods = ALL_HTTP_METHODS
-        else:
-            http_route = route_prefix
-            # Generic endpoint should support a limited subset of HTTP methods.
-            http_methods = ["GET", "POST"]
-
-        python_methods = []
-        if inspect.isclass(replica_config.backend_def):
-            for method_name, _ in inspect.getmembers(
-                    replica_config.backend_def, inspect.isfunction):
-                python_methods.append(method_name)
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], route_prefix: Optional[str]
+                     ) -> Tuple[Optional[GoalId], bool]:
+        if route_prefix is not None:
+            assert route_prefix.startswith("/")
 
         async with self.write_lock:
             backend_info = BackendInfo(
-                worker_class=create_backend_replica(
-                    replica_config.backend_def),
+                actor_def=ray.remote(
+                    create_backend_replica(
+                        name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config)
 
-            goal_id = self.backend_state.deploy_backend(name, backend_info)
-            self.endpoint_state.update_endpoint(
-                name,
-                http_route,
-                http_methods,
-                TrafficPolicy({
-                    name: 1.0
-                }),
-                python_methods=python_methods)
-            return goal_id
+            goal_id, updating = self.backend_state.deploy_backend(
+                name, backend_info)
+            endpoint_info = EndpointInfo(
+                ALL_HTTP_METHODS,
+                route=route_prefix,
+                python_methods=python_methods,
+                legacy=False)
+            self.endpoint_state.update_endpoint(name, endpoint_info,
+                                                TrafficPolicy({
+                                                    name: 1.0
+                                                }))
+            return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
