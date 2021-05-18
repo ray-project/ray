@@ -554,6 +554,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
   mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  auto time = current_sys_time_ms();
+  mutable_actor_table_data->set_end_time(time);
+  mutable_actor_table_data->set_timestamp(time);
+
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
@@ -786,7 +790,9 @@ void GcsActorManager::ReconstructActor(
       mutable_actor_table_data->set_allocated_creation_task_exception(
           new rpc::RayException(*creation_task_exception));
     }
-    mutable_actor_table_data->set_timestamp(current_sys_time_ms());
+    auto time = current_sys_time_ms();
+    mutable_actor_table_data->set_end_time(time);
+    mutable_actor_table_data->set_timestamp(time);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -826,9 +832,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   if (registered_actors_.count(actor_id) == 0) {
     return;
   }
+  auto mutable_actor_table_data = actor->GetMutableActorTableData();
+  auto time = current_sys_time_ms();
+  mutable_actor_table_data->set_timestamp(time);
+  if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
+    mutable_actor_table_data->set_start_time(time);
+  }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
-  auto actor_table_data = actor->GetActorTableData();
-  actor_table_data.set_timestamp(current_sys_time_ms());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
@@ -837,6 +847,8 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
+
+  auto actor_table_data = *mutable_actor_table_data;
   // The backend storage is reliable in the future, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data,
