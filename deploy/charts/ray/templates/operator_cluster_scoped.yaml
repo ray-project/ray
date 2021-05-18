@@ -1,9 +1,10 @@
+{{- if and (not .Values.namespacedOperator) (not .Values.clusterOnly) }}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ray-operator-serviceaccount
-  namespace: default
+  namespace: {{ .Values.operatorNamespace }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
@@ -21,7 +22,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: ray-operator-serviceaccount
-  namespace: default
+  namespace: {{ .Values.operatorNamespace }}
 roleRef:
   kind: ClusterRole
   name: ray-operator-clusterrole
@@ -31,6 +32,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ray-operator
+  namespace: {{ .Values.operatorNamespace }}
 spec:
   replicas: 1
   selector:
@@ -45,7 +47,7 @@ spec:
       containers:
       - name: ray
         imagePullPolicy: Always
-        image: rayproject/ray:nightly
+        image: {{ .Values.operatorImage }}
         command: ["ray-operator"]
         env:
         - name: AUTOSCALER_MAX_NUM_FAILURES
@@ -56,4 +58,4 @@ spec:
             memory: 1Gi
           limits:
             memory: 2Gi
-
+{{- end }}

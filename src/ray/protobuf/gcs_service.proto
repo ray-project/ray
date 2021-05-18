@@ -78,7 +78,9 @@ message GetActorInfoReply {
 
 message GetNamedActorInfoRequest {
   // Name of the actor.
-  string name = 2;
+  string name = 1;
+  // Namespace of the actor.
+  string ray_namespace = 2;
 }
 
 message GetNamedActorInfoReply {

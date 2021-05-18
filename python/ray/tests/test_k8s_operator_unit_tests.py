@@ -1,3 +1,4 @@
+import copy
 import os
 import unittest
 from unittest.mock import patch
@@ -112,13 +113,13 @@ def custom_resources():
     # K8s custom resources used in test.
     here = os.path.realpath(__file__)
     ray_python_root = os.path.dirname(os.path.dirname(here))
-    relative_path = "autoscaler/kubernetes/operator_configs"
-    abs_path = os.path.join(ray_python_root, relative_path)
-    cluster1, cluster2 = "example_cluster.yaml", "example_cluster2.yaml"
-    path1, path2 = os.path.join(abs_path, cluster1), os.path.join(
-        abs_path, cluster2)
-    cr1, cr2 = (yaml.safe_load(open(path1).read()),
-                yaml.safe_load(open(path2).read()))
+    ray_root = os.path.dirname(os.path.dirname(ray_python_root))
+    relative_path = "deploy/components"
+    abs_path = os.path.join(ray_root, relative_path)
+    cluster = "example_cluster.yaml"
+    path = os.path.join(abs_path, cluster)
+    cr1 = yaml.safe_load(open(path).read())
+    cr2 = copy.deepcopy(cr1)
     # Namespace uid and filled on resource creation in real life.
     cr1["metadata"]["uid"] = "abc"
     cr2["metadata"]["uid"] = "xyz"

@@ -16,6 +16,7 @@ parser.add_argument(
     choices=["tf", "tf2", "tfe", "torch"],
     default="tf",
     help="The DL framework specifier.")
+parser.add_argument("--eager-tracing", action="store_true")
 parser.add_argument("--use-prev-action", action="store_true")
 parser.add_argument("--use-prev-reward", action="store_true")
 parser.add_argument(
@@ -75,8 +76,8 @@ if __name__ == "__main__":
                 "lstm_use_prev_reward": args.use_prev_reward,
             },
             "framework": args.framework,
-            # Run with tracing enabled for tfe/tf2.
-            "eager_tracing": args.framework in ["tfe", "tf2"],
+            # Run with tracing enabled for tfe/tf2?
+            "eager_tracing": args.eager_tracing,
         })
 
     stop = {

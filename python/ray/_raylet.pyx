@@ -859,7 +859,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, metrics_agent_port):
+                  serialized_job_config, metrics_agent_port, runtime_env_hash):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -913,6 +913,7 @@ cdef class CoreWorker:
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
+        options.runtime_env_hash = runtime_env_hash
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -1575,43 +1576,41 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
-            c_vector[size_t] data_sizes
-            c_vector[shared_ptr[CBuffer]] metadatas
-            c_vector[c_vector[CObjectID]] contained_ids
+            CObjectID return_id
+            size_t data_size
+            shared_ptr[CBuffer] metadata
+            c_vector[CObjectID] contained_id
             c_vector[CObjectID] return_ids_vector
 
         if return_ids.size() == 0:
             return
 
-        serialized_objects = []
-        for i in range(len(outputs)):
+        n_returns = len(outputs)
+        returns.resize(n_returns)
+        for i in range(n_returns):
             return_id, output = return_ids[i], outputs[i]
             context = worker.get_serialization_context()
             serialized_object = context.serialize(output)
-            data_sizes.push_back(serialized_object.total_bytes)
-            metadata = serialized_object.metadata
+            data_size = serialized_object.total_bytes
+            metadata_str = serialized_object.metadata
             if ray.worker.global_worker.debugger_get_breakpoint:
                 breakpoint = (
                     ray.worker.global_worker.debugger_get_breakpoint)
-                metadata += (
+                metadata_str += (
                     b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
                     breakpoint.encode())
                 # Reset debugging context of this worker.
                 ray.worker.global_worker.debugger_get_breakpoint = b""
-            metadatas.push_back(string_to_buffer(metadata))
-            serialized_objects.append(serialized_object)
-            contained_ids.push_back(
-                ObjectRefsToVector(serialized_object.contained_object_refs)
-            )
+            metadata = string_to_buffer(metadata_str)
+            contained_id = ObjectRefsToVector(
+                serialized_object.contained_object_refs)
 
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .AllocateReturnObjects(
-                             return_ids, data_sizes, metadatas, contained_ids,
-                             returns))
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
+                        return_id, data_size, metadata, contained_id,
+                        &returns[0][i]))
 
-        for i, serialized_object in enumerate(serialized_objects):
-            # A nullptr is returned if the object already exists.
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
                     (<SerializedObject>serialized_object).write_to(
@@ -1625,6 +1624,11 @@ cdef class CoreWorker:
                                        return_ids_vector),
                             return_ids_vector, return_ids[i]))
                     return_ids_vector.clear()
+
+            with nogil:
+                check_status(
+                    CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                        return_id, returns[0][i]))
 
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
