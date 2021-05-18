@@ -33,6 +33,7 @@ class ReplicaState(Enum):
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
+USE_PLACEMENT_GROUP = False
 
 
 class ActorReplicaWrapper:
@@ -82,17 +83,21 @@ class ActorReplicaWrapper:
     def start(self, backend_info: BackendInfo):
         self._actor_resources = backend_info.replica_config.resource_dict
 
-        try:
-            self._placement_group = ray.util.get_placement_group(
-                self._placement_group_name)
-        except ValueError:
-            logger.debug(
-                "Creating placement group '{}' for backend '{}'".format(
-                    self._placement_group_name, self._backend_tag))
-            self._placement_group = ray.util.placement_group(
-                [self._actor_resources],
-                lifetime="detached",
-                name=self._placement_group_name)
+        # Feature flagging because of placement doesn't handle newly
+        # added nodes.
+        # https://github.com/ray-project/ray/issues/15801
+        if USE_PLACEMENT_GROUP:
+            try:
+                self._placement_group = ray.util.get_placement_group(
+                    self._placement_group_name)
+            except ValueError:
+                logger.debug(
+                    "Creating placement group '{}' for backend '{}'".format(
+                        self._placement_group_name, self._backend_tag))
+                self._placement_group = ray.util.placement_group(
+                    [self._actor_resources],
+                    lifetime="detached",
+                    name=self._placement_group_name)
 
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
