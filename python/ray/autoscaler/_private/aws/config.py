@@ -169,10 +169,21 @@ def log_to_cli(config: Dict[str, Any]) -> None:
                         _tags=node_tags[node_type_key])
 
         tags = {"default": _log_info["head_instance_profile_src"] == "default"}
-        profile_arn = head_node_config["IamInstanceProfile"].get("Arn")
+        # head_node_config is the head_node_type's config,
+        # config["head_node"] is a field that gets applied only to the actual
+        # head node (and not workers of the head's node_type)
+        assert ("IamInstanceProfile" in head_node_config or
+                "IamInstanceProfile" in config["head_node"])
+        if "IamInstanceProfile" in head_node_config:
+            # If the user manually configured the role we're here.
+            IamProfile = head_node_config["IamInstanceProfile"]
+        elif "IamInstanceProfile" in config["head_node"]:
+            # If we filled the default IAM role, we're here.
+            IamProfile = config["head_node"]["IamInstanceProfile"]
+        profile_arn = IamProfile.get("Arn")
         profile_name = _arn_to_name(profile_arn) \
             if profile_arn \
-            else head_node_config["IamInstanceProfile"]["Name"]
+            else IamProfile["Name"]
         cli_logger.labeled_value("IAM Profile", "{}", profile_name, _tags=tags)
 
         if all("KeyName" in node_type["node_config"]
@@ -194,6 +205,8 @@ def bootstrap_aws(config):
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
+    # Used internally to store head IAM role.
+    config["head_node"] = {}
 
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
@@ -216,6 +229,7 @@ def bootstrap_aws(config):
     _check_ami(config)
 
     return config
+
 
 def _configure_iam_role(config):
     head_node_type = config["head_node_type"]
@@ -274,8 +288,9 @@ def _configure_iam_role(config):
             PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
-
-    head_node_config["IamInstanceProfile"] = {"Arn": profile.arn}
+    # Add IAM role to "head_node" field so that it is applied only to
+    # the head node -- not to workers with the same node type as the head.
+    config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
