@@ -1,3 +1,7 @@
+good commit (from Oct16th):
+6233cef22cc3c62034b4a40923d1eaebdfef883f
+
+
 """
 This script should be used to find learning or performance regressions in RLlib.
 
@@ -50,12 +54,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    try:
+        subprocess.run(["ray", "stop"])
+    except Exception:
+        pass
+
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         # Assume we are in the ray (git clone) directory.
         subprocess.run(["ci/travis/install-bazel.sh"])
         os.chdir("python")
         subprocess.run(["pip", "install", "-e", "."])
+
+    subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
 
     run = None
 
