@@ -59,7 +59,7 @@ class MyPrintLogger(Logger):
         # Custom init function.
         print("Initializing ...")
         # Setting up our log-line prefix.
-        self.prefix = self.config.get("prefix")
+        self.prefix = self.config.get("logger_config").get("prefix")
 
     def on_result(self, result: dict):
         # Define, what should happen on receiving a `result` (dict).

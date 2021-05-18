@@ -1,6 +1,8 @@
 What is Ray?
 ============
 
+.. tip:: Please take 5 minutes to take the `Ray Pulse Community Survey <https://www.surveymonkey.com/r/ray-community-pulse-2021>`_!
+
 .. include:: ray-overview/basics.rst
 
 Getting Started with Ray
