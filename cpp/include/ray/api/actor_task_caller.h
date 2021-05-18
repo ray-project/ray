@@ -15,12 +15,17 @@ class ActorTaskCaller {
  public:
   ActorTaskCaller() = default;
 
-  ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionHolder ptr,
+  ActorTaskCaller(RayRuntime *runtime, ActorID id,
+                  RemoteFunctionHolder remote_function_holder,
                   std::vector<std::unique_ptr<::ray::TaskArg>> &&args)
-      : runtime_(runtime), id_(id), ptr_(ptr), args_(std::move(args)) {}
+      : runtime_(runtime),
+        id_(id),
+        remote_function_holder_(remote_function_holder),
+        args_(std::move(args)) {}
 
-  ActorTaskCaller(RayRuntime *runtime, ActorID id, RemoteFunctionHolder ptr)
-      : runtime_(runtime), id_(id), ptr_(ptr) {}
+  ActorTaskCaller(RayRuntime *runtime, ActorID id,
+                  RemoteFunctionHolder remote_function_holder)
+      : runtime_(runtime), id_(id), remote_function_holder_(remote_function_holder) {}
 
   template <typename... Args>
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args... args);
@@ -28,7 +33,7 @@ class ActorTaskCaller {
  private:
   RayRuntime *runtime_;
   ActorID id_;
-  RemoteFunctionHolder ptr_;
+  RemoteFunctionHolder remote_function_holder_;
   std::vector<std::unique_ptr<::ray::TaskArg>> args_;
 };
 
@@ -42,7 +47,7 @@ ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
   StaticCheck<F, Args...>();
 
   Arguments::WrapArgs(&args_, args...);
-  auto returned_object_id = runtime_->CallActor(ptr_, id_, args_);
+  auto returned_object_id = runtime_->CallActor(remote_function_holder_, id_, args_);
   return ObjectRef<ReturnType>(returned_object_id);
 }
 

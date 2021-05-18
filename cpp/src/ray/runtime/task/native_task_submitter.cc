@@ -10,7 +10,7 @@ namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.lib_name, invocation.fptr.function_name);
+      invocation.lib_name, invocation.remote_function_holder.function_name);
   return RayFunction(Language::CPP, function_descriptor);
 }
 

@@ -148,29 +148,14 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 template <typename FuncType>
 inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
-  RemoteFunctionHolder ptr{};
-  auto function_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
-  if (function_name.empty()) {
-    throw RayException(
-        "Function not found. Please use RAY_REMOTE to register this function.");
-  }
-  ptr.function_name = std::move(function_name);
-  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), ptr);
+  RemoteFunctionHolder remote_func_holder(func);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
 }
 
 template <typename FuncType>
 inline ActorCreator<FuncType> Ray::CreateActorInternal(FuncType &create_func) {
-  RemoteFunctionHolder ptr{};
-  auto function_name =
-      ray::internal::FunctionManager::Instance().GetFunctionName(create_func);
-  if (function_name.empty()) {
-    throw RayException(
-        "Function not found. Please use RAY_REMOTE to register this function.");
-  }
-
-  ptr.function_name = std::move(function_name);
-
-  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), ptr);
+  RemoteFunctionHolder remote_func_holder(create_func);
+  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
 }
 
 /// Normal task.
