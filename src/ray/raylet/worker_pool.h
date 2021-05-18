@@ -76,8 +76,12 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
+  /// The environment variable overrides for this worker.
   const std::unordered_map<std::string, std::string> override_environment_variables;
+  /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
+  /// The cached hash of the worker's environment.  This is set to 0
+  /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;
 };
 
