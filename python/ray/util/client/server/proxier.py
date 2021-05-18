@@ -43,10 +43,11 @@ def _get_unused_port() -> int:
 
 def _get_client_id_from_context(context: Any) -> str:
     metadata = {k: v for k, v in context.invocation_metadata()}
-    client_id = metadata.get("client_id", "")
+    client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")
         context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+    return client_id
 
 
 @dataclass
@@ -247,7 +248,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             if channel is not None:
                 break
             logger.warning(
-                f"Retrying Logstream connection. {i} attempts failed.")
+                f"Retrying Logstream connection. {i+1} attempts failed.")
             time.sleep(5)
 
         if channel is None:
