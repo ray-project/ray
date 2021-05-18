@@ -28,8 +28,8 @@ Then, you can try out training in the following equivalent ways:
 .. code-block:: bash
 
   rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
-                                           # --eager [--trace] for eager execution,
-                                           # --torch to use PyTorch
+                                           # --config='{"framework": "tf2", "eager_tracing": True}' for eager,
+                                           # --torch to use PyTorch OR --config='{"framework": "torch"}'
 
 .. code-block:: python
 

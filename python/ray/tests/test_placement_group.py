@@ -1131,7 +1131,7 @@ ray.shutdown()
     def is_job_done():
         jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1207,7 +1207,7 @@ ray.shutdown()
     def is_job_done():
         jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1430,7 +1430,7 @@ ray.shutdown()
     def is_job_done():
         jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 
@@ -1534,7 +1534,7 @@ ray.shutdown()
     def is_job_done():
         jobs = ray.state.jobs()
         for job in jobs:
-            if "StopTime" in job:
+            if job["IsDead"]:
                 return True
         return False
 

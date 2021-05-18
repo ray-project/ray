@@ -1126,7 +1126,8 @@ def connect(node,
             driver_object_store_memory=None,
             job_id=None,
             namespace=None,
-            job_config=None):
+            job_config=None,
+            runtime_env_hash=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1140,6 +1141,7 @@ def connect(node,
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1246,7 +1248,7 @@ def connect(node,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
