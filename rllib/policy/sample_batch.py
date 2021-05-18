@@ -312,12 +312,14 @@ class SampleBatch(dict):
                             shape=(-start, ) + v.shape[1:], dtype=v.dtype),
                         v[0:end]
                     ])
-                    for k, v in self.items() if k != "seq_lens"
+                    for k, v in self.items()
+                    if k != "seq_lens" and not k.startswith("state_in_")
                 }
             else:
                 data = {
                     k: v[start:end]
-                    for k, v in self.items() if k != "seq_lens"
+                    for k, v in self.items()
+                    if k != "seq_lens" and not k.startswith("state_in_")
                 }
             if state_start is not None:
                 assert state_end is not None
@@ -328,6 +330,11 @@ class SampleBatch(dict):
                     state_idx += 1
                     state_key = "state_in_{}".format(state_idx)
                 seq_lens = list(self["seq_lens"][state_start:state_end])
+                # Adjust seq_lens if necessary.
+                data_len = len(data[next(iter(data))])
+                if sum(seq_lens) != data_len:
+                    assert sum(seq_lens) > data_len
+                    seq_lens[-1] = data_len - sum(seq_lens[:-1])
             else:
                 # Fix state_in_x data.
                 count = 0
