@@ -153,24 +153,23 @@ Status TaskExecutor::ExecuteTask(
     }
   }
 
-  std::vector<size_t> data_sizes;
-  std::vector<std::shared_ptr<ray::Buffer>> metadatas;
-  std::vector<std::vector<ray::ObjectID>> contained_object_ids;
+  results->resize(return_ids.size(), nullptr);
   if (task_type != TaskType::ACTOR_CREATION_TASK) {
-    metadatas.push_back(nullptr);
-    data_sizes.push_back(data->size());
-    contained_object_ids.push_back(std::vector<ray::ObjectID>());
-  }
+    size_t data_size = data->size();
+    auto &result_id = return_ids[0];
+    auto result_ptr = &(*results)[0];
+    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), result_ptr));
 
-  RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObjects(
-      return_ids, data_sizes, metadatas, contained_object_ids, results));
-  if (task_type != TaskType::ACTOR_CREATION_TASK) {
-    auto result = (*results)[0];
+    auto result = *result_ptr;
     if (result != nullptr) {
       if (result->HasData()) {
-        memcpy(result->GetData()->Data(), data->data(), data_sizes[0]);
+        memcpy(result->GetData()->Data(), data->data(), data_size);
       }
     }
+
+    RAY_CHECK_OK(
+        ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
   }
   return ray::Status::OK();
 }

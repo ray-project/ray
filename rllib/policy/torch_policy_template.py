@@ -1,6 +1,5 @@
 import gym
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, \
-    TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
@@ -12,10 +11,8 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+from ray.rllib.utils.typing import ModelGradients, TensorType, \
+    TrainerConfigDict
 
 torch, _ = try_import_torch()
 
@@ -30,10 +27,7 @@ def build_torch_policy(
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
-        postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
-        ], SampleBatch]] = None,
+        postprocess_fn=None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
             TorchDistributionWrapper
@@ -68,6 +62,8 @@ def build_torch_policy(
         make_model_and_action_dist: Optional[Callable[[
             Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
         ], Tuple[ModelV2, Type[TorchDistributionWrapper]]]] = None,
+        compute_gradients_fn: Optional[Callable[[Policy, SampleBatch], Tuple[
+            ModelGradients, dict]]] = None,
         apply_gradients_fn: Optional[Callable[
             [Policy, "torch.optim.Optimizer"], None]] = None,
         mixins: Optional[List[type]] = None,

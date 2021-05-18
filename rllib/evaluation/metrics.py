@@ -172,7 +172,7 @@ def summarize_episodes(
         hist_stats["policy_{}_reward".format(policy_id)] = rewards
 
     for k, v_list in custom_metrics.copy().items():
-        filt = [v for v in v_list if not np.isnan(v)]
+        filt = [v for v in v_list if not np.any(np.isnan(v))]
         custom_metrics[k + "_mean"] = np.mean(filt)
         if filt:
             custom_metrics[k + "_min"] = np.min(filt)
