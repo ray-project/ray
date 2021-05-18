@@ -122,6 +122,9 @@ class Worker:
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
         self._load_code_from_local = False
+        # Used to toggle whether or not logs should be filtered to only those
+        # produced in the same job.
+        self.filter_logs_by_job = True
 
     @property
     def connected(self):
@@ -396,6 +399,55 @@ class Worker:
         self.core_worker.run_task_loop()
         sys.exit(0)
 
+    def print_logs(self):
+        """Prints log messages from workers on all nodes in the same job.
+        """
+        pubsub_client = self.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+        localhost = services.get_node_ip_address()
+        try:
+            # Keep track of the number of consecutive log messages that have
+            # been received with no break in between. If this number grows
+            # continually, then the worker is probably not able to process the
+            # log messages as rapidly as they are coming in.
+            num_consecutive_messages_received = 0
+            job_id_binary = ray._private.utils.binary_to_hex(
+                self.current_job_id.binary())
+            while True:
+                # Exit if we received a signal that we should stop.
+                if self.threads_stopped.is_set():
+                    return
+
+                msg = pubsub_client.get_message()
+                if msg is None:
+                    num_consecutive_messages_received = 0
+                    self.threads_stopped.wait(timeout=0.01)
+                    continue
+                num_consecutive_messages_received += 1
+                if (num_consecutive_messages_received % 100 == 0
+                        and num_consecutive_messages_received > 0):
+                    logger.warning(
+                        "The driver may not be able to keep up with the "
+                        "stdout/stderr of the workers. To avoid forwarding "
+                        "logs to the driver, use "
+                        "'ray.init(log_to_driver=False)'.")
+
+                data = json.loads(ray._private.utils.decode(msg["data"]))
+
+                # Don't show logs from other drivers.
+                if (self.filter_logs_by_job and data["job"]
+                        and job_id_binary != data["job"]):
+                    continue
+                data["localhost"] = localhost
+                global_worker_stdstream_dispatcher.emit(data)
+
+        except (OSError, redis.exceptions.ConnectionError) as e:
+            logger.error(f"print_logs: {e}")
+        finally:
+            # Close the pubsub client to avoid leaking file descriptors.
+            pubsub_client.close()
+
 
 @client_mode_hook
 def get_gpu_ids():
@@ -498,6 +550,7 @@ def init(
         logging_level=logging.INFO,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_to_driver=True,
+        namespace=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -710,7 +763,14 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            start_initial_python_workers_for_first_job=True,
+            # We need to disable it if runtime env is not set.
+            # Uploading happens after core worker is created. And we should
+            # prevent default worker being created before uploading.
+            # TODO (yic): Have a separate connection to gcs client when
+            # removal redis is done. The uploading should happen before this
+            # one.
+            start_initial_python_workers_for_first_job=(
+                job_config is None or job_config.runtime_env is None),
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -776,6 +836,7 @@ def init(
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
+        namespace=namespace,
         job_config=job_config)
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -887,59 +948,6 @@ def custom_excepthook(type, value, tb):
 
 
 sys.excepthook = custom_excepthook
-
-
-def print_logs(redis_client, threads_stopped, job_id):
-    """Prints log messages from workers on all of the nodes.
-
-    Args:
-        redis_client: A client to the primary Redis shard.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-        job_id (JobID): The id of the driver's job
-
-    """
-    pubsub_client = redis_client.pubsub(ignore_subscribe_messages=True)
-    pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
-    localhost = services.get_node_ip_address()
-    try:
-        # Keep track of the number of consecutive log messages that have been
-        # received with no break in between. If this number grows continually,
-        # then the worker is probably not able to process the log messages as
-        # rapidly as they are coming in.
-        num_consecutive_messages_received = 0
-        while True:
-            # Exit if we received a signal that we should stop.
-            if threads_stopped.is_set():
-                return
-
-            msg = pubsub_client.get_message()
-            if msg is None:
-                num_consecutive_messages_received = 0
-                threads_stopped.wait(timeout=0.01)
-                continue
-            num_consecutive_messages_received += 1
-            if (num_consecutive_messages_received % 100 == 0
-                    and num_consecutive_messages_received > 0):
-                logger.warning(
-                    "The driver may not be able to keep up with the "
-                    "stdout/stderr of the workers. To avoid forwarding logs "
-                    "to the driver, use 'ray.init(log_to_driver=False)'.")
-
-            data = json.loads(ray._private.utils.decode(msg["data"]))
-
-            # Don't show logs from other drivers.
-            if data["job"] and ray._private.utils.binary_to_hex(
-                    job_id.binary()) != data["job"]:
-                continue
-            data["localhost"] = localhost
-            global_worker_stdstream_dispatcher.emit(data)
-
-    except (OSError, redis.exceptions.ConnectionError) as e:
-        logger.error(f"print_logs: {e}")
-    finally:
-        # Close the pubsub client to avoid leaking file descriptors.
-        pubsub_client.close()
 
 
 def print_to_stdstream(data):
@@ -1117,7 +1125,9 @@ def connect(node,
             worker=global_worker,
             driver_object_store_memory=None,
             job_id=None,
-            job_config=None):
+            namespace=None,
+            job_config=None,
+            runtime_env_hash=0):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1131,6 +1141,7 @@ def connect(node,
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
         job_config (ray.job_config.JobConfig): The job configuration.
+        runtime_env_hash (int): The hash of the runtime env for this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1226,13 +1237,18 @@ def connect(node,
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
+    if namespace is not None:
+        # The namespace field of job config may have already been set in code
+        # paths such as the client.
+        job_config.set_ray_namespace(namespace)
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
         gcs_options, node.get_logs_dir_path(), node.node_ip_address,
         node.node_manager_port, node.raylet_ip_address, (mode == LOCAL_MODE),
         driver_name, log_stdout_file_path, log_stderr_file_path,
-        serialized_job_config, node.metrics_agent_port)
+        serialized_job_config, node.metrics_agent_port, runtime_env_hash)
     worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Create an object for interfacing with the global state.
@@ -1285,9 +1301,7 @@ def connect(node,
             global_worker_stdstream_dispatcher.add_handler(
                 "ray_print_logs", print_to_stdstream)
             worker.logger_thread = threading.Thread(
-                target=print_logs,
-                name="ray_print_logs",
-                args=(worker.redis_client, worker.threads_stopped, job_id))
+                target=worker.print_logs, name="ray_print_logs")
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
@@ -1614,10 +1628,11 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @client_mode_hook
 def get_actor(name):
-    """Get a handle to a detached actor.
+    """Get a handle to a named actor.
 
-    Gets a handle to a detached actor with the given name. The actor must
-    have been created with Actor.options(name="name").remote().
+    Gets a handle to an actor with the given name. The actor must
+    have been created with Actor.options(name="name").remote(). This
+    works for both detached & non-detached actors.
 
     Returns:
         ActorHandle to the actor.

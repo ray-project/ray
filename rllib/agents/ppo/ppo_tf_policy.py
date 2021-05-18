@@ -92,7 +92,8 @@ def ppo_surrogate_loss(
             1 + policy.config["clip_param"]))
     mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
-    if policy.config["use_gae"]:
+    # Compute a value function loss.
+    if policy.config["use_critic"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         vf_loss1 = tf.math.square(value_fn_out -
                                   train_batch[Postprocessing.VALUE_TARGETS])
@@ -103,15 +104,14 @@ def ppo_surrogate_loss(
                                   train_batch[Postprocessing.VALUE_TARGETS])
         vf_loss = tf.maximum(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+    # Ignore the value function.
     else:
-        mean_vf_loss = tf.constant(0.0)
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       policy.kl_coeff * action_kl -
-                                       policy.entropy_coeff * curr_entropy)
+        vf_loss = mean_vf_loss = tf.constant(0.0)
+
+    total_loss = reduce_mean_valid(-surrogate_loss +
+                                   policy.kl_coeff * action_kl +
+                                   policy.config["vf_loss_coeff"] * vf_loss -
+                                   policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -371,7 +371,7 @@ PPOTFPolicy = build_tf_policy(
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
     postprocess_fn=compute_gae_for_sample_batch,
     stats_fn=kl_and_loss_stats,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     extra_action_out_fn=vf_preds_fetches,
     before_init=setup_config,
     before_loss_init=setup_mixins,

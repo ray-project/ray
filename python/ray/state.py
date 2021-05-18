@@ -41,9 +41,11 @@ class GlobalState:
             RuntimeError: An exception is raised if ray.init() has not been
                 called yet.
         """
-        if self.redis_address is not None:
+        if (self.redis_address is not None
+                and self.global_state_accessor is None):
             self._really_init_global_state()
 
+        # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
@@ -184,6 +186,8 @@ class GlobalState:
             "State": actor_table_data.state,
             "NumRestarts": actor_table_data.num_restarts,
             "Timestamp": actor_table_data.timestamp,
+            "StartTime": actor_table_data.start_time,
+            "EndTime": actor_table_data.end_time,
         }
         return actor_info
 
@@ -265,10 +269,10 @@ class GlobalState:
             job_info["JobID"] = entry.job_id.hex()
             job_info["DriverIPAddress"] = entry.driver_ip_address
             job_info["DriverPid"] = entry.driver_pid
-            if entry.is_dead:
-                job_info["StopTime"] = entry.timestamp
-            else:
-                job_info["StartTime"] = entry.timestamp
+            job_info["Timestamp"] = entry.timestamp
+            job_info["StartTime"] = entry.start_time
+            job_info["EndTime"] = entry.end_time
+            job_info["IsDead"] = entry.is_dead
             results.append(job_info)
 
         return results

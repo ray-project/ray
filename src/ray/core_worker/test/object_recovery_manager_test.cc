@@ -14,12 +14,15 @@
 
 #include "ray/core_worker/object_recovery_manager.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/pubsub/mock_pubsub.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -105,12 +108,15 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
  public:
   ObjectRecoveryManagerTest()
       : local_raylet_id_(NodeID::FromRandom()),
+        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
-            rpc::Address(), /*distributed_ref_counting_enabled=*/true,
+            rpc::Address(), publisher_.get(), subscriber_.get(),
+            /*distributed_ref_counting_enabled=*/true,
             /*lineage_pinning_enabled=*/true)),
         manager_(rpc::Address(),
                  [&](const std::string &ip, int port) { return raylet_client_; },
@@ -138,6 +144,8 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
   NodeID local_raylet_id_;
   std::unordered_map<ObjectID, bool> failed_reconstructions_;
 
+  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
+  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<MockRayletClient> raylet_client_;

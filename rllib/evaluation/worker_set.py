@@ -4,14 +4,16 @@ from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.actor import ActorHandle
 from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
     _validate_multiagent_config
+from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput, D4RLReader
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
 
@@ -102,7 +104,7 @@ class WorkerSet:
         """Return the local rollout worker."""
         return self._local_worker
 
-    def remote_workers(self) -> List["ActorHandle"]:
+    def remote_workers(self) -> List[ActorHandle]:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
@@ -137,7 +139,7 @@ class WorkerSet:
                 config=self._remote_config) for i in range(num_workers)
         ])
 
-    def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
+    def reset(self, new_remote_workers: List[ActorHandle]) -> None:
         """Called to change the set of remote workers."""
         self._remote_workers = new_remote_workers
 
@@ -188,13 +190,15 @@ class WorkerSet:
             List[any]: The list of return values of func over all workers'
                 policies.
         """
-        local_results = self.local_worker().foreach_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(lambda w: w.foreach_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
 
     @DeveloperAPI
     def trainable_policies(self) -> List[PolicyID]:
@@ -214,18 +218,64 @@ class WorkerSet:
             List[any]: The list of n return values of all
                 `func([trainable policy], [ID])`-calls.
         """
-        local_results = self.local_worker().foreach_trainable_policy(func)
-        remote_results = []
+        results = self.local_worker().foreach_trainable_policy(func)
+        ray_gets = []
         for worker in self.remote_workers():
-            res = ray.get(
+            ray_gets.append(
                 worker.apply.remote(
                     lambda w: w.foreach_trainable_policy(func)))
-            remote_results.extend(res)
-        return local_results + remote_results
+        remote_results = ray.get(ray_gets)
+        for r in remote_results:
+            results.extend(r)
+        return results
+
+    @DeveloperAPI
+    def foreach_env(self, func: Callable[[BaseEnv], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env as arg.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env.remote(func))
+        return local_results + ray.get(ray_gets)
+
+    @DeveloperAPI
+    def foreach_env_with_context(
+            self,
+            func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
+        """Apply `func` to all workers' (unwrapped) environments.
+
+        `func` takes a single unwrapped env and the env_context as args.
+
+        Args:
+            func (Callable[[BaseEnv], T]): A function - taking a BaseEnv
+                object as arg and returning a list of return values over envs
+                of the worker.
+
+        Returns:
+            List[List[T]]: The list (workers) of lists (environments) of
+                results.
+        """
+        local_results = [self.local_worker().foreach_env_with_context(func)]
+        ray_gets = []
+        for worker in self.remote_workers():
+            ray_gets.append(worker.foreach_env_with_context.remote(func))
+        return local_results + ray.get(ray_gets)
 
     @staticmethod
     def _from_existing(local_worker: RolloutWorker,
-                       remote_workers: List["ActorHandle"] = None):
+                       remote_workers: List[ActorHandle] = None):
         workers = WorkerSet(
             env_creator=None,
             policy_class=None,
@@ -247,7 +297,7 @@ class WorkerSet:
             config: TrainerConfigDict,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-    ) -> Union[RolloutWorker, "ActorHandle"]:
+    ) -> Union[RolloutWorker, ActorHandle]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))

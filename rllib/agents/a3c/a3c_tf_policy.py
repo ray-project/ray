@@ -38,7 +38,8 @@ class A3CLoss:
                  vf,
                  valid_mask,
                  vf_loss_coeff=0.5,
-                 entropy_coeff=0.01):
+                 entropy_coeff=0.01,
+                 use_critic=True):
         log_prob = action_dist.logp(actions)
 
         # The "policy gradients" loss
@@ -46,9 +47,17 @@ class A3CLoss:
             tf.boolean_mask(log_prob * advantages, valid_mask))
 
         delta = tf.boolean_mask(vf - v_target, valid_mask)
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
+
+        # Compute a value function loss.
+        if use_critic:
+            self.vf_loss = 0.5 * tf.reduce_sum(tf.math.square(delta))
+        # Ignore the value function.
+        else:
+            self.vf_loss = tf.constant(0.0)
+
         self.entropy = tf.reduce_sum(
             tf.boolean_mask(action_dist.entropy(), valid_mask))
+
         self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
                            self.entropy * entropy_coeff)
 
@@ -67,7 +76,8 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
                           train_batch[Postprocessing.VALUE_TARGETS],
                           model.value_function(), mask,
                           policy.config["vf_loss_coeff"],
-                          policy.config["entropy_coeff"])
+                          policy.config["entropy_coeff"],
+                          policy.config.get("use_critic", True))
     return policy.loss.total_loss
 
 
@@ -115,7 +125,7 @@ A3CTFPolicy = build_tf_policy(
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     grad_stats_fn=grad_stats,
-    gradients_fn=clip_gradients,
+    compute_gradients_fn=clip_gradients,
     postprocess_fn=compute_gae_for_sample_batch,
     extra_action_out_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,
