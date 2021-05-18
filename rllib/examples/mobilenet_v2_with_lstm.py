@@ -52,6 +52,8 @@ if __name__ == "__main__":
             "custom_model": "my_model",
             # Extra config passed to the custom model's c'tor as kwargs.
             "custom_model_config": {
+                # By default, torch CNNs use "channels-first",
+                # tf "channels-last".
                 "cnn_shape": cnn_shape_torch
                 if args.framework == "torch" else cnn_shape,
             },
