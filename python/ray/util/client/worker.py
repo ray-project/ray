@@ -77,11 +77,11 @@ class Worker:
               at least once.  For infinite retries, catch the ConnectionError
               exception.
         """
-        self.metadata = metadata if metadata else []
+        self._client_id = make_client_id()
+        self.metadata = [("client_id", self._client_id)] + metadata if metadata else []
         self.channel = None
         self.server = None
         self._conn_state = grpc.ChannelConnectivity.IDLE
-        self._client_id = make_client_id()
         self._converted: Dict[str, ClientStub] = {}
 
         if secure:
