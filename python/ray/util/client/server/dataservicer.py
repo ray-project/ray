@@ -140,8 +140,13 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 # within this locked context or else Ray could hang.
                 with disable_client_hook():
                     if self.num_clients == 0:
-                        logger.debug("Shutting down ray.")
+                        logger.error("Shutting down ray.")
                         ray.shutdown()
+
+
+    def NumClients(self, request: ray_client_pb2.NumClientsRequest, context):
+        with self.clients_lock:
+            return num_clients
 
     def _init(self, client_id: str, context: Any):
         """

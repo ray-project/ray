@@ -11,8 +11,8 @@ from ray.util.client.common import GRPC_OPTIONS
 INITIAL_TIMEOUT_SEC = 5
 
 def connect_to_coordinator(conn_str: str, 
-secure: bool = False, 
-metadata: List[Tuple[str, str]] = None) -> int:
+    secure: bool = False, 
+    metadata: List[Tuple[str, str]] = None) -> int:
     """
     Connects to RayClient Coordinator Server and returns the port to
     connect to an actual RayClient Server.
@@ -34,7 +34,7 @@ metadata: List[Tuple[str, str]] = None) -> int:
     return resp.port
 
 
-def get_disconnect_handler(coordinator_conn_str: str) -> Callable[int, None]:
+def get_disconnect_handler(coordinator_conn_str: str) -> Callable[[int], None]:
     def disconnect(port: int):
         channel = grpc.insecure_channel(coordinator_conn_str)
         grpc.channel_ready_future(channel).result(timeout=INITIAL_TIMEOUT_SEC)

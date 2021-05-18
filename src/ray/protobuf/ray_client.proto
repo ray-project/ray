@@ -345,8 +345,17 @@ message DataResponse {
   }
 }
 
+message NumClientsRequest {
+}
+
+message NumClientsResponse {
+  int64 num_clients = 1;
+}
+
 service RayletDataStreamer {
   rpc Datapath(stream DataRequest) returns (stream DataResponse) {
+  }
+  rpc NumClients(NumClientsRequest) returns (NumClientsResponse) {
   }
 }
 

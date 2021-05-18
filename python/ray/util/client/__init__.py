@@ -27,45 +27,6 @@ class RayAPIStub:
         self._connected_with_init = False
         self._inside_client_test = False
 
-    def connect(self,
-                conn_str: str,
-                job_config: JobConfig = None,
-                secure: bool = False,
-                metadata: List[Tuple[str, str]] = None,
-                connection_retries: int = 3,
-                *,
-                ignore_version: bool = False) -> Dict[str, Any]:
-        """Reaches out to a Ray Client Coordinator Server and then conencts
-        to a specific Ray Client server.
-
-        Args:
-            conn_str: Connection string, in the form "[host]:port"
-            job_config: The job config of the server.
-            secure: Whether to use a TLS secured gRPC channel
-            metadata: gRPC metadata to send on connect
-            connection_retries: number of connection attempts to make
-            ignore_version: whether to ignore Python or Ray version mismatches.
-                This should only be used for debugging purposes.
-
-        Returns:
-            Dictionary of connection info, e.g., {"num_clients": 1}.
-        """
-        from ray.util.client.coordinator import connect_to_coordinator
-        port  = connect_to_coordinator(conn_str, secure, metadata)
-        new_conn_str = conn_str.split(":")[0] + str(port)
-        
-        return _connect_to_server(
-            new_conn_str,
-            job_config,
-            secure,
-            metadata,
-            connection_retries,
-            ignore_version
-        )
-
-
-
-
 
     def _connect_to_server(self,
                 conn_str: str,
@@ -116,6 +77,45 @@ class RayAPIStub:
         except Exception:
             self.disconnect()
             raise
+
+
+    def connect(self,
+                conn_str: str,
+                job_config: JobConfig = None,
+                secure: bool = False,
+                metadata: List[Tuple[str, str]] = None,
+                connection_retries: int = 3,
+                *,
+                ignore_version: bool = False) -> Dict[str, Any]:
+        """Reaches out to a Ray Client Coordinator Server and then conencts
+        to a specific Ray Client server.
+
+        Args:
+            conn_str: Connection string, in the form "[host]:port"
+            job_config: The job config of the server.
+            secure: Whether to use a TLS secured gRPC channel
+            metadata: gRPC metadata to send on connect
+            connection_retries: number of connection attempts to make
+            ignore_version: whether to ignore Python or Ray version mismatches.
+                This should only be used for debugging purposes.
+
+        Returns:
+            Dictionary of connection info, e.g., {"num_clients": 1}.
+        """
+        from ray.util.client.coordinator import connect_to_coordinator
+        port  = connect_to_coordinator(conn_str, secure, metadata)
+        logger.error(f"FOUND PORT: {port}")
+        new_conn_str = conn_str.split(":")[0] + ":" +  str(port)
+        
+        return self._connect_to_server(
+            new_conn_str,
+            job_config,
+            secure,
+            metadata,
+            connection_retries,
+            ignore_version
+        )
+
 
     def _register_serializers(self):
         """Register the custom serializer addons at the client side.
