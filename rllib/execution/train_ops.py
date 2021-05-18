@@ -131,7 +131,8 @@ class TrainTFMultiGPU:
             num_gpus = 1
         type_ = "cpu" if _fake_gpus else "gpu"
         self.devices = [
-            "/{}:{}".format(type_, i) for i in range(int(math.ceil(num_gpus)))
+            "/{}:{}".format(type_, 0 if _fake_gpus else i)
+            for i in range(int(math.ceil(num_gpus)))
         ]
 
         # Total batch size (all towers). Make sure it is dividable by
