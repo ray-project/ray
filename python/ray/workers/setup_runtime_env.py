@@ -54,8 +54,6 @@ def setup(input_args):
                     conda_yaml_path, conda_dir)
                 if os.path.exists(conda_yaml_path):
                     os.remove(conda_yaml_path)
-                # print("sleeping")
-                # time.sleep(30)
                 logger.error(conda_env_name)
                 commands += get_conda_activate_commands(conda_env_name)
 
