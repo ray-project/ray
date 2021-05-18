@@ -554,8 +554,9 @@ ray.get(a.ping.remote())
     response = requests.get(f"{webui_url}/api/snapshot")
     response.raise_for_status()
     data = response.json()
-    schema_path = os.path.join(os.path.dirname(dashboard.__file__),
-                       "modules/snapshot/snapshot_schema.json")
+    schema_path = os.path.join(
+        os.path.dirname(dashboard.__file__),
+        "modules/snapshot/snapshot_schema.json")
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     # assert len(data["data"]["snapshot"]["actors"]) == 3
