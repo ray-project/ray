@@ -8,8 +8,9 @@ import random
 import socket
 from threading import Thread, Lock
 import time
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
+from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
@@ -21,8 +22,9 @@ logger = logging.getLogger(__name__)
 CHECK_PROCESS_INTERVAL_S = 30
 
 MIN_SPECIFIC_SERVER_PORT = 23000
-
 MAX_SPECIFIC_SERVER_PORT = 24000
+
+CHECK_CHANNEL_TIMEOUT_S = 5
 
 
 def _get_unused_port() -> int:
@@ -94,8 +96,12 @@ class ProxyManager():
             if client is None:
                 logger.error(f"Unable to find channel for client: {client_id}")
                 return None
-        grpc.channel_ready_future(client.channel).result(timeout=5)
-        return client.channel
+        try:
+            grpc.channel_ready_future(
+                client.channel).result(timeout=CHECK_CHANNEL_TIMEOUT_S)
+            return client.channel
+        except grpc.FutureTimeoutError:
+            return None
 
     def _check_processes(self):
         """
@@ -189,6 +195,7 @@ def forward_streaming_requests(grpc_input_generator: Iterator[Any],
     """
     try:
         for req in grpc_input_generator:
+            logger.error(req)
             output_queue.put(req)
     except grpc.RpcError as e:
         logger.debug("closing dataservicer reader thread "
@@ -196,6 +203,20 @@ def forward_streaming_requests(grpc_input_generator: Iterator[Any],
     finally:
         # Set the sentinel value for the output_queue
         output_queue.put(None)
+
+
+def prepare_runtime_init_req(req: ray_client_pb2.InitRequest
+                             ) -> Tuple[ray_client_pb2.InitRequest, JobConfig]:
+    """
+    Extract JobConfig and possibly mutate InitRequest before it is passed to
+    the specific RayClient Server.
+    """
+    job_config = JobConfig()
+    if req.job_config:
+        import pickle
+        job_config = pickle.loads(req.job_config)
+
+    return (req, job_config)
 
 
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
@@ -208,6 +229,16 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             return
         logger.debug(f"New data connection from client {client_id}: ")
 
+        init_req = next(request_iterator)
+        init_type = init_req.WhichOneof("type")
+        assert init_type == "init", ("Received initial message of type "
+                                     f"{init_type}, not 'init'.")
+
+        modified_init_req, job_config = prepare_runtime_init_req(init_req.init)
+        init_req.init.CopyFrom(modified_init_req)
+        queue = Queue()
+        queue.put(init_req)
+
         self.proxy_manager.start_specific_server(client_id)
 
         channel = self.proxy_manager.get_channel(client_id)
@@ -215,7 +246,6 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
             context.set_code(grpc.StatusCode.NOT_FOUND)
             return None
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-        queue = Queue()
         thread = Thread(
             target=forward_streaming_requests,
             args=(request_iterator, queue),
