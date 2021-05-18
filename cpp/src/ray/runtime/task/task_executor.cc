@@ -63,6 +63,22 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   return std::make_unique<ObjectID>();
 };
 
+std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
+    const std::string &lib_name, const std::string &func_name,
+    const std::vector<std::shared_ptr<RayObject>> &args_buffer,
+    msgpack::sbuffer *actor_ptr) {
+  auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
+  if (entry_func == nullptr) {
+    return std::make_pair(ray::Status::NotFound(lib_name + " not found"), nullptr);
+  }
+
+  RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
+  auto result = entry_func(func_name, args_buffer, actor_ptr);
+  RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
+  return std::make_pair(ray::Status::OK(),
+                        std::make_shared<msgpack::sbuffer>(std::move(result)));
+}
+
 Status TaskExecutor::ExecuteTask(
     TaskType task_type, const std::string task_name, const RayFunction &ray_function,
     const std::unordered_map<std::string, double> &required_resources,
@@ -80,39 +96,21 @@ Status TaskExecutor::ExecuteTask(
   std::string lib_name = typed_descriptor->LibName();
   std::string func_name = typed_descriptor->FunctionName();
 
+  Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   if (task_type == TaskType::ACTOR_CREATION_TASK) {
-    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-    if (entry_func == nullptr) {
-      return ray::Status::NotFound(lib_name + " not found");
-    }
-
-    RAY_LOG(DEBUG) << "Get execute function" << func_name << " ok";
-    auto result = entry_func(func_name, args_buffer, nullptr);
-    RAY_LOG(DEBUG) << "Execute function" << func_name << " ok";
-    data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
     current_actor_ = data;
   } else if (task_type == TaskType::ACTOR_TASK) {
     RAY_CHECK(current_actor_ != nullptr);
-    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-    if (entry_func == nullptr) {
-      return ray::Status::NotFound(lib_name + " not found");
-    }
-
-    RAY_LOG(DEBUG) << "Get execute function ok";
-    auto result = entry_func(func_name, args_buffer, current_actor_.get());
-    RAY_LOG(DEBUG) << "Execute function ok";
-    data = std::make_shared<msgpack::sbuffer>(std::move(result));
+    std::tie(status, data) =
+        GetExecuteResult(lib_name, func_name, args_buffer, current_actor_.get());
   } else {  // NORMAL_TASK
-    auto entry_func = FunctionHelper::GetInstance().GetEntryFunction(lib_name);
-    if (entry_func == nullptr) {
-      return ray::Status::NotFound(lib_name + " not found");
-    }
+    std::tie(status, data) = GetExecuteResult(lib_name, func_name, args_buffer, nullptr);
+  }
 
-    RAY_LOG(DEBUG) << "Get execute function ok";
-    auto result = entry_func(func_name, args_buffer, nullptr);
-    RAY_LOG(DEBUG) << "Execute function ok";
-    data = std::make_shared<msgpack::sbuffer>(std::move(result));
+  if (!status.ok()) {
+    return status;
   }
 
   std::vector<size_t> data_sizes;
