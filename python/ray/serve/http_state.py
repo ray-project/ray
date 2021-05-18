@@ -28,6 +28,10 @@ class HTTPState:
         # Will populate self.proxy_actors with existing actors.
         self._start_proxies_if_needed()
 
+    def shutdown(self) -> None:
+        for proxy in self.get_http_proxy_handles().values():
+            ray.kill(proxy, no_restart=True)
+
     def get_config(self):
         return self._config
 
