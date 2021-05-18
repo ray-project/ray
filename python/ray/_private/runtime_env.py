@@ -69,8 +69,7 @@ class RuntimeEnvDict:
             if isinstance(conda, str):
                 self._dict["conda"] = conda
             elif isinstance(conda, dict):
-                # TODO(architkulkarni): add dynamic conda env installs
-                raise NotImplementedError
+                self._dict["conda"] = conda
             elif conda is not None:
                 raise TypeError("runtime_env['conda'] must be of type str or "
                                 "dict")
@@ -82,9 +81,9 @@ class RuntimeEnvDict:
         # TODO(ekl) support py_modules
         # TODO(architkulkarni) support env_vars, docker
 
-        # TODO(architkulkarni) remove once workers are cached by runtime env.
-        # Currently the worker pool just checks for a nonempty runtime env
-        # and if so, starts a new worker process and calls the shim process.
+        # TODO(architkulkarni) Remove.  Currently this is included because
+        # the worker pool C++ code needs to check whether the runtime env
+        # is empty or not without deserializing and parsing this dict.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
 

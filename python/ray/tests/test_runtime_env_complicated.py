@@ -9,6 +9,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
+from ray.test_utils import get_nightly_url
 
 
 @pytest.fixture(scope="session")
@@ -178,6 +179,65 @@ def test_get_conda_env_dir(tmp_path):
         # Env tf2 still should exist.
         env_dir = get_conda_env_dir("tf2")
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
+
+
+def test_conda_create_task(shutdown_only):
+    """Tests dynamic creation of a conda env in a task's runtime env."""
+
+    ray.init()
+    nightly_url = get_nightly_url()
+    # E.g. 3.6.13
+    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                f"python={python_micro_version_dots}", "pip", {
+                    "pip": [nightly_url, "pip-install-test==0.5"]
+                }
+            ]
+        }
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(f.remote())
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+def test_conda_create_job_config(shutdown_only):
+    """Tests dynamic conda env creation in a runtime env in the JobConfig."""
+    nightly_url = get_nightly_url()
+    # E.g. 3.6.13
+    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                f"python={python_micro_version_dots}", "pip", {
+                    "pip": [nightly_url, "pip-install-test==0.5"]
+                }
+            ]
+        }
+    }
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

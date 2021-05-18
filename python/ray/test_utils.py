@@ -542,3 +542,20 @@ def load_test_config(config_file_name):
 def set_setup_func():
     import ray._private.runtime_env as runtime_env
     runtime_env.VAR = "hello world"
+
+
+def get_nightly_url():
+    """Returns the Ray nightly URL."""
+    ray_version = ray.__version__
+    python_version = f"{sys.version_info.major}{sys.version_info.minor}"
+    os_strings = {
+        "darwin": "macosx_10_13_intel",
+        "linux": "manylinux2014_x86_64",
+        "win32": "win_amd64"
+    }
+
+    nightly_url = (f"https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+                   f"ray-{ray_version}-cp{python_version}-"
+                   f"cp{python_version}{'m' if python_version != '38' else ''}"
+                   f"-{os_strings[sys.platform]}.whl")
+    return nightly_url
