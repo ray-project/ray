@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 import unittest
 
@@ -30,9 +32,15 @@ class SearchSpaceTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def _testTuneSampleAPI(self, configs, ignore=None):
+    def _testTuneSampleAPI(self, configs, ignore=None, check_stats=True):
         ignore = ignore or []
+        stats = defaultdict(list)
+
         for out in configs:
+            for k, v in out.items():
+                if k not in ignore:
+                    stats[k].append(v)
+
             if "func" not in ignore:
                 self.assertAlmostEqual(out["func"], out["uniform"] * 0.01)
 
@@ -92,7 +100,31 @@ class SearchSpaceTest(unittest.TestCase):
                 self.assertAlmostEqual(out["qrandn"] / 0.2,
                                        round(out["qrandn"] / 0.2))
 
-    def testTuneVariant(self):
+        if check_stats:
+            for k, v in stats.items():
+                if k == "choice":
+                    self.assertIn(2, v)
+                    self.assertIn(3, v)
+                    self.assertIn(4, v)
+
+                elif k == "randint":
+                    for i in range(-9, 15):
+                        self.assertIn(i, v, msg=f"randint failed for i={i}")
+
+                elif k == "qrandint":
+                    for i in range(-21, 13, 3):
+                        self.assertIn(i, v, msg=f"qrandint failed for i={i}")
+
+                elif k == "lograndint":
+                    for i in range(1, 10):
+                        self.assertIn(i, v, msg=f"lograndint failed for i={i}")
+
+                elif k == "qlograndint":
+                    for i in range(2, 21, 2):
+                        self.assertIn(
+                            i, v, msg=f"qlograndint failed for i={i}")
+
+    def testSampleBoundsRandom(self):
         config = self.config.copy()
 
         def config_generator():
@@ -264,7 +296,7 @@ class SearchSpaceTest(unittest.TestCase):
             {
                 "name": "b/x",
                 "type": "range",
-                "bounds": [0, 5],
+                "bounds": [0, 4],
                 "value_type": "int"
             },
             {
@@ -313,7 +345,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
-    def testSampleAx(self):
+    def testSampleBoundsAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
 
@@ -396,7 +428,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
-    def testSampleBayesOpt(self):
+    def testSampleBoundsBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
         ignore = [
@@ -477,6 +509,27 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBoundsBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+
+        ignore = [
+            "func",
+            "qloguniform",  # There seems to be an issue here
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = TuneBOHB(
+            space=config, metric="a", mode="max", max_concurrent=1000)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
@@ -564,6 +617,31 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testSampleBoundsDragonfly(self):
+        from ray.tune.suggest.dragonfly import DragonflySearch
+
+        ignore = [
+            "func", "choice", "randint", "lograndint", "randn", "qrandn",
+            "quniform", "qloguniform", "qrandint", "qlograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = DragonflySearch(
+            space=config,
+            metric="a",
+            mode="max",
+            optimizer="random",
+            domain="euclidean")
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertHEBO(self):
         from ray.tune.suggest.hebo import HEBOSearch
         from hebo.design_space.design_space import DesignSpace
@@ -633,6 +711,27 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
+    def testSampleBoundsHEBO(self):
+        from ray.tune.suggest.hebo import HEBOSearch
+
+        ignore = [
+            "func", "randn", "qrandn", "quniform", "qloguniform", "qrandint",
+            "qlograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = HEBOSearch(
+            space=config, metric="a", mode="max", max_concurrent=1000)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
@@ -655,7 +754,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.uniformint("x", -15, -10),
+                "x": hp.uniformint("x", -15, -11),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -740,6 +839,26 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    def testSampleBoundsHyperopt(self):
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+
+        ignore = [
+            "func",
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = HyperOptSearch(
+            space=config, metric="a", mode="max", n_initial_points=1000)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertNevergrad(self):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
@@ -806,6 +925,31 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBoundsNevergrad(self):
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        ignore = [
+            "func", "randn", "qrandn", "quniform", "qloguniform", "qrandint",
+            "qlograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = NevergradSearch(
+            space=config,
+            metric="a",
+            mode="max",
+            optimizer=ng.optimizers.RandomSearch)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
@@ -881,6 +1025,24 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testSampleBoundsOptuna(self):
+        from ray.tune.suggest.optuna import OptunaSearch
+
+        # Quantization and log does not seem to work with Optuna
+        ignore = ["func", "randn", "qrandn", "qloguniform", "qlograndint"]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = OptunaSearch(space=config, metric="a", mode="max")
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
         from skopt.space import Real, Integer
@@ -902,7 +1064,7 @@ class SearchSpaceTest(unittest.TestCase):
         converted_config = SkOptSearch.convert_search_space(config)
         skopt_config = {
             "a": [2, 3, 4],
-            "b/x": Integer(0, 5),
+            "b/x": Integer(0, 4),
             "b/z": Real(1e-4, 1e-2, prior="log-uniform")
         }
 
@@ -932,6 +1094,27 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBoundsSkOpt(self):
+        from ray.tune.suggest.skopt import SkOptSearch
+
+        ignore = [
+            "func", "randn", "qrandn", "qloguniform", "qlograndint",
+            "quniform", "qrandint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = SkOptSearch(
+            space=config, metric="a", mode="max", convert_to_python=True)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
@@ -1016,6 +1199,29 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def testSampleBoundsZOOpt(self):
+        from ray.tune.suggest.zoopt import ZOOptSearch
+
+        ignore = [
+            "func", "randn", "qrandn", "qloguniform", "qlograndint",
+            "quniform", "qrandint", "loguniform", "lograndint"
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = ZOOptSearch(budget=1000, parallel_num=1000)
+        searcher.set_search_properties(metric="a", mode="max", config=config)
+
+        def config_generator():
+            for i in range(1000):
+                yield searcher.suggest(f"trial_{i}")
+                searcher.on_trial_complete(
+                    f"trial_{i}", result=dict(a=np.random.uniform(size=1)))
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def _testPointsToEvaluate(self, cls, config, **kwargs):
         points_to_evaluate = [{k: v.sample()
