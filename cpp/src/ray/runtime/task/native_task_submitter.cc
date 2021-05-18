@@ -2,7 +2,6 @@
 
 #include <ray/api/ray_exception.h>
 
-#include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {

@@ -7,7 +7,6 @@
 
 #include <cassert>
 
-#include "../util/address_helper.h"
 #include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"

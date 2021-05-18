@@ -6,7 +6,6 @@
 #include <boost/asio/post.hpp>
 #include <memory>
 
-#include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
@@ -70,8 +69,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr,
-                         actor_contexts_, actor_contexts_mutex_);
+    TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
+                         actor_contexts_mutex_);
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
@@ -79,9 +78,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
-                            TaskExecutor::Invoke(
-                                ts, actor, runtime, dynamic_library_base_addr,
-                                this->actor_contexts_, this->actor_contexts_mutex_);
+                            TaskExecutor::Invoke(ts, actor, runtime,
+                                                 this->actor_contexts_,
+                                                 this->actor_contexts_mutex_);
                           },
                           std::move(task_specification)));
   }

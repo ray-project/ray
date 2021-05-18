@@ -5,7 +5,6 @@
 
 #include <memory>
 
-#include "../../util/address_helper.h"
 #include "../../util/function_helper.h"
 #include "../abstract_ray_runtime.h"
 
@@ -140,7 +139,7 @@ Status TaskExecutor::ExecuteTask(
 
 void TaskExecutor::Invoke(
     const TaskSpecification &task_spec, std::shared_ptr<msgpack::sbuffer> actor,
-    AbstractRayRuntime *runtime, const uintptr_t base_addr,
+    AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
   std::vector<std::shared_ptr<RayObject>> args_buffer;
