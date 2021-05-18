@@ -515,6 +515,45 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert "clusterStatus" in response.json()["data"]
     assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
+def test_snapshot(ray_start_with_dashboard):
+    driver_template = """
+import ray
+
+ray.init(address="{address}", namespace="my_namespace")
+
+@ray.remote
+class Pinger:
+    def ping(self):
+        return "pong"
+
+a = Pinger.options(lifetime={lifetime}, name={name}).remote()
+ray.get(a.ping.remote())
+    """
+
+    detached_driver = driver_template.format(
+        address=ray_start_with_dashboard["redis_address"],
+        lifetime="'detached'",
+        name="'abc'"
+    )
+    named_driver = driver_template.format(
+        address=ray_start_with_dashboard["redis_address"],
+        lifetime="None",
+        name="'xyz'"
+    )
+    unnamed_driver = driver_template.format(
+        address=ray_start_with_dashboard["redis_address"],
+        lifetime="None",
+        name="None"
+    )
+
+    run_string_as_driver(detached_driver)
+    run_string_as_driver(named_driver)
+    run_string_as_driver(unnamed_driver)
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/snapshot")
+    response.raise_for_status()
 
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
