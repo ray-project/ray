@@ -1,0 +1,293 @@
+from concurrent import futures
+from dataclasses import dataclass
+import grpc
+import logging
+import json
+from queue import Queue
+import random
+import socket
+from threading import Thread, Lock
+import time
+from typing import Any, Callable, Dict, Iterator, Optional
+
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import ClientServerHandle, GRPC_OPTIONS
+from ray._private.services import ProcessInfo, start_ray_client_server
+
+logger = logging.getLogger(__name__)
+
+CHECK_PROCESS_INTERVAL_S = 30
+
+
+def _get_unused_port() -> int:
+    for _ in range(10):
+        port = random.randint(23000, 24000)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("", port))
+        except OSError:
+            s.close()
+            continue
+        s.close()
+        s.close()
+        return port
+    raise RuntimeError("Unable to succeed in selecting a random port.")
+
+
+@dataclass
+class SpecificServer:
+    port: int
+    process_handle: ProcessInfo
+    channel: "grpc._channel.Channel"
+
+
+class ProxyManager():
+    def __init__(self, redis_address):
+        self.clients: Dict[str, SpecificServer] = dict()
+        self.client_lock = Lock()
+        self.redis_address = redis_address
+
+        self._check_thread = Thread(target=self._check_processes, daemon=True)
+        self._check_thread.start()
+
+    def _spool_up_grpc_server(self, client_id) -> None:
+        port = _get_unused_port()
+        specific_server = SpecificServer(
+            port=port,
+            process_handle=start_ray_client_server(
+                self.redis_address,
+                port,
+                fate_share=True,
+                server_type="specific-server"),
+            channel=grpc.insecure_channel(
+                f"localhost:{port}", options=GRPC_OPTIONS))
+        with self.client_lock:
+            self.clients[client_id] = specific_server
+
+    def _get_channel(self,
+                     client_id: str) -> Optional["grpc._channel.Channel"]:
+        client = None
+        with self.client_lock:
+            client = self.clients.get(client_id)
+            if client is None:
+                logger.error(f"Unable to find channel for client: {client_id}")
+                return None
+        grpc.channel_ready_future(client.channel).result(timeout=5)
+        return client.channel
+
+    def _check_processes(self):
+        while True:
+            with self.client_lock:
+                for client_id, specific_server in list(self.clients.items()):
+                    poll_result = specific_server.process_handle.process.poll()
+                    if poll_result is not None:
+                        del self.clients[client_id]
+
+            time.sleep(CHECK_PROCESS_INTERVAL_S)
+
+
+class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
+    def __init__(self, ray_connect_handler: Callable,
+                 proxy_manager: ProxyManager):
+        """
+        Proxy Calls internally.
+        """
+
+        self.proxy_manager = proxy_manager
+        self.ray_connect_handler = ray_connect_handler
+
+    def _call_inner_function(
+            self, request, context,
+            method: str) -> Optional[ray_client_pb2_grpc.RayletDriverStub]:
+        logger.error("INNER FUNCTION: " + method)
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata.get("client_id", "")
+        chan = self.proxy_manager._get_channel(client_id)
+        if not chan:
+            logger.error(f"Channel for Client: {client_id} not found!")
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return None
+
+        stub = ray_client_pb2_grpc.RayletDriverStub(chan)
+        return getattr(stub, method)(
+            request, metadata=[("client_id", client_id)])
+
+    def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
+        return self._call_inner_function(request, context, "Init")
+
+    def PrepRuntimeEnv(self, request,
+                       context=None) -> ray_client_pb2.PrepRuntimeEnvResponse:
+        return self._call_inner_function(request, context, "PrepRuntimeEnv")
+
+    def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
+        return self._call_inner_function(request, context, "KVPut")
+
+    def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
+        return self._call_inner_function(request, context, "KVGet")
+
+    def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
+        return self._call_inner_function(request, context, "KVGet")
+
+    def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
+        return self._call_inner_function(request, context, "KVList")
+
+    def KVExists(self, request,
+                 context=None) -> ray_client_pb2.KVExistsResponse:
+        return self._call_inner_function(request, context, "KVExists")
+
+    def ClusterInfo(self, request,
+                    context=None) -> ray_client_pb2.ClusterInfoResponse:
+        if request.type == ray_client_pb2.ClusterInfoType.PING:
+            resp = ray_client_pb2.ClusterInfoResponse(json=json.dumps({}))
+            return resp
+        return self._call_inner_function(request, context, "ClusterInfo")
+
+    def Terminate(self, req, context=None):
+        return self._call_inner_function(req, context, "Terminate")
+
+    def GetObject(self, request, context=None):
+        return self._call_inner_function(request, context, "GetObject")
+
+    def PutObject(self, request: ray_client_pb2.PutRequest,
+                  context=None) -> ray_client_pb2.PutResponse:
+        return self._call_inner_function(request, context, "PutObject")
+
+    def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
+        return self._call_inner_function(request, context, "WaitObject")
+
+    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+        try:
+            x = self._call_inner_function(task, context, "Schedule")
+            logger.error(f"GOT {x}")
+            return x
+        except Exception:
+            logger.exception("Schedule problem")
+
+
+def fill_queue(grpc_input_generator: Iterator[Any],
+               output_queue: "Queue") -> None:
+    try:
+        for req in grpc_input_generator:
+            output_queue.put(req)
+    except grpc.RpcError as e:
+        logger.debug("closing dataservicer reader thread "
+                     f"grpc error reading request_iterator: {e}")
+    finally:
+        # Set the sentinel value for the output_queue
+        output_queue.put(None)
+
+
+class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
+    def __init__(self, proxy_manager: ProxyManager):
+        self.proxy_manager = proxy_manager
+
+    def Datapath(self, request_iterator, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        try:
+            client_id = metadata.get("client_id")
+            if client_id == "":
+                logger.error("Client connecting with no client_id")
+                return
+            logger.debug(f"New data connection from client {client_id}: ")
+
+            client_id = metadata.get("client_id", "")
+            assert client_id, "Metadata not set"
+            self.proxy_manager._spool_up_grpc_server(client_id)
+
+            channel = self.proxy_manager._get_channel(client_id)
+            if channel is None:
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                return None
+            stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+            queue = Queue()
+            thread = Thread(
+                target=fill_queue, args=(request_iterator, queue), daemon=True)
+            thread.start()
+
+            resp_stream = stub.Datapath(
+                iter(queue.get, None), metadata=[("client_id", client_id)])
+            for resp in resp_stream:
+                yield resp
+        except Exception:
+            logger.exception("OOF")
+
+
+class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
+    def __init__(self, proxy_manager: ProxyManager):
+        super().__init__()
+        self.proxy_manager = proxy_manager
+
+    def Logstream(self, request_iterator, context):
+        metadata = {k: v for k, v in context.invocation_metadata()}
+        client_id = metadata["client_id"]
+        if client_id == "":
+            logger.error("Client connecting with no client_id")
+            return
+        logger.debug(f"New data connection from client {client_id}: ")
+
+        channel = None
+        for i in range(10):
+            channel = self.proxy_manager._get_channel(client_id)
+
+            if channel is not None:
+                break
+            logger.error(f"Retrying logsream connection. {i} attempts failed.")
+            time.sleep(5)
+
+        if channel is None:
+            context.set_code(grpc.StatusCode.NOT_FOUND)
+            return None
+        stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
+        queue = Queue()
+        thread = Thread(
+            target=fill_queue, args=(request_iterator, queue), daemon=True)
+        thread.start()
+
+        resp_stream = stub.Logstream(
+            iter(queue.get, None), metadata=[("client_id", client_id)])
+        for resp in resp_stream:
+            yield resp
+
+
+def serve_proxier(connection_str: str, redis_address: str):
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10), options=GRPC_OPTIONS)
+    proxy_manager = ProxyManager(redis_address)
+    task_servicer = RayletServicerProxy(None, proxy_manager)
+    data_servicer = DataServicerProxy(proxy_manager)
+    logs_servicer = LogstreamServicerProxy(proxy_manager)
+    ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
+        task_servicer, server)
+    ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
+        data_servicer, server)
+    ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
+        logs_servicer, server)
+    server.add_insecure_port(connection_str)
+    server.start()
+    return ClientServerHandle(
+        task_servicer=task_servicer,
+        data_servicer=data_servicer,
+        logs_servicer=logs_servicer,
+        grpc_server=server,
+    )
+
+
+# connection_str = "localhost:10001"
+# redis_address = "localhost:6379"
+# server = grpc.server(
+#     futures.ThreadPoolExecutor(max_workers=10),
+#     options=GRPC_OPTIONS)
+# proxy_manager = ProxyManager(redis_address)
+# task_servicer = RayletServicerProxy(None, proxy_manager)
+# data_servicer = DataServicerProxy(proxy_manager)
+# logs_servicer = LogstreamServicerProxy(proxy_manager)
+# ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
+#     task_servicer, server)
+# ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
+#     data_servicer, server)
+# ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
+#     logs_servicer, server)
+# server.add_insecure_port(connection_str)
+# server.start()
+# import ray; ray.init()
