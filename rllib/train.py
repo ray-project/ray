@@ -169,14 +169,17 @@ def run(args, parser):
         # NOTE: Some of our yaml files don't have a `config` section.
         input_ = exp.get("config", {}).get("input")
         if input_ and input_ != "sampler":
-            input_ = force_list(input_)
+            inputs = force_list(input_)
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
-            input_ = [
+            abs_inputs = [
                 rllib_dir.absolute().joinpath(i)
-                if not os.path.exists(i) else i for i in input_
+                if not os.path.exists(i) else i for i in inputs
             ]
-            exp["config"]["input"] = input_
+            if not isinstance(input_, list):
+                abs_inputs = abs_inputs[0]
+
+            exp["config"]["input"] = abs_inputs
 
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
