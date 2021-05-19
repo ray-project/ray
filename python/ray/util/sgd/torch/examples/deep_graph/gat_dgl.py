@@ -1,24 +1,25 @@
 import os
-import torch
 import time
 import numpy as np
 import argparse
-from dgl.dataloading import NodeCollator
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 import ray
 from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import AverageMeterCollection
 from ray.util.sgd.torch import TrainingOperator
+
 import dgl
-import torch as th
-import torch.nn as nn
-import torch.nn.functional as F
 from dgl.data import RedditDataset
 from dgl.nn.pytorch import GATConv
 from torch.utils.data import DataLoader
+from dgl.dataloading import NodeCollator
 
 print("Current Path: " + os.getcwd())
 torch.manual_seed(42)
-
 
 # define the model class
 class GAT(nn.Module):
@@ -62,20 +63,11 @@ class GAT(nn.Module):
         h = h.mean(1)
         return h.log_softmax(dim=-1)
 
-
 def compute_acc(pred, labels):
     """
     Compute the accuracy of prediction given the labels.
     """
-    return (th.argmax(pred, dim=1) == labels).float().sum() / len(pred)
-
-
-class _NodeCollator(NodeCollator):
-    def collate(self, items):
-        # input_nodes, output_nodes, blocks
-        result = super().collate(items)
-        return result
-
+    return (torch.argmax(pred, dim=1) == labels).float().sum() / len(pred)
 
 class CustomTrainingOperator(TrainingOperator):
     def setup(self, config):
@@ -92,33 +84,32 @@ class CustomTrainingOperator(TrainingOperator):
         # Create csr/coo/csc formats before launching training processes
         g.create_formats_()
         self.g = g
-        train_nid = th.nonzero(g.ndata['train_mask'], as_tuple=True)[0]
-        val_nid = th.nonzero(g.ndata['val_mask'], as_tuple=True)[0]
-        test_nid = th.nonzero(g.ndata['test_mask'], as_tuple=True)[0]
+        train_nid = torch.nonzero(g.ndata['train_mask'], as_tuple=True)[0]
+        val_nid = torch.nonzero(g.ndata['val_mask'], as_tuple=True)[0]
+        test_nid = torch.nonzero(g.ndata['test_mask'], as_tuple=True)[0]
         self.train_nid = train_nid
         self.val_nid = val_nid
         self.test_nid = test_nid
 
         # Create sampler
         sampler = dgl.dataloading.MultiLayerNeighborSampler(
-            [int(fanout) for fanout in args.fan_out.split(',')])
+            [int(fanout) for fanout in config["fan_out"].split(',')])
         # Create PyTorch DataLoader for constructing blocks
-
-        collator = _NodeCollator(g, train_nid, sampler)
+        collator = NodeCollator(g, train_nid, sampler)
         train_dataloader = DataLoader(
             collator.dataset,
             collate_fn=collator.collate,
-            batch_size=args.batch_size,
+            batch_size=config["batch_size"],
             shuffle=False,
             drop_last=False,
-            num_workers=args.num_workers)
+            num_workers=config["sampling_num_workers"])
         # Define model and optimizer, residual is set to True
-        model = GAT(self.in_feats, args.n_hidden, self.n_classes,
-                    args.n_layers, args.n_heads, F.elu, args.feat_drop,
-                    args.attn_drop, args.negative_slope, True)
+        model = GAT(self.in_feats, config["n_hidden"], self.n_classes,
+                    config["n_layers"], config["n_heads"], F.elu, config["feat_drop"],
+                    config["attn_drop"], config["negative_slope"], True)
         self.convs = model.convs
         # Define optimizer.
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
         # Register model, optimizer, and loss.
         self.model, self.optimizer = self.register(
             models=model, optimizers=optimizer)
@@ -148,8 +139,8 @@ class CustomTrainingOperator(TrainingOperator):
             iter_tput.append(len(seeds) / (time.time() - tic_step))
             if step % 20 == 0:
                 acc = compute_acc(batch_pred, batch_labels)
-                gpu_mem_alloc = th.cuda.max_memory_allocated(
-                ) / 1000000 if th.cuda.is_available() else 0
+                gpu_mem_alloc = torch.cuda.max_memory_allocated(
+                ) / 1000000 if torch.cuda.is_available() else 0
                 print(
                     'Epoch {:05d} | Step {:05d} | Loss {:.4f} | Train Acc {:.4f} | Speed (samples/sec) {:.4f} | GPU '
                     '{:.1f} MB'.format(info['epoch_idx'] + 1, step,
@@ -161,33 +152,38 @@ class CustomTrainingOperator(TrainingOperator):
     def validate(self, validation_loader, info):
         meter_collection = AverageMeterCollection()
         model = self.model
+        n_layers = self.config["n_layers"]
+        n_hidden = self.config["n_hidden"]
+        n_heads = self.config["n_heads"]
+        batch_size = self.config["batch_size"]
+        num_workers = self.config["sampling_num_workers"]
         g = self.g
         train_nid = self.train_nid
         val_nid = self.val_nid
         test_nid = self.test_nid
         device = 0
         model.eval()
-        with th.no_grad():
+        with torch.no_grad():
             x = g.ndata['features']
             for l, layer in enumerate(self.convs):
-                if l < args.n_layers - 1:
-                    y = th.zeros(
-                        g.number_of_nodes(), args.n_hidden * args.n_heads
+                if l < n_layers - 1:
+                    y = torch.zeros(
+                        g.number_of_nodes(), n_hidden * n_heads
                         if l != len(self.convs) - 1 else self.n_classes)
                 else:
-                    y = th.zeros(
-                        g.number_of_nodes(), args.n_hidden
+                    y = torch.zeros(
+                        g.number_of_nodes(), n_hidden
                         if l != len(self.convs) - 1 else self.n_classes)
                 sampler = dgl.dataloading.MultiLayerFullNeighborSampler(1)
-                collator = _NodeCollator(g, th.arange(g.number_of_nodes()),
+                collator = NodeCollator(g, torch.arange(g.number_of_nodes()),
                                          sampler)
                 dataloader = DataLoader(
                     collator.dataset,
                     collate_fn=collator.collate,
-                    batch_size=args.batch_size,
+                    batch_size=batch_size,
                     shuffle=False,
                     drop_last=False,
-                    num_workers=args.num_workers)
+                    num_workers=num_workers)
                 for input_nodes, output_nodes, blocks in dataloader:
                     block = blocks[0]
                     # print("block:",block)
@@ -216,59 +212,71 @@ class CustomTrainingOperator(TrainingOperator):
         return status
 
 
-def run(num_workers=1, use_gpu=False, num_epochs=2):
+def run(num_workers, use_gpu, num_epochs, lr, batch_size, n_hidden, n_layers, n_heads, fan_out, feat_drop, attn_drop, negative_slope, sampling_num_workers):
     trainer = TorchTrainer(
         training_operator_cls=CustomTrainingOperator,
         num_workers=num_workers,
-        config={
-            "lr": 1e-3,
-            "batch_size": 1024,
-        },
         use_gpu=use_gpu,
         backend="nccl",
-        # use_tqdm=True,
+        config={
+            "lr": lr,
+            "batch_size": batch_size,
+            "n_hidden": n_hidden,
+            "n_layers": n_layers,
+            "n_heads": n_heads,
+            "fan_out": fan_out,
+            "feat_drop": feat_drop,
+            "attn_drop": attn_drop,
+            "negative_slope": negative_slope,
+            "sampling_num_workers": sampling_num_workers
+        }
     )
 
     for i in range(num_epochs):
         trainer.train()
-    testResults = trainer.validate()
+    validation_results = trainer.validate()
     trainer.shutdown()
-    print(testResults)
+    print(validation_results)
     print("success!")
-
 
 # Use ray.init(address="auto") if running on a Ray cluster.
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser("multi-gpu training")
+    argparser.add_argument('--num-workers', type=int, default=2)
+    argparser.add_argument('--use-gpu', type=bool, default=True)
     argparser.add_argument('--num-epochs', type=int, default=2)
+    argparser.add_argument('--lr', type=float, default=0.001)
+    argparser.add_argument('--batch-size', type=int, default=1024)
     argparser.add_argument('--n-hidden', type=int, default=128)
     argparser.add_argument('--n-layers', type=int, default=2)
     argparser.add_argument('--n-heads', type=int, default=4)
     argparser.add_argument('--fan-out', type=str, default='10,25')
-    argparser.add_argument('--batch-size', type=int, default=1024)
-    argparser.add_argument('--lr', type=float, default=0.001)
     argparser.add_argument('--feat-drop', type=float, default=0.)
     argparser.add_argument('--attn-drop', type=float, default=0.)
     argparser.add_argument('--negative-slope', type=float, default=0.2)
     argparser.add_argument(
-        '--num-workers',
+        '--sampling-num-workers',
         type=int,
         default=0,
         help="Number of sampling processes. Use 0 for no extra process.")
     argparser.add_argument(
-        '--dashboard-host',
+        '--address',
+        required=False,
         type=str,
-        default='127.0.0.1',
-        help="The host to bind the dashboard server to.")
-    argparser.add_argument(
-        '--dashboard-port',
-        type=int,
-        default=8265,
-        help="The port to bind the dashboard server to.")
+        help="The address to use for ray")
+
     args = argparser.parse_args()
-    ray.init(
-        dashboard_host=args.dashboard_host, dashboard_port=args.dashboard_port)
-    ###connect to started ray cluster
-    # ray.init(address='auto', _redis_password='5241590000000000')
-    start_time = time.time()
-    run(num_workers=3, use_gpu=True, num_epochs=args.num_epochs)
+    ray.init(address=args.address)
+    run(num_workers=args.num_workers,
+        use_gpu=args.use_gpu,
+        num_epochs=args.num_epochs,
+        lr = args.lr,
+        batch_size = args.batch_size,
+        n_hidden = args.n_hidden,
+        n_layers = args.n_layers,
+        n_heads = args.n_heads,
+        fan_out = args.fan_out,
+        feat_drop = args.feat_drop,
+        attn_drop = args.attn_drop,
+        negative_slope = args.negative_slope,
+        sampling_num_workers = args.sampling_num_workers)
