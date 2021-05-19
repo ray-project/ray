@@ -231,7 +231,7 @@ class ServeController:
                 if (backend_tag in info["traffic"]
                         or backend_tag in info["shadows"]):
                     raise ValueError(f"Backend '{backend_tag}' is used by "
-                                     "endpoint '{endpoint}' and cannot be "
+                                     f"endpoint '{endpoint}' and cannot be "
                                      "deleted. Please remove the backend "
                                      "from all endpoints and try again.")
             return self.backend_state.delete_backend(backend_tag, force_kill)
@@ -285,10 +285,10 @@ class ServeController:
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
                     raise ValueError(f"prev_version '{prev_version}' is specified but "
-                                     "there is no existing deployment")
+                                     "there is no existing deployment.")
                 if existing_backend_info.version != prev_version:
                     raise ValueError(f"prev_version '{prev_version}' does not match with "
-                                     "the existing version '{existing_backend_info.version}'")
+                                     f"the existing version '{existing_backend_info.version}'.")
 
             backend_info = BackendInfo(
                 actor_def=ray.remote(
