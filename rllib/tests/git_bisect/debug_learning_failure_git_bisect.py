@@ -1,9 +1,5 @@
-#good commit (from Oct16th):
-#6233cef22cc3c62034b4a40923d1eaebdfef883f
-
-
 """
-This script should be used to find learning or performance regressions in RLlib.
+This script can be used to find learning- or performance regressions in RLlib.
 
 If you think something broke after(!) some good commit C, do the following
 while checked out in the current bad commit D (where D is newer than C):
@@ -41,48 +37,61 @@ parser.add_argument(
     type=str,
     default=None,
     help="The RLlib-registered algorithm to use, even if -f (yaml file) given "
-         "(will override yaml run setting).")
+    "(will override yaml run setting).")
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "tfe", "torch"],
     default=None,
     help="The DL framework specifier.")
 parser.add_argument(
-    "--skip-install-ray", action="store_true",
+    "--skip-install-ray",
+    action="store_true",
     help="If set, do not attempt to re-build ray from source.")
 parser.add_argument(
     "--stop-iters",
     type=int,
     default=None,
     help="Number of iterations to train. Skip if this criterium is not "
-         "important.")
+    "important.")
 parser.add_argument(
-    "--stop-timesteps", type=int, default=None,
+    "--stop-timesteps",
+    type=int,
+    default=None,
     help="Number of env timesteps to train. Can be used in combination with "
-         "--stop-time to assertain we reach a certain (env) "
-         "timesteps per (wall) time interval. Skip if this "
-         "criterium is not important.")
+    "--stop-time to assertain we reach a certain (env) "
+    "timesteps per (wall) time interval. Skip if this "
+    "criterium is not important.")
 parser.add_argument(
-    "--stop-time", type=int, default=None,
+    "--stop-time",
+    type=int,
+    default=None,
     help="Time in seconds, when to stop the run. Can be used in combination "
-         "with --stop-timesteps to assertain we reach a certain (env) "
-         "timesteps per (wall) time interval. Skip if this criterium is "
-         "not important.")
+    "with --stop-timesteps to assertain we reach a certain (env) "
+    "timesteps per (wall) time interval. Skip if this criterium is "
+    "not important.")
 parser.add_argument(
-    "--stop-reward", type=float, default=None,
+    "--stop-reward",
+    type=float,
+    default=None,
     help="The minimum reward that must be reached within the given "
-         "time/timesteps/iters. Skip if this criterium is not important.")
+    "time/timesteps/iters. Skip if this criterium is not important.")
 parser.add_argument(
-    "-f", type=str, default=None,
-    help="The yaml file to use as config. Alternatively, use --run, --config, "
-         "and --env.")
+    "-f",
+    type=str,
+    default=None,
+    help="The yaml file to use as config. Alternatively, use --run, "
+    "--config, and --env.")
 parser.add_argument(
-    "--config", type=str, default=None,
+    "--config",
+    type=str,
+    default=None,
     help="If no -f (yaml file) given, use this config instead.")
 parser.add_argument(
-    "--env", type=str, default=None,
+    "--env",
+    type=str,
+    default=None,
     help="Sets the env to use, even if -f (yaml file) given "
-         "(will override yaml env setting).")
+    "(will override yaml env setting).")
 
 if __name__ == "__main__":
 
@@ -136,8 +145,10 @@ if __name__ == "__main__":
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         subprocess.run(["sudo", "apt-get", "update"])
-        subprocess.run(["sudo", "apt-get", "install", "-y",
-                        "build-essential", "curl", "unzip", "psmisc"])
+        subprocess.run([
+            "sudo", "apt-get", "install", "-y", "build-essential", "curl",
+            "unzip", "psmisc"
+        ])
         subprocess.run(["pip", "install", "cython==0.29.0", "pytest"])
         # Assume we are in the ray (git clone) directory.
         try:
@@ -150,10 +161,12 @@ if __name__ == "__main__":
         os.chdir("../")
 
     try:
-        subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
+        subprocess.run(
+            ["ray", "start", "--head", "--include-dashboard", "false"])
     except Exception:
         subprocess.run(["ray", "stop"])
-        subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
+        subprocess.run(
+            ["ray", "start", "--head", "--include-dashboard", "false"])
 
     # Run the training experiment.
     importlib.invalidate_caches()
@@ -169,8 +182,8 @@ if __name__ == "__main__":
         last_result = results.trials[0].last_result
         avg_reward = last_result["episode_reward_mean"]
         if avg_reward < args.stop_reward:
-            raise ValueError(
-                "`stop-reward` of {} not reached!".format(args.stop_reward))
+            raise ValueError("`stop-reward` of {} not reached!".format(
+                args.stop_reward))
     # Criterium is to have run through n env timesteps in some wall time m.
     elif args.stop_timesteps and args.stop_time:
         last_result = results.trials[0].last_result
@@ -182,11 +195,9 @@ if __name__ == "__main__":
                 "`stop-timesteps` of {} not reached in {}sec!".format(
                     args.stop_timesteps, args.stop_time))
     else:
-        raise ValueError(
-            "Invalid pass criterium! Must use either "
-            "(--stop-reward + optionally any other) OR "
-            "(--stop-timesteps + --stop-time).")
-
+        raise ValueError("Invalid pass criterium! Must use either "
+                         "(--stop-reward + optionally any other) OR "
+                         "(--stop-timesteps + --stop-time).")
 
     print("ok")
     ray.shutdown()
