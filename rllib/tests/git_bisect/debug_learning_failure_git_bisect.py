@@ -1,5 +1,5 @@
-good commit (from Oct16th):
-6233cef22cc3c62034b4a40923d1eaebdfef883f
+#good commit (from Oct16th):
+#6233cef22cc3c62034b4a40923d1eaebdfef883f
 
 
 """
@@ -34,10 +34,6 @@ import os
 import subprocess
 import yaml
 
-import ray
-from ray import tune
-from ray.rllib.utils.test_utils import check_learning_achieved
-
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--run",
@@ -66,9 +62,13 @@ if __name__ == "__main__":
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         # Assume we are in the ray (git clone) directory.
+        try:
+            subprocess.run(["pip", "uninstall", "-y", "ray"])
+        except Exception:
+            pass
         subprocess.run(["ci/travis/install-bazel.sh"])
         os.chdir("python")
-        subprocess.run(["pip", "install", "-e", "."])
+        subprocess.run(["pip", "install", "-e", ".", "--verbose"])
 
     subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
 
@@ -100,6 +100,10 @@ if __name__ == "__main__":
     if "framework" not in config:
         config["framework"] = "torch" if args.torch else "tf"
 
+    import ray
+    from ray import tune
+    from ray.rllib.utils.test_utils import check_learning_achieved
+
     ray.init()
 
     stop = {}
@@ -114,6 +118,13 @@ if __name__ == "__main__":
 
     # Criterium is to have reached some min reward.
     if args.stop_reward:
+        last_result = results.trials[0].last_result
+        avg_reward = last_result["episode_reward_mean"]
+        if avg_reward < args.stop_reward:
+            raise ValueError(
+                "`stop-reward` of {} not reached!".format(args.stop_reward))
+        print("ok")
+
         check_learning_achieved(results, args.stop_reward)
     # Criterium is to have run through n env timesteps in some wall time m.
     elif args.stop_timesteps and args.stop_time:
@@ -122,7 +133,9 @@ if __name__ == "__main__":
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
         if args.stop_timesteps < total_timesteps - 100:
-            raise ValueError("`stop-timesteps` of {} not reached in {}sec!".format(args.stop_timesteps, args.stop_time))
+            raise ValueError(
+                "`stop-timesteps` of {} not reached in {}sec!".format(
+                    args.stop_timesteps, args.stop_time))
         print("ok")
     else:
         raise ValueError("Invalid pass criterium!")
