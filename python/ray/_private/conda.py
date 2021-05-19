@@ -3,6 +3,7 @@ import os
 import subprocess
 import hashlib
 import json
+from typing import Optional, List, Union, Tuple
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 RAY_CONDA_HOME = "RAY_CONDA_HOME"
 
 
-def get_conda_activate_commands(conda_env_name):
+def get_conda_activate_commands(conda_env_name: str) -> List[str]:
     """
     Get a list of commands to run to silently activate the given conda env.
     """
@@ -37,7 +38,7 @@ def get_conda_activate_commands(conda_env_name):
     return activate_conda_env
 
 
-def get_conda_bin_executable(executable_name):
+def get_conda_bin_executable(executable_name: str) -> str:
     """
     Return path to the specified executable, assumed to be discoverable within
     the 'bin' subdirectory of a conda installation.
@@ -57,13 +58,14 @@ def get_conda_bin_executable(executable_name):
     return executable_name
 
 
-def _get_conda_env_name(conda_env_path):
+def _get_conda_env_name(conda_env_path: str) -> str:
     conda_env_contents = open(conda_env_path).read() if conda_env_path else ""
     return "ray-%s" % hashlib.sha1(
         conda_env_contents.encode("utf-8")).hexdigest()
 
 
-def get_or_create_conda_env(conda_env_path, base_dir=None):
+def get_or_create_conda_env(conda_env_path: str,
+                            base_dir: Optional[str] = None) -> str:
     """
     Given a conda YAML, creates a conda environment containing the required
     dependencies if such a conda environment doesn't already exist. Returns the
@@ -123,13 +125,9 @@ class ShellCommandException(Exception):
     pass
 
 
-def exec_cmd(cmd,
-             throw_on_error=True,
-             env=None,
-             stream_output=False,
-             cwd=None,
-             cmd_stdin=None,
-             **kwargs):
+def exec_cmd(cmd: List[str],
+             throw_on_error: bool = True,
+             stream_output: bool = False) -> Union[int, Tuple[int, str, str]]:
     """
     Runs a command as a child process.
 
@@ -143,27 +141,13 @@ def exec_cmd(cmd,
         cmd: the command to run, as a list of strings
         throw_on_error: if true, raises an Exception if the exit code of the
             program is nonzero
-        env: additional environment variables to be defined when running the
-            child process
-        cwd: working directory for child process
         stream_output: if true, does not capture standard output and error; if
             false, captures these, streams and returns them
-        cmd_stdin: if specified, passes the specified string as stdin to the
-            child process.
     """
-    cmd_env = os.environ.copy()
-    if env:
-        cmd_env.update(env)
-
     if stream_output:
         child = subprocess.Popen(
-            cmd,
-            env=cmd_env,
-            cwd=cwd,
-            universal_newlines=True,
-            stdin=subprocess.PIPE,
-            **kwargs)
-        child.communicate(cmd_stdin)
+            cmd, universal_newlines=True, stdin=subprocess.PIPE)
+        child.communicate()
         exit_code = child.wait()
         if throw_on_error and exit_code != 0:
             raise ShellCommandException("Non-zero exitcode: %s" % (exit_code))
@@ -171,14 +155,11 @@ def exec_cmd(cmd,
     else:
         child = subprocess.Popen(
             cmd,
-            env=cmd_env,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=cwd,
-            universal_newlines=True,
-            **kwargs)
-        (stdout, stderr) = child.communicate(cmd_stdin)
+            universal_newlines=True)
+        (stdout, stderr) = child.communicate()
         exit_code = child.wait()
         if throw_on_error and exit_code != 0:
             raise ShellCommandException(
