@@ -564,6 +564,15 @@ ray.get(a.ping.remote())
     assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
 
+    for actor_id, entry in data["data"]["snapshot"]["actors"].items():
+        assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
+        assert entry["actorClass"] == "Pinger"
+        assert entry["startTime"] >= 0
+        if entry["isDetached"]:
+            assert entry["endTime"] == 0, entry
+        else:
+            assert entry["endTime"] > 0, entry
+
 
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}

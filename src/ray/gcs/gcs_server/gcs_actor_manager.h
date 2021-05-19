@@ -187,14 +187,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
-      const rpc::ClientFactoryFn &worker_client_factory = nullptr,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
-          run_delayed =
-              [](std::function<void(void)> func, boost::posix_time::milliseconds delay) {
-                // Default value for testing purposes.
-                RAY_CHECK(false);
-                func();
-              });
+          run_delayed,
+      const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
 
