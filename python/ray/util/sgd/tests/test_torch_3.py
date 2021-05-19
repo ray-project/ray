@@ -3,7 +3,6 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.utils.data import DataLoader
 
 import ray
 import ray.util.data as ml_data
@@ -42,6 +41,7 @@ def ray_start_4_cpus():
 
 Operator = TrainingOperator.from_creators(
     model_creator, optimizer_creator, data_creator, loss_creator=nn.MSELoss)
+
 
 @pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
