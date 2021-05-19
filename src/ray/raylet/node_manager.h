@@ -657,7 +657,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// called `ray.get` or `ray.wait`.
   DependencyManager dependency_manager_;
 
-  std::unique_ptr<AgentManager> agent_manager_;
+  std::shared_ptr<AgentManager> agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;

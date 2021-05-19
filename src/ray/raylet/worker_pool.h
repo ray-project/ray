@@ -30,6 +30,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client.h"
+#include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -137,6 +138,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Set the node manager port.
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
   void SetNodeManagerPort(int node_manager_port);
+
+  /// Set agent manager.
+  void SetAgentManager(std::shared_ptr<AgentManager> agent_manager);
 
   /// Handles the event that a job is started.
   ///
@@ -411,6 +415,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_map<Process, TaskID> pending_dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, Process> tasks_to_pending_dedicated_workers;
+    /// A map for speeding up looking up the pending runtime env request for the given
+    /// task.
+    std::unordered_map<TaskID, std::string> tasks_to_pending_runtime_envs;
     /// A map for looking up tasks with existing dedicated worker processes (processes
     /// with a specially installed environment) so the processes can be reused.
     std::unordered_map<Process, TaskID> registered_dedicated_workers_to_tasks;
@@ -420,6 +427,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// The last size at which a warning about the number of registered workers
     /// was generated.
     int64_t last_warning_multiple;
+    /// A map between hex_id and worker.
+    std::unordered_map<std::string, std::shared_ptr<WorkerInterface>> id_to_worker_;
   };
 
   /// Pool states per language.
@@ -550,6 +559,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// A callback to get the current time.
   const std::function<double()> get_time_;
+  /// Agent manager.
+  std::shared_ptr<AgentManager> agent_manager_;
 };
 
 }  // namespace raylet

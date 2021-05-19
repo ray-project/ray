@@ -145,6 +145,10 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
   node_manager_port_ = node_manager_port;
 }
 
+void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
+  agent_manager_ = agent_manager;
+}
+
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     const std::vector<std::string> &dynamic_options,
@@ -835,6 +839,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
+  bool create_runtime_env = false;
   if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
       task_spec.OverrideEnvironmentVariables().size() > 0 ||
       !(task_spec.SerializedRuntimeEnv() == "{}" ||
@@ -852,6 +857,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // we can remove it from pending_dedicated_workers_to_tasks.
       state.pending_dedicated_workers_to_tasks.erase(worker->GetProcess());
       state.tasks_to_pending_dedicated_workers.erase(task_spec.TaskId());
+      state.tasks_to_pending_runtime_envs.erase(task_spec.TaskId());
       // We don't want this dedicated worker to end up in the general idle pool because
       // it has state from its environment, so keep track of it in this map.
       state.registered_dedicated_workers_to_tasks[worker->GetProcess()] =
@@ -863,14 +869,39 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.IsActorCreationTask()) {
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
-      proc = StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
-                                task_spec.JobId(), dynamic_options,
-                                task_spec.SerializedRuntimeEnv(),
-                                task_spec.OverrideEnvironmentVariables());
-      if (proc.IsValid()) {
-        state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
+      auto start_worker_process_fn =
+          [this](const TaskSpecification &task_spec, State &state,
+                 std::vector<std::string> dynamic_options) -> Process {
+        Process proc = StartWorkerProcess(
+            task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
+            dynamic_options, task_spec.SerializedRuntimeEnv(),
+            task_spec.OverrideEnvironmentVariables());
+        if (proc.IsValid()) {
+          state.pending_dedicated_workers_to_tasks[proc] = task_spec.TaskId();
+          state.tasks_to_pending_dedicated_workers[task_spec.TaskId()] = proc;
+        }
+        return proc;
+      };
+
+      // create runtime env.
+      if (!(task_spec.SerializedRuntimeEnv() == "{}" ||
+            task_spec.SerializedRuntimeEnv() == "")) {
+        create_runtime_env = true;
+        state.tasks_to_pending_runtime_envs[task_spec.TaskId()] =
+            task_spec.SerializedRuntimeEnv();
+        agent_manager_->CreateRuntimeEnvOrReuse(
+            task_spec.SerializedRuntimeEnv(),
+            [start_worker_process_fn, &state, task_spec, dynamic_options](
+                Status status, const rpc::CreateRuntimeEnvReply &reply) {
+              if (!status.ok()) {
+                RAY_LOG(ERROR)
+                    << "Create runtime env rpc failed. Wait for next time to retry.";
+                return;
+              }
+              start_worker_process_fn(task_spec, state, dynamic_options);
+            });
       }
+      proc = start_worker_process_fn(task_spec, state, dynamic_options);
     }
   } else if (task_spec.IsActorTask()) {
     // Code path of actor task.
@@ -909,7 +940,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     }
   }
 
-  if (worker == nullptr && proc.IsValid()) {
+  if (worker == nullptr && proc.IsValid() && !create_runtime_env) {
     WarnAboutSize();
   }
 
@@ -1100,8 +1131,12 @@ void WorkerPool::WarnAboutSize() {
 bool WorkerPool::HasPendingWorkerForTask(const Language &language,
                                          const TaskID &task_id) {
   auto &state = GetStateForLanguage(language);
-  auto it = state.tasks_to_pending_dedicated_workers.find(task_id);
-  return it != state.tasks_to_pending_dedicated_workers.end();
+  auto runtime_env_it = state.tasks_to_pending_runtime_envs.find(task_id);
+  if (runtime_env_it != state.tasks_to_pending_runtime_envs.end()) {
+    return true;
+  }
+  auto worker_it = state.tasks_to_pending_dedicated_workers.find(task_id);
+  return worker_it != state.tasks_to_pending_dedicated_workers.end();
 }
 
 void WorkerPool::TryStartIOWorkers(const Language &language) {

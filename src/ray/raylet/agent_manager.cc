@@ -29,6 +29,8 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_ip_address_ = request.agent_ip_address();
   agent_port_ = request.agent_port();
   agent_pid_ = request.agent_pid();
+  runtime_env_agent_client_ =
+      runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
@@ -95,6 +97,21 @@ void AgentManager::StartAgent() {
                                RayConfig::instance().agent_restart_interval_ms()));
   });
   monitor_thread.detach();
+}
+
+void AgentManager::CreateRuntimeEnvOrReuse(const std::string &serialized_runtime_env,
+                                           CreateRuntimeEnvCallback callback) {
+  std::cout << "CreateRuntimeEnvOrReuse" << std::endl;
+  rpc::CreateRuntimeEnvRequest request;
+  request.set_serialized_runtime_env(serialized_runtime_env);
+  runtime_env_agent_client_->CreateRuntimeEnv(request, callback);
+}
+
+void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
+                                    DeleteRuntimeEnvCallback callback) {
+  rpc::DeleteRuntimeEnvRequest request;
+  request.set_serialized_runtime_env(serialized_runtime_env);
+  runtime_env_agent_client_->DeleteRuntimeEnv(request, callback);
 }
 
 }  // namespace raylet

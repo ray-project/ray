@@ -110,6 +110,9 @@ class RuntimeEnvDict:
         # dict order.
         return json.dumps(self._dict, sort_keys=True)
 
+    def setUris(self, uris):
+        self._dict["uris"] = uris
+
 
 class Protocol(Enum):
     """A enum for supported backend storage."""
@@ -424,9 +427,8 @@ def rewrite_runtime_env_uris(job_config: JobConfig) -> None:
         if excludes is None:
             excludes = []
         pkg_name = get_project_package_name(working_dir, py_modules, excludes)
-        job_config.runtime_env["uris"] = [
-            Protocol.GCS.value + "://" + pkg_name
-        ]
+        job_config.set_runtime_env_uris(
+            [Protocol.GCS.value + "://" + pkg_name])
 
 
 def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:

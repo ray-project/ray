@@ -266,6 +266,8 @@ class Worker : public WorkerInterface {
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
+  // A runtime env id which is a hex string.
+  std::string runtime_env_id_;
 };
 
 }  // namespace raylet
