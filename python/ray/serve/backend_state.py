@@ -91,7 +91,7 @@ class ActorReplicaWrapper:
                     self._placement_group_name, self._backend_tag))
             self._placement_group = ray.util.placement_group(
                 [self._actor_resources],
-                lifetime="detached",
+                lifetime="detached" if self._detached else None,
                 name=self._placement_group_name)
 
         try:

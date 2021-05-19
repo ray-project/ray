@@ -75,8 +75,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if current_job_config and set(job_config.runtime_env.uris) != set(
-                current_job_config.runtime_env.uris):
+        if current_job_config and \
+           set(job_config.runtime_env.uris) != set(
+                current_job_config.runtime_env.uris) and \
+                len(job_config.runtime_env.uris) > 0:
             return ray_client_pb2.InitResponse(
                 ok=False,
                 msg="Runtime environment doesn't match "

@@ -31,13 +31,14 @@ class AbstractRayRuntime : public RayRuntime {
 
   WaitResult Wait(const std::vector<ObjectID> &ids, int num_objects, int timeout_ms);
 
-  ObjectID Call(const RemoteFunctionPtrHolder &fptr,
+  ObjectID Call(const RemoteFunctionHolder &remote_function_holder,
                 std::vector<std::unique_ptr<::ray::TaskArg>> &args);
 
-  ActorID CreateActor(const RemoteFunctionPtrHolder &fptr,
+  ActorID CreateActor(const RemoteFunctionHolder &remote_function_holder,
                       std::vector<std::unique_ptr<::ray::TaskArg>> &args);
 
-  ObjectID CallActor(const RemoteFunctionPtrHolder &fptr, const ActorID &actor,
+  ObjectID CallActor(const RemoteFunctionHolder &remote_function_holder,
+                     const ActorID &actor,
                      std::vector<std::unique_ptr<::ray::TaskArg>> &args);
 
   const TaskID &GetCurrentTaskId();

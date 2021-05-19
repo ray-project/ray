@@ -34,6 +34,7 @@ def get_default_fixture_ray_kwargs():
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
         "dashboard_port": None,
+        "namespace": "",
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -124,6 +125,7 @@ def _ray_start_cluster(**kwargs):
     elif num_nodes > 0:
         do_init = True
     init_kwargs.update(kwargs)
+    namespace = init_kwargs.pop("namespace")
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
@@ -133,7 +135,7 @@ def _ray_start_cluster(**kwargs):
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
         if len(remote_nodes) == 1 and do_init:
-            ray.init(address=cluster.address)
+            ray.init(address=cluster.address, namespace=namespace)
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()

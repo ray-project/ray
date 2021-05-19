@@ -9,6 +9,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
+from ray.test_utils import get_wheel_filename
 
 
 @pytest.fixture(scope="session")
@@ -59,6 +60,7 @@ def conda_envs():
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -77,6 +79,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -96,6 +99,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -125,6 +129,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
 
@@ -178,6 +183,84 @@ def test_get_conda_env_dir(tmp_path):
         # Env tf2 still should exist.
         env_dir = get_conda_env_dir("tf2")
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+def test_conda_create_task(shutdown_only):
+    """Tests dynamic creation of a conda env in a task's runtime env."""
+    ray.init()
+    ray_wheel_filename = get_wheel_filename()
+    # E.g. 3.6.13
+    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
+    print(f"WHEEL PATH: {ray_wheel_path}")
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                f"python={python_micro_version_dots}", "pip", {
+                    "pip": [
+                        ray_wheel_path, "pip-install-test==0.5",
+                        "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    }
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
+    assert ray.get(f.options(runtime_env=runtime_env).remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+def test_conda_create_job_config(shutdown_only):
+    """Tests dynamic conda env creation in a runtime env in the JobConfig."""
+
+    ray_wheel_filename = get_wheel_filename()
+    # E.g. 3.6.13
+    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                f"python={python_micro_version_dots}", "pip", {
+                    "pip": [
+                        ray_wheel_path, "pip-install-test==0.5",
+                        "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    }
+    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")

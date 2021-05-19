@@ -14,7 +14,7 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   A2C: tf + torch
 `ARS`_              tf + torch **Yes**                 **Yes**            No                                                                        No
 `BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       torch
-`CQL`_              torch      No                      **Yes**            No          `+RNN`_, `+LSTM auto-wrapping`_, `+autoreg`_                  torch
+`CQL`_              tf + torch No                      **Yes**            No                                                                        tf + torch
 `ES`_               tf + torch **Yes**                 **Yes**            No                                                                        No
 `DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**                                                                   torch
@@ -560,10 +560,14 @@ RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/b
 
 Conservative Q-Learning (CQL)
 -----------------------------------
-|pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/cql/cql.py>`__
 
-In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples. In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss. This ensures that the critic does not output overly-optimistic Q-values and can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
+In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples.
+In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via
+conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss.
+This ensures that the critic does not output overly-optimistic Q-values. This conservative
+correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
 
 RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
 
