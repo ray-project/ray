@@ -1,3 +1,11 @@
+# Should reach 100+ reward in 100k-200k ts.
+# Note here that with 2 workers, APEX can behave a little unstably
+# due to the (static) per-worker-epsilon distribution, which also makes
+# evaluation w/o evaluation worker set harder.
+# For an epsilon-free/greedy evaluation, use:
+# evaluation_interval: 1
+# evaluation_config:
+#     explore: False
 cartpole-apex-dqn:
     env: CartPole-v0
     run: APEX
