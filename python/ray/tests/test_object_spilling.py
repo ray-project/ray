@@ -312,7 +312,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         })
     replay_buffer = []
     solution_buffer = []
-    buffer_length = 100
+    buffer_length = 10
 
     # Create objects of more than 800 MiB.
     for _ in range(buffer_length):
@@ -325,7 +325,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
             solution_buffer.append(arr)
     print("spill done.")
     # randomly sample objects
-    for _ in range(100):
+    for _ in range(buffer_length):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
