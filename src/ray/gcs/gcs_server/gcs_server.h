@@ -98,7 +98,7 @@ class GcsServer {
   void InitGcsResourceScheduler();
 
   /// Initialize gcs job manager.
-  void InitGcsJobManager();
+  void InitGcsJobManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs actor manager.
   void InitGcsActorManager(const GcsInitData &gcs_init_data);

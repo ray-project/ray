@@ -48,6 +48,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 # we attempt to start the service running at this port.
 DEFAULT_PORT = 6379
 
+RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
 REDIS_KEY_DASHBOARD = "dashboard"
@@ -137,6 +139,7 @@ REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
+DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"

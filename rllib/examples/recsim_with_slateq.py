@@ -11,44 +11,46 @@ from ray.rllib.agents.slateq.slateq import ALL_SLATEQ_STRATEGIES
 from ray.rllib.env.wrappers.recsim_wrapper import env_name as recsim_env_name
 from ray.tune.logger import pretty_print
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--agent",
+    type=str,
+    default="SlateQ",
+    help=("Select agent policy. Choose from: DQN and SlateQ. "
+          "Default value: SlateQ."),
+)
+parser.add_argument(
+    "--strategy",
+    type=str,
+    default="QL",
+    help=("Strategy for the SlateQ agent. Choose from: " +
+          ", ".join(ALL_SLATEQ_STRATEGIES) + ". "
+          "Default value: QL. Ignored when using Tune."),
+)
+parser.add_argument(
+    "--use-tune",
+    action="store_true",
+    help=("Run with Tune so that the results are logged into Tensorboard. "
+          "For debugging, it's easier to run without Ray Tune."),
+)
+parser.add_argument("--tune-num-samples", type=int, default=10)
+parser.add_argument("--env-slate-size", type=int, default=2)
+parser.add_argument("--env-seed", type=int, default=0)
+parser.add_argument(
+    "--num-gpus",
+    type=float,
+    default=0.,
+    help="Only used if running with Tune.")
+parser.add_argument(
+    "--num-workers",
+    type=int,
+    default=0,
+    help="Only used if running with Tune.")
+
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--agent",
-        type=str,
-        default="SlateQ",
-        help=("Select agent policy. Choose from: DQN and SlateQ. "
-              "Default value: SlateQ."),
-    )
-    parser.add_argument(
-        "--strategy",
-        type=str,
-        default="QL",
-        help=("Strategy for the SlateQ agent. Choose from: " +
-              ", ".join(ALL_SLATEQ_STRATEGIES) + ". "
-              "Default value: QL. Ignored when using Tune."),
-    )
-    parser.add_argument(
-        "--use-tune",
-        action="store_true",
-        help=("Run with Tune so that the results are logged into Tensorboard. "
-              "For debugging, it's easier to run without Ray Tune."),
-    )
-    parser.add_argument("--tune-num-samples", type=int, default=10)
-    parser.add_argument("--env-slate-size", type=int, default=2)
-    parser.add_argument("--env-seed", type=int, default=0)
-    parser.add_argument(
-        "--num-gpus",
-        type=float,
-        default=0.,
-        help="Only used if running with Tune.")
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        default=0,
-        help="Only used if running with Tune.")
     args = parser.parse_args()
+    ray.init()
 
     if args.agent not in ["DQN", "SlateQ"]:
         raise ValueError(args.agent)
@@ -59,7 +61,6 @@ def main():
         "convert_to_discrete_action_space": args.agent == "DQN",
     }
 
-    ray.init()
     if args.use_tune:
         time_signature = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
         name = f"SlateQ/{args.agent}-seed{args.env_seed}-{time_signature}"

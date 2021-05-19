@@ -60,6 +60,11 @@ def pad_batch_to_sequences_of_same_size(
             Policy ViewRequirements dict to be able to infer whether
             e.g. dynamic max'ing should be applied over the seq_lens.
     """
+    if batch.zero_padded:
+        return
+
+    batch.zero_padded = True
+
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
             len(batch[SampleBatch.CUR_OBS]) % batch_divisibility_req == 0
@@ -252,6 +257,7 @@ def chop_into_sequences(*,
         if seq_len:
             seq_lens.append(seq_len)
         seq_lens = np.array(seq_lens, dtype=np.int32)
+
     assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
@@ -326,8 +332,7 @@ def timeslice_along_seq_lens_with_overlap(
             at. If None, use `sample_batch["seq_lens"]`.
         zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
-            additional timesteps gained via setting pre_overlap or
-            post_overlap > 0 (see Example).
+            additional timesteps gained via setting pre_overlap (see Example).
         pre_overlap (int): If >0, will overlap each two consecutive slices by
             this many timesteps (toward the left side). This will cause
             zero-padding at the very beginning of the batch.
@@ -361,19 +366,20 @@ def timeslice_along_seq_lens_with_overlap(
     start = 0
     slices = []
     for seq_len in seq_lens:
-        begin = start - pre_overlap
-        end = start + seq_len  # + post_overlap
-        slices.append((begin, end))
+        pre_begin = start - pre_overlap
+        slice_begin = start
+        end = start + seq_len
+        slices.append((pre_begin, slice_begin, end))
         start += seq_len
 
     timeslices = []
-    for begin, end in slices:
+    for begin, slice_begin, end in slices:
         zero_length = None
         data_begin = 0
         zero_init_states_ = zero_init_states
         if begin < 0:
-            zero_length = -begin
-            data_begin = 0
+            zero_length = pre_overlap
+            data_begin = slice_begin
             zero_init_states_ = True
         else:
             eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else

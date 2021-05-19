@@ -37,6 +37,25 @@ int NotRegisteredFunc(int x) { return x; }
 
 void ExceptionFunc(int x) { throw std::invalid_argument(std::to_string(x)); }
 
+int OverloadFunc() {
+  std::cout << "OverloadFunc with no argument\n";
+  return 1;
+}
+
+int OverloadFunc(int i) {
+  std::cout << "OverloadFunc with one argument\n";
+  return i + 1;
+}
+
+int OverloadFunc(int i, int j) {
+  std::cout << "OverloadFunc with two arguments\n";
+  return i + j;
+}
+
+RAY_REMOTE(RAY_FUNC(OverloadFunc));
+RAY_REMOTE(RAY_FUNC(OverloadFunc, int));
+RAY_REMOTE(RAY_FUNC(OverloadFunc, int, int));
+
 class DummyObject {
  public:
   int count;
@@ -72,8 +91,6 @@ TEST(RayApiTest, DuplicateRegister) {
 }
 
 TEST(RayApiTest, NormalTask) {
-  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
-
   auto r = Ray::Task(Return).Remote();
   EXPECT_EQ(1, *(r.Get()));
 
@@ -111,6 +128,20 @@ TEST(RayApiTest, CallWithObjectRef) {
   EXPECT_EQ(return4, 9);
 }
 
+TEST(RayApiTest, OverloadTest) {
+  auto rt0 = Ray::Task(RAY_FUNC(OverloadFunc)).Remote();
+  auto rt1 = Ray::Task(RAY_FUNC(OverloadFunc, int)).Remote(rt0);
+  auto rt2 = Ray::Task(RAY_FUNC(OverloadFunc, int, int)).Remote(rt1, 3);
+
+  int return0 = *(rt0.Get());
+  int return1 = *(rt1.Get());
+  int return2 = *(rt2.Get());
+
+  EXPECT_EQ(return0, 1);
+  EXPECT_EQ(return1, 2);
+  EXPECT_EQ(return2, 5);
+}
+
 /// We should consider the driver so is not same with the worker so, and find the error
 /// reason.
 TEST(RayApiTest, NotExistFunction) {
@@ -121,6 +152,4 @@ TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = Ray::Task(ExceptionFunc).Remote(2);
   EXPECT_THROW(r4.Get(), RayException);
-
-  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
 }
