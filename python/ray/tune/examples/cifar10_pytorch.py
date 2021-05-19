@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from filelock import FileLock
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
@@ -25,11 +26,15 @@ def load_data(data_dir="./data"):
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    trainset = torchvision.datasets.CIFAR10(
-        root=data_dir, train=True, download=True, transform=transform)
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/data.lock")):
+        trainset = torchvision.datasets.CIFAR10(
+            root=data_dir, train=True, download=True, transform=transform)
 
-    testset = torchvision.datasets.CIFAR10(
-        root=data_dir, train=False, download=True, transform=transform)
+        testset = torchvision.datasets.CIFAR10(
+            root=data_dir, train=False, download=True, transform=transform)
 
     return trainset, testset
 # __load_data_end__
@@ -174,11 +179,23 @@ def test_accuracy(net, device="cpu"):
     return correct / total
 # __test_acc_end__
 
+def test_best_model(best_trial):
+    best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    best_trained_model.to(device)
+
+    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
+
+    model_state, optimizer_state = torch.load(checkpoint_path)
+    best_trained_model.load_state_dict(model_state)
+
+    test_acc = test_accuracy(best_trained_model, device)
+    print("Best trial test set accuracy: {}".format(test_acc))
 
 # __main_begin__
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     data_dir = os.path.abspath("./data")
-    load_data(data_dir)  # Download data for all trials before starting the run
+
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -206,21 +223,14 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     print("Best trial final validation accuracy: {}".format(
         best_trial.last_result["accuracy"]))
 
-    best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda:0"
-        if gpus_per_trial > 1:
-            best_trained_model = nn.DataParallel(best_trained_model)
-    best_trained_model.to(device)
+    if args.server_address:
+        # If using Ray Client, we want to make sure checkpoint access
+        # happens on the server. So we wrap `test_best_model` in a Ray task.
+        ray.get(ray.remote(test_best_model).remote())
+    else:
+        test_best_model()
 
-    checkpoint_path = os.path.join(best_trial.checkpoint.value, "checkpoint")
 
-    model_state, optimizer_state = torch.load(checkpoint_path)
-    best_trained_model.load_state_dict(model_state)
-
-    test_acc = test_accuracy(best_trained_model, device)
-    print("Best trial test set accuracy: {}".format(test_acc))
 # __main_end__
 
 
@@ -230,11 +240,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=2)
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
+        if args.server_address:
+            # Connect to a remote server through Ray Client.
+            ray.util.connect(args.server_address)
+        elif args.cluster_address:
+            # Run directly on the Ray cluster.
+            pass
         # Change this to activate training on GPUs
         main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)
