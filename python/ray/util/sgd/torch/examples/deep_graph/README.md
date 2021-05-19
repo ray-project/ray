@@ -1,8 +1,9 @@
-# Graph Attention Network case -> RaySGD
+# Distributed Graph Attention Network training with DGL and RaySGD
+This is an example of integrating DGL(https://github.com/dmlc/dgl) and RaySGD for distributed graph neural network training.
 
 Original scripts are taken from: https://github.com/dmlc/dgl/blob/master/examples/pytorch/ogb/ogbn-products/gat/main.py.
 
-This is a case of integrating DGL(https://github.com/dmlc/dgl) and RaySGD for graph neural network training.  In order to overwrite the train_epoch and validate methods in the custom class, we adjusted the execution logic of the original code to make it easier to extend to training on multiple GPUs.
+In order to overwrite the train_epoch and validate methods in the custom class, we adjusted the execution logic of the original code to make it easier to extend to training on multiple GPUs.
 
 ## Packages required
 - ray: 1.1.0  
