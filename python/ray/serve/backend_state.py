@@ -516,9 +516,10 @@ class BackendState:
         self._notify_replica_handles_changed()
 
     def shutdown(self) -> None:
-        for replica_dict in self.get_running_replica_handles().values():
-            for replica in replica_dict.values():
-                ray.kill(replica, no_restart=True)
+        # Force-kill all of the replicas.
+        for replicas_container in self._replicas.values():
+            for replica in replicas_container.get():
+                ray.kill(replica.actor_handle, no_restart=True)
 
         self._kv_store.delete(CHECKPOINT_KEY)
 
