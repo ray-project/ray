@@ -1,9 +1,12 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client import ray
 from ray.util.client.options import validate_options
 
 import asyncio
 import concurrent.futures
+from dataclasses import dataclass
+import grpc
 import os
 import uuid
 import inspect
@@ -421,3 +424,17 @@ def remote_decorator(options: Optional[Dict[str, Any]]):
                             "either a function or to a class.")
 
     return decorator
+
+
+@dataclass
+class ClientServerHandle:
+    """Holds the handles to the registered gRPC servicers and their server."""
+    task_servicer: ray_client_pb2_grpc.RayletDriverServicer
+    data_servicer: ray_client_pb2_grpc.RayletDataStreamerServicer
+    logs_servicer: ray_client_pb2_grpc.RayletLogStreamerServicer
+    grpc_server: grpc.Server
+
+    # Add a hook for all the cases that previously
+    # expected simply a gRPC server
+    def __getattr__(self, attr):
+        return getattr(self.grpc_server, attr)
