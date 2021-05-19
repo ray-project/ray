@@ -80,7 +80,7 @@ Custom- and Complex Models
 - `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
 - `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/neural_computer.py>`__:
-   Example of DeepMind's Differentiable Neural Computer for partially-observable environments
+   Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
 
 Training Workflows
