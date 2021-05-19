@@ -946,8 +946,9 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         self._lr_schedule = lr_schedule
+        init_val = lr if self._lr_schedule is None else self._lr_schedule[0][-1]
+        self.cur_lr = tf1.get_variable("lr", initializer=init_val, trainable=False)
         if self._lr_schedule is not None:
             self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
