@@ -946,12 +946,17 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self._lr_schedule = lr_schedule
-        init_val = lr if self._lr_schedule is None else self._lr_schedule[0][-1]
-        self.cur_lr = tf1.get_variable("lr", initializer=init_val, trainable=False)
-        if self._lr_schedule is not None:
+        self._lr_schedule = None
+        if lr_schedule is not None:
             self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = tf1.get_variable("lr",
+                                           initializer=lr_schedule[0][-1],
+                                           trainable=False)
+        else:
+            self.cur_lr = tf1.get_variable("lr",
+                                           initializer=lr,
+                                           trainable=False)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
