@@ -1,4 +1,6 @@
 import logging
+import gym
+from typing import Optional, Dict
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import compute_and_clip_gradients
@@ -8,6 +10,11 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
+    PolicyID
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 
 tf1, tf, tfv = try_import_tf()
 
@@ -15,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 class ValueNetworkMixin:
-    def __init__(self, obs_space, action_space, config):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, config: TrainerConfigDict):
 
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
@@ -29,10 +37,11 @@ class ValueNetworkMixin:
         self._value = value
 
 
-def postprocess_advantages(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
+def postprocess_advantages(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
+        episode=None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -84,8 +93,10 @@ def postprocess_advantages(policy,
 
 
 class MARWILLoss:
-    def __init__(self, policy, value_estimates, action_dist, actions,
-                 cumulative_rewards, vf_loss_coeff, beta):
+    def __init__(self, policy: Policy, value_estimates: TensorType,
+                 action_dist: ActionDistribution, actions: TensorType,
+                 cumulative_rewards: TensorType, vf_loss_coeff: float,
+                 beta: float):
 
         # Advantage Estimation.
         adv = cumulative_rewards - value_estimates
@@ -133,7 +144,8 @@ class MARWILLoss:
             explained_variance(cumulative_rewards, value_estimates))
 
 
-def marwil_loss(policy, model, dist_class, train_batch):
+def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
+                train_batch: SampleBatch) -> TensorType:
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     value_estimates = model.value_function()
@@ -146,7 +158,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     return policy.loss.total_loss
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "policy_loss": policy.loss.p_loss,
         "vf_loss": policy.loss.v_loss,
@@ -155,7 +167,9 @@ def stats(policy, train_batch):
     }
 
 
-def setup_mixins(policy, obs_space, action_space, config):
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     # Set up a tf-var for the moving avg (do this here to make it work with
     # eager mode); "c^2" in the paper.
