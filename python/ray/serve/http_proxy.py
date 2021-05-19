@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import time
+import pickle
 from typing import List, Dict, Optional, Tuple
 
 import uvicorn
@@ -46,6 +47,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
     # request until it reaches the backend replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
+    request = pickle.dumps(request)
 
     retries = 0
     backoff_time_s = 0.05

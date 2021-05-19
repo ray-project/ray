@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pickle
 import traceback
 import inspect
 from typing import Any, Callable
@@ -91,7 +92,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 **request_kwargs,
         ):
             # Directly receive input because it might contain an ObjectRef.
-            query = Query(request_args, request_kwargs, request_metadata)
+            query = Query(request_args, request_kwargs,
+                          pickle.loads(request_metadata))
             return await self.backend.handle_request(query)
 
         def ready(self):

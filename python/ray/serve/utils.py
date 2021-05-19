@@ -1,6 +1,7 @@
 from itertools import groupby
 import json
 import logging
+import pickle
 import random
 import string
 import time
@@ -93,6 +94,9 @@ def parse_request_item(request_item):
             return (arg, ), {}
         elif isinstance(arg, HTTPRequestWrapper):
             return (build_starlette_request(arg.scope, arg.body), ), {}
+        elif isinstance(arg, bytes):
+            arg: HTTPRequestWrapper = pickle.loads(arg)
+            return (build_starlette_request(arg.scope, arg.body), ), {}
         elif request_item.metadata.use_serve_request:
             return (ServeRequest(
                 arg,
@@ -104,10 +108,13 @@ def parse_request_item(request_item):
     return request_item.args, request_item.kwargs
 
 
+SERVE_DEBUG_ON = os.environ.get("SERVE_LOG_DEBUG")
+
+
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    log_level = os.environ.get("SERVE_LOG_DEBUG")
+    log_level = SERVE_DEBUG_ON
     if log_level and int(log_level):
         logger.setLevel(logging.DEBUG)
     else:

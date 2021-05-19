@@ -1,4 +1,5 @@
 import asyncio
+import pickle
 import itertools
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
@@ -140,7 +141,7 @@ class ReplicaSet:
                          f"to replica {replica}.")
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.handle_request.remote(
-                query.metadata, *query.args, **query.kwargs)
+                pickle.dumps(query.metadata), *query.args, **query.kwargs)
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
