@@ -4,11 +4,10 @@ import grpc
 import logging
 import json
 from queue import Queue
-import random
 import socket
 from threading import Thread, Lock
 import time
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from ray.job_config import JobConfig
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -27,23 +26,11 @@ MAX_SPECIFIC_SERVER_PORT = 24000
 CHECK_CHANNEL_TIMEOUT_S = 5
 
 
-def _get_unused_port() -> int:
-    for _ in range(10):
-        port = random.randint(MIN_SPECIFIC_SERVER_PORT,
-                              MAX_SPECIFIC_SERVER_PORT)
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("", port))
-        except OSError:
-            s.close()
-            continue
-        s.close()
-        s.close()
-        return port
-    raise RuntimeError("Unable to succeed in selecting a random port.")
-
-
 def _get_client_id_from_context(context: Any) -> str:
+    """
+    Get `client_id` from gRPC metadata. If the `client_id` is not present,
+    this function logs an error and sets the status_code.
+    """
     metadata = {k: v for k, v in context.invocation_metadata()}
     client_id = metadata.get("client_id") or ""
     if client_id == "":
@@ -64,16 +51,37 @@ class ProxyManager():
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = Lock()
         self.redis_address = redis_address
+        self._free_ports: List[int] = list(
+            range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
         self._check_thread = Thread(target=self._check_processes, daemon=True)
         self._check_thread.start()
+
+    def _get_unused_port(self) -> int:
+        """
+        Search for a port in _free_ports that is unused.
+        """
+        with self.server_lock:
+            num_ports = len(self._free_ports)
+            for _ in range(num_ports):
+                port = self._free_ports.pop(0)
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                try:
+                    s.bind(("", port))
+                except OSError:
+                    self._free_ports.append(port)
+                    continue
+                finally:
+                    s.close()
+                return port
+        raise RuntimeError("Unable to succeed in selecting a random port.")
 
     def start_specific_server(self, client_id) -> None:
         """
         Start up a RayClient Server for an incoming client to
         communicate with.
         """
-        port = _get_unused_port()
+        port = self._get_unused_port()
         specific_server = SpecificServer(
             port=port,
             process_handle=start_ray_client_server(
@@ -113,6 +121,8 @@ class ProxyManager():
                     poll_result = specific_server.process_handle.process.poll()
                     if poll_result is not None:
                         del self.servers[client_id]
+                        # Port is available to use again.
+                        self._free_ports.append(specific_server.port)
 
             time.sleep(CHECK_PROCESS_INTERVAL_S)
 
@@ -195,7 +205,6 @@ def forward_streaming_requests(grpc_input_generator: Iterator[Any],
     """
     try:
         for req in grpc_input_generator:
-            logger.error(req)
             output_queue.put(req)
     except grpc.RpcError as e:
         logger.debug("closing dataservicer reader thread "
