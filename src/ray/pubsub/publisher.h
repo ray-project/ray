@@ -42,7 +42,7 @@ class SubscriptionIndex {
   ~SubscriptionIndex() = default;
 
   /// Add a new entry to the index.
-  /// NOTE: If the entry already exists, it raises assert failure.
+  /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
   void AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
@@ -53,9 +53,7 @@ class SubscriptionIndex {
   /// NOTE: It cannot erase subscribers that were never added.
   bool EraseSubscriber(const SubscriberID &subscriber_id);
 
-  /// Erase the object id and subscriber id from the index. Return the number of erased
-  /// entries.
-  /// NOTE: It cannot erase subscribers that were never added.
+  /// Erase the object id and subscriber id from the index.
   bool EraseEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
 
   /// Return true if the object id exists in the index.

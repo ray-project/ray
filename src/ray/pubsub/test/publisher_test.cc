@@ -204,6 +204,40 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
+TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
+  ///
+  /// Test the subscription index is idempotent.
+  ///
+  auto node_id = NodeID::FromRandom();
+  auto oid = ObjectID::FromRandom();
+  SubscriptionIndex<ObjectID> subscription_index;
+
+  // Add the same entry many times.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.AddEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+
+  // Erase it and make sure it is erased.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.EraseEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  // Random mix.
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+}
+
 TEST_F(PublisherTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   rpc::PubsubLongPollingReply reply;

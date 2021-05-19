@@ -25,9 +25,9 @@ void SubscriptionIndex<KeyIdType>::AddEntry(const std::string &key_id_binary,
                                             const SubscriberID &subscriber_id) {
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber_id];
-  RAY_CHECK(subscribing_key_ids.emplace(key_id).second);
+  subscribing_key_ids.emplace(key_id);
   auto &subscriber_map = key_id_to_subscribers_[key_id];
-  RAY_CHECK(subscriber_map.emplace(subscriber_id).second);
+  subscriber_map.emplace(subscriber_id);
 }
 
 template <typename KeyIdType>
@@ -82,7 +82,7 @@ bool SubscriptionIndex<KeyIdType>::EraseSubscriber(const SubscriberID &subscribe
 template <typename KeyIdType>
 bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
                                               const SubscriberID &subscriber_id) {
-  // Erase from subscribers_to_objects_;
+  // Erase keys from subscribers.
   const auto key_id = KeyIdType::FromBinary(key_id_binary);
   auto subscribers_to_message_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribers_to_message_it == subscribers_to_key_id_.end()) {
@@ -99,7 +99,7 @@ bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
     subscribers_to_key_id_.erase(subscribers_to_message_it);
   }
 
-  // Erase from objects_to_subscribers_.
+  // Erase subscribers from keys (reverse index).
   auto key_id_to_subscriber_it = key_id_to_subscribers_.find(key_id);
   // If code reaches this line, that means the object id was in the index.
   RAY_CHECK(key_id_to_subscriber_it != key_id_to_subscribers_.end());
