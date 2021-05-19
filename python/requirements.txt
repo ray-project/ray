@@ -51,6 +51,7 @@ cython==0.29.0
 dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
+google-api-python-client
 gym
 gym-minigrid
 kubernetes
@@ -63,8 +64,9 @@ numba
 # higher version of llvmlite breaks windows
 llvmlite==0.34.0
 openpyxl
-opentelemetry-api==1.0.0rc1
-opentelemetry-sdk==1.0.0rc1
+opentelemetry-api==1.1.0
+opentelemetry-sdk==1.1.0
+opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
 pygments

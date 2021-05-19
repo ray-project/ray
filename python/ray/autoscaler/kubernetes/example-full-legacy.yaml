@@ -131,7 +131,7 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -194,7 +194,7 @@ worker_nodes:
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]

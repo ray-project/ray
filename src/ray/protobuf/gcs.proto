@@ -161,7 +161,6 @@ message ActorTableData {
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
-
 }
 
 message ErrorTableData {
