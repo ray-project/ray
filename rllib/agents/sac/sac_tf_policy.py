@@ -83,7 +83,6 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
 
-    assert isinstance(model, default_model_cls)
 
     # Create an exact copy of the model and store it in `policy.target_model`.
     # This will be used for tau-synched Q-target models that run behind the
@@ -102,8 +101,6 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
-
-    assert isinstance(policy.target_model, default_model_cls)
 
     return model
 
