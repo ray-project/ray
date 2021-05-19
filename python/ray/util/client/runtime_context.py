@@ -1,5 +1,5 @@
 import pickle
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
     from ray import JobID
@@ -44,5 +44,5 @@ class ClientWorkerPropertyAPI:
         return self._fetch_runtime_context().capture_client_tasks
 
     @property
-    def runtime_env(self) -> 'Dict':
+    def runtime_env(self) -> Dict:
         return pickle.loads(self._fetch_runtime_context().runtime_env)

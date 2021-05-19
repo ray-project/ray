@@ -1,6 +1,5 @@
 import ray.worker
 import logging
-import json
 from ray._private.client_mode_hook import client_mode_hook
 
 logger = logging.getLogger(__name__)
