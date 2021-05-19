@@ -117,6 +117,7 @@ cc_binary(
         "src/ray/test/cluster/*.cc",
     ]),
     copts = COPTS,
+    linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "ray_api",
