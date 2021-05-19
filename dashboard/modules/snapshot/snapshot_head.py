@@ -56,10 +56,6 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         request.show_dead_jobs = True
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=5)
-        import sys
-        print("======================", file=sys.stderr)
-        print(reply.actor_table_data, file=sys.stderr)
-        print("======================", file=sys.stderr)
         actors = {}
         for actor_table_entry in reply.actor_table_data:
             actor_id = actor_table_entry.actor_id.hex()
