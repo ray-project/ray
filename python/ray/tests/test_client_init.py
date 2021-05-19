@@ -227,6 +227,22 @@ def test_max_clients(init_and_serve):
         _ = api.connect("localhost:50051")
 
 
+def test_specific_server_idle_terminates(shutdown_only):
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-m", "ray.util.client.server",
+            "--mode=specific-server"
+        ],
+        env={"TIMEOUT_FOR_SPECIFIC_SERVER_S": "5"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
+    poll = proc.poll()
+    assert poll is None, f"Process is no longer running, poll returned {poll}"
+    # Wait for timeout to happen
+    time.sleep(10)
+    assert proc.wait(0.1) is not None
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

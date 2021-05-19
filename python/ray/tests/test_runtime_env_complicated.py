@@ -57,28 +57,26 @@ def conda_envs():
     ray.shutdown()
 
 
-
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
 @pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
-
 @pytest.mark.parametrize(
-    "call_ray_start", [
-        "ray start --head --ray-client-server-port 24001 --port 0"
-    ],
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
     indirect=True)
-def test_client_tasks_and_actors_inherit_from_parent(conda_envs, call_ray_start):
+def test_client_tasks_and_actors_inherit_from_driver(conda_envs,
+                                                     call_ray_start):
     @ray.remote
     def get_tf_version():
         import tensorflow as tf
         return tf.__version__
+
     @ray.remote
     class TfVersionActor:
         def get_tf_version(self):
             import tensorflow as tf
             return tf.__version__
-
 
     tf_versions = ["2.2.0", "2.3.0"]
     for tf_version in tf_versions:
@@ -88,7 +86,6 @@ def test_client_tasks_and_actors_inherit_from_parent(conda_envs, call_ray_start)
         actor_handle = TfVersionActor.remote()
         assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
         ray.util.disconnect()
-        
 
 
 @pytest.mark.skipif(
@@ -295,6 +292,55 @@ def test_conda_create_job_config(shutdown_only):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
     assert ray.get(f.remote())
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 24001 --port 0"],
+    indirect=True)
+def test_conda_create_ray_client(call_ray_start):
+    """Tests dynamic conda env creation in RayClient."""
+
+    ray_wheel_filename = get_wheel_filename()
+    # E.g. 3.6.13
+    python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
+
+    runtime_env = {
+        "conda": {
+            "dependencies": [
+                f"python={python_micro_version_dots}", "pip", {
+                    "pip": [
+                        ray_wheel_path, "pip-install-test==0.5",
+                        "opentelemetry-api==1.0.0rc1",
+                        "opentelemetry-sdk==1.0.0rc1"
+                    ]
+                }
+            ]
+        }
+    }
+    ray.client("localhost:24001").env(runtime_env).connect()
+
+    @ray.remote
+    def f():
+        import pip_install_test  # noqa
+        return True
+
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed on the test machine
+        import pip_install_test  # noqa
+    assert ray.get(f.remote())
+    ray.util.disconnect()
+
+    ray.client("localhost:24001").connect()
+    with pytest.raises(ModuleNotFoundError):
+        # Ensure pip-install-test is not installed in a client that doesn't
+        # use the runtime_env
+        ray.get(f.remote())
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
