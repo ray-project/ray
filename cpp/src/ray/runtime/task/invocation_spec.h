@@ -17,7 +17,7 @@ class InvocationSpec {
   ActorID actor_id;
   int actor_counter;
   std::string lib_name;
-  RemoteFunctionPtrHolder fptr;
+  RemoteFunctionHolder remote_function_holder;
   std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };
 }  // namespace api

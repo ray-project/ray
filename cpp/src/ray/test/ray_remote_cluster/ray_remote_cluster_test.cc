@@ -42,8 +42,6 @@ TEST(RayClusterModeTest, FullTest) {
   ray::api::RayConfig::GetInstance()->redis_ip = redis_ip;
   Ray::Init();
 
-  ray::api::RayConfig::GetInstance()->use_ray_remote = true;
-
   /// common task without args
   auto task_obj = Ray::Task(Return1).Remote();
   int task_result = *(Ray::Get(task_obj));
@@ -122,7 +120,6 @@ TEST(RayClusterModeTest, FullTest) {
   // EXPECT_EQ(result15, 29);
   // EXPECT_EQ(result16, 30);
 
-  ray::api::RayConfig::GetInstance()->use_ray_remote = false;
   Ray::Shutdown();
 }
 

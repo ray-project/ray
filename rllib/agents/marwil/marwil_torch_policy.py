@@ -1,3 +1,6 @@
+import gym
+from typing import Dict
+
 import ray
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
 from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
@@ -6,11 +9,16 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance
+from ray.rllib.utils.typing import TrainerConfigDict, TensorType
+from ray.rllib.policy.policy import Policy
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 
 torch, _ = try_import_torch()
 
 
-def marwil_loss(policy, model, dist_class, train_batch):
+def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
+                train_batch: SampleBatch) -> TensorType:
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     state_values = model.value_function()
@@ -43,7 +51,7 @@ def marwil_loss(policy, model, dist_class, train_batch):
     return policy.total_loss
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     return {
         "policy_loss": policy.p_loss,
         "vf_loss": policy.v_loss,
@@ -52,7 +60,9 @@ def stats(policy, train_batch):
     }
 
 
-def setup_mixins(policy, obs_space, action_space, config):
+def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space,
+                 config: TrainerConfigDict) -> None:
     # Create a var.
     policy.ma_adv_norm = torch.tensor(
         [100.0], dtype=torch.float32, requires_grad=False).to(policy.device)
