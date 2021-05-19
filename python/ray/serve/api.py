@@ -93,7 +93,7 @@ class ReplicaSet:
     def __init__(self, name: str, controller: ActorHandle):
         self._name = name
         self._update_lock = threading.Lock()
-        self._replicas = ray.get(
+        self._replicas: List[Replica] = ray.get(
             controller.get_deployment_replicas.remote(name))
 
         self._long_poll_client = LongPollClient(
@@ -109,7 +109,7 @@ class ReplicaSet:
             self._replicas = replicas
 
     @property
-    def replicas(self):
+    def replicas(self) -> List[Replica]:
         with self._update_lock:
             return self._replicas
 
@@ -1208,7 +1208,12 @@ class Deployment:
             _internal=True)
 
     @property
-    def replicas(self):
+    def replicas(self) -> List[Replica]:
+        """Return a list of the current running replicas in the deployment.
+
+        This will be updated in the background as new replicas are added,
+        updated, or removed from the deployment.
+        """
         # Lazily populate the replica set because it comes with the overhead of
         # a long-poll client.
         if self._replica_set is None:
