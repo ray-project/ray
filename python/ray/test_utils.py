@@ -544,18 +544,27 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def get_nightly_url():
-    """Returns the Ray nightly URL."""
+def get_nightly_url() -> str:
+    """Returns the URL of the latest Ray nightly wheel."""
+
+    nightly_url = (f"https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+                   f"{get_wheel_filename()}")
+    return nightly_url
+
+
+def get_wheel_filename() -> str:
+    """Returns the filename used for the Ray wheel of the current build."""
     ray_version = ray.__version__
     python_version = f"{sys.version_info.major}{sys.version_info.minor}"
     os_strings = {
-        "darwin": "macosx_10_13_intel",
+        "darwin": "macosx_10_13_x86_64"
+        if python_version == "38" else "macosx_10_13_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
 
-    nightly_url = (f"https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
-                   f"ray-{ray_version}-cp{python_version}-"
-                   f"cp{python_version}{'m' if python_version != '38' else ''}"
-                   f"-{os_strings[sys.platform]}.whl")
-    return nightly_url
+    wheel_filename = (
+        f"ray-{ray_version}-cp{python_version}-"
+        f"cp{python_version}{'m' if python_version != '38' else ''}"
+        f"-{os_strings[sys.platform]}.whl")
+    return wheel_filename

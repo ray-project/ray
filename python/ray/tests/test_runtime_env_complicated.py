@@ -9,7 +9,7 @@ from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray.job_config import JobConfig
-from ray.test_utils import get_nightly_url
+from ray.test_utils import get_wheel_filename
 
 
 @pytest.fixture(scope="session")
@@ -181,20 +181,25 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
 
     ray.init()
-    nightly_url = get_nightly_url()
+    ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-
+    ray_wheel_path = os.path.join("./.whl", ray_wheel_filename)
+    print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
             "dependencies": [
                 f"python={python_micro_version_dots}", "pip", {
                     "pip": [
-                        nightly_url, "pip-install-test==0.5",
+                        ray_wheel_path, "pip-install-test==0.5",
                         "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
@@ -215,19 +220,24 @@ def test_conda_create_task(shutdown_only):
         ray.get(f.remote())
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
-
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
-    nightly_url = get_nightly_url()
+
+    ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
+    ray_wheel_path = os.path.join("./.whl", ray_wheel_filename)
 
     runtime_env = {
         "conda": {
             "dependencies": [
                 f"python={python_micro_version_dots}", "pip", {
                     "pip": [
-                        nightly_url, "pip-install-test==0.5",
+                        ray_wheel_path, "pip-install-test==0.5",
                         "opentelemetry-api==1.0.0rc1",
                         "opentelemetry-sdk==1.0.0rc1"
                     ]
