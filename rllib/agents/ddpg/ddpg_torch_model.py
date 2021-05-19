@@ -1,6 +1,6 @@
 import numpy as np
 import gym
-from typing import List, Dict, Optional
+from typing import List, Dict, Union
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -191,16 +191,15 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         """
         return self.policy_model(model_out)
 
-    def policy_variables(
-            self, as_dict: bool = False
-    ) -> Optional[List[TensorType], Dict[str, TensorType]]:
+    def policy_variables(self, as_dict: bool = False
+                         ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Return the list of variables for the policy net."""
         if as_dict:
             return self.policy_model.state_dict()
         return list(self.policy_model.parameters())
 
     def q_variables(self, as_dict=False
-                    ) -> Optional[List[TensorType], Dict[str, TensorType]]:
+                    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Return the list of variables for Q / twin Q nets."""
         if as_dict:
             return {

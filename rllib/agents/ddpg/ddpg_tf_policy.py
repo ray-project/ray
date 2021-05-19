@@ -343,8 +343,8 @@ def build_ddpg_stats(policy: Policy,
     return stats
 
 
-def before_init_fn(policy: Policy, obs_space: gym.space.Spaces,
-                   action_space: gym.space.Spaces,
+def before_init_fn(policy: Policy, obs_space: gym.spaces.Space,
+                   action_space: gym.spaces.Space,
                    config: TrainerConfigDict) -> None:
     # Create global step for counting the number of update operations.
     if config["framework"] in ["tf2", "tfe"]:
