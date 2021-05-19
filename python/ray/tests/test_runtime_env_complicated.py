@@ -192,7 +192,7 @@ def test_conda_create_task(shutdown_only):
     ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("./.whl", ray_wheel_filename)
+    ray_wheel_path = os.path.join("./.whlWRONGPATH", ray_wheel_filename)
     print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
