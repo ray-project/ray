@@ -272,6 +272,7 @@ def test_conda_create_job_config(shutdown_only):
 def test_pip_task(shutdown_only):
     """Tests pip installs in the runtime env specified in the job config."""
 
+    ray.init()
     ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
     requirements_txt = f"""
     {ray_wheel_path}
@@ -301,7 +302,6 @@ def test_pip_task(shutdown_only):
 def test_pip_job_config(shutdown_only):
     """Tests dynamic installation of pip packages in a task's runtime env."""
 
-    ray.init()
     ray_wheel_path = os.path.join("/ray/.whl", get_wheel_filename())
     requirements_txt = f"""
     {ray_wheel_path}

@@ -40,8 +40,8 @@ class RuntimeEnvDict:
             modules to add to the `sys.path`.
             Examples:
                 ["/path/to/other_module", "/other_path/local_project.zip"]
-        pip: A string containing the contents of a pip requirements.txt file.
-            This will be dynamically installed in the runtime env.
+        pip (str): A string containing the contents of a pip requirements.txt
+            file.  This will be dynamically installed in the runtime env.
         conda (dict | str): Either the conda YAML config or the name of a
             local conda env (e.g., "pytorch_p36"). The Ray dependency will be
             automatically injected into the conda env to ensure compatibility
@@ -87,6 +87,10 @@ class RuntimeEnvDict:
 
         self._dict["pip"] = None
         if "pip" in runtime_env_json:
+            if sys.platform == "win32":
+                raise NotImplementedError("The 'pip' field in runtime_env "
+                                          "is not currently supported on "
+                                          "Windows.")
             pip = runtime_env_json["pip"]
             if isinstance(pip, str):
                 self._dict["pip"] = pip
