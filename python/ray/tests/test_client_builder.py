@@ -4,6 +4,7 @@ import sys
 import ray
 import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.mark.parametrize("address", [
@@ -47,3 +48,18 @@ def test_connect_to_cluster(ray_start_regular_shared):
     assert client_info.protocol_version == protocol_version
 
     server.stop(0)
+
+def test_local_clusters():
+    driver_template = """
+import ray
+ray.client({address}).namespace("").connect()
+
+@ray.remote
+class Foo:
+    def ping(self)
+        return "pong"
+
+a = Foo.options(name="abc", lifetime="detached")
+ray.get(a.ping())
+"""
+    pass

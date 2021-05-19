@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray.job_config import JobConfig
 import ray.util.client_connect
+from ray._private.services import find_redis_address
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,11 @@ class ClientBuilder:
 
 
 class _LocalClientBuilder(ClientBuilder):
-    pass
+    def connect(self) -> ClientInfo:
+        """
+        Begin a connection to the address passed in via ray.client(...).
+        """
+        ray.init(address=self.address, job_config = self._job_config)
 
 
 def _split_address(address: str) -> Tuple[str, str]:
@@ -73,7 +78,16 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
-    if address is None or address == "local":
+    if address == "local":
+        return _LocalClientBuilder(None)
+    if address is None:
+        try:
+            with open("/tmp/ray/current_cluster", "r") as f:
+                address = f.read()
+                print(address)
+        except FileNotFoundError:
+            # `address` won't be set and we'll create a new cluster.
+            pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     module = importlib.import_module(module_string)
