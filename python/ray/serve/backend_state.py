@@ -187,6 +187,14 @@ class BackendVersion:
         self._hash = hash((self.code_version, self.user_config_hash))
 
     def _hash_user_config(self, user_config: Any) -> int:
+        """Hash the user config.
+
+        We want users to be able to pass lists and dictionaries for
+        convenience, but these are not hashable types because they're mutable.
+
+        This supports lists and dictionaries by recursively converting them
+        into immutable tuples and then hashing them.
+        """
         try:
             return hash(user_config)
         except TypeError:
