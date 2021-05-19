@@ -94,14 +94,13 @@ class _LocalClientBuilder(ClientBuilder):
                   include: bool = True,
                   host: str = "127.0.0.1",
                   port: Optional[int] = None) -> "ClientBuilder":
-        assert self.create_cluster_without_searching
         self._init_args["include_dashboard"] = include
         self._init_args["dashboard_host"] = host
         self._init_args["dashboard_port"] = port
         return self
 
     def _create_local_cluster(self):
-        def ray_connect_handler(job_config=None):
+        def ray_connect_handler(job_config : Optional[JobConfig]=None):
             with disable_client_hook():
                 if not ray.is_initialized():
                     ray.init(job_config=job_config, **self._init_args)
@@ -130,15 +129,16 @@ class _LocalClientBuilder(ClientBuilder):
                 candidates.add("localhost:" + port.decode("UTF-8"))
         if len(candidates) == 0:
             logger.warning(
-                f"Found clusters at: {redis_addresses}, but was unable to "
-                "determine the Ray Client Server Port in Redis. "
-                "Starting a new cluster instead.")
+                f"Found clusters at: {redis_addresses}, but could not connect"
+                "in client mode. Hint: The following docs may help you set up "
+                "ray client. https://docs.ray.io/en/master/ray-client.html"
+            )
             self._create_local_cluster()
         elif len(candidates) == 1:
             self.address = candidates.pop()
         else:
             raise ConnectionError(
-                f"Found multiple Ray Client Servers: {candidates}.\n")
+                f"Found multiple local ray clusters: {candidates}.\n")
 
     def connect(self) -> ClientInfo:
         """
