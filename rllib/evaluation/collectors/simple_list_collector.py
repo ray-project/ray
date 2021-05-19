@@ -280,7 +280,7 @@ class _AgentCollector:
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                 "env_id", "t"
             ] else 0)
-            # Python primitive or dict (e.g. INFOs).
+            # Python primitive, tensor, or dict (e.g. INFOs).
             self.buffers[col] = [data for _ in range(shift)]
 
 

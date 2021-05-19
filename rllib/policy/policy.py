@@ -791,6 +791,8 @@ class Policy(metaclass=ABCMeta):
                     self.is_recurrent = lambda: True
 
         for i, state in enumerate(init_state):
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
             fw = np if isinstance(state, np.ndarray) else torch if \
                 torch and torch.is_tensor(state) else None
             if fw:
