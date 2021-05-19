@@ -181,16 +181,12 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
-# @pytest.mark.skipif(
-#     os.environ.get("CI") is None, reason="This test is only run on CI.")
-# @pytest.mark.skipif(
-#     sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_task(shutdown_only):
     """Tests dynamic creation of a conda env in a task's runtime env."""
-    print("ENVIRON: ")
-    print(os.environ)
-    print("CI: ")
-    print(os.environ.get("CI"))
     ray.init()
     ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
@@ -223,20 +219,19 @@ def test_conda_create_task(shutdown_only):
         ray.get(f.remote())
     assert "ModuleNotFoundError" in str(excinfo.value)
     assert ray.get(f.options(runtime_env=runtime_env).remote())
-    assert os.environ.get("CI") is not None
 
 
-# @pytest.mark.skipif(
-#     os.environ.get("CI") is None, reason="This test is only run on CI.")
-# @pytest.mark.skipif(
-#     sys.platform != "linux", reason="This test is only run for Linux.")
+@pytest.mark.skipif(
+    os.environ.get("CI") is None, reason="This test is only run on CI.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run for Linux.")
 def test_conda_create_job_config(shutdown_only):
     """Tests dynamic conda env creation in a runtime env in the JobConfig."""
 
     ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("INCORRECTFILENAME", ray_wheel_filename)
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
 
     runtime_env = {
         "conda": {
@@ -262,7 +257,6 @@ def test_conda_create_job_config(shutdown_only):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
     assert ray.get(f.remote())
-    assert os.environ.get("CI") is not None
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
