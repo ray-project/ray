@@ -3,7 +3,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
-    SimpleExportSpanProcessor,
+    SimpleSpanProcessor,
 )
 
 spans_dir = "/tmp/spans/"
@@ -16,7 +16,7 @@ def setup_tracing() -> None:
     # context and will log a warning if attempted multiple times.
     trace.set_tracer_provider(TracerProvider())
     trace.get_tracer_provider().add_span_processor(
-        SimpleExportSpanProcessor(
+        SimpleSpanProcessor(
             ConsoleSpanExporter(
                 out=open(f"{spans_dir}{os.getpid()}.txt", "w"),
                 formatter=lambda span: span.to_json(indent=None) + os.linesep,
