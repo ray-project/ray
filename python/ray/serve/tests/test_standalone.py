@@ -87,7 +87,7 @@ def test_detached_deployment(ray_cluster):
     head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
-    ray.init(head_node.address)
+    ray.init(head_node.address, namespace="")
     first_job_id = ray.get_runtime_context().job_id
     serve.start(detached=True)
 
@@ -102,7 +102,7 @@ def test_detached_deployment(ray_cluster):
     ray.shutdown()
 
     # Create the second job, make sure we can still create new backends.
-    ray.init(head_node.address)
+    ray.init(head_node.address, namespace="")
     assert ray.get_runtime_context().job_id != first_job_id
 
     @serve.deployment
@@ -338,6 +338,28 @@ def test_http_head_only(ray_cluster):
         for r in ray.state.state._available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
+
+
+def test_serve_shutdown(ray_shutdown):
+    serve.start(detached=True)
+
+    @serve.deployment
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
+
+    serve.shutdown()
+    serve.start(detached=True)
+
+    assert len(serve.list_deployments()) == 0
+
+    A.deploy()
+
+    assert len(serve.list_deployments()) == 1
 
 
 if __name__ == "__main__":

@@ -57,6 +57,8 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        np.random.seed(42)
+        torch.manual_seed(42)
         ray.init()
 
     @classmethod

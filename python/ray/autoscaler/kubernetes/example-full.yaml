@@ -88,6 +88,10 @@ provider:
                   protocol: TCP
                   port: 8265
                   targetPort: 8265
+                - name: ray-serve
+                  protocol: TCP
+                  port: 8000
+                  targetPort: 8000
 
 # Specify the pod type for the ray head node (as configured below).
 head_node_type: head_node
@@ -116,7 +120,7 @@ available_node_types:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           command: ["/bin/bash", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait;"]
           # This volume allocates shared memory for Ray to use for its plasma
@@ -172,7 +176,7 @@ available_node_types:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:nightly
+          image: rayproject/ray:1.3.0
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
