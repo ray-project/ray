@@ -144,6 +144,7 @@ def timed_tune_run(name: str,
 
     result = {
         "time_taken": time_taken,
+        "last_update": time.time()
     }
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
                                       "/tmp/tune_test.json")
