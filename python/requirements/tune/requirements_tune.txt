@@ -30,7 +30,7 @@ scikit-optimize==0.8.1
 sigopt==5.7.0
 smart_open==4.2.0
 tensorflow-probability==0.11.1
-timm==0.3.2
+timm==0.4.5
 
 
 torch==1.8.1;sys_platform=="darwin"
