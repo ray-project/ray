@@ -1,5 +1,5 @@
 """
-Example script on how to train, save, load, and test a stable baselines 2 agent.
+Example script on how to train, save, load, and test a stable baselines 2 agent
 Code taken and adjusted from SB2 docs:
 https://stable-baselines.readthedocs.io/en/master/guide/quickstart.html
 Equivalent script with RLlib: sb2rllib_sb_example.py
@@ -9,12 +9,11 @@ import gym
 from stable_baselines.common.policies import MlpPolicy
 from stable_baselines import PPO2
 
-
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
 train_steps = 10000
 learning_rate = 1e-3
-save_dir = 'saved_models'
+save_dir = "saved_models"
 
 save_path = f"{save_dir}/sb_model_{train_steps}steps"
 env = gym.make(env_name)

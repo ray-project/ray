@@ -6,23 +6,26 @@ import gym
 import ray
 import ray.rllib.agents.ppo as ppo
 
-
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
 train_steps = 10000
 learning_rate = 1e-3
-save_dir = 'saved_models'
+save_dir = "saved_models"
 
 # training and saving
-analysis = ray.tune.run("PPO",
-                        stop={"timesteps_total": train_steps},
-                        config={"env": env_name, "lr": learning_rate},
-                        checkpoint_at_end=True,
-                        local_dir=save_dir,
-                        )
+analysis = ray.tune.run(
+    "PPO",
+    stop={"timesteps_total": train_steps},
+    config={
+        "env": env_name,
+        "lr": learning_rate
+    },
+    checkpoint_at_end=True,
+    local_dir=save_dir,
+)
 # retrieve the checkpoint path
-analysis.default_metric = 'episode_reward_mean'
-analysis.default_mode = 'max'
+analysis.default_metric = "episode_reward_mean"
+analysis.default_mode = "max"
 checkpoint_path = analysis.get_best_checkpoint(trial=analysis.get_best_trial())
 print(f"Trained model saved at {checkpoint_path}")
 
