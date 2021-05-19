@@ -1,5 +1,6 @@
 import random
 import subprocess
+import sys
 
 import pytest
 import requests
@@ -26,6 +27,7 @@ def ray_client_instance():
         subprocess.check_output(["ray", "stop", "--force"])
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
 def test_ray_client(ray_client_instance):
     ray.util.connect(ray_client_instance, namespace="")
 
