@@ -231,6 +231,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_internal_version",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
 # Runs test_api and test_failure with injected failures in the controller.
 # TODO(simon): Tests are disabled until #11683 is fixed.
 # py_test(

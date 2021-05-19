@@ -1,6 +1,7 @@
+from collections.abc import Hashable, Iterable
 from dataclasses import dataclass, field
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 import numpy as np
@@ -24,16 +25,53 @@ class EndpointInfo:
     legacy: Optional[bool] = True
 
 
-class BackendInfo(BaseModel):
-    actor_def: Optional[ActorClass]
-    version: Optional[str]
-    backend_config: BackendConfig
-    replica_config: ReplicaConfig
+class InternalVersion:
+    def __init__(self, code_version: Optional[str], user_config: Any):
+        if code_version is not None and not isinstance(code_version, str):
+            raise TypeError(
+                f"code_version must be str, got {type(code_version)}.")
 
-    class Config:
-        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
-        # model
-        arbitrary_types_allowed = True
+        self.code_version = code_version
+        self.user_config_hash = self._hash_user_config(user_config)
+        self._hash = hash((self.code_version, self.user_config_hash))
+
+    def _hash_user_config(self, user_config: Any) -> int:
+        try:
+            return hash(user_config)
+        except TypeError:
+            pass
+
+        if isinstance(user_config, dict):
+            keys = tuple(sorted(user_config))
+            val_hashes = tuple(self._hash_user_config(user_config[k]) for k in keys)
+            return hash((hash(keys), hash(val_hashes)))
+        elif isinstance(user_config, Iterable):
+            return hash(tuple(self._hash_user_config(item) for item in user_config))
+        else:
+            raise TypeError(
+                "user_config must contain only lists, dicts, or hashable "
+                f"types. Got {type(user_config)}."
+            )
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: Any) -> bool:
+        return self._hash == other._hash
+
+
+class BackendInfo:
+    def __init__(self,
+        backend_config: BackendConfig,
+        replica_config: ReplicaConfig,
+        actor_def: Optional[ActorClass] = None,
+        version: Optional[str] = None):
+        self.backend_config = backend_config
+        self.replica_config = replica_config
+        self.actor_def = actor_def
+        self.version = version
+        self.internal_version = InternalVersion(
+            version, backend_config.user_config)
 
 
 class TrafficPolicy:

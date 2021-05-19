@@ -2,6 +2,7 @@ import math
 import time
 from abc import ABC
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -25,7 +26,7 @@ SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 class ReplicaState(Enum):
     SHOULD_START = 1
-    STARTING = 2
+    STARTING_OR_UPDATING = 2
     RUNNING = 3
     SHOULD_STOP = 4
     STOPPING = 5
@@ -53,7 +54,7 @@ class ActorReplicaWrapper:
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
 
-        self._startup_obj_ref = None
+        self._ready_obj_ref = None
         self._drain_obj_ref = None
         self._stopped = False
         self._actor_resources = None
@@ -66,13 +67,13 @@ class ActorReplicaWrapper:
 
     def __get_state__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
-        del clean_dict["_startup_obj_ref"]
+        del clean_dict["_ready_obj_ref"]
         del clean_dict["_drain_obj_ref"]
         return clean_dict
 
     def __set_state__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
-        self._startup_obj_ref = None
+        self._ready_obj_ref = None
         self._drain_obj_ref = None
 
     @property
@@ -108,10 +109,12 @@ class ActorReplicaWrapper:
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
                     backend_info.backend_config, self._controller_name)
-        self._startup_obj_ref = self._actor_handle.ready.remote()
+
+        user_config = backend_info.backend_config.user_config
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def check_ready(self) -> bool:
-        ready, _ = ray.wait([self._startup_obj_ref], timeout=0)
+        ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         return len(ready) == 1
 
     @property
@@ -206,10 +209,10 @@ class BackendReplica(VersionedReplica):
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self) -> None:
-        if self._state == ReplicaState.STARTING:
+        if self._state == ReplicaState.STARTING_OR_UPDATING:
             # We do not need to pass in the class here because the actor
             # creation has already been started if this class was checkpointed
-            # in the STARTING state.
+            # in the STARTING_OR_UPDATING state.
             self.start()
         elif self._state == ReplicaState.STOPPING:
             self.stop()
@@ -229,19 +232,21 @@ class BackendReplica(VersionedReplica):
         return self._actor.actor_handle
 
     def start(self, backend_info: Optional[BackendInfo]) -> None:
-        """Transition from SHOULD_START -> STARTING.
+        """Transition from SHOULD_START -> STARTING_OR_UPDATING.
 
-        Should handle the case where it's already STARTING.
+        Should handle the case where it's already STARTING_OR_UPDATING.
         """
         assert self._state in {
-            ReplicaState.SHOULD_START, ReplicaState.STARTING
-        }, (f"State must be {ReplicaState.SHOULD_START} or "
-            f"{ReplicaState.STARTING}, *not* {self._state}")
+            ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
+            ReplicaState.RUNNING,
+        }, (f"State must be {ReplicaState.SHOULD_START}, "
+            f"{ReplicaState.STARTING_OR_UPDATING}, or "
+            f"{ReplicaState.RUNNING} *not* {self._state}.")
 
         self._actor.start(backend_info)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
-        self._state = ReplicaState.STARTING
+        self._state = ReplicaState.STARTING_OR_UPDATING
 
     def check_started(self) -> Tuple[bool, bool]:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -253,8 +258,8 @@ class BackendReplica(VersionedReplica):
         """
         if self._state == ReplicaState.RUNNING:
             return True, False
-        assert self._state == ReplicaState.STARTING, (
-            f"State must be {ReplicaState.STARTING}, *not* {self._state}")
+        assert self._state == ReplicaState.STARTING_OR_UPDATING, (
+            f"State must be {ReplicaState.STARTING_OR_UPDATING}, *not* {self._state}")
 
         if self._actor.check_ready():
             self._state = ReplicaState.RUNNING
@@ -663,13 +668,13 @@ class BackendState:
         if target_replicas == 0:
             return 0
 
-        # We include SHOULD_START and STARTING replicas here because if there
+        # We include SHOULD_START and STARTING_OR_UPDATING replicas here because if there
         # are replicas still pending startup, we may as well terminate them
         # and start new version replicas instead.
         old_running_replicas = replicas.count(
             exclude_version=target_version,
             states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
                 ReplicaState.RUNNING
             ])
         old_stopping_replicas = replicas.count(
@@ -699,7 +704,7 @@ class BackendState:
         replicas_to_stop = replicas.pop(
             exclude_version=target_version,
             states=[
-                ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
                 ReplicaState.RUNNING
             ],
             max_replicas=max_to_stop)
@@ -743,7 +748,7 @@ class BackendState:
                         f"'{backend_tag}' with outdated versions.")
 
         current_replicas = self._replicas[backend_tag].count(states=[
-            ReplicaState.SHOULD_START, ReplicaState.STARTING,
+            ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
             ReplicaState.RUNNING
         ])
 
@@ -774,7 +779,7 @@ class BackendState:
                         f"from backend '{backend_tag}'.")
             replicas_to_stop = self._replicas[backend_tag].pop(
                 states=[
-                    ReplicaState.SHOULD_START, ReplicaState.STARTING,
+                    ReplicaState.SHOULD_START, ReplicaState.STARTING_OR_UPDATING,
                     ReplicaState.RUNNING
                 ],
                 max_replicas=to_remove)
@@ -804,7 +809,7 @@ class BackendState:
             # If we have pending ops, the current goal is *not* ready.
             if (self._replicas[backend_tag].count(states=[
                     ReplicaState.SHOULD_START,
-                    ReplicaState.STARTING,
+                    ReplicaState.STARTING_OR_UPDATING,
                     ReplicaState.SHOULD_STOP,
                     ReplicaState.STOPPING,
             ]) > 0):
@@ -858,7 +863,7 @@ class BackendState:
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_START]):
                 replica.start(self._backend_metadata[backend_tag])
-                replicas.add(ReplicaState.STARTING, replica)
+                replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
 
             for replica in replicas.pop(states=[ReplicaState.SHOULD_STOP]):
                 # This replica should be taken off handle's replica set.
@@ -867,7 +872,7 @@ class BackendState:
                 replicas.add(ReplicaState.STOPPING, replica)
 
             slow_start_replicas = []
-            for replica in replicas.pop(states=[ReplicaState.STARTING]):
+            for replica in replicas.pop(states=[ReplicaState.STARTING_OR_UPDATING]):
                 ready, slow_start = replica.check_started()
                 if ready:
                     # This replica should be now be added to handle's replica
@@ -875,7 +880,7 @@ class BackendState:
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
                 else:
-                    replicas.add(ReplicaState.STARTING, replica)
+                    replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
                     if slow_start:
                         slow_start_replicas.append(replica)
 

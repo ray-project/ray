@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
 
 import pytest
@@ -93,10 +93,12 @@ class MockReplicaActorWrapper:
 
 def backend_info(version: Optional[str] = None,
                  num_replicas: Optional[int] = 1,
+                 user_config: Optional[Any] = None,
                  **config_opts) -> BackendInfo:
     return BackendInfo(
         actor_def=None,
         version=version,
+        user_config=user_config,
         backend_config=BackendConfig(num_replicas=num_replicas, **config_opts),
         replica_config=ReplicaConfig(lambda x: x))
 
@@ -150,15 +152,15 @@ def replica(version: Optional[str] = None) -> VersionedReplica:
 def test_replica_state_container_count():
     c = ReplicaStateContainer()
     r1, r2, r3 = replica("1"), replica("2"), replica("2")
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert c.count() == 3
 
     # Test filtering by state.
     assert c.count() == c.count(
-        states=[ReplicaState.STARTING, ReplicaState.STOPPING])
-    assert c.count(states=[ReplicaState.STARTING]) == 2
+        states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.STOPPING])
+    assert c.count(states=[ReplicaState.STARTING_OR_UPDATING]) == 2
     assert c.count(states=[ReplicaState.STOPPING]) == 1
     assert c.count(states=[ReplicaState.SHOULD_START]) == 0
     assert c.count(
@@ -173,28 +175,28 @@ def test_replica_state_container_count():
     assert c.count(exclude_version="3") == 3
 
     # Test filtering by state and version.
-    assert c.count(version="1", states=[ReplicaState.STARTING]) == 1
-    assert c.count(version="3", states=[ReplicaState.STARTING]) == 0
+    assert c.count(version="1", states=[ReplicaState.STARTING_OR_UPDATING]) == 1
+    assert c.count(version="3", states=[ReplicaState.STARTING_OR_UPDATING]) == 0
     assert c.count(
-        version="2", states=[ReplicaState.STARTING,
+        version="2", states=[ReplicaState.STARTING_OR_UPDATING,
                              ReplicaState.STOPPING]) == 2
-    assert c.count(exclude_version="1", states=[ReplicaState.STARTING]) == 1
-    assert c.count(exclude_version="3", states=[ReplicaState.STARTING]) == 2
+    assert c.count(exclude_version="1", states=[ReplicaState.STARTING_OR_UPDATING]) == 1
+    assert c.count(exclude_version="3", states=[ReplicaState.STARTING_OR_UPDATING]) == 2
     assert c.count(
         exclude_version="2",
-        states=[ReplicaState.STARTING, ReplicaState.STOPPING]) == 1
+        states=[ReplicaState.STARTING_OR_UPDATING, ReplicaState.STOPPING]) == 1
 
 
 def test_replica_state_container_get():
     c = ReplicaStateContainer()
     r1, r2, r3 = replica(), replica(), replica()
 
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert c.get() == [r1, r2, r3]
-    assert c.get() == c.get([ReplicaState.STARTING, ReplicaState.STOPPING])
-    assert c.get([ReplicaState.STARTING]) == [r1, r2]
+    assert c.get() == c.get([ReplicaState.STARTING_OR_UPDATING, ReplicaState.STOPPING])
+    assert c.get([ReplicaState.STARTING_OR_UPDATING]) == [r1, r2]
     assert c.get([ReplicaState.STOPPING]) == [r3]
     assert not c.get([ReplicaState.SHOULD_START])
     assert not c.get([ReplicaState.SHOULD_START, ReplicaState.SHOULD_STOP])
@@ -204,8 +206,8 @@ def test_replica_state_container_pop_basic():
     c = ReplicaStateContainer()
     r1, r2, r3 = replica(), replica(), replica()
 
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert c.pop() == [r1, r2, r3]
     assert not c.pop()
@@ -215,9 +217,9 @@ def test_replica_state_container_pop_exclude_version():
     c = ReplicaStateContainer()
     r1, r2, r3 = replica("1"), replica("1"), replica("2")
 
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
-    c.add(ReplicaState.STARTING, r3)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r3)
     assert c.pop(exclude_version="1") == [r3]
     assert not c.pop(exclude_version="1")
     assert c.pop(exclude_version="2") == [r1, r2]
@@ -229,14 +231,14 @@ def test_replica_state_container_pop_max_replicas():
     c = ReplicaStateContainer()
     r1, r2, r3 = replica(), replica(), replica()
 
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert not c.pop(max_replicas=0)
     assert len(c.pop(max_replicas=1)) == 1
     assert len(c.pop(max_replicas=2)) == 2
-    c.add(ReplicaState.STARTING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r1)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.STOPPING, r3)
     assert len(c.pop(max_replicas=10)) == 3
 
@@ -247,11 +249,11 @@ def test_replica_state_container_pop_states():
 
     # Check popping single state.
     c.add(ReplicaState.STOPPING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.SHOULD_STOP, r3)
     c.add(ReplicaState.SHOULD_STOP, r4)
-    assert c.pop(states=[ReplicaState.STARTING]) == [r2]
-    assert not c.pop(states=[ReplicaState.STARTING])
+    assert c.pop(states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
+    assert not c.pop(states=[ReplicaState.STARTING_OR_UPDATING])
     assert c.pop(states=[ReplicaState.STOPPING]) == [r1]
     assert not c.pop(states=[ReplicaState.STOPPING])
     assert c.pop(states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
@@ -259,15 +261,15 @@ def test_replica_state_container_pop_states():
 
     # Check popping multiple states. Ordering of states should be preserved.
     c.add(ReplicaState.STOPPING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.SHOULD_STOP, r3)
     c.add(ReplicaState.SHOULD_STOP, r4)
     assert c.pop(states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING]) == [
         r3, r4, r1
     ]
     assert not c.pop(states=[ReplicaState.SHOULD_STOP, ReplicaState.STOPPING])
-    assert c.pop(states=[ReplicaState.STARTING]) == [r2]
-    assert not c.pop(states=[ReplicaState.STARTING])
+    assert c.pop(states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
+    assert not c.pop(states=[ReplicaState.STARTING_OR_UPDATING])
     assert not c.pop()
 
 
@@ -276,7 +278,7 @@ def test_replica_state_container_pop_integration():
     r1, r2, r3, r4 = replica("1"), replica("2"), replica("2"), replica("3")
 
     c.add(ReplicaState.STOPPING, r1)
-    c.add(ReplicaState.STARTING, r2)
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.SHOULD_STOP, r3)
     c.add(ReplicaState.SHOULD_STOP, r4)
     assert not c.pop(exclude_version="1", states=[ReplicaState.STOPPING])
@@ -290,14 +292,14 @@ def test_replica_state_container_pop_integration():
     c.add(ReplicaState.SHOULD_STOP, r4)
     assert c.pop(
         exclude_version="1", states=[ReplicaState.SHOULD_STOP]) == [r3, r4]
-    assert c.pop(exclude_version="1", states=[ReplicaState.STARTING]) == [r2]
-    c.add(ReplicaState.STARTING, r2)
+    assert c.pop(exclude_version="1", states=[ReplicaState.STARTING_OR_UPDATING]) == [r2]
+    c.add(ReplicaState.STARTING_OR_UPDATING, r2)
     c.add(ReplicaState.SHOULD_STOP, r3)
     c.add(ReplicaState.SHOULD_STOP, r4)
     assert c.pop(
         exclude_version="1",
         states=[ReplicaState.SHOULD_STOP,
-                ReplicaState.STARTING]) == [r3, r4, r2]
+                ReplicaState.STARTING_OR_UPDATING]) == [r3, r4, r2]
     assert c.pop(
         exclude_version="nonsense", states=[ReplicaState.STOPPING]) == [r1]
 
@@ -360,11 +362,11 @@ def test_create_delete_single_replica(mock_backend_state):
 
     # Single replica should be created.
     backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     # update() should not transition the state if the replica isn't ready.
     backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     backend_state._replicas[TEST_TAG].get()[0]._actor.set_ready()
     assert not goal_manager.check_complete(create_goal)
 
@@ -472,7 +474,7 @@ def test_redeploy_same_version(mock_backend_state):
         backend_state,
         version="1",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
@@ -486,7 +488,7 @@ def test_redeploy_same_version(mock_backend_state):
         backend_state,
         version="1",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     # Mark the replica ready. After this, the initial goal should be complete.
     backend_state._replicas[TEST_TAG].get()[0]._actor.set_ready()
@@ -526,7 +528,7 @@ def test_redeploy_no_version(mock_backend_state):
     assert updating
 
     backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
@@ -549,9 +551,9 @@ def test_redeploy_no_version(mock_backend_state):
 
     # Now that the old replica has stopped, the new replica should be started.
     backend_state.update()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
 
     # Check that the new replica has started.
     backend_state.update()
@@ -580,8 +582,8 @@ def test_redeploy_no_version(mock_backend_state):
 
     backend_state.update()
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
-    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     backend_state.update()
     check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
@@ -606,7 +608,7 @@ def test_redeploy_new_version(mock_backend_state):
         backend_state,
         version="1",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
@@ -638,9 +640,9 @@ def test_redeploy_new_version(mock_backend_state):
         backend_state,
         version="2",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
 
     # Check that the new replica has started.
     backend_state.update()
@@ -677,12 +679,12 @@ def test_redeploy_new_version(mock_backend_state):
 
     backend_state.update()
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     check_counts(
         backend_state,
         version="3",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     backend_state.update()
     check_counts(
@@ -777,12 +779,12 @@ def test_deploy_new_config_new_version(mock_backend_state):
     # Now the new version should be started.
     backend_state.update()
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     check_counts(
         backend_state,
         version="2",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     # Check that the new version is now running.
     backend_state.update()
@@ -808,7 +810,7 @@ def test_initial_deploy_no_throttling(mock_backend_state):
 
     backend_state.update()
     check_counts(
-        backend_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
+        backend_state, total=10, by_state=[(ReplicaState.STARTING_OR_UPDATING, 10)])
     assert not goal_manager.check_complete(goal_1)
 
     for replica in backend_state._replicas[TEST_TAG].get():
@@ -836,7 +838,7 @@ def test_new_version_deploy_throttling(mock_backend_state):
 
     backend_state.update()
     check_counts(
-        backend_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
+        backend_state, total=10, by_state=[(ReplicaState.STARTING_OR_UPDATING, 10)])
     assert not goal_manager.check_complete(goal_1)
 
     for replica in backend_state._replicas[TEST_TAG].get():
@@ -884,12 +886,12 @@ def test_new_version_deploy_throttling(mock_backend_state):
         backend_state,
         version="2",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     # Mark the new version replica as ready. Another old version replica
     # should subsequently be stopped.
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     backend_state.update()
 
     backend_state.update()
@@ -944,13 +946,13 @@ def test_new_version_deploy_throttling(mock_backend_state):
             version="2",
             total=new_replicas + 2,
             by_state=[(ReplicaState.RUNNING, new_replicas),
-                      (ReplicaState.STARTING, 2)])
+                      (ReplicaState.STARTING_OR_UPDATING, 2)])
 
         # Set both ready.
         backend_state._replicas[TEST_TAG].get(
-            states=[ReplicaState.STARTING])[0]._actor.set_ready()
+            states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
         backend_state._replicas[TEST_TAG].get(
-            states=[ReplicaState.STARTING])[1]._actor.set_ready()
+            states=[ReplicaState.STARTING_OR_UPDATING])[1]._actor.set_ready()
         new_replicas += 2
 
         backend_state.update()
@@ -1015,13 +1017,13 @@ def test_new_version_deploy_throttling(mock_backend_state):
         backend_state,
         version="2",
         total=9,
-        by_state=[(ReplicaState.RUNNING, 7), (ReplicaState.STARTING, 2)])
+        by_state=[(ReplicaState.RUNNING, 7), (ReplicaState.STARTING_OR_UPDATING, 2)])
 
     # Set both ready.
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[1]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[1]._actor.set_ready()
 
     # One replica remaining to update.
     backend_state.update()
@@ -1069,13 +1071,13 @@ def test_new_version_deploy_throttling(mock_backend_state):
         backend_state,
         version="2",
         total=10,
-        by_state=[(ReplicaState.RUNNING, 9), (ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.RUNNING, 9), (ReplicaState.STARTING_OR_UPDATING, 1)])
 
     assert not goal_manager.check_complete(goal_2)
 
     # Set both ready.
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     backend_state.update()
     check_counts(backend_state, total=10)
     check_counts(
@@ -1102,7 +1104,7 @@ def test_new_version_and_scale_down(mock_backend_state):
 
     backend_state.update()
     check_counts(
-        backend_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
+        backend_state, total=10, by_state=[(ReplicaState.STARTING_OR_UPDATING, 10)])
     assert not goal_manager.check_complete(goal_1)
 
     for replica in backend_state._replicas[TEST_TAG].get():
@@ -1187,10 +1189,10 @@ def test_new_version_and_scale_down(mock_backend_state):
         backend_state,
         version="2",
         total=1,
-        by_state=[(ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
 
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     backend_state.update()
     check_counts(backend_state, total=2)
     check_counts(
@@ -1236,10 +1238,10 @@ def test_new_version_and_scale_down(mock_backend_state):
         backend_state,
         version="2",
         total=2,
-        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING_OR_UPDATING, 1)])
 
     backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]._actor.set_ready()
     backend_state.update()
     check_counts(backend_state, total=2)
     check_counts(
@@ -1265,7 +1267,7 @@ def test_new_version_and_scale_up(mock_backend_state):
     assert updating
 
     backend_state.update()
-    check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
     assert not goal_manager.check_complete(goal_1)
 
     for replica in backend_state._replicas[TEST_TAG].get():
@@ -1293,11 +1295,11 @@ def test_new_version_and_scale_up(mock_backend_state):
         backend_state,
         version="2",
         total=8,
-        by_state=[(ReplicaState.STARTING, 8)])
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 8)])
 
     # Mark the new replicas as ready.
     for replica in backend_state._replicas[TEST_TAG].get(
-            states=[ReplicaState.STARTING]):
+            states=[ReplicaState.STARTING_OR_UPDATING]):
         replica._actor.set_ready()
     backend_state.update()
     check_counts(
@@ -1344,11 +1346,11 @@ def test_new_version_and_scale_up(mock_backend_state):
         backend_state,
         version="2",
         total=10,
-        by_state=[(ReplicaState.RUNNING, 8), (ReplicaState.STARTING, 2)])
+        by_state=[(ReplicaState.RUNNING, 8), (ReplicaState.STARTING_OR_UPDATING, 2)])
 
     # Mark the remaining replicas as ready.
     for replica in backend_state._replicas[TEST_TAG].get(
-            states=[ReplicaState.STARTING]):
+            states=[ReplicaState.STARTING_OR_UPDATING]):
         replica._actor.set_ready()
 
     # All new replicas should be up and running.
@@ -1374,7 +1376,7 @@ def test_health_check(mock_backend_state):
     assert updating
 
     backend_state.update()
-    check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
     assert not goal_manager.check_complete(goal_1)
 
     for replica in backend_state._replicas[TEST_TAG].get():
@@ -1413,10 +1415,10 @@ def test_health_check(mock_backend_state):
     check_counts(
         backend_state,
         total=2,
-        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING, 1)])
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STARTING_OR_UPDATING, 1)])
 
     replica = backend_state._replicas[TEST_TAG].get(
-        states=[ReplicaState.STARTING])[0]
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]
     replica._actor.set_ready()
 
     backend_state.update()
