@@ -8,10 +8,10 @@ https://docs.ray.io/en/master/cluster/config.html#full-configuration
 Checking AWS environment settings
 AWS config
   IAM Profile: .+ \[default\]
-  EC2 Key pair \(head & workers\): .+ \[default\]
-  VPC Subnets \(head & workers\): subnet-.+ \[default\]
-  EC2 Security groups \(head & workers\): sg-.+ \[default\]
-  EC2 AMI \(head & workers\): ami-.+ \[dlami\]
+  EC2 Key pair \(all available node types\): .+ \[default\]
+  VPC Subnets \(all available node types\): subnet-.+ \[default\]
+  EC2 Security groups \(all available node types\): sg-.+ \[default\]
+  EC2 AMI \(all available node types\): ami-.+ \[dlami\]
 
 No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
 
