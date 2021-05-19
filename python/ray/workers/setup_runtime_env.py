@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import json
 
@@ -20,11 +21,15 @@ def setup(input_args):
     commands = []
     runtime_env: RuntimeEnvDict = json.loads(args.serialized_runtime_env
                                              or "{}")
+
+    py_executable: str = sys.executable
+
     if runtime_env.get("conda"):
         if isinstance(runtime_env["conda"], str):
             commands += get_conda_activate_commands(runtime_env["conda"])
+            py_executable = "python"
 
-    commands += [" ".join(["exec python"] + remaining_args)]
+    commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 

@@ -35,9 +35,11 @@ def try_import_jax(error=False):
     try:
         import jax
         import flax
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError("Could not import JAX! RLlib requires you to "
+                              "install at least one deep-learning framework: "
+                              "`pip install [torch|tensorflow|jax]`.")
         return None, None
 
     return jax, flax
@@ -79,9 +81,12 @@ def try_import_tf(error=False):
     else:
         try:
             import tensorflow as tf_module
-        except ImportError as e:
+        except ImportError:
             if error:
-                raise e
+                raise ImportError(
+                    "Could not import TensorFlow! RLlib requires you to "
+                    "install at least one deep-learning framework: "
+                    "`pip install [torch|tensorflow|jax]`.")
             return None, None, None
 
     # Try "reducing" tf to tf.compat.v1.
@@ -180,9 +185,12 @@ def try_import_torch(error=False):
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError as e:
+    except ImportError:
         if error:
-            raise e
+            raise ImportError(
+                "Could not import PyTorch! RLlib requires you to "
+                "install at least one deep-learning framework: "
+                "`pip install [torch|tensorflow|jax]`.")
         return _torch_stubs()
 
 

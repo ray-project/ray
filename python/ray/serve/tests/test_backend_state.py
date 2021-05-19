@@ -95,7 +95,7 @@ def backend_info(version: Optional[str] = None,
                  num_replicas: Optional[int] = 1,
                  **config_opts) -> BackendInfo:
     return BackendInfo(
-        worker_class=None,
+        actor_def=None,
         version=version,
         backend_config=BackendConfig(num_replicas=num_replicas, **config_opts),
         replica_config=ReplicaConfig(lambda x: x))
