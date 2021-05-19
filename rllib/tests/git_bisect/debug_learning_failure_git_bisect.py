@@ -29,6 +29,7 @@ $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
     --stop-iters=100
 """
 import argparse
+import importlib
 import json
 import os
 import subprocess
@@ -128,6 +129,7 @@ if __name__ == "__main__":
     # - Start ray.
     try:
         subprocess.run(["ray", "stop"])
+        subprocess.run(["ray", "stop"])
     except Exception:
         pass
 
@@ -147,9 +149,13 @@ if __name__ == "__main__":
         subprocess.run(["pip", "install", "-e", ".", "--verbose"])
         os.chdir("../")
 
-    subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
+    try:
+        subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
+    except Exception:
+        pass
 
     # Run the training experiment.
+    importlib.invalidate_caches()
     import ray
     from ray import tune
 
