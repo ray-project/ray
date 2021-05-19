@@ -10,17 +10,17 @@ $ git bisect bad
 $ git bisect good [the hash code of C]
 $ git bisect run python debug_learning_failure_git_bisect.py [... options]
 
-Can be used with git bisect to find the faulty commit responsible for a
-learning failure. Produces an error if the given reward is not reached within
-the stopping criteria (training iters or timesteps) allowing git bisect to
-properly analyze and find the faulty commit.
+Produces an error if the given reward is not reached within
+the stopping criteria (training iters or timesteps) OR if some number
+of env timesteps are not reached within some wall time or iterations,
+and thus allowing git bisect to properly analyze and find the faulty commit.
 
 Run as follows using a simple command line config
-(must run 1M timesteps in 10min):
+(must run 1M timesteps in 2min):
 $ python debug_learning_failure_git_bisect.py --config '{...}'
-    --env CartPole-v0 --run PPO --stop-time=600 --stop-timesteps=1000000
+    --env CartPole-v0 --run PPO --stop-time=120 --stop-timesteps=1000000
 
-With a yaml file (must reach 180 reward in 100 training iterations):
+With a yaml file (must reach 180.0 reward in 100 training iterations):
 $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
     --stop-iters=100
 """
