@@ -28,7 +28,11 @@ from ray import tune
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default=None)
+parser.add_argument(
+    "--run",
+    type=str,
+    default=None,
+    help="The RLlib-registered algorithm to use.")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=None)
 parser.add_argument("--stop-timesteps", type=int, default=None)
