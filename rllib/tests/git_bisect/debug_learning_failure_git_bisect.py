@@ -152,7 +152,8 @@ if __name__ == "__main__":
     try:
         subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
     except Exception:
-        pass
+        subprocess.run(["ray", "stop"])
+        subprocess.run(["ray", "start", "--head", "--include-dashboard", "false"])
 
     # Run the training experiment.
     importlib.invalidate_caches()
@@ -181,7 +182,11 @@ if __name__ == "__main__":
                 "`stop-timesteps` of {} not reached in {}sec!".format(
                     args.stop_timesteps, args.stop_time))
     else:
-        raise ValueError("Invalid pass criterium!")
+        raise ValueError(
+            "Invalid pass criterium! Must use either "
+            "(--stop-reward + optionally any other) OR "
+            "(--stop-timesteps + --stop-time).")
+
 
     print("ok")
     ray.shutdown()
