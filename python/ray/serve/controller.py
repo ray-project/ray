@@ -230,7 +230,7 @@ class ServeController:
             for endpoint, info in self.endpoint_state.get_endpoints().items():
                 if (backend_tag in info["traffic"]
                         or backend_tag in info["shadows"]):
-                    raise ValueError("Backend '{}' is used by endpoint '{}' "
+                    raise ValueError(f"Backend '{}' is used by endpoint '{}' "
                                      "and cannot be deleted. Please remove "
                                      "the backend from all endpoints and try "
                                      "again.".format(backend_tag, endpoint))
@@ -285,11 +285,11 @@ class ServeController:
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
                     raise ValueError(
-                        "prev_version '{}' is specified but "
-                        "there is no existing deployment".format(prev_version))
+                        f"prev_version '{prev_version}' is specified but "
+                        "there is no existing deployment")
                 if existing_backend_info.version != prev_version:
-                    raise ValueError("prev_version '{}' does not match with "
-                                     "the existing version '{}'".format(
+                    raise ValueError(f"prev_version '{prev_version}' does not match with "
+                                     "the existing version '{existing_backend_info.version}'".format(
                                          prev_version,
                                          existing_backend_info.version))
 
