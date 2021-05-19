@@ -4,7 +4,6 @@ controller or the backend worker, use mock if necessary.
 """
 import asyncio
 from collections import defaultdict
-import os
 
 import pytest
 
