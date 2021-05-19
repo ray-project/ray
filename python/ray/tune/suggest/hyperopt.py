@@ -421,8 +421,7 @@ class HyperOptSearch(Searcher):
                     if quantize:
                         return hpo.base.pyll.scope.int(
                             hpo.hp.qloguniform(par, np.log(domain.lower),
-                                               np.log(domain.upper - 1),
-                                               quantize))
+                                               np.log(domain.upper), quantize))
                     return hpo.base.pyll.scope.int(
                         hpo.hp.qloguniform(par, np.log(domain.lower),
                                            np.log(domain.upper - 1), 1.0))

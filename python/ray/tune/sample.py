@@ -240,7 +240,7 @@ class Integer(Domain):
             logmax = np.log(domain.upper) / np.log(self.base)
 
             items = self.base**(np.random.uniform(logmin, logmax, size=size))
-            items = np.round(items).astype(int)
+            items = np.floor(items).astype(int)
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
