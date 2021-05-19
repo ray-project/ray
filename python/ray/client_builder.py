@@ -100,7 +100,7 @@ class _LocalClientBuilder(ClientBuilder):
         return self
 
     def _create_local_cluster(self):
-        def ray_connect_handler(job_config : Optional[JobConfig]=None):
+        def ray_connect_handler(job_config: Optional[JobConfig] = None):
             with disable_client_hook():
                 if not ray.is_initialized():
                     ray.init(job_config=job_config, **self._init_args)
@@ -131,8 +131,7 @@ class _LocalClientBuilder(ClientBuilder):
             logger.warning(
                 f"Found clusters at: {redis_addresses}, but could not connect"
                 "in client mode. Hint: The following docs may help you set up "
-                "ray client. https://docs.ray.io/en/master/ray-client.html"
-            )
+                "ray client. https://docs.ray.io/en/master/ray-client.html")
             self._create_local_cluster()
         elif len(candidates) == 1:
             self.address = candidates.pop()
