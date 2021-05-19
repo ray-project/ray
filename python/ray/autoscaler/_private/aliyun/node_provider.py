@@ -39,7 +39,7 @@ class AliyunNodeProvider(NodeProvider):
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
 
-        # Tags that we believe to actually be on EC2.
+        # Tags that we believe to actually be on the node.
         self.tag_cache = {}
         # Tags that we will soon upload.
         self.tag_cache_pending = defaultdict(dict)
