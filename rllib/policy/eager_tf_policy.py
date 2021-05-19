@@ -27,8 +27,6 @@ logger = logging.getLogger(__name__)
 def _convert_to_tf(x, dtype=None):
     if isinstance(x, SampleBatch):
         dict_ = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
-        if x.seq_lens is not None:
-            dict_["seq_lens"] = x.seq_lens
         return tf.nest.map_structure(_convert_to_tf, dict_)
     elif isinstance(x, Policy):
         return x
@@ -188,7 +186,7 @@ def build_eager_tf_policy(
         postprocess_fn=None,
         stats_fn=None,
         optimizer_fn=None,
-        gradients_fn=None,
+        compute_gradients_fn=None,
         apply_gradients_fn=None,
         grad_stats_fn=None,
         extra_learn_fetches_fn=None,
@@ -201,10 +199,12 @@ def build_eager_tf_policy(
         action_sampler_fn=None,
         action_distribution_fn=None,
         mixins=None,
-        obs_include_prev_action_reward=DEPRECATED_VALUE,
         get_batch_divisibility_req=None,
         # Deprecated args.
-        extra_action_fetches_fn=None):
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        extra_action_fetches_fn=None,
+        gradients_fn=None,
+):
     """Build an eager TF policy.
 
     An eager policy runs all operations in eager mode, which makes debugging
@@ -218,6 +218,9 @@ def build_eager_tf_policy(
 
     base = add_mixins(Policy, mixins)
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     if extra_action_fetches_fn is not None:
         deprecation_warning(
             old="extra_action_fetches_fn",
@@ -225,14 +228,30 @@ def build_eager_tf_policy(
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
 
-    if obs_include_prev_action_reward != DEPRECATED_VALUE:
-        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+    if gradients_fn is not None:
+        deprecation_warning(
+            old="gradients_fn", new="compute_gradients_fn", error=False)
+        compute_gradients_fn = gradients_fn
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
             assert tf.executing_eagerly()
             self.framework = config.get("framework", "tfe")
             Policy.__init__(self, observation_space, action_space, config)
+
+            # Log device and worker index.
+            from ray.rllib.evaluation.rollout_worker import get_global_worker
+            worker = get_global_worker()
+            worker_idx = worker.worker_index if worker else 0
+            if tf.config.list_physical_devices("GPU"):
+                logger.info(
+                    "TF-eager Policy (worker={}) running on GPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+            else:
+                logger.info(
+                    "TF-eager Policy (worker={}) running on CPU.".format(
+                        worker_idx if worker_idx > 0 else "local"))
+
             self._is_training = False
             self._loss_initialized = False
             self._sess = None
@@ -350,8 +369,6 @@ def build_eager_tf_policy(
                     batch_divisibility_req=self.batch_divisibility_req,
                     view_requirements=self.view_requirements,
                 )
-            else:
-                postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
 
             self._is_training = True
             postprocessed_batch["is_training"] = True
@@ -461,6 +478,9 @@ def build_eager_tf_policy(
             seq_lens = tf.ones(batch_size, dtype=tf.int32) if state_batches \
                 else None
 
+            # Add default and custom fetches.
+            extra_fetches = {}
+
             # Use Exploration object.
             with tf.variable_creator_scope(_disallow_var_creation):
                 if action_sampler_fn:
@@ -507,6 +527,14 @@ def build_eager_tf_policy(
                                         is_training=False)
                             else:
                                 raise e
+                    elif isinstance(self.model, tf.keras.Model):
+                        input_dict = SampleBatch(input_dict, seq_lens=seq_lens)
+                        if state_batches and "state_in_0" not in input_dict:
+                            for i, s in enumerate(state_batches):
+                                input_dict[f"state_in_{i}"] = s
+                        self._lazy_tensor_dict(input_dict)
+                        dist_inputs, state_out, extra_fetches = \
+                            self.model(input_dict)
                     else:
                         dist_inputs, state_out = self.model(
                             input_dict, state_batches, seq_lens)
@@ -519,8 +547,6 @@ def build_eager_tf_policy(
                         timestep=timestep,
                         explore=explore)
 
-            # Add default and custom fetches.
-            extra_fetches = {}
             # Action-logp and action-prob.
             if logp is not None:
                 extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
@@ -637,7 +663,10 @@ def build_eager_tf_policy(
 
         def variables(self):
             """Return the list of all savable variables for this policy."""
-            return self.model.variables()
+            if isinstance(self.model, tf.keras.Model):
+                return self.model.variables
+            else:
+                return self.model.variables()
 
         @override(Policy)
         def is_recurrent(self):
@@ -687,12 +716,16 @@ def build_eager_tf_policy(
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            with tf.GradientTape(persistent=gradients_fn is not None) as tape:
+            with tf.GradientTape(persistent=compute_gradients_fn is not None) \
+                    as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
-            variables = self.model.trainable_variables()
+            if isinstance(self.model, tf.keras.Model):
+                variables = self.model.trainable_variables
+            else:
+                variables = self.model.trainable_variables()
 
-            if gradients_fn:
+            if compute_gradients_fn:
 
                 class OptimizerWrapper:
                     def __init__(self, tape):
@@ -702,8 +735,9 @@ def build_eager_tf_policy(
                         return list(
                             zip(self.tape.gradient(loss, var_list), var_list))
 
-                grads_and_vars = gradients_fn(self, OptimizerWrapper(tape),
-                                              loss)
+                grads_and_vars = compute_gradients_fn(self,
+                                                      OptimizerWrapper(tape),
+                                                      loss)
             else:
                 grads_and_vars = list(
                     zip(tape.gradient(loss, variables), variables))

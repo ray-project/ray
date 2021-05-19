@@ -75,6 +75,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
+  std::string SerializedRuntimeEnv() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
