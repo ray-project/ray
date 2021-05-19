@@ -243,7 +243,7 @@ def create_or_update_cluster(
     return config
 
 
-CONFIG_CACHE_VERSION = 1
+CONFIG_CACHE_VERSION = 2
 
 
 def _bootstrap_config(config: Dict[str, Any],
