@@ -89,8 +89,7 @@ class GcsActorManagerTest : public ::testing::Test {
       : mock_actor_scheduler_(new MockActorScheduler()),
         delayed_to_run_(nullptr),
         delay_(0),
-        skip_delay_(true)
-         {
+        skip_delay_(true) {
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -117,8 +116,7 @@ class GcsActorManagerTest : public ::testing::Test {
             delayed_to_run_ = fn;
           }
         },
-        [this](const rpc::Address &addr) { return worker_client_; }
-        ));
+        [this](const rpc::Address &addr) { return worker_client_; }));
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -949,7 +947,6 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
-
   // auto job_id = JobID::FromInt(1);
   // auto registered_actor = RegisterActor(job_id);
   // rpc::CreateActorRequest create_actor_request;
@@ -958,17 +955,17 @@ TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
 
   // std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   // RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
-  //                                              create_actor_request, [&finished_actors](std::shared_ptr<gcs::GcsActor> actor) {
+  //                                              create_actor_request,
+  //                                              [&finished_actors](std::shared_ptr<gcs::GcsActor>
+  //                                              actor) {
   //                                                finished_actors.emplace_back(actor);
   //                                              }));
-
-
 
   // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
   gcs_actor_manager_->OnJobFinished(job_id_1);
   // OnJobFinished work occurs on another thread.
-  std::this_thread::sleep_for (std::chrono::seconds(1));
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 
   {
     rpc::GetAllActorInfoRequest request;
