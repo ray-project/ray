@@ -176,6 +176,13 @@ class Worker:
         assert isinstance(self.current_job_id, ray.JobID)
         return self._session_index, self.current_job_id
 
+    @property
+    def runtime_env(self):
+        """Get the runtime env in json format"""
+        assert _internal_kv_initialized()
+        runtime_env_proto = self.core_worker.get_job_config().runtime_env
+        return json.loads(_internal_kv_get(runtime_env_proto.digest_id).decode())
+
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
 
