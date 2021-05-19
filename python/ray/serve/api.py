@@ -3,6 +3,7 @@ import atexit
 import collections
 import inspect
 import os
+import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -328,7 +329,7 @@ class Client:
         # If using Ray client, skip this convenience feature because the local
         # client env doesn't create the Ray cluster (so the client env is
         # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected():
+        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
             if ray_actor_options.get("runtime_env") is None:
                 ray_actor_options["runtime_env"] = {}
             if ray_actor_options["runtime_env"].get("conda") is None:
@@ -373,7 +374,7 @@ class Client:
         # If using Ray client, skip this convenience feature because the local
         # client env doesn't create the Ray cluster (so the client env is
         # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected():
+        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
             if ray_actor_options.get("runtime_env") is None:
                 ray_actor_options["runtime_env"] = {}
             if ray_actor_options["runtime_env"].get("conda") is None:
