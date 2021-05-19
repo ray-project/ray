@@ -149,13 +149,15 @@ inline WaitResult Ray::Wait(const std::vector<ObjectID> &ids, int num_objects,
 template <typename FuncType>
 inline TaskCaller<FuncType> Ray::TaskInternal(FuncType &func) {
   RemoteFunctionHolder remote_func_holder(func);
-  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
+  return TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
+                              std::move(remote_func_holder));
 }
 
 template <typename FuncType>
 inline ActorCreator<FuncType> Ray::CreateActorInternal(FuncType &create_func) {
   RemoteFunctionHolder remote_func_holder(create_func);
-  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(), remote_func_holder);
+  return ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
+                                std::move(remote_func_holder));
 }
 
 /// Normal task.

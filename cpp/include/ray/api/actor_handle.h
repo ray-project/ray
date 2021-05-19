@@ -57,7 +57,8 @@ template <typename ActorType>
 template <typename F>
 ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   RemoteFunctionHolder remote_func_holder(actor_func);
-  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_, remote_func_holder);
+  return ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
+                            std::move(remote_func_holder));
 }
 
 }  // namespace api
