@@ -34,7 +34,10 @@ RUN_RAYLET_PROFILER = False
 # The number of seconds to wait for the Raylet to start. This is normally
 # fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
 # (a few GB/s) to populate all the pages on Raylet startup.
-RAYLET_START_WAIT_TIME_S = 120
+if os.environ.get("RAY_PREALLOCATE_PLASMA_MEMORY") == "1":
+    RAYLET_START_WAIT_TIME_S = 120
+else:
+    RAYLET_START_WAIT_TIME_S = 10
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
