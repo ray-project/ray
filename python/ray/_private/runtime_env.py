@@ -88,7 +88,7 @@ class RuntimeEnvDict:
         # TODO(architkulkarni) support env_vars, docker
 
         # TODO(architkulkarni) This is to make it easy for the worker caching
-        # code in C++ to check if the env is empty without deserializing and 
+        # code in C++ to check if the env is empty without deserializing and
         # parsing it.  We should use a less confusing approach here.
         if all(val is None for val in self._dict.values()):
             self._dict = {}
