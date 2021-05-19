@@ -157,7 +157,6 @@ message ClusterInfoType {
     AVAILABLE_RESOURCES = 3;
     RUNTIME_CONTEXT = 4;
     TIMELINE = 5;
-    PING = 6;
   }
 }
 
