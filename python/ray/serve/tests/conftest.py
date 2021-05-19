@@ -69,6 +69,9 @@ def mock_controller_with_name():
             self.backend_replicas[backend_tag].append(runner_actor)
             self.backend_configs[backend_tag] = backend_config
 
+            ray.get(
+                runner_actor.reconfigure.remote(backend_config.user_config))
+
             self.host.notify_changed(
                 (LongPollNamespace.REPLICA_HANDLES, backend_tag),
                 self.backend_replicas[backend_tag],
@@ -85,6 +88,10 @@ def mock_controller_with_name():
                 (LongPollNamespace.BACKEND_CONFIGS, backend_tag),
                 self.backend_configs[backend_tag],
             )
+            ray.get([
+                r.reconfigure.remote(backend_config.user_config)
+                for r in self.backend_replicas[backend_tag]
+            ])
 
     name = f"MockController{random.randint(0,10e4)}"
     yield name, MockControllerActor.options(name=name).remote()

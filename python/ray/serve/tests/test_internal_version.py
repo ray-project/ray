@@ -88,9 +88,9 @@ class TestUserConfigHash:
         assert hash(v1) != hash(v3)
 
     def test_user_config_nested_in_hashable(self):
-        v1 = InternalVersion("1", ([{"1": "2"}, {"1": "2"}],))
-        v2 = InternalVersion("1", ([{"1": "2"}, {"1": "2"}],))
-        v3 = InternalVersion("1", ([{"1": "2"}, {"1": "3"}],))
+        v1 = InternalVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+        v2 = InternalVersion("1", ([{"1": "2"}, {"1": "2"}], ))
+        v3 = InternalVersion("1", ([{"1": "2"}, {"1": "3"}], ))
 
         assert v1 == v2
         assert hash(v1) == hash(v2)
