@@ -17,7 +17,7 @@ except ImportError:
 
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
-    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
+    EXPR_RESULT_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
@@ -39,12 +39,15 @@ class Analysis:
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
+        file_type (str): Read results from json or csv files. Has to be one
+            of [json, csv]. Defaults to csv.
     """
 
     def __init__(self,
                  experiment_dir: str,
                  default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None):
+                 default_mode: Optional[str] = None,
+                 file_type: Optional[str] = None):
         experiment_dir = os.path.expanduser(experiment_dir)
         if not os.path.isdir(experiment_dir):
             raise ValueError(
@@ -62,6 +65,11 @@ class Analysis:
         if self.default_metric is None and self.default_mode:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
+
+        self.file_type = file_type or "csv"
+        if self.file_type not in ["json", "csv"]:
+            raise ValueError(
+                "`file_type` has to be None or one of [json, csv]")
 
         if not pd:
             logger.warning(
@@ -172,8 +180,13 @@ class Analysis:
         fail_count = 0
         for path in self._get_trial_paths():
             try:
-                self.trial_dataframes[path] = pd.read_csv(
-                    os.path.join(path, EXPR_PROGRESS_FILE))
+                if self.file_type == "json":
+                    with open(os.path.join(path, EXPR_RESULT_FILE), "r") as f:
+                        json_list = [json.loads(line) for line in f]
+                    df = pd.json_normalize(json_list, sep="/")
+                elif self.file_type == "csv":
+                    df = pd.read_csv(os.path.join(path, EXPR_PROGRESS_FILE))
+                self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1
 
@@ -325,7 +338,10 @@ class Analysis:
     def _get_trial_paths(self) -> List[str]:
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
-            if EXPR_PROGRESS_FILE in files:
+            if (self.file_type == "json"
+                and EXPR_RESULT_FILE in files) \
+                    or (self.file_type == "csv"
+                        and EXPR_PROGRESS_FILE in files):
                 _trial_paths += [trial_path]
 
         if not _trial_paths:
