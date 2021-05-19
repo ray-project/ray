@@ -3,6 +3,7 @@ import atexit
 import collections
 import inspect
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
 
 _INTERNAL_REPLICA_CONTEXT = None
 _global_client = None
+
+_UUID_RE = re.compile(
+    "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
 
 
 def _get_global_client():
@@ -587,7 +591,10 @@ def start(
 
     Args:
         detached (bool): Whether not the instance should be detached from this
-          script.
+          script. If set, the instance will live on the Ray cluster until it is
+          explicitly stopped with serve.shutdown(). This should *not* be set in
+          an anonymous Ray namespace because you will not be able to reconnect
+          to the instance after the script exits.
         http_host (Optional[str]): Deprecated, use http_options instead.
         http_port (int): Deprecated, use http_options instead.
         http_middlewares (list): Deprecated, use http_options instead.
@@ -633,6 +640,18 @@ def start(
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init()
+
+    if detached:
+        current_namespace = ray.get_runtime_context().namespace
+        if _UUID_RE.fullmatch(current_namespace) is not None:
+            raise RuntimeError(
+                "serve.start(detached=True) should not be called in anonymous "
+                "Ray namespaces because you won't be able to reconnect to the "
+                "Serve instance after the script exits. If you want to start "
+                "a long-lived Serve instance, provide a namespace when "
+                "connecting to Ray. See the documentation for more details: "
+                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
+            )
 
     try:
         _get_global_client()
