@@ -443,11 +443,11 @@ def test_runtime_env_getter(ray_start_cluster_head, working_dir, client_mode):
     runtime_env = f"""{{  "working_dir": "{working_dir}" }}"""
     # Execute the following cmd in driver with runtime_env
     execute_statement = """
-print(ray.get_runtime_context().runtime_env)
+print(ray.get_runtime_context().runtime_env["working_dir"])
 """
     script = driver_script.format(**locals())
     out = run_string_as_driver(script, env)
-    print(out)
+    assert out.strip().split()[-1] == working_dir
 
 
 @unittest.skipIf(sys.platform == "win32", "Fail to create temp dir.")
