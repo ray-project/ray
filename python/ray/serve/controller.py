@@ -284,11 +284,14 @@ class ServeController:
                 existing_backend_info = self.backend_state.get_backend(name)
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
-                    raise ValueError(f"prev_version '{prev_version}' is specified but "
-                                     "there is no existing deployment.")
+                    raise ValueError(
+                        f"prev_version '{prev_version}' is specified but "
+                        "there is no existing deployment.")
                 if existing_backend_info.version != prev_version:
-                    raise ValueError(f"prev_version '{prev_version}' does not match with "
-                                     f"the existing version '{existing_backend_info.version}'.")
+                    raise ValueError(
+                        f"prev_version '{prev_version}' "
+                        "does not match with the existing "
+                        f"version '{existing_backend_info.version}'.")
 
             backend_info = BackendInfo(
                 actor_def=ray.remote(
