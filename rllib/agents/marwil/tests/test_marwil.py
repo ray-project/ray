@@ -92,7 +92,7 @@ class TestMARWIL(unittest.TestCase):
         # Learn from offline data.
         config["input"] = [data_file]
 
-        for fw, sess in framework_iterator(config, frameworks=["tf", "torch", "tf2"], session=True):
+        for fw, sess in framework_iterator(config, session=True):
             reader = JsonReader(inputs=[data_file])
             batch = reader.next()
 
@@ -131,7 +131,6 @@ class TestMARWIL(unittest.TestCase):
             expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
             expected_loss = \
                 expected_pol_loss + config["vf_coeff"] * expected_vf_loss
-            expected_adv_norm = 100.0 + 1e-8 * (adv_squared - 100.0)
 
             # Calculate the algorithm's loss (to check against our own
             # calculation above).
@@ -141,10 +140,11 @@ class TestMARWIL(unittest.TestCase):
                 else marwil.marwil_torch_policy.marwil_loss
             if fw != "tf":
                 policy._lazy_tensor_dict(postprocessed_batch)
-                loss_out = loss_func(policy, model, policy.dist_class, postprocessed_batch)
+                loss_out = loss_func(policy, model, policy.dist_class,
+                                     postprocessed_batch)
             else:
-                loss_out, v_loss, p_loss, adv_norm = policy.get_session().run(
-                    [policy._loss, policy.loss.v_loss, policy.loss.p_loss, policy._moving_average_sqd_adv_norm],
+                loss_out, v_loss, p_loss = policy.get_session().run(
+                    [policy._loss, policy.loss.v_loss, policy.loss.p_loss],
                     feed_dict=policy._get_loss_inputs_dict(
                         postprocessed_batch, shuffle=False))
 
