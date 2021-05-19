@@ -923,6 +923,31 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
 }
 
+// Test if registration / unregistration is idempotent.
+TEST_F(PublisherTest, TestRegistrationIdempotency) {
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+}
+
 }  // namespace pubsub
 
 }  // namespace ray

@@ -43,7 +43,7 @@ class SubscriptionIndex {
 
   /// Add a new entry to the index.
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
-  void AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
+  bool AddEntry(const std::string &key_id_binary, const SubscriberID &subscriber_id);
 
   /// Return the set of subscriber ids that are subscribing to the given object ids.
   absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
@@ -159,7 +159,8 @@ class PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id_binary The key_id that the subscriber is subscribing to.
-  virtual void RegisterSubscription(const rpc::ChannelType channel_type,
+  /// \return True if registration is new. False otherwise.
+  virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
                                     const SubscriberID &subscriber_id,
                                     const std::string &key_id_binary) = 0;
 
@@ -243,7 +244,8 @@ class Publisher : public PublisherInterface {
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
   /// \param key_id_binary The key_id that the subscriber is subscribing to.
-  void RegisterSubscription(const rpc::ChannelType channel_type,
+  /// \return True if the registration is new. False otherwise.
+  bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
                             const std::string &key_id_binary) override;
 
@@ -308,6 +310,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
+  FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
