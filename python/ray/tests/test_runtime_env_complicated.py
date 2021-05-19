@@ -59,6 +59,7 @@ def conda_envs():
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_task_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -77,6 +78,7 @@ def test_task_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_actor_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -96,6 +98,7 @@ def test_actor_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_inheritance_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
     ray.init()
@@ -125,6 +128,7 @@ def test_inheritance_conda_env(conda_envs, shutdown_only):
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
 def test_job_config_conda_env(conda_envs, shutdown_only):
     import tensorflow as tf
 
