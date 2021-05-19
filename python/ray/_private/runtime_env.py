@@ -457,7 +457,8 @@ def upload_runtime_env_package_if_needed(job_config: JobConfig) -> None:
             # Push the data to remote storage
             pkg_size = push_package(pkg_uri, pkg_file)
             logger.info(f"{pkg_uri} has been pushed with {pkg_size} bytes")
-    _internal_kv_put(job_config.get_digest_id(), json.dumps(job_config.runtime_env))
+    _internal_kv_put(job_config.get_digest_id(),
+                     json.dumps(job_config.runtime_env))
 
 
 def ensure_runtime_env_setup(pkg_uris: List[str]) -> Optional[str]:

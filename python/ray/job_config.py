@@ -2,6 +2,7 @@ import ray
 import uuid
 import hashlib
 
+
 class JobConfig:
     """A class used to store the configurations of a job.
 
