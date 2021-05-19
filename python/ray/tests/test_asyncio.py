@@ -222,10 +222,15 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
     a = Actor.options(max_task_retries=0).remote()
     a.loop_forever.remote()
     # Make sure exit_actor exits immediately, not once all tasks completed.
-    ray.get(a.exit.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
 
+    # New calls should just error.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ping.remote())
+
+    # The actor should be dead in the actor table.
+    assert ray.state.actors()[a._ray_actor_id.hex()]["State"] != 2
 
 
 def test_async_callback(ray_start_regular_shared):
