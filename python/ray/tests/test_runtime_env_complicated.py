@@ -192,7 +192,7 @@ def test_conda_create_task(shutdown_only):
     ray_wheel_filename = get_wheel_filename()
     # E.g. 3.6.13
     python_micro_version_dots = ".".join(map(str, sys.version_info[:3]))
-    ray_wheel_path = os.path.join("./.whlWRONGPATH", ray_wheel_filename)
+    ray_wheel_path = os.path.join("/ray/.whl", ray_wheel_filename)
     print(f"WHEEL PATH: {ray_wheel_path}")
     runtime_env = {
         "conda": {
@@ -216,8 +216,9 @@ def test_conda_create_task(shutdown_only):
     with pytest.raises(ModuleNotFoundError):
         # Ensure pip-install-test is not installed on the test machine
         import pip_install_test  # noqa
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
         ray.get(f.remote())
+    assert "ModuleNotFoundError" in str(excinfo.value)
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
