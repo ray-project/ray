@@ -220,6 +220,7 @@ def test_conda_create_task(shutdown_only):
         ray.get(f.remote())
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
+
 @pytest.mark.skipif(
     os.environ.get("CI") is None, reason="This test is only run on CI.")
 @pytest.mark.skipif(
