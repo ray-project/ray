@@ -57,6 +57,40 @@ def conda_envs():
     ray.shutdown()
 
 
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(sys.platform == "win32", reason="Unsupported on Windows.")
+
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 24001 --port 0"
+    ],
+    indirect=True)
+def test_client_tasks_and_actors_inherit_from_parent(conda_envs, call_ray_start):
+    @ray.remote
+    def get_tf_version():
+        import tensorflow as tf
+        return tf.__version__
+    @ray.remote
+    class TfVersionActor:
+        def get_tf_version(self):
+            import tensorflow as tf
+            return tf.__version__
+
+
+    tf_versions = ["2.2.0", "2.3.0"]
+    for tf_version in tf_versions:
+        runtime_env = {"conda": f"tf-{tf_version}"}
+        ray.client("localhost:24001").env(runtime_env).connect()
+        assert ray.get(get_tf_version.remote()) == tf_version
+        actor_handle = TfVersionActor.remote()
+        assert ray.get(actor_handle.get_tf_version.remote()) == tf_version
+        ray.util.disconnect()
+        
+
+
 @pytest.mark.skipif(
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment")
